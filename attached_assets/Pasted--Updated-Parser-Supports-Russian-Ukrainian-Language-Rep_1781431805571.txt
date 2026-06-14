@@ -1,0 +1,117 @@
+✅ Updated Parser – Supports Russian + Ukrainian Language
+Replace the handle_document function with this improved version:
+import re
+from replit import db
+import json
+from datetime import datetime
+
+# ==================== FILE / REPORT UPLOAD (RU + UK) ====================
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.document:
+        return
+    
+    doc = update.message.document
+    if not doc.file_name.lower().endswith('.html'):
+        await update.message.reply_text("❌ Підтримується тільки .html файли з OSINT-відчетами.")
+        return
+
+    await update.message.reply_text("📥 Отримую файл... Аналізую дані (RU/UK)...")
+
+    try:
+        file = await context.bot.get_file(doc.file_id)
+        html_content = (await file.download_as_bytearray()).decode('utf-8', errors='ignore')
+        
+        extracted = {
+            "query": "Попова Наталья",  # default
+            "total_results": "0",
+            "timestamp": datetime.now().isoformat(),
+            "entries": []
+        }
+
+        # Extract query
+        query_match = re.search(r'За запитом "(.*?)"', html_content, re.IGNORECASE | re.DOTALL)
+        if query_match:
+            extracted["query"] = query_match.group(1)
+
+        total_match = re.search(r'знайдено (\d+) результати', html_content, re.IGNORECASE)
+        if total_match:
+            extracted["total_results"] = total_match.group(1)
+
+        # Russian + Ukrainian patterns for names
+        name_patterns = [
+            r'Повне ім\'я.*?(?:>|\s)([А-ЯЁ][А-ЯЁа-яё\s]+?)(?=<|Транспортні|Документи|$)',
+            r'Полное имя.*?(?:>|\s)([А-ЯЁ][А-ЯЁа-яё\s]+?)(?=<|Транспортные|Документы|$)',
+            r'ФИО.*?([А-ЯЁ][А-ЯЁа-яё\s-]+)',
+        ]
+
+        # Find all person blocks
+        blocks = re.split(r'(?=
+)', html_content)
+        
+        for block in blocks:
+            entry = {}
+            
+            # Name
+            for pattern in name_patterns:
+                name_match = re.search(pattern, block, re.IGNORECASE | re.DOTALL)
+                if name_match:
+                    entry["full_name"] = name_match.group(1).strip()
+                    break
+            
+            # Phone
+            phone_match = re.search(r'(?:Телефон|Телефон|Phone).*?([\d\s\-\(\)\+]{7,})', block, re.IGNORECASE | re.DOTALL)
+            if phone_match:
+                entry["phone"] = re.sub(r'\s+', ' ', phone_match.group(1)).strip()
+            
+            # Address
+            address_match = re.search(r'(?:Адреса|Адрес|Address).*?([А-ЯЁа-яё0-9\s\.,\-/]+?)(?=
+|$)', block, re.IGNORECASE | re.DOTALL)
+            if address_match:
+                entry["address"] = address_match.group(1).strip()
+            
+            # Vehicle plate
+            plate_match = re.search(r'(?:Регістраційний номер|Регистрационный номер).*?([А-ЯЁ0-9]{1,2}\d{3,}[А-ЯЁ0-9]{2,3})', block, re.IGNORECASE)
+            if plate_match:
+                entry["plate"] = plate_match.group(1).strip()
+            
+            # VIN
+            vin_match = re.search(r'VIN.*?([A-HJ-NPR-Z0-9]{17})', block, re.IGNORECASE)
+            if vin_match:
+                entry["vin"] = vin_match.group(1).strip()
+            
+            if entry.get("full_name"):
+                extracted["entries"].append(entry)
+
+        if not extracted["entries"]:
+            # Fallback: broader search
+            names = re.findall(r'([А-ЯЁ][А-ЯЁа-яё]{2,}\s+[А-ЯЁ][А-ЯЁа-яё]{2,}\s+[А-ЯЁ][А-ЯЁа-яё]{2,})', html_content)
+            for name in set(names[:30]):  # limit duplicates
+                extracted["entries"].append({"full_name": name.strip()})
+
+        # Save to DB
+        key = f"report_{int(__import__('time').time())}"
+        db[key] = extracted
+
+        summary = (
+            f"✅ Збережено **{len(extracted['entries'])}** записів.\n"
+            f"Запит: {extracted['query']}\n"
+            f"Ключ: `{key}`\n\n"
+            f"Переглянути: /getdata {key}"
+        )
+        await update.message.reply_text(summary, parse_mode='Markdown')
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Помилка обробки файлу: {str(e)[:300]}")
+What Changed
+	•	Supports both Russian (“Полное имя”, “Адрес”) and Ukrainian (“Повне ім’я”, “Адреса”)
+	•	Better regex for Cyrillic names, phones, plates, VINs
+	•	More robust block splitting
+	•	Fallback if structured blocks are missing
+How to use:
+	1	Replace the old handle_document function.
+	2	Add the handler (if not already there): app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+	3	
+	4	Send any .html report (Russian or Ukrainian) to the bot.
+Test it with the file you uploaded. It should now parse most “Попова Наталья” entries properly.
+Want me to also add a /search Попова command that searches across all saved reports?

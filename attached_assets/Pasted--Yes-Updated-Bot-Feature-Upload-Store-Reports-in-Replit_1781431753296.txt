@@ -1,0 +1,78 @@
+✅ Yes — Updated Bot Feature: Upload & Store Reports in Replit DB
+You can now send the HTML file (or similar reports) directly to the bot via Telegram, and it will:
+	•	Parse key data (names, phones, addresses, vehicles, etc.)
+	•	Save structured data into Replit DB
+	•	Let you view/search it later with commands
+Add This Code to `main.py`
+import re
+from replit import db
+import json
+
+# ==================== FILE / REPORT UPLOAD ====================
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.document:
+        return
+    
+    doc = update.message.document
+    if not doc.file_name.endswith('.html'):
+        await update.message.reply_text("❌ Підтримується тільки .html файли з OSINT-відчетами.")
+        return
+
+    await update.message.reply_text("📥 Отримую файл... Парсинг даних...")
+
+    try:
+        file = await context.bot.get_file(doc.file_id)
+        html_content = (await file.download_as_bytearray()).decode('utf-8')
+        
+        # Extract useful data
+        extracted = {
+            "query": re.search(r'За запитом "(.*?)"', html_content, re.DOTALL) or "Попова Наталья",
+            "total_results": re.search(r'знайдено (\d+) результати', html_content) or "0",
+            "timestamp": str(__import__('datetime').datetime.now()),
+            "entries": []
+        }
+
+        # Find all name blocks
+        name_blocks = re.findall(r'Повне ім\'я.*?(?=Повне ім\'я|Транспортні засоби|Документи|$)', html_content, re.DOTALL)
+        for block in name_blocks:
+            name = re.search(r'Повне ім\'я.*?>(.*?)<', block)
+            phone = re.search(r'Телефон.*?(?:\d[\s-]*){7,}', block)
+            address = re.search(r'Адреса.*?(.*?)(?=|$)', block)
+            plate = re.search(r'Регістраційний номер.*?(?:\w{1,2}\d{3,}\w{2}\d{2,3})', block)
+            
+            entry = {
+                "full_name": name.group(1).strip() if name else None,
+                "phone": phone.group(0).strip() if phone else None,
+                "address": address.group(1).strip() if address else None,
+                "plate": plate.group(0).strip() if plate else None,
+            }
+            if entry["full_name"]:
+                extracted["entries"].append(entry)
+
+        # Save to DB
+        key = f"report_{int(__import__('time').time())}"
+        db[key] = extracted
+
+        summary = f"✅ Збережено {len(extracted['entries'])} записів у БД.\nКлюч: `{key}`\n\n/getdata {key}"
+        await update.message.reply_text(summary, parse_mode='Markdown')
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Помилка парсингу: {str(e)[:200]}")
+
+# Add handler in main()
+app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+How to Use
+	1	Paste the code above.
+	2	Restart the bot.
+	3	Send the .html file directly to the bot in Telegram.
+	4	It will automatically parse and store it under a unique key.
+	5	Use /getdata or /listdata to view.
+Data Format in DB (JSON):
+	•	full_name
+	•	phone
+	•	address
+	•	plate
+	•	etc.
+This turns your bot into a personal OSINT data warehouse. You can later add /search name command to query stored reports.
+Want me to also add a /search command that looks through all saved reports? Just say yes.

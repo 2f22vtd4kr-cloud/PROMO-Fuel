@@ -1,0 +1,82 @@
+from replit import db
+import json  # for complex data
+
+# ==================== DATABASE MANAGEMENT (Safe Format) ====================
+
+async def add_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "📋 **Правила формата данных** (чтобы не сломать БД):\n\n"
+            "• Ключ: только английские буквы, цифры, подчёркивания (например: promo_text, user_123_note, fuel_link)\n"
+            "• Значение: любой текст (одной строкой)\n"
+            "• Для списков/JSON: оберни значение в кавычки и используй JSON формат\n\n"
+            "**Примеры:**\n"
+            "/adddata promo_text Новый текст про fuel-tickets-ru\n"
+            "/adddata fuel_links https://github.com/2f22vtd4kr-cloud/fuel-tickets-ru\n"
+            "/adddata my_list '[\"item1\", \"item2\"]'   ← JSON строка\n\n"
+            "Использование: /adddata ключ значение"
+        )
+        return
+    
+    key = context.args[0].strip()
+    value = " ".join(context.args[1:])
+    
+    # Safety checks
+    if not key.replace("_", "").isalnum():
+        await update.message.reply_text("❌ Ключ может содержать только буквы, цифры и _ (подчёркивание)")
+        return
+    
+    try:
+        # Try to auto-detect and store as proper type
+        if value.startswith('[') or value.startswith('{'):
+            try:
+                parsed = json.loads(value)
+                db[key] = parsed
+                await update.message.reply_text(f"✅ Сохранено как JSON!\nКлюч: `{key}`", parse_mode='Markdown')
+            except:
+                db[key] = value  # fallback to string
+                await update.message.reply_text(f"✅ Сохранено как текст (JSON не распознан)\nКлюч: `{key}`", parse_mode='Markdown')
+        else:
+            db[key] = value
+            await update.message.reply_text(f"✅ Данные сохранены!\nКлюч: `{key}`\nЗначение: `{value}`", parse_mode='Markdown')
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {str(e)}")
+
+async def get_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Использование: /getdata ключ")
+        return
+    key = context.args[0].strip()
+    value = db.get(key, "❌ Ключ не найден")
+    await update.message.reply_text(f"🔑 Ключ: `{key}`\n📦 Значение:\n`{value}`", parse_mode='Markdown')
+
+async def list_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not db:
+        await update.message.reply_text("База данных пока пустая.")
+        return
+    text = "📋 Ключи в БД:\n\n"
+    for key in sorted(list(db.keys())[:40]):  # safe limit
+        text += f"• `{key}`\n"
+    text += "\n/getdata ключ — посмотреть значение"
+    await update.message.reply_text(text, parse_mode='Markdown')
+
+async def delete_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Использование: /deldata ключ")
+        return
+    key = context.args[0].strip()
+    if key in db:
+        del db[key]
+        await update.message.reply_text(f"🗑 Ключ `{key}` успешно удалён.")
+    else:
+        await update.message.reply_text("Ключ не найден.")
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    lookups = db.get(f"user_{user_id}_lookups", 0)
+    total_keys = len(db)
+    await update.message.reply_text(
+        f"📊 Статистика:\n"
+        f"Ваши запросы: {lookups}\n"
+        f"Всего записей в БД: {total_keys}"
+    )

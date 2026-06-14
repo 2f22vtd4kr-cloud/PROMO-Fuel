@@ -1,0 +1,91 @@
+✅ Full Updated “Stuck” – More Legal/Public Russian Data Aggregators (0 Budget)
+Important Reality Check (from current sources): “Глаз Бога” and similar bots relied heavily on leaked/private databases mixed with public ones. Legally, the richest public data (full ЕГРЮЛ details, contacts, links) comes from services that aggregate official FNS data and offer free tiers after registration (htmlweb.ru, Checko.ru Лайт, Ofdata.ru, egrul.org limited, etc.). There is no unlimited completely open API without limits or signup for deep data — that’s why services exist.
+For our bot we stay 100% ethical:
+	•	Use htmlweb.ru (20 free requests/day per IP, no key needed for basic).
+	•	Add fallbacks + recommendations for users to register on free tiers of Checko/Ofdata.
+	•	Light public recommendations (no heavy scraping).
+	•	All data from official/open registries.
+Updated `inn_lookup` (Replace the old one in `main.py`)
+async def inn_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Использование: /inn 7707083893")
+        return
+    
+    query = context.args[0].strip()
+    await update.message.reply_text(f"🔍 Ищу по ИНН/ОГРН: {query}...")
+
+    # Free public sources (priority order)
+    sources = [
+        f"https://htmlweb.ru/api/service/org?inn={query}",           # 20 free/day, no key
+        f"https://htmlweb.ru/api/service/org?ogrn={query}",          # fallback OGRN
+        # Add more after user registers free tier (optional key support later)
+    ]
+
+    found = False
+    result_text = ""
+    for url in sources:
+        try:
+            resp = requests.get(url, timeout=15)
+            if resp.status_code == 200:
+                data = resp.json()
+                
+                name = data.get('name') or data.get('full_name', 'N/A')
+                inn = data.get('inn', query)
+                ogrn = data.get('ogrn', 'N/A')
+                address = data.get('address', 'N/A')
+                status = data.get('status', 'N/A')
+                okved = data.get('okved', 'N/A')
+                
+                result_text = (
+                    f"✅ Найдено (публичные данные):\n"
+                    f"Название: {name}\n"
+                    f"ИНН: {inn}\n"
+                    f"ОГРН: {ogrn}\n"
+                    f"Адрес: {address}\n"
+                    f"Статус: {status}\n"
+                    f"ОКВЭД: {okved}\n\n"
+                    f"Лимит: {data.get('limit', 'N/A')} запросов осталось сегодня."
+                )
+                await update.message.reply_text(result_text)
+                found = True
+                break
+        except Exception:
+            continue
+
+    if not found:
+        await update.message.reply_text(
+            "🔍 Данные не найдены в бесплатном лимите или источник недоступен.\n\n"
+            "Рекомендации (бесплатные тиры):\n"
+            "• Зарегистрируйся на Checko.ru или Ofdata.ru → Лайт тариф (бесплатно)\n"
+            "• Rusprofile.ru, Контур.Фокус (демо), egrul.nalog.ru (официальный поиск)\n"
+            "• htmlweb.ru даёт 20 запросов в сутки"
+        )
+    await send_promo(update)
+Add More Commands (Legal/Public)
+/checko hint (just recommendation + direct link style):
+async def checko_hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📋 Для более глубокого поиска (контакты, связи, риски):\n"
+        "Зарегистрируйся бесплатно на Checko.ru или Ofdata.ru — Лайт тариф даёт доступ к ЕГРЮЛ + доп.данным.\n\n"
+        "Прямые ссылки:\n"
+        "• https://checko.ru\n"
+        "• https://ofdata.ru\n"
+        "• Официальный ЕГРЮЛ: https://egrul.nalog.ru"
+    )
+    await send_promo(update)
+Add to handlers in main():
+app.add_handler(CommandHandler("checko", checko_hint))
+Full Updated Help & Menu
+Update help_command and menu to include new options.
+Growth Tip: Users love these tools for business/OSINT. Every successful lookup naturally promotes your fuel-tickets-ru via send_promo().
+How to Apply
+	1	Replace the inn_lookup function.
+	2	Add the new checko_hint function.
+	3	Add the handler.
+	4	Update /help text with /checko.
+	5	Run & test with real INNs (e.g. /inn 7707083893).
+Deploy this version now. Test it thoroughly. Tell me:
+	•	Any errors?
+	•	Want to add Replit DB for usage stats/rewards?
+	•	More commands (e.g. /egrul official hints, better rate limiting)?
+This maximizes legal public value while staying safe and promotional for your app. Let’s keep iterating fast. 🚀

@@ -1,0 +1,97 @@
+✅ Step 5: Enhance the Bot with More Free Features (0 Budget)
+Update main.py with these additions for more value (public data only):
+Additional Free Commands
+	•	Weather (Open-Meteo — fully free, no key)
+	•	Currency (free exchangerate API or similar)
+	•	Fuel-related (public suggestions, link to your app)
+	•	Domain WHOIS (basic public lookup)
+	•	Referral/Invite for organic growth
+Replace or append to the code (full updated version key parts):
+import aiohttp  # Add to imports if not present
+
+# ... existing code ...
+
+async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Использование: /weather Москва")
+        return
+    city = " ".join(context.args)
+    try:
+        # Free Open-Meteo (geocoding approx)
+        geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={city}&count=1&language=ru"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(geo_url) as resp:
+                geo = await resp.json()
+            if geo.get('results'):
+                lat = geo['results'][0]['latitude']
+                lon = geo['results'][0]['longitude']
+                w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}¤t_weather=true"
+                async with session.get(w_url) as w_resp:
+                    weather_data = await w_resp.json()
+                temp = weather_data['current_weather']['temperature']
+                await update.message.reply_text(f"🌤 {city}: {temp}°C")
+            else:
+                await update.message.reply_text("Город не найден.")
+    except:
+        await update.message.reply_text("Ошибка погодного API.")
+    await send_promo(update)
+
+async def referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    ref_link = f"https://t.me/{(await context.bot.get_me()).username}?start=ref{user_id}"
+    await update.message.reply_text(
+        f"🔗 Твоя реферальная ссылка:\n{ref_link}\n"
+        "Поделись — друзья получат бонус (больше запросов), ты тоже!"
+    )
+    await send_promo(update)
+
+# Add to main():
+app.add_handler(CommandHandler("weather", weather))
+app.add_handler(CommandHandler("ref", referral))
+# Add /currency, /domain etc. similarly using free endpoints
+Other free enhancements:
+	•	Use requests + public endpoints like htmlweb.ru (limited free) or scrape lightly (respect robots.txt, low volume).
+	•	Store user stats in Replit DB (replit module — free).
+Step 6: Implement Keep-Alive on Replit (Free 24/7)
+	1	Install: pip install flask
+	2	Create keep_alive.py:
+from flask import Flask
+from threading import Thread
+
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is alive!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+	3	In main.py, at the top of main(): from keep_alive import keep_alive; keep_alive()
+	4	Sign up at uptimerobot.com (free) → Add monitor → ping your Repl URL (e.g., https://your-repl-name.yourusername.repl.co) every 5 minutes.
+This keeps the bot running reliably on free tier.25
+Step 7: Organic Growth Strategies (No Budget, No Spam)
+	•	Referral system (as above) — reward shares with more lookups.
+	•	Post bot in Russian communities: авто/топливо, бизнес, OSINT, лайфхаки channels/groups (search Telegram for “топливо экономия”, “ЕГРЮЛ”, etc.).
+	•	Create a companion channel: post useful tips + bot link.
+	•	Mutual promo with similar small bots/channels.
+	•	Add /share command that generates nice promo text.
+	•	List in free bot catalogs (search “каталог телеграм ботов”).
+Step 8: Monitoring & Polish
+	•	Add logging of usage.
+	•	Rate limiting (simple dict or Replit DB) to avoid abuse.
+	•	Inline keyboards for easy navigation.
+	•	Every 5-10 interactions: gentle fuel app promo.
+Step 9: Test & Launch
+	1	Run locally in Replit.
+	2	Test all commands.
+	3	Deploy, get bot username via BotFather.
+	4	Share in 5-10 relevant places manually.
+Step 10: Future (Still Free)
+	•	Add more public APIs (currency, transport links).
+	•	Simple user DB for “favorites”.
+	•	Export lookups to text.
+Deploy this full version now. Tell me what to add next (specific command, DB integration, etc.) or any errors you hit. This maximizes reach ethically while promoting your GitHub app naturally. Let’s iterate fast.

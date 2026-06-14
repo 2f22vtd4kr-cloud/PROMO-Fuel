@@ -1,0 +1,94 @@
+✅ Honest & Practical Answer
+How real “пробив” services do it:
+They are aggregators that combine:
+	•	Leaked databases (phone → Telegram ID/username from breaches)
+	•	Contact sync tricks (adding phone to your contacts and checking if Telegram finds it)
+	•	Public group/channel scraping
+	•	Cross-referencing with other platforms (VK, OK, Avito, etc.)
+Much of their power comes from non-public/leaked data — this is why they feel so strong, but it’s not 100% ethical/public.
+
+What We Can Do Ethically in Your Replit Bot (0 Budget)
+We can implement the best public/ethical method available: Telethon (official Telegram API).
+It allows checking if a phone number is registered on Telegram and retrieving public info (username, name, ID, photo, etc.) if the user hasn’t hidden it.
+Add This Feature to Your Bot
+Step 1: Install Telethon
+In Replit Shell:
+pip install telethon python-dotenv
+Step 2: Add to .env (Secrets)
+API_ID=your_api_id
+API_HASH=your_api_hash
+PHONE=+your_phone_number   # the one linked to your Telegram account
+Step 3: New Command — /tgphone
+Add this code to main.py:
+from telethon import TelegramClient
+from telethon.errors import SessionPasswordNeededError
+import asyncio
+
+# Global client (initialize once)
+tg_client = None
+
+async def init_telethon():
+    global tg_client
+    if tg_client is None:
+        api_id = os.getenv("API_ID")
+        api_hash = os.getenv("API_HASH")
+        phone = os.getenv("PHONE")
+        tg_client = TelegramClient('session', api_id, api_hash)
+        await tg_client.connect()
+        if not await tg_client.is_user_authorized():
+            await tg_client.send_code_request(phone)
+            code = input("Enter the code you received in Telegram: ")  # First time only
+            try:
+                await tg_client.sign_in(phone, code)
+            except SessionPasswordNeededError:
+                password = input("Enter 2FA password: ")
+                await tg_client.sign_in(password=password)
+    return tg_client
+
+# Command: /tgphone +7916xxxxxxx
+async def tg_phone_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Использование: /tgphone +79161234567")
+        return
+
+    phone = context.args[0].strip()
+    if not phone.startswith('+'):
+        phone = '+' + phone
+
+    await update.message.reply_text(f"🔍 Проверяю номер {phone} в Telegram...")
+
+    try:
+        client = await init_telethon()
+        entity = await client.get_entity(phone)
+        
+        result = (
+            f"✅ Найден Telegram аккаунт:\n\n"
+            f"👤 Имя: {entity.first_name or ''} {entity.last_name or ''}\n"
+            f"🔗 Username: @{entity.username if entity.username else 'Нет'}\n"
+            f"🆔 ID: `{entity.id}`\n"
+            f"📱 Номер: {phone}\n"
+            f"🤖 Бот: {'Да' if entity.bot else 'Нет'}\n"
+            f"⭐ Премиум: {'Да' if getattr(entity, 'premium', False) else 'Нет'}"
+        )
+        await update.message.reply_text(result, parse_mode='Markdown')
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Не найдено или скрыто:\n{str(e)[:200]}")
+
+# Add to main():
+app.add_handler(CommandHandler("tgphone", tg_phone_lookup))
+How to Use
+	1	Get API_ID + API_HASH from https://my.telegram.org
+	2	Restart bot (first run may ask for code in console)
+	3	Use /tgphone +79xxxxxxxxx
+Limitations (Ethical Reality):
+	•	Works only if the user has not disabled “Find me by phone number” in privacy settings.
+	•	Telegram may temporarily ban your account if you do too many lookups.
+	•	Use a dedicated burner Telegram account for this.
+
+Would you like me to add:
+	•	/tguser @username command
+	•	Auto-save results to Replit DB
+	•	Batch lookup from uploaded file
+Just tell me and I’ll extend the code.
+This is the most ethical and functional way we can do it on Replit.

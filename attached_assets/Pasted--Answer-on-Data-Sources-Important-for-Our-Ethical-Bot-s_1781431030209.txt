@@ -1,0 +1,57 @@
+✅ Answer on “Глаз Бога” Data Sources (Important for Our Ethical Bot)
+Глаз Бога started as an OSINT aggregator (open-source intelligence) but quickly evolved into something much broader. According to multiple investigations and statements from its creator:
+Main Sources (What They Claimed Publicly)
+	•	Official public registries — ЕГРЮЛ / ЕГРИП (companies/INN/OGRN), ФНС, ГИБДД (vehicles), Росреестр, etc.
+	•	Public social media profiles — VK, OK, Instagram, Telegram usernames, Avito, etc. (scraping open pages).
+	•	Other open data — Search engines, public leaks that were already dumped online, phone books from apps like GetContact.
+Reality (What Actually Powered It)
+The bulk of its impressive “probiv” capabilities came from purchased or exchanged leaked databases (leaks from banks, mobile operators, delivery services like Yandex Eda, insurance companies, etc.). These were bought on dark web forums or through middlemen. It aggregated thousands of sources, including old operator bases, marketing databases, and user-uploaded contacts.0
+This is why it felt so powerful — it mixed legal public data + illegal/private leaks.
+
+For Our Bot (Strictly Ethical, 0 Budget, Legal)
+We cannot and will not touch any leaked/private data. We stay 100% on free public sources only. This keeps the bot safe, promotable in normal Russian communities, and focused on value + natural promo for fuel-tickets-ru.
+Current Strong Free Sources We’re Using/Expanding:
+	1	Company Lookups (INN/OGRN) — htmlweb.ru (20 free requests/day per IP — very useful for Russian users). Fallbacks to public sites like Rusprofile.ru recommendations.
+	2	Weather — Open-Meteo (completely free, no key).
+	3	Currency — Central Bank of Russia (CBR) daily JSON.
+	4	Domains — htmlweb.ru WHOIS or similar public endpoints.
+	5	Manual recommendations — Tell users about Rusprofile.ru, Контур.Фокус (free demo), СБИС, Checko.ru free tier.
+Next Free Enhancements (Add These Today)
+Add `/ip` Lookup (Public Info Only)
+async def ip_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Использование: /ip 8.8.8.8")
+        return
+    ip = context.args[0]
+    await update.message.reply_text(f"🔍 Инфо по IP: {ip}...")
+    try:
+        # Free public IP info (no key for basic)
+        resp = requests.get(f"https://ipapi.co/{ip}/json/", timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            result = (
+                f"🌍 Страна: {data.get('country_name', 'N/A')}\n"
+                f"🏙 Город: {data.get('city', 'N/A')}\n"
+                f"Провайдер: {data.get('org', 'N/A')}"
+            )
+            await update.message.reply_text(result)
+        else:
+            raise Exception
+    except:
+        await update.message.reply_text("Инфо по IP не найдена (публичные источники).")
+    await send_promo(update)
+Add to handlers: app.add_handler(CommandHandler("ip", ip_lookup))
+Light Rusprofile Fallback (if htmlweb.ru limit hit)
+You can add a simple requests.get to rusprofile.ru search page and parse basic info (title, name) — but keep it very light to respect terms.
+Replit DB for User Stats (Free, no external services) Add at top:
+from replit import db
+Then in commands (example in inn_lookup):
+user_id = update.effective_user.id
+db[str(user_id)] = db.get(str(user_id), 0) + 1
+# Later: reward active users with "extra" features or just stats
+This lets you track usage ethically and maybe add a /stats command.
+Growth Tip for Russian Audience Focus commands on what Russians actually search daily: companies (for business), weather, currency, IP (for security), fuel-related hints → every response ends with soft promo of fuel-tickets-ru.
+Deploy the new commands, test /inn, /ip, /currency, etc., and tell me:
+	•	Any errors?
+	•	Which command to expand next (e.g. full Replit DB rewards, more lookups, auto-promo timer)?
+This keeps us fully ethical while staying useful. Let’s make the bot a daily tool for Russian users. 🚀
