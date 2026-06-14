@@ -587,6 +587,79 @@ async def delete_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ключ не найден.")
 
 
+async def search_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text(
+            "Использование: /search `Попова` или /search `+79161234567`\n\n"
+            "Поиск по всем загруженным файлам (имя, телефон, VIN, номер)",
+            parse_mode="Markdown"
+        )
+        return
+
+    query_val = " ".join(context.args).strip().lower()
+    await update.message.reply_text(f"🔍 Ищу: `{query_val}` по всем загрузкам...", parse_mode="Markdown")
+
+    all_data = db_load()
+    upload_keys = [k for k in all_data if k.startswith("upload_") or k.startswith("report_")]
+
+    if not upload_keys:
+        await update.message.reply_text(
+            "📂 База пустая. Сначала загрузи файл (.html/.csv/.json)."
+        )
+        return
+
+    matches = []
+    for key in upload_keys:
+        record = all_data[key]
+        entries = record.get("entries", [])
+        filename = record.get("filename", key)
+        for entry in entries:
+            entry_str = json.dumps(entry, ensure_ascii=False).lower()
+            if query_val in entry_str:
+                matches.append((key, filename, entry))
+            if len(matches) >= 50:
+                break
+        if len(matches) >= 50:
+            break
+
+    if not matches:
+        await update.message.reply_text(
+            f"❌ По запросу *{query_val}* ничего не найдено.\n\n"
+            "Проверь: загружены ли файлы (/listdata)?",
+            parse_mode="Markdown"
+        )
+        return
+
+    lines = [f"✅ *Найдено совпадений: {len(matches)}* (показаны первые 20)\n"]
+    prev_key = None
+    shown = 0
+    for key, filename, entry in matches[:20]:
+        if key != prev_key:
+            lines.append(f"\n📁 *{filename}* (`{key}`)")
+            prev_key = key
+        parts = []
+        if entry.get("full_name"):
+            parts.append(f"👤 {entry['full_name']}")
+        if entry.get("phone"):
+            parts.append(f"📱 {entry['phone']}")
+        if entry.get("address"):
+            parts.append(f"📍 {entry['address']}")
+        if entry.get("plate"):
+            parts.append(f"🚗 {entry['plate']}")
+        if entry.get("vin"):
+            parts.append(f"🔩 VIN: {entry['vin']}")
+        if not parts:
+            flat = ", ".join(f"{k}: {v}" for k, v in list(entry.items())[:3])
+            parts.append(flat)
+        lines.append("  • " + " | ".join(parts))
+        shown += 1
+
+    if len(matches) > 20:
+        lines.append(f"\n_...и ещё {len(matches) - 20} совпадений. Уточни запрос._")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text or ""
     if text and not text.startswith("/"):
@@ -626,6 +699,7 @@ def main():
     app.add_handler(CommandHandler("getdata", get_data))
     app.add_handler(CommandHandler("listdata", list_data))
     app.add_handler(CommandHandler("deldata", delete_data))
+    app.add_handler(CommandHandler("search", search_data))
 
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
