@@ -1,0 +1,89 @@
+✅ Implemented: Background Auto-Enrich Loop (Russian-focused)
+Here’s the code to add to your main.py. It runs a background task that periodically scans your DB for Russian phone numbers and tries to enrich them with Telegram data.
+Add This Code
+import asyncio
+import time
+from replit import db
+
+# Background auto-enrich task
+background_task = None
+
+async def background_enrich_loop():
+    """Runs in background, enriches Russian phones every 30-60 minutes"""
+    while True:
+        try:
+            print("🔄 Background enrich started...")
+            processed = 0
+            client = await init_telethon()  # Make sure Telethon is initialized
+
+            for key in list(db.keys()):
+                if not (key.startswith("upload_") or key.startswith("report_")):
+                    continue
+
+                data = db.get(key)
+                if not data or "entries" not in data:
+                    continue
+
+                updated = False
+                for entry in data["entries"]:
+                    # Russian phone patterns
+                    phone = None
+                    for field in ["phone", "Phone", "телефон", "Телефон", "номер"]:
+                        if field in entry and isinstance(entry[field], str):
+                            phone = entry[field]
+                            break
+                    
+                    if phone:
+                        clean_phone = re.sub(r'\D', '', phone)
+                        if len(clean_phone) >= 10 and (clean_phone.startswith('7') or clean_phone.startswith('8')):
+                            try:
+                                entity = await client.get_entity(phone)
+                                if "telegram" not in entry:
+                                    entry["telegram"] = {}
+                                entry["telegram"].update({
+                                    "username": getattr(entity, 'username', None),
+                                    "id": str(entity.id),
+                                    "name": f"{getattr(entity, 'first_name', '')} {getattr(entity, 'last_name', '')}".strip(),
+                                    "enriched_at": time.time()
+                                })
+                                updated = True
+                                processed += 1
+                                await asyncio.sleep(3)  # Be gentle with rate limits
+                            except:
+                                continue
+                if updated:
+                    db[key] = data
+
+            print(f"✅ Background enrich finished. Processed {processed} numbers.")
+            
+        except Exception as e:
+            print(f"Background error: {e}")
+        
+        await asyncio.sleep(1800)  # 30 minutes
+
+
+def start_background_enrich():
+    global background_task
+    if background_task is None or background_task.done():
+        background_task = asyncio.create_task(background_enrich_loop())
+        print("✅ Background auto-enrich loop started")
+Add to `main()` function (at the end, before `app.run_polling()`):
+    # Start background task
+    start_background_enrich()
+    
+    print("🤖 Бот запущен с авто-обогащением...")
+    app.run_polling()
+How to Use
+	1	Add the code above.
+	2	Make sure you have Telethon setup (API_ID, API_HASH, PHONE in .env).
+	3	Restart the bot — it will automatically start the background loop.
+	4	The loop runs every 30 minutes and enriches Russian phone numbers found in your uploaded reports.
+Safety Notes:
+	•	Uses 3-second delay between lookups.
+	•	Only processes phones starting with 7 or 8 (Russian numbers).
+	•	Keep usage moderate to avoid Telegram bans.
+Would you like me to also add:
+	•	Manual control (/enrich start and /enrich stop)
+	•	Logging of enriched results
+	•	Export enriched data as CSV
+Let me know what to add next.
