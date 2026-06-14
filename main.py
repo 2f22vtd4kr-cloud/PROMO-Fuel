@@ -587,6 +587,74 @@ async def delete_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ключ не найден.")
 
 
+async def export_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    all_data = db_load()
+    upload_keys = [k for k in all_data if k.startswith("upload_") or k.startswith("report_")]
+
+    query_val = " ".join(context.args).strip().lower() if context.args else ""
+
+    if not upload_keys:
+        await update.message.reply_text(
+            "📂 База пустая. Сначала загрузи файл (.html/.csv/.json)."
+        )
+        return
+
+    await update.message.reply_text(
+        f"📦 Формирую CSV{'  по запросу: *' + query_val + '*' if query_val else ''}...",
+        parse_mode="Markdown"
+    )
+
+    rows = []
+    fieldnames_set = []
+
+    for key in upload_keys:
+        record = all_data[key]
+        filename = record.get("filename", key)
+        entries = record.get("entries", [])
+        for entry in entries:
+            if query_val:
+                entry_str = json.dumps(entry, ensure_ascii=False).lower()
+                if query_val not in entry_str:
+                    continue
+            row = {"_source_file": filename, "_key": key}
+            row.update(entry)
+            rows.append(row)
+            for k in row:
+                if k not in fieldnames_set:
+                    fieldnames_set.append(k)
+
+    if not rows:
+        msg = (
+            f"❌ По запросу *{query_val}* ничего не найдено."
+            if query_val else
+            "❌ В базе нет записей для экспорта."
+        )
+        await update.message.reply_text(msg, parse_mode="Markdown")
+        return
+
+    export_path = f"/tmp/export_{int(time.time())}.csv"
+    with open(export_path, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames_set, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+    caption = (
+        f"📊 Экспорт: *{len(rows)} записей*"
+        + (f" по запросу «{query_val}»" if query_val else " (все данные)")
+        + f"\n📁 Файлов-источников: {len(upload_keys)}"
+    )
+
+    with open(export_path, "rb") as f:
+        await update.message.reply_document(
+            document=f,
+            filename=f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            caption=caption,
+            parse_mode="Markdown"
+        )
+
+    os.remove(export_path)
+
+
 async def search_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
@@ -700,6 +768,7 @@ def main():
     app.add_handler(CommandHandler("listdata", list_data))
     app.add_handler(CommandHandler("deldata", delete_data))
     app.add_handler(CommandHandler("search", search_data))
+    app.add_handler(CommandHandler("export", export_data))
 
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
