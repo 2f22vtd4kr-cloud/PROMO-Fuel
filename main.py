@@ -15,12 +15,28 @@ from telegram.ext import (
 )
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+def admin_only(func):
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_user.id if update.effective_user else None
+        if user_id != ADMIN_ID:
+            if update.message:
+                await update.message.reply_text("⛔ Доступ запрещён.")
+            elif update.callback_query:
+                await update.callback_query.answer("⛔ Доступ запрещён.", show_alert=True)
+            logger.warning(f"Blocked unauthorized access from user_id={user_id}")
+            return
+        return await func(update, context)
+    wrapper.__name__ = func.__name__
+    return wrapper
+
 
 DB_FILE = "bot_db.json"
 
@@ -75,6 +91,7 @@ async def send_promo(update: Update):
         await target.reply_text(PROMO_TEXT, parse_mode="Markdown")
 
 
+@admin_only
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     referrer = None
@@ -107,6 +124,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_promo(update)
 
 
+@admin_only
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "📋 *Все команды:*\n\n"
@@ -131,10 +149,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(help_text, parse_mode="Markdown")
 
 
+@admin_only
 async def fuel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_promo(update)
 
 
+@admin_only
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🔎 Поиск по ИНН", callback_data="inn_help")],
@@ -149,6 +169,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@admin_only
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -167,6 +188,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _fetch_currency(query.message)
 
 
+@admin_only
 async def inn_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
@@ -234,6 +256,7 @@ async def inn_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_promo(update)
 
 
+@admin_only
 async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
@@ -334,11 +357,13 @@ async def _fetch_currency(target_message):
         await target_message.reply_text("❌ Ошибка получения курсов. Попробуй позже.")
 
 
+@admin_only
 async def currency(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _fetch_currency(update.message)
     await send_promo(update)
 
 
+@admin_only
 async def ip_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
@@ -388,6 +413,7 @@ async def ip_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_promo(update)
 
 
+@admin_only
 async def checko_hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📋 *Бесплатные ресурсы для поиска по российским компаниям:*\n\n"
@@ -405,6 +431,7 @@ async def checko_hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_promo(update)
 
 
+@admin_only
 async def referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     bot = context.bot
@@ -421,6 +448,7 @@ async def referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_promo(update)
 
 
+@admin_only
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     lookups = db_get(f"user_{user_id}_lookups", 0)
@@ -438,6 +466,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@admin_only
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.document:
         return
@@ -535,6 +564,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Ошибка при обработке файла:\n`{str(e)[:300]}`", parse_mode="Markdown")
 
 
+@admin_only
 async def get_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Использование: /getdata `ключ`", parse_mode="Markdown")
@@ -555,6 +585,7 @@ async def get_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@admin_only
 async def list_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keys = db_keys()
     data_keys = [k for k in keys if k.startswith("upload_") or k.startswith("report_")]
@@ -576,6 +607,7 @@ async def list_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+@admin_only
 async def delete_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Использование: /deldata `ключ`", parse_mode="Markdown")
@@ -587,6 +619,7 @@ async def delete_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ключ не найден.")
 
 
+@admin_only
 async def export_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     all_data = db_load()
     upload_keys = [k for k in all_data if k.startswith("upload_") or k.startswith("report_")]
@@ -655,6 +688,7 @@ async def export_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     os.remove(export_path)
 
 
+@admin_only
 async def search_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
@@ -728,6 +762,7 @@ async def search_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+@admin_only
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text or ""
     if text and not text.startswith("/"):
