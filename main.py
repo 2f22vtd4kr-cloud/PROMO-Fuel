@@ -3,6 +3,7 @@ import re
 import csv
 import json
 import time
+import asyncio
 import logging
 import requests
 import aiohttp
@@ -13,9 +14,30 @@ from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     filters, ContextTypes, CallbackQueryHandler
 )
+from telethon import TelegramClient
+from telethon.errors import SessionPasswordNeededError, FloodWaitError
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
+
+TELETHON_API_ID = os.getenv("TELETHON_API_ID")
+TELETHON_API_HASH = os.getenv("TELETHON_API_HASH")
+TELETHON_PHONE = os.getenv("TELETHON_PHONE")
+
+_tg_client = None
+
+async def get_telethon_client():
+    global _tg_client
+    if not TELETHON_API_ID or not TELETHON_API_HASH or not TELETHON_PHONE:
+        raise ValueError("Telethon secrets не настроены (TELETHON_API_ID / API_HASH / PHONE)")
+    if _tg_client is None or not _tg_client.is_connected():
+        _tg_client = TelegramClient("telethon_session", int(TELETHON_API_ID), TELETHON_API_HASH)
+        await _tg_client.connect()
+        if not await _tg_client.is_user_authorized():
+            raise RuntimeError(
+                "Telethon не авторизован. Запусти /enrich auth в первый раз и введи код из Telegram."
+            )
+    return _tg_client
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -781,6 +803,254 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
 
+@admin_only
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text(
+            "Использование: /broadcast Текст сообщения\n\n"
+            "Отправит сообщение всем пользователям, которые когда-либо использовали бота.",
+        )
+        return
+
+    text = " ".join(context.args)
+    all_data = db_load()
+    user_keys = [k for k in all_data if k.startswith("user_") and k.endswith("_lookups")]
+    user_ids = []
+    for k in user_keys:
+        try:
+            uid = int(k.replace("user_", "").replace("_lookups", ""))
+            user_ids.append(uid)
+        except ValueError:
+            continue
+
+    if not user_ids:
+        await update.message.reply_text("📭 Нет пользователей в базе для рассылки.")
+        return
+
+    await update.message.reply_text(f"📣 Начинаю рассылку для {len(user_ids)} пользователей...")
+
+    sent, failed = 0, 0
+    for uid in user_ids:
+        try:
+            await context.bot.send_message(chat_id=uid, text=text)
+            sent += 1
+            await asyncio.sleep(0.05)
+        except Exception as e:
+            logger.warning(f"Broadcast failed for {uid}: {e}")
+            failed += 1
+
+    await update.message.reply_text(
+        f"✅ Рассылка завершена!\n\n"
+        f"📨 Отправлено: {sent}\n"
+        f"❌ Ошибок: {failed}"
+    )
+
+
+_enrich_task = None
+_enrich_running = False
+_pending_auth = False
+
+
+async def _do_enrich_single(phone: str, entry: dict, client) -> bool:
+    clean = re.sub(r'\D', '', phone)
+    if len(clean) < 10:
+        return False
+    if not (clean.startswith('7') or clean.startswith('8') or clean.startswith('+')):
+        return False
+    if "telegram" in entry:
+        return False
+    try:
+        entity = await client.get_entity(phone)
+        entry["telegram"] = {
+            "username": getattr(entity, 'username', None),
+            "id": str(entity.id),
+            "name": f"{getattr(entity, 'first_name', '') or ''} {getattr(entity, 'last_name', '') or ''}".strip(),
+            "enriched_at": datetime.now().isoformat(),
+        }
+        return True
+    except FloodWaitError as e:
+        await asyncio.sleep(e.seconds + 5)
+        return False
+    except Exception:
+        return False
+
+
+async def _enrich_loop(bot, chat_id: int):
+    global _enrich_running
+    _enrich_running = True
+    processed = 0
+    try:
+        client = await get_telethon_client()
+        all_data = db_load()
+        upload_keys = [k for k in all_data if k.startswith("upload_") or k.startswith("report_")]
+
+        for key in upload_keys:
+            if not _enrich_running:
+                break
+            record = all_data[key]
+            entries = record.get("entries", [])
+            updated = False
+            for entry in entries:
+                if not _enrich_running:
+                    break
+                phone = None
+                for field in ["phone", "Phone", "телефон", "Телефон", "номер"]:
+                    if field in entry and isinstance(entry[field], str):
+                        phone = entry[field]
+                        break
+                if phone:
+                    if await _do_enrich_single(phone, entry, client):
+                        updated = True
+                        processed += 1
+                        await asyncio.sleep(3)
+            if updated:
+                all_data[key] = record
+                db_save(all_data)
+
+        await bot.send_message(
+            chat_id=chat_id,
+            text=f"✅ Обогащение завершено!\n📱 Обработано номеров: *{processed}*",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await bot.send_message(chat_id=chat_id, text=f"❌ Ошибка обогащения:\n`{str(e)[:300]}`", parse_mode="Markdown")
+    finally:
+        _enrich_running = False
+
+
+@admin_only
+async def enrich(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global _enrich_task, _enrich_running, _pending_auth
+
+    subcmd = context.args[0].lower() if context.args else ""
+
+    if subcmd == "auth":
+        if not TELETHON_API_ID or not TELETHON_API_HASH or not TELETHON_PHONE:
+            await update.message.reply_text("❌ TELETHON_API_ID / API_HASH / PHONE не настроены в Secrets.")
+            return
+        await update.message.reply_text("🔐 Подключаюсь к Telegram и отправляю код...")
+        try:
+            client = TelegramClient("telethon_session", int(TELETHON_API_ID), TELETHON_API_HASH)
+            await client.connect()
+            if await client.is_user_authorized():
+                await update.message.reply_text("✅ Уже авторизован! Можешь запускать /enrich start")
+                await client.disconnect()
+                return
+            await client.send_code_request(TELETHON_PHONE)
+            _pending_auth = True
+            db_set("_telethon_auth_pending", True)
+            await client.disconnect()
+            await update.message.reply_text(
+                "📲 Код отправлен на твой номер в Telegram.\n\n"
+                "Отправь его боту командой:\n`/enrich code XXXXX`",
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            await update.message.reply_text(f"❌ Ошибка авторизации:\n`{str(e)[:300]}`", parse_mode="Markdown")
+
+    elif subcmd == "code":
+        code = context.args[1] if len(context.args) > 1 else ""
+        if not code:
+            await update.message.reply_text("Использование: /enrich code 12345")
+            return
+        try:
+            client = TelegramClient("telethon_session", int(TELETHON_API_ID), TELETHON_API_HASH)
+            await client.connect()
+            try:
+                await client.sign_in(TELETHON_PHONE, code)
+            except SessionPasswordNeededError:
+                await update.message.reply_text(
+                    "🔒 Включена 2FA. Отправь пароль:\n`/enrich 2fa ТВОЙпароль`",
+                    parse_mode="Markdown"
+                )
+                await client.disconnect()
+                return
+            await client.disconnect()
+            db_delete("_telethon_auth_pending")
+            await update.message.reply_text("✅ Авторизация успешна! Теперь запусти /enrich start")
+        except Exception as e:
+            await update.message.reply_text(f"❌ Неверный код или ошибка:\n`{str(e)[:300]}`", parse_mode="Markdown")
+
+    elif subcmd == "2fa":
+        password = context.args[1] if len(context.args) > 1 else ""
+        if not password:
+            await update.message.reply_text("Использование: /enrich 2fa пароль")
+            return
+        try:
+            client = TelegramClient("telethon_session", int(TELETHON_API_ID), TELETHON_API_HASH)
+            await client.connect()
+            await client.sign_in(password=password)
+            await client.disconnect()
+            db_delete("_telethon_auth_pending")
+            await update.message.reply_text("✅ 2FA принята! Теперь запусти /enrich start")
+        except Exception as e:
+            await update.message.reply_text(f"❌ Ошибка 2FA:\n`{str(e)[:300]}`", parse_mode="Markdown")
+
+    elif subcmd == "start":
+        if _enrich_running:
+            await update.message.reply_text("⚙️ Обогащение уже идёт. Используй /enrich stop чтобы остановить.")
+            return
+        all_data = db_load()
+        upload_keys = [k for k in all_data if k.startswith("upload_") or k.startswith("report_")]
+        if not upload_keys:
+            await update.message.reply_text("📂 Нет загруженных файлов. Сначала загрузи файл.")
+            return
+        await update.message.reply_text(
+            f"🚀 Запускаю обогащение по {len(upload_keys)} файлам...\n"
+            "Буду искать Telegram-аккаунты для российских номеров.\n"
+            "Уведомлю по завершении.",
+        )
+        _enrich_task = asyncio.create_task(
+            _enrich_loop(context.bot, update.effective_chat.id)
+        )
+
+    elif subcmd == "stop":
+        if not _enrich_running:
+            await update.message.reply_text("ℹ️ Обогащение не запущено.")
+            return
+        _enrich_running = False
+        await update.message.reply_text("⏹ Обогащение остановлено.")
+
+    elif subcmd == "status":
+        all_data = db_load()
+        total_entries = sum(
+            len(v.get("entries", []))
+            for k, v in all_data.items()
+            if k.startswith("upload_") or k.startswith("report_")
+        )
+        enriched = sum(
+            1
+            for k, v in all_data.items()
+            if k.startswith("upload_") or k.startswith("report_")
+            for e in v.get("entries", [])
+            if "telegram" in e
+        )
+        status_str = "🟢 Запущено" if _enrich_running else "🔴 Остановлено"
+        await update.message.reply_text(
+            f"📊 *Статус обогащения:*\n\n"
+            f"Состояние: {status_str}\n"
+            f"Всего записей: {total_entries}\n"
+            f"Обогащено (с Telegram): {enriched}\n\n"
+            f"Команды:\n"
+            f"`/enrich auth` — авторизация Telethon\n"
+            f"`/enrich start` — запустить\n"
+            f"`/enrich stop` — остановить",
+            parse_mode="Markdown"
+        )
+
+    else:
+        await update.message.reply_text(
+            "📋 *Команды /enrich:*\n\n"
+            "`/enrich auth` — авторизоваться в Telegram (первый раз)\n"
+            "`/enrich code 12345` — ввести код\n"
+            "`/enrich 2fa пароль` — ввести 2FA пароль\n"
+            "`/enrich start` — запустить обогащение\n"
+            "`/enrich stop` — остановить\n"
+            "`/enrich status` — состояние и статистика",
+            parse_mode="Markdown"
+        )
+
+
 def main():
     if not TOKEN:
         raise ValueError("TELEGRAM_TOKEN не задан. Добавь его в Secrets.")
@@ -804,6 +1074,8 @@ def main():
     app.add_handler(CommandHandler("deldata", delete_data))
     app.add_handler(CommandHandler("search", search_data))
     app.add_handler(CommandHandler("export", export_data))
+    app.add_handler(CommandHandler("broadcast", broadcast))
+    app.add_handler(CommandHandler("enrich", enrich))
 
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
