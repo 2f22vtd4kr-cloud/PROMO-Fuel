@@ -1,4 +1,4 @@
-import { TG } from "../lib/theme";
+import { TG, BLUR } from "../lib/theme";
 
 export function Header({ title, subtitle, right }: {
   title: string;
@@ -7,15 +7,17 @@ export function Header({ title, subtitle, right }: {
 }) {
   return (
     <div style={{
-      background: TG.card,
-      borderBottom: `1px solid ${TG.border}`,
+      background: "rgba(11,15,26,0.7)",
+      backdropFilter: BLUR,
+      WebkitBackdropFilter: BLUR,
+      borderBottom: `1px solid ${TG.glassBorder}`,
       padding: "14px 16px 12px",
       display: "flex", alignItems: "center", justifyContent: "space-between",
       flexShrink: 0,
     }}>
       <div>
-        <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.3px" }}>{title}</div>
-        {subtitle && <div style={{ fontSize: 12, color: TG.muted, marginTop: 1 }}>{subtitle}</div>}
+        <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.4px", color: TG.text }}>{title}</div>
+        {subtitle && <div style={{ fontSize: 12, color: TG.muted, marginTop: 2 }}>{subtitle}</div>}
       </div>
       {right}
     </div>
