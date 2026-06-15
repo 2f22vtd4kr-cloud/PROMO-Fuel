@@ -1,9 +1,9 @@
 import asyncio
 import random
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from telegram import Bot
-from telegram.error import TelegramError, Forbidden, ChatMigrated
+from telegram.error import TelegramError, Forbidden
 
 import campaign_db as db
 
@@ -11,6 +11,42 @@ logger = logging.getLogger(__name__)
 
 # Active campaign state
 _active: dict = {}  # campaign_id -> state dict
+_scheduler_task = None
+
+
+async def scheduler_loop(bot: Bot):
+    """Background loop: fires scheduled campaigns when their time comes."""
+    logger.info("📅 Campaign scheduler started")
+    while True:
+        try:
+            due = await db.get_due_campaigns()
+            for c in due:
+                if c["id"] in _active:
+                    continue
+                logger.info(f"📅 Firing scheduled campaign '{c['name']}' (id={c['id']})")
+                notify = c.get("notify_chat") or 0
+                tag = c.get("scheduled_tag")
+                await db.update_campaign_status(c["id"], "running", scheduled_at=None)
+                asyncio.create_task(send_campaign(bot, c["id"], notify, tag))
+                if notify:
+                    try:
+                        await bot.send_message(
+                            chat_id=notify,
+                            text=f"📅 Автозапуск кампании *«{c['name']}»*",
+                            parse_mode="Markdown"
+                        )
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.error(f"Scheduler error: {e}")
+        await asyncio.sleep(30)
+
+
+def start_scheduler(bot: Bot):
+    global _scheduler_task
+    if _scheduler_task is None or _scheduler_task.done():
+        _scheduler_task = asyncio.create_task(scheduler_loop(bot))
+        logger.info("✅ Scheduler task created")
 
 
 def get_active_campaign_id() -> int | None:

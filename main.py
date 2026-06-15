@@ -1057,7 +1057,7 @@ async def enrich(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 STATUS_EMOJI = {
     "draft": "📝", "running": "🟢", "paused": "⏸",
-    "done": "✅", "cancelled": "⏹",
+    "done": "✅", "cancelled": "⏹", "scheduled": "📅",
 }
 
 
@@ -1104,8 +1104,10 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines = ["📋 *Все кампании:*\n"]
         for c in campaigns:
             emoji = STATUS_EMOJI.get(c["status"], "❓")
+            sched = f"\n   📅 Запуск: `{c['scheduled_at'][:16]}`" if c.get("scheduled_at") else ""
+            tag_str = f"  🏷 `{c['scheduled_tag']}`" if c.get("scheduled_tag") else ""
             lines.append(
-                f"{emoji} *{c['name']}* — {c['status']}\n"
+                f"{emoji} *{c['name']}* — {c['status']}{sched}{tag_str}\n"
                 f"   ✅ {c['sent_count']} отправлено  ❌ {c['failed_count']} ошибок  "
                 f"👥 {c['target_count']} получателей"
             )
@@ -1268,6 +1270,96 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lines.append(f"\n_...и ещё {len(users) - 30}_")
         await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
+    # ── /campaign schedule <name> <YYYY-MM-DD HH:MM> [tag] ────────────────
+    elif subcmd == "schedule":
+        # args: ["schedule", "name", "2026-06-16", "09:00"] or
+        #       ["schedule", "name", "2026-06-16", "09:00", "tag"]
+        if len(args) < 4:
+            await update.message.reply_text(
+                "Использование:\n"
+                "`/campaign schedule имя ГГГГ-ММ-ДД ЧЧ:ММ [тег]`\n\n"
+                "Примеры:\n"
+                "`/campaign schedule promo 2026-06-16 09:00`\n"
+                "`/campaign schedule promo 2026-06-16 09:00 vip`",
+                parse_mode="Markdown"
+            )
+            return
+        name = args[1]
+        date_str = args[2]
+        time_str = args[3]
+        tag = args[4] if len(args) > 4 else None
+
+        try:
+            scheduled_dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+            if scheduled_dt <= datetime.now():
+                await update.message.reply_text("❌ Дата в прошлом. Укажи будущее время.")
+                return
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Неверный формат даты.\n"
+                "Используй: `ГГГГ-ММ-ДД ЧЧ:ММ` — например `2026-06-16 09:00`",
+                parse_mode="Markdown"
+            )
+            return
+
+        c = await cdb.get_campaign(name)
+        if not c:
+            await update.message.reply_text(f"❌ Кампания «{name}» не найдена.")
+            return
+        if c["status"] == "running":
+            await update.message.reply_text("❌ Кампания уже запущена.")
+            return
+
+        scheduled_iso = scheduled_dt.isoformat()
+        await cdb.schedule_campaign(
+            c["id"], scheduled_iso,
+            tag=tag, notify_chat=update.effective_chat.id
+        )
+
+        users = await cdb.get_users_by_tag(tag) if tag else await cdb.get_all_users()
+        await update.message.reply_text(
+            f"📅 *Кампания «{name}» запланирована!*\n\n"
+            f"🕐 Запуск: `{date_str} {time_str}`\n"
+            f"👥 Получателей: {len(users)}"
+            + (f"\n🏷 Тег: `{tag}`" if tag else "") +
+            f"\n\nОтменить: `/campaign unschedule {name}`",
+            parse_mode="Markdown"
+        )
+
+    # ── /campaign unschedule <name> ────────────────────────────────────────
+    elif subcmd == "unschedule":
+        if len(args) < 2:
+            await update.message.reply_text(
+                "Использование: `/campaign unschedule имя`", parse_mode="Markdown"
+            )
+            return
+        name = args[1]
+        if await cdb.unschedule_campaign(name):
+            await update.message.reply_text(f"🗑 Расписание кампании «{name}» отменено. Статус → draft.")
+        else:
+            await update.message.reply_text(f"❌ Кампания «{name}» не найдена или не запланирована.")
+
+    # ── /campaign scheduled ────────────────────────────────────────────────
+    elif subcmd == "scheduled":
+        scheduled = await cdb.get_scheduled_campaigns()
+        if not scheduled:
+            await update.message.reply_text("📭 Нет запланированных кампаний.")
+            return
+        lines = ["📅 *Запланированные кампании:*\n"]
+        for c in scheduled:
+            users = await cdb.get_all_users()
+            tag = c.get("scheduled_tag")
+            if tag:
+                users = await cdb.get_users_by_tag(tag)
+            lines.append(
+                f"📅 *{c['name']}*\n"
+                f"   🕐 `{c['scheduled_at'][:16]}`"
+                + (f"  🏷 `{tag}`" if tag else "") +
+                f"\n   👥 {len(users)} получателей"
+            )
+        lines.append("\n`/campaign unschedule имя` — отменить")
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
     # ── /campaign logs <name> ──────────────────────────────────────────────
     elif subcmd == "logs":
         if len(args) < 2:
@@ -1293,19 +1385,25 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(
             "📣 *Система кампаний:*\n\n"
-            "`/campaign create имя Текст` — создать кампанию\n"
+            "*Создание и запуск:*\n"
+            "`/campaign create имя Текст` — создать\n"
+            "`/campaign send имя [тег]` — запустить\n"
+            "`/campaign dryrun имя` — тест без отправки\n\n"
+            "*Расписание:*\n"
+            "`/campaign schedule имя ГГГГ-ММ-ДД ЧЧ:ММ [тег]` — запланировать\n"
+            "`/campaign scheduled` — все запланированные\n"
+            "`/campaign unschedule имя` — отменить расписание\n\n"
+            "*Управление:*\n"
             "`/campaign list` — все кампании\n"
-            "`/campaign send имя [тег]` — запустить рассылку\n"
-            "`/campaign dryrun имя` — тест без отправки\n"
             "`/campaign status` — прогресс текущей\n"
-            "`/campaign pause` — пауза\n"
-            "`/campaign resume` — продолжить\n"
-            "`/campaign cancel` — отменить\n"
-            "`/campaign delete имя` — удалить\n"
-            "`/campaign users [тег]` — список получателей\n"
-            "`/campaign adduser <id> [тег]` — добавить вручную\n"
+            "`/campaign pause` / `resume` / `cancel`\n"
+            "`/campaign delete имя` — удалить\n\n"
+            "*Получатели:*\n"
+            "`/campaign users [тег]` — список\n"
+            "`/campaign adduser <id> [тег]` — добавить вручную\n\n"
+            "*Аналитика:*\n"
             "`/campaign logs имя` — лог отправки\n\n"
-            "💡 Текст поддерживает: `{name}` `{username}`",
+            "💡 В тексте работают: `{name}` `{username}`",
             parse_mode="Markdown"
         )
 
@@ -1342,6 +1440,12 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     asyncio.get_event_loop().run_until_complete(cdb.init_db())
+
+    async def post_init(application):
+        cs.start_scheduler(application.bot)
+
+    app.post_init = post_init
+
     logger.info("🤖 Бот запускается...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 

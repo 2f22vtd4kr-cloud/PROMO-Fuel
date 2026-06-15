@@ -25,7 +25,10 @@ CREATE TABLE IF NOT EXISTS campaigns (
     target_count  INTEGER DEFAULT 0,
     sent_count    INTEGER DEFAULT 0,
     failed_count  INTEGER DEFAULT 0,
-    dry_run       INTEGER DEFAULT 0
+    dry_run       INTEGER DEFAULT 0,
+    scheduled_at  TEXT,
+    scheduled_tag TEXT,
+    notify_chat   INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS sends (
@@ -47,6 +50,17 @@ async def init_db():
             if stmt:
                 await db.execute(stmt)
         await db.commit()
+        # Migrate existing DBs — add new columns if absent
+        for col, definition in [
+            ("scheduled_at",  "TEXT"),
+            ("scheduled_tag", "TEXT"),
+            ("notify_chat",   "INTEGER"),
+        ]:
+            try:
+                await db.execute(f"ALTER TABLE campaigns ADD COLUMN {col} {definition}")
+                await db.commit()
+            except Exception:
+                pass  # column already exists
 
 
 async def upsert_user(chat_id: int, username: str = None, first_name: str = None):
@@ -160,11 +174,53 @@ async def log_send(campaign_id: int, chat_id: int, status: str, error: str = Non
         await db.commit()
 
 
+async def schedule_campaign(campaign_id: int, scheduled_at: str,
+                            tag: str = None, notify_chat: int = None):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE campaigns
+            SET status = 'scheduled', scheduled_at = ?, scheduled_tag = ?, notify_chat = ?
+            WHERE id = ?
+        """, (scheduled_at, tag, notify_chat, campaign_id))
+        await db.commit()
+
+
+async def unschedule_campaign(name: str) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("""
+            UPDATE campaigns SET status = 'draft', scheduled_at = NULL,
+            scheduled_tag = NULL, notify_chat = NULL
+            WHERE name = ? AND status = 'scheduled'
+        """, (name,))
+        await db.commit()
+        return cur.rowcount > 0
+
+
+async def get_due_campaigns() -> list[dict]:
+    now = datetime.now().isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT * FROM campaigns
+            WHERE status = 'scheduled' AND scheduled_at <= ?
+        """, (now,)) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+
 async def delete_campaign(name: str) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("DELETE FROM campaigns WHERE name = ? AND status NOT IN ('running')", (name,))
         await db.commit()
         return cur.rowcount > 0
+
+
+async def get_scheduled_campaigns() -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM campaigns WHERE status = 'scheduled' ORDER BY scheduled_at"
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
 
 
 async def get_campaign_sends(campaign_id: int, limit: int = 50) -> list[dict]:
