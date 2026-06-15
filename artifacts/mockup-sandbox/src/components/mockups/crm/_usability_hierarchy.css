@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap');
+
+.theme-usability-hierarchy {
+  /* Color Palette */
+  --bg-body: #0d1117;
+  --bg-card: #161b22;
+  --bg-sidebar: #1f2937;
+  --accent-primary: #3b82f6;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  --border-subtle: #30363d;
+  
+  --tier1-glow: rgba(59, 130, 246, 0.15);
+  
+  font-family: 'Geist', sans-serif;
+  color: var(--text-primary);
+  background-color: var(--bg-body);
+}
+
+.theme-usability-hierarchy .bg-body { background-color: var(--bg-body); }
+.theme-usability-hierarchy .bg-card { background-color: var(--bg-card); }
+.theme-usability-hierarchy .bg-sidebar { background-color: var(--bg-sidebar); }
+
+.theme-usability-hierarchy .text-primary { color: var(--text-primary); }
+.theme-usability-hierarchy .text-secondary { color: var(--text-secondary); }
+.theme-usability-hierarchy .text-tertiary { color: var(--text-tertiary); }
+.theme-usability-hierarchy .text-accent { color: var(--accent-primary); }
+
+.theme-usability-hierarchy .border-subtle { border-color: var(--border-subtle); }
+
+.theme-usability-hierarchy .tier1-glow {
+  box-shadow: 0 0 40px var(--tier1-glow);
+}
+
+.theme-usability-hierarchy .tier3-opacity {
+  opacity: 0.75;
+}
+
+.theme-usability-hierarchy .section-divider {
+  border-left: 4px solid var(--accent-primary);
+}
+
+.theme-usability-hierarchy .sidebar-nav-active {
+  background-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+.theme-usability-hierarchy .sidebar-nav-inactive {
+  opacity: 0.3;
+  transition: opacity 0.2s ease;
+}
+
+.theme-usability-hierarchy .sidebar-nav-inactive:hover {
+  opacity: 0.8;
+}

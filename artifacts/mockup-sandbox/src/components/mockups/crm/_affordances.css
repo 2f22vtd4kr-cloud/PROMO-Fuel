@@ -1,0 +1,96 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+.affordances-theme {
+  --bg-body: #111827;
+  --bg-card: #1f2937;
+  --border-color: #374151;
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+  --text-main: #f9fafb;
+  --text-muted: #9ca3af;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-body);
+  color: var(--text-main);
+}
+
+.affordances-theme .card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+}
+
+.affordances-theme .btn-primary {
+  background-color: var(--accent);
+  color: #ffffff;
+  border: 1px solid var(--accent);
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.affordances-theme .btn-primary:hover {
+  background-color: var(--accent-hover);
+}
+
+.affordances-theme .btn-secondary {
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.affordances-theme .btn-secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.affordances-theme .pill {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 9999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+}
+
+.affordances-theme .pill.active {
+  background-color: rgba(99, 102, 241, 0.1);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Custom Scrollbar for inner elements if needed */
+.affordances-theme ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.affordances-theme ::-webkit-scrollbar-track {
+  background: var(--bg-body);
+}
+.affordances-theme ::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+.affordances-theme ::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
