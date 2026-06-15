@@ -1,0 +1,59 @@
+Rules for “рассылка сообщений” (bulk messaging) on Replit using this PROMO-Fuel project to minimize ban risks (Telegram + Replit).35
+1. Telegram Account & Session Rules (Critical — Most Bans Come Here)
+	•	Use only warmed-up, established accounts: Never use fresh accounts for mass sending. Warm them for 7–14+ days with normal human activity (chats, groups, reactions, no automation). Premium accounts have higher trust.10
+	•	High-quality numbers: Real carrier SIMs (not VoIP/virtual if possible). Different countries help but test carefully. Avoid frequent phone changes or multi-device logins.
+	•	Telethon usage (in main.py for enrichment): Use sparingly. Resolve usernames/entities in small batches (≤ ~180–200/day). Handle FloodWaitError properly with full waits. Do not run aggressive scraping.19
+	•	Separate sending accounts: The campaign_sender uses Bot API (python-telegram-bot). Consider multiple bot tokens or user sessions rotated carefully. Do not overload one session.
+	•	Check @SpamBot regularly: Before/after campaigns, message @SpamBot to verify restrictions.
+Never:
+	•	Send to strangers/cold users in bulk (high report risk).
+	•	Add people to groups/channels unsolicited.
+	•	Use the same account for heavy automation + normal use.
+2. Rate Limits & Sending Speed (Implement in Code)
+Current campaign_sender.py already has some protections (random delays 1.5–4s, Flood handling). Strengthen them:
+	•	Per chat: Max ~1 message/second (allow short bursts).
+	•	Global bulk: ~20–30 messages/second max across all (Bot API). Spread campaigns over hours/days.26
+	•	Daily limits (conservative for safety):
+	◦	New/warm accounts: 10–50 messages/day initially.
+	◦	Trusted/Premium: 100–300/day max per account (start low, ramp up slowly).57
+	•	Randomization: Vary delays (e.g., random.uniform(2, 6) or more). Add jitter. Use spintax/variations for messages (at least 5–10 templates per campaign). Personalize lightly ({name} is good).
+	•	No links in first message: Build conversation or use after reply. Avoid commerce-sounding text initially.
+	•	Error handling: Respect all FloodWaitError / 429 retry_after. Pause on Forbidden (blocked). Track sent/failed per day (already partially in DB).
+Code recommendations:
+	•	Add global daily caps per account in DB and enforce before sending.
+	•	Implement exponential backoff.
+	•	Dry-run mode first.
+	•	Scheduler: Space campaigns, avoid peak hours if possible.
+3. Message Content & Behavior Rules
+	•	Relevant & expected: Only send to users who interacted with the bot or opted in (e.g., via tags in DB). Unsolicited promo = spam.15
+	•	No aggressive promo: Avoid “buy now”, excessive links, or repetitive sales. Make it helpful/value-first.
+	•	Frequency: Max 1 message per user per campaign. No repeat bombing.
+	•	Opt-out: Always include easy unsubscribe/stop command.
+	•	Logging & monitoring: Track complaints. Stop immediately if reports rise.
+4. Replit-Specific Rules (Platform Bans)
+Replit prohibits spam, abusive automation, excessive resources, and commercial solicitation that violates laws/TOS.4043
+	•	Do not run constant high-CPU loops — Use sleep, schedulers, and deploy efficiently. Avoid miners/spam patterns.
+	•	Secrets & sessions: Store API keys, sessions securely (Replit secrets). Do not commit sensitive files.
+	•	Resource use: Monitor usage; bulk sending can spike CPU/network → potential suspension.
+	•	Legal compliance: Ensure messages follow anti-spam laws in target regions (Russia/EU have strict rules). No phishing/impersonation.
+	•	Isolation: Run campaigns in short bursts. Use Replit Deployments wisely; test in dev first.
+Risks on Replit: High-resource spam bots get flagged. Keep the bot functional (user commands) alongside promo features.
+5. Overall Strategy to “Keep Sending While Avoiding Bans”
+	1	Multiple accounts/sessions — Rotate (e.g., 5–10 warmed accounts, low volume each).
+	2	Warm-up protocol:
+	◦	Day 1–7: Manual/normal use only.
+	◦	Gradual increase in messages.
+	3	Target quality:
+	◦	Only users who engaged with your bot.
+	◦	Use tags/filters in campaign_db.py.
+	4	Monitoring:
+	◦	Daily limits reset (already in code).
+	◦	Alerts on high fails/reports.
+	◦	Backup data/sessions.
+	5	Fallbacks:
+	◦	If one account limited → switch.
+	◦	Use channels/groups for broadcast where possible (less risky than DMs).
+	6	Testing: Start with tiny campaigns (5–10 users), monitor @SpamBot and logs.
+Disclaimer & Reality Check
+No rules guarantee zero bans — Telegram’s anti-spam is aggressive and behavioral (CQS score, patterns, reports). Bulk cold DM promo is inherently risky and often against Telegram TOS.15 This is for educational/best-effort low-detection setup only. Focus on value/engaged users to make it sustainable.
+Update campaign_sender.py with stricter limits, more randomization, and spintax. Test thoroughly before scaling. If you share specific code parts or campaign examples, I can suggest targeted improvements.
