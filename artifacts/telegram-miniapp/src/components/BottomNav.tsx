@@ -1,88 +1,123 @@
-import { LayoutGrid, Megaphone, PenLine, Users } from "lucide-react";
+import { LayoutGrid, Megaphone, BarChart2, Users2, Shield } from "lucide-react";
 import type { Tab } from "../App";
-import { TG, BLUR_NAV } from "../lib/theme";
+import { TG } from "../lib/theme";
+import { haptic } from "../lib/haptics";
 
-const items: { id: Tab; icon: React.ElementType; label: string; activeColor: string }[] = [
-  { id: "home",      icon: LayoutGrid, label: "Главная",  activeColor: "#85b8ef" },
-  { id: "campaigns", icon: Megaphone,  label: "Рассылки", activeColor: "#2de897" },
-  { id: "editor",    icon: PenLine,    label: "Редактор", activeColor: "#ffc946" },
-  { id: "accounts",  icon: Users,      label: "Аккаунты", activeColor: "#b39dff" },
+const ITEMS: { id: Tab; icon: React.ElementType; label: string; color: string; glow: string }[] = [
+  { id: "home",      icon: LayoutGrid, label: "Главная",   color: "#95c4f5", glow: "rgba(107,168,229,0.55)" },
+  { id: "campaigns", icon: Megaphone,  label: "Рассылки",  color: "#2de897", glow: "rgba(45,232,151,0.55)" },
+  { id: "analytics", icon: BarChart2,  label: "Аналитика", color: "#ffc946", glow: "rgba(255,201,70,0.55)" },
+  { id: "audience",  icon: Users2,     label: "Аудитория", color: "#c4aeff", glow: "rgba(196,174,255,0.55)" },
+  { id: "accounts",  icon: Shield,     label: "Аккаунты",  color: "#ff7eb3", glow: "rgba(255,126,179,0.55)" },
 ];
 
 export function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => void }) {
   return (
     <div style={{
-      background: TG.nav,
-      backdropFilter: BLUR_NAV,
-      WebkitBackdropFilter: BLUR_NAV,
-      borderTop: "1px solid rgba(255,255,255,0.09)",
-      display: "flex",
-      flexShrink: 0,
-      paddingBottom: "env(safe-area-inset-bottom, 10px)",
+      paddingBottom: "calc(env(safe-area-inset-bottom, 8px) + 4px)",
+      paddingLeft: 12, paddingRight: 12, paddingTop: 8,
       position: "relative",
     }}>
-      {/* Top specular line */}
+      {/* Floating glass pill container */}
       <div style={{
-        position: "absolute", top: 0, left: 0, right: 0, height: 1,
-        background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.14) 30%, rgba(255,255,255,0.14) 70%, transparent 100%)",
-        pointerEvents: "none",
-      }} />
+        display: "flex",
+        background: "linear-gradient(145deg,rgba(255,255,255,0.10) 0%,rgba(255,255,255,0.04) 60%,rgba(255,255,255,0.08) 100%)",
+        backdropFilter: "blur(48px) saturate(190%)",
+        WebkitBackdropFilter: "blur(48px) saturate(190%)",
+        borderRadius: 28,
+        border: "1px solid rgba(255,255,255,0.17)",
+        boxShadow: "0 2px 0 rgba(255,255,255,0.14) inset, 0 -1px 0 rgba(0,0,0,0.15) inset, 0 16px 48px rgba(0,0,0,0.42), 0 4px 12px rgba(0,0,0,0.22)",
+        position: "relative",
+        overflow: "hidden",
+        padding: "4px 4px",
+      }}>
+        {/* Top specular highlight */}
+        <div style={{
+          position: "absolute", top: 0, left: 0, right: 0, height: 1,
+          background: "linear-gradient(90deg, transparent 3%, rgba(255,255,255,0.58) 30%, rgba(255,255,255,0.72) 50%, rgba(255,255,255,0.58) 70%, transparent 97%)",
+          pointerEvents: "none", zIndex: 3,
+        }} />
+        {/* Prismatic overlay */}
+        <div style={{
+          position: "absolute", inset: 0, borderRadius: "inherit",
+          background: "linear-gradient(135deg,rgba(120,185,255,0.06) 0%,rgba(255,130,200,0.04) 35%,rgba(100,255,170,0.04) 65%,rgba(190,130,255,0.055) 100%)",
+          pointerEvents: "none", zIndex: 1,
+        }} />
 
-      {items.map(({ id, icon: Icon, label, activeColor }) => {
-        const isActive = active === id;
-        return (
-          <button
-            key={id}
-            onClick={() => onNav(id)}
-            className="tap"
-            style={{
-              flex: 1,
-              display: "flex", flexDirection: "column", alignItems: "center",
-              gap: 4, padding: "11px 0 9px", border: "none",
-              background: "none", position: "relative",
-            }}
-          >
-            {isActive && (
-              <div style={{
-                position: "absolute",
-                top: 7, left: "50%", transform: "translateX(-50%)",
-                width: 52, height: 40, borderRadius: 14,
-                background: `${activeColor}18`,
-                border: `1px solid ${activeColor}28`,
-                backdropFilter: "blur(12px)",
-                WebkitBackdropFilter: "blur(12px)",
-                transition: "all 0.25s cubic-bezier(0.34,1.56,0.64,1)",
-                boxShadow: `0 0 18px ${activeColor}22`,
-              }} />
-            )}
-            {isActive && (
-              <div style={{
-                position: "absolute", bottom: "calc(env(safe-area-inset-bottom,10px) + 3px)",
-                left: "50%", transform: "translateX(-50%)",
-                width: 4, height: 4, borderRadius: 2,
-                background: activeColor,
-                boxShadow: `0 0 8px 2px ${activeColor}88`,
-              }} />
-            )}
-            <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-              <Icon
-                size={20}
-                color={isActive ? activeColor : "rgba(160,185,220,0.38)"}
-                strokeWidth={isActive ? 2.3 : 1.65}
-                style={{ transition: "color 0.2s, stroke-width 0.2s" }}
-              />
+        {ITEMS.map(({ id, icon: Icon, label, color, glow }) => {
+          const isActive = active === id;
+          return (
+            <button
+              key={id}
+              onClick={() => {
+                if (!isActive) haptic.select();
+                else haptic.light();
+                onNav(id);
+              }}
+              style={{
+                flex: 1, display: "flex", flexDirection: "column",
+                alignItems: "center", justifyContent: "center",
+                gap: 3, padding: "9px 2px 8px",
+                border: "none", background: "none",
+                position: "relative", zIndex: 2,
+                cursor: "pointer",
+                minHeight: 54,
+              }}
+            >
+              {/* Active bubble */}
+              {isActive && (
+                <div style={{
+                  position: "absolute",
+                  inset: "2px 4px",
+                  borderRadius: 20,
+                  background: `linear-gradient(145deg,${color}22 0%,${color}10 100%)`,
+                  border: `1px solid ${color}35`,
+                  backdropFilter: "blur(12px)",
+                  WebkitBackdropFilter: "blur(12px)",
+                  boxShadow: `0 0 24px ${glow}40, inset 0 1px 0 ${color}28`,
+                  animation: "navPop 0.36s cubic-bezier(0.16,1,0.3,1) both",
+                }} />
+              )}
+
+              {/* Icon */}
+              <div style={{ position: "relative", zIndex: 1 }}>
+                <Icon
+                  size={isActive ? 21 : 19}
+                  color={isActive ? color : "rgba(160,190,230,0.32)"}
+                  strokeWidth={isActive ? 2.4 : 1.6}
+                  style={{
+                    transition: "color 0.22s, stroke-width 0.22s, filter 0.22s",
+                    filter: isActive ? `drop-shadow(0 0 8px ${glow})` : "none",
+                  }}
+                />
+              </div>
+
+              {/* Label */}
               <span style={{
-                fontSize: 9.5, fontWeight: isActive ? 800 : 400, letterSpacing: "0.02em",
-                color: isActive ? activeColor : "rgba(160,185,220,0.38)",
+                fontSize: 9, fontWeight: isActive ? 800 : 400,
+                letterSpacing: "0.03em",
+                color: isActive ? color : "rgba(160,190,230,0.30)",
                 textTransform: "uppercase",
-                transition: "color 0.2s",
+                transition: "color 0.22s",
+                position: "relative", zIndex: 1,
               }}>
                 {label}
               </span>
-            </div>
-          </button>
-        );
-      })}
+
+              {/* Active dot */}
+              {isActive && (
+                <div style={{
+                  position: "absolute", bottom: 4, left: "50%",
+                  transform: "translateX(-50%)",
+                  width: 3, height: 3, borderRadius: "50%",
+                  background: color,
+                  boxShadow: `0 0 8px 2px ${glow}`,
+                }} />
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

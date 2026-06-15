@@ -2,3 +2,5 @@
 - [SQLite DB schema](sqlite-schema.md) — campaigns.db tables: `campaigns`, `users`, `sends`, `sqlite_sequence`. No bot_users or send_logs.
 - [better-sqlite3 approval](better-sqlite3.md) — must add to `pnpm.onlyBuiltDependencies` in root package.json for native build to succeed.
 - [Orval mixed-params collision](orval-params.md) — endpoints with BOTH path param AND query param generate colliding Params types; avoid by removing query params from such endpoints.
+- [Liquid glass CSS system](liquid-glass-css.md) — 3-layer glass material: `.lg` outer card, `::before` specular edge, `::after` prismatic overlay; `.lg-pill` for rounded buttons; haptics via `lib/haptics.ts`; 5-tab nav in BottomNav.tsx (home/campaigns/analytics/audience/accounts); editor is overlay not a tab.
+- [better-sqlite3 rebuild](better-sqlite3-rebuild.md) — sqlite3.o must be compiled first with gcc before linking the .node addon; headers at `/nix/store/jfar9wnj6kvr0gr6klh1gk7vgckkfr5j-nodejs-20.20.0/include/node`.

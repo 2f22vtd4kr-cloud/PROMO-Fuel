@@ -1,30 +1,52 @@
 import { useState } from "react";
-import { HomePage } from "./pages/Home";
+import { HomePage }      from "./pages/Home";
 import { CampaignsPage } from "./pages/Campaigns";
-import { EditorPage } from "./pages/Editor";
-import { AccountsPage } from "./pages/Accounts";
-import { BottomNav } from "./components/BottomNav";
+import { EditorPage }    from "./pages/Editor";
+import { AccountsPage }  from "./pages/Accounts";
+import { AnalyticsPage } from "./pages/Analytics";
+import { AudiencePage }  from "./pages/Audience";
+import { BottomNav }     from "./components/BottomNav";
 
-export type Tab = "home" | "campaigns" | "editor" | "accounts";
+export type Tab = "home" | "campaigns" | "analytics" | "audience" | "accounts";
 
 export function App() {
-  const [tab, setTab] = useState<Tab>("home");
-  const [editCampaignId, setEditCampaignId] = useState<number | null>(null);
+  const [tab, setTab]               = useState<Tab>("home");
+  const [editCampaignId, setEditId] = useState<number | null>(null);
+  const [showEditor, setShowEditor] = useState(false);
 
-  function goToEditor(id?: number) {
-    setEditCampaignId(id ?? null);
-    setTab("editor");
+  function openEditor(id?: number) {
+    setEditId(id ?? null);
+    setShowEditor(true);
+  }
+  function closeEditor() {
+    setShowEditor(false);
+    setEditId(null);
   }
 
   return (
-    <div style={{ height: "100dvh", display: "flex", flexDirection: "column", overflow: "hidden", background: "#080c15", position: "relative" }}>
+    <div style={{
+      height: "100dvh",
+      display: "flex", flexDirection: "column",
+      overflow: "hidden",
+      background: "#07090f",
+      position: "relative",
+    }}>
       <MeshBackground />
+
       <div style={{ flex: 1, overflow: "hidden", position: "relative", zIndex: 1 }}>
-        {tab === "home"      && <HomePage onNewCampaign={() => goToEditor()} onViewCampaigns={() => setTab("campaigns")} />}
-        {tab === "campaigns" && <CampaignsPage onEdit={goToEditor} />}
-        {tab === "editor"    && <EditorPage campaignId={editCampaignId} onDone={() => setTab("campaigns")} />}
+        {tab === "home"      && <HomePage      onNewCampaign={() => openEditor()} onViewCampaigns={() => setTab("campaigns")} />}
+        {tab === "campaigns" && <CampaignsPage onEdit={openEditor} />}
+        {tab === "analytics" && <AnalyticsPage />}
+        {tab === "audience"  && <AudiencePage />}
         {tab === "accounts"  && <AccountsPage />}
       </div>
+
+      {showEditor && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 50 }}>
+          <EditorPage campaignId={editCampaignId} onDone={closeEditor} />
+        </div>
+      )}
+
       <div style={{ position: "relative", zIndex: 2 }}>
         <BottomNav active={tab} onNav={setTab} />
       </div>
@@ -35,46 +57,16 @@ export function App() {
 function MeshBackground() {
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0 }}>
-      {/* Base gradient */}
-      <div style={{
-        position: "absolute", inset: 0,
-        background: "linear-gradient(160deg, #080c15 0%, #0c1428 35%, #0a1632 65%, #090e1c 100%)",
-      }} />
-      {/* Noise grain overlay */}
-      <div style={{
-        position: "absolute", inset: 0,
-        backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E")`,
-        backgroundSize: "128px 128px",
-        opacity: 0.6,
-      }} />
-      {/* Blue orb — top left */}
-      <div style={{
-        position: "absolute", top: -180, left: -100,
-        width: 520, height: 520, borderRadius: "50%",
-        background: "radial-gradient(circle at 40% 40%, rgba(91,150,212,0.22) 0%, rgba(58,111,173,0.08) 50%, transparent 75%)",
-        animation: "floatOrb 10s ease-in-out infinite",
-      }} />
-      {/* Green orb — bottom right */}
-      <div style={{
-        position: "absolute", bottom: 60, right: -140,
-        width: 450, height: 450, borderRadius: "50%",
-        background: "radial-gradient(circle at 60% 60%, rgba(45,232,151,0.14) 0%, rgba(23,168,106,0.05) 50%, transparent 75%)",
-        animation: "floatOrb2 12s ease-in-out infinite 3s",
-      }} />
-      {/* Purple orb — center right */}
-      <div style={{
-        position: "absolute", top: "38%", right: -60,
-        width: 320, height: 320, borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(179,157,255,0.12) 0%, transparent 70%)",
-        animation: "floatOrb 14s ease-in-out infinite 6s",
-      }} />
-      {/* Yellow orb — bottom left */}
-      <div style={{
-        position: "absolute", bottom: 200, left: -80,
-        width: 260, height: 260, borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(255,201,70,0.08) 0%, transparent 70%)",
-        animation: "floatOrb2 9s ease-in-out infinite 1.5s",
-      }} />
+      <div style={{ position:"absolute", inset:0, background:"linear-gradient(170deg,#07090f 0%,#0b1020 28%,#0a1330 58%,#09101f 100%)" }} />
+      <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", opacity:0.018 }}>
+        <filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.78" numOctaves="4" stitchTiles="stitch"/></filter>
+        <rect width="100%" height="100%" filter="url(#n)"/>
+      </svg>
+      <div style={{ position:"absolute", top:-200, left:-120, width:560, height:560, borderRadius:"50%", background:"radial-gradient(circle at 38% 38%,rgba(80,140,220,0.25) 0%,rgba(50,100,180,0.09) 48%,transparent 72%)", animation:"floatOrb 11s ease-in-out infinite" }}/>
+      <div style={{ position:"absolute", bottom:40, right:-160, width:480, height:480, borderRadius:"50%", background:"radial-gradient(circle at 60% 58%,rgba(30,215,140,0.17) 0%,rgba(15,160,100,0.06) 52%,transparent 76%)", animation:"floatOrb2 13s ease-in-out infinite 2.5s" }}/>
+      <div style={{ position:"absolute", top:"34%", right:-80, width:360, height:360, borderRadius:"50%", background:"radial-gradient(circle,rgba(170,140,255,0.13) 0%,transparent 68%)", animation:"floatOrb 15s ease-in-out infinite 5.5s" }}/>
+      <div style={{ position:"absolute", bottom:180, left:-90, width:280, height:280, borderRadius:"50%", background:"radial-gradient(circle,rgba(255,190,60,0.09) 0%,transparent 68%)", animation:"floatOrb2 10s ease-in-out infinite 1s" }}/>
+      <div style={{ position:"absolute", top:80, right:-40, width:220, height:220, borderRadius:"50%", background:"radial-gradient(circle,rgba(255,100,180,0.08) 0%,transparent 70%)", animation:"floatOrb3 8s ease-in-out infinite 3s" }}/>
     </div>
   );
 }
