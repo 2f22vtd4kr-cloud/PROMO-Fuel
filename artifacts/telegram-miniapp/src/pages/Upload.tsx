@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { FolderUp, CheckCircle2 } from "lucide-react";
 import { TG } from "../lib/theme";
+import { useToast } from "../components/Toast";
 
 const ALLOWED_EXT = [".html", ".csv", ".tsv", ".json", ".jsonl"];
 
@@ -18,6 +19,7 @@ export function UploadPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [uploads, setUploads] = useState<UploadRecord[]>([]);
   const inputRef              = useRef<HTMLInputElement>(null);
+  const { show: showToast, node: toastNode } = useToast();
 
   const apiBase  = (import.meta as Record<string, unknown> & { env: Record<string, string> }).env.VITE_API_URL || "";
   const initData = (window as unknown as { Telegram?: { WebApp?: { initData: string } } }).Telegram?.WebApp?.initData ?? "";
@@ -36,7 +38,7 @@ export function UploadPage() {
     if (!f) return;
     const ext = "." + f.name.split(".").pop()?.toLowerCase();
     if (!ALLOWED_EXT.includes(ext)) {
-      alert(`Формат не поддерживается. Используйте: ${ALLOWED_EXT.join(", ")}`);
+      showToast(`Формат не поддерживается: ${ALLOWED_EXT.join(", ")}`, "error");
       return;
     }
     setFile(f);
@@ -61,9 +63,11 @@ export function UploadPage() {
       setResult(data);
       setStatus("done");
       setFile(null);
+      showToast(`Загружено ${data.count} записей`, "success");
     } catch (e: unknown) {
       setErrorMsg((e as Error).message);
       setStatus("error");
+      showToast("Ошибка загрузки", "error");
     }
   }
 
@@ -202,6 +206,7 @@ export function UploadPage() {
           </>
         )}
       </div>
+      {toastNode}
     </div>
   );
 }

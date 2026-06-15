@@ -1,5 +1,3 @@
-import { TG } from "../lib/theme";
-
 interface Props {
   message: string;
   onRetry?: () => void;
@@ -7,33 +5,16 @@ interface Props {
 
 export default function ErrorMessage({ message, onRetry }: Props) {
   return (
-    <div style={{
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: "32px 20px",
-      gap: 12,
-      textAlign: "center",
-    }}>
-      <span style={{ fontSize: 32 }}>❌</span>
-      <p style={{ color: TG.red ?? "#ff6b7a", fontSize: 13, margin: 0 }}>
-        Ошибка: {message}
-      </p>
+    <div className="error-message">
+      <div style={{ fontWeight: 700, color: 'var(--status-cancelled)', marginBottom: '0.25rem' }}>
+        Не удалось загрузить данные
+      </div>
+      <div style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+        {message}
+      </div>
       {onRetry && (
-        <button
-          onClick={onRetry}
-          style={{
-            padding: "8px 20px",
-            borderRadius: 10,
-            background: `${TG.accent ?? "#6ba8e5"}22`,
-            border: `1px solid ${TG.accent ?? "#6ba8e5"}44`,
-            color: TG.accent ?? "#6ba8e5",
-            fontSize: 13,
-            cursor: "pointer",
-          }}
-        >
-          🔄 Повторить
+        <button className="btn-glass" style={{ marginTop: '0.75rem', alignSelf: 'flex-start' }} onClick={onRetry}>
+          Повторить
         </button>
       )}
     </div>

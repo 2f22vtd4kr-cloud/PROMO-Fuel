@@ -1051,54 +1051,28 @@ function LoginScreen({ onLogin }: { onLogin: (secret: string) => void }) {
   }
 
   return (
-    <div style={{
-      width: "100vw", height: "100dvh", background: "#03040a",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif",
-    }}>
-      <div style={{ width: "100%", maxWidth: 360, padding: "0 24px" }}>
-        <div style={{
-          background: "linear-gradient(145deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.04) 60%, rgba(255,255,255,0.08) 100%)",
-          backdropFilter: "blur(40px) saturate(180%)",
-          WebkitBackdropFilter: "blur(40px) saturate(180%)",
-          border: "1px solid rgba(255,255,255,0.18)",
-          borderRadius: 24,
-          padding: "32px 24px 28px",
-          boxShadow: "0 8px 40px rgba(0,0,0,0.55)",
-        }}>
-          <div style={{ textAlign: "center", marginBottom: 28 }}>
-            <div style={{ fontSize: 36, marginBottom: 8 }}>⛽</div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: "#eef2ff", marginBottom: 4 }}>PROMO-Fuel CRM</div>
-            <div style={{ fontSize: 13, color: "rgba(160,190,230,0.6)" }}>Введите пароль для входа</div>
-          </div>
+    <div className="login-wrapper">
+      <div className={`login-card${err ? " shake" : ""}`}>
+        <span className="login-logo">⛽</span>
+        <h1>PROMO-Fuel CRM</h1>
+        <p>Введите пароль для входа</p>
+        <form onSubmit={e => { e.preventDefault(); handleLogin(); }}>
           <input
             type="password"
             value={pw}
-            onChange={e => setPw(e.target.value)}
+            onChange={e => { setPw(e.target.value); if (err) setErr(""); }}
             onKeyDown={e => e.key === "Enter" && handleLogin()}
             placeholder="Пароль"
-            style={{
-              width: "100%", boxSizing: "border-box",
-              background: "rgba(255,255,255,0.06)",
-              border: `1px solid ${err ? "rgba(255,80,80,0.5)" : "rgba(255,255,255,0.15)"}`,
-              borderRadius: 12, padding: "13px 16px",
-              color: "#eef2ff", fontSize: 15, outline: "none",
-              marginBottom: err ? 8 : 16,
-            }}
           />
-          {err && <div style={{ color: "#ff6b7a", fontSize: 12, marginBottom: 12, textAlign: "center" }}>{err}</div>}
-          <button
-            onClick={handleLogin}
-            disabled={loading}
-            style={{
-              width: "100%", padding: "13px",
-              background: loading ? "rgba(255,255,255,0.06)" : "linear-gradient(135deg,rgba(107,168,229,0.5),rgba(45,232,151,0.35))",
-              border: "1px solid rgba(255,255,255,0.22)",
-              borderRadius: 12, color: "#eef2ff",
-              fontSize: 15, fontWeight: 700, cursor: loading ? "default" : "pointer",
-            }}
-          >{loading ? "Проверка…" : "Войти"}</button>
-        </div>
+          {err && (
+            <div style={{ color: 'var(--status-cancelled)', fontSize: '0.82rem', marginTop: '-0.4rem', textAlign: 'center' }}>
+              {err}
+            </div>
+          )}
+          <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%' }}>
+            {loading ? "Проверка…" : "Войти"}
+          </button>
+        </form>
       </div>
     </div>
   );
@@ -1125,7 +1099,8 @@ function UploadTab() {
     if (!f) return;
     const ext = "." + f.name.split(".").pop()?.toLowerCase();
     if (!ALLOWED.includes(ext)) {
-      alert(`Формат не поддерживается. Используйте: ${ALLOWED.join(", ")}`);
+      setErrorMsg(`Формат не поддерживается. Используйте: ${ALLOWED.join(", ")}`);
+      setStatus("error");
       return;
     }
     setFile(f);
@@ -1324,17 +1299,18 @@ export default function App() {
   }, [fetchAll]);
 
   return (
-    <div style={{
-      width: "100vw", height: "100dvh", background: "#03040a",
+    <div className="app-root" style={{
+      width: "100vw", height: "100dvh",
       display: "flex", alignItems: "center", justifyContent: "center",
-      fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif",
     }}>
+      <div className="bg-mesh" aria-hidden="true" />
       <div style={{
         width: "100%", maxWidth: 430, height: "100%", maxHeight: 932,
         background: TG.bg, borderRadius: 0,
         display: "flex", flexDirection: "column", overflow: "hidden",
         position: "relative",
         boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 32px 80px rgba(0,0,0,0.7)",
+        zIndex: 1,
       }}>
         <MeshBg />
         <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", paddingTop: 4, scrollbarWidth: "none", position: "relative", zIndex: 5 }}>

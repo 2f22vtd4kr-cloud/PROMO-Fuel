@@ -102,6 +102,25 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
           </div>
         </div>
 
+        {/* Fuel gauge / conversion ring — shown only when campaigns are active */}
+        {!loading && overview && overview.activeCampaigns > 0 && (
+          <div className="glass-card-v2" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div className="conversion-ring">
+              <span className="rate">{overview.avgOpenRate.toFixed(0)}%</span>
+              <span className="rate-label">conv.</span>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                {overview.activeCampaigns} активных кампаний
+              </div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+                {overview.totalSent.toLocaleString("ru")} отправлено / {users.toLocaleString("ru")} в базе
+              </div>
+            </div>
+            <span className="status-badge status-running">Live</span>
+          </div>
+        )}
+
         {/* Stats 2×2 grid */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           {stats.map((s) => {
