@@ -23,6 +23,22 @@ const STATUS_VARIANT: Record<string, string> = {
   draft: "outline", paused: "destructive", cancelled: "destructive",
 };
 
+function CampaignStatusBadge({ status }: { status: string }) {
+  if (status === "running") {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+        Активна
+      </span>
+    );
+  }
+  return (
+    <Badge variant={STATUS_VARIANT[status] as any || "outline"} className="text-[11px]">
+      {STATUS_LABEL[status] || status}
+    </Badge>
+  );
+}
+
 export function Campaigns() {
   const [, navigate] = useLocation();
   const [q, setQ] = useState("");
@@ -33,7 +49,7 @@ export function Campaigns() {
   const qc = useQueryClient();
 
   const params = statusFilter !== "all" ? { status: statusFilter } : undefined;
-  const { data: campaigns, isLoading } = useListCampaigns(params);
+  const { data: campaigns, isLoading } = useListCampaigns(params, { query: { refetchInterval: 30_000 } });
   const deleteMut = useDeleteCampaign();
   const createMut = useCreateCampaign();
 
@@ -128,9 +144,7 @@ export function Campaigns() {
                   <tr key={c.id} className="hover:bg-secondary/30 cursor-pointer transition-colors" onClick={() => navigate(`/campaigns/${c.id}`)}>
                     <td className="px-4 py-3 font-medium">{c.name}</td>
                     <td className="px-4 py-3">
-                      <Badge variant={STATUS_VARIANT[c.status] as any || "outline"} className="text-[11px]">
-                        {STATUS_LABEL[c.status] || c.status}
-                      </Badge>
+                      <CampaignStatusBadge status={c.status} />
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{c.sent_count.toLocaleString("ru")}</td>
                     <td className="px-4 py-3">

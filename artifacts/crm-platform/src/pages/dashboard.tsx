@@ -1,10 +1,12 @@
 import { useGetAnalyticsOverview, useGetAnalyticsTrend, useGetAnalyticsFunnel, useGetTopCampaigns, useGetActivityFeed, useGetAnalyticsCohort } from "@workspace/api-client-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { TrendingUp, TrendingDown, Send, Users, Megaphone, Mail, MousePointerClick, Percent, Calendar, Zap } from "lucide-react";
+import { TrendingUp, TrendingDown, Send, Users, Megaphone, Mail, MousePointerClick, Zap, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useState, useEffect } from "react";
 
 const FUNNEL_COLORS = ["hsl(224 76% 55%)", "hsl(260 65% 55%)", "hsl(300 55% 50%)", "hsl(330 65% 50%)", "hsl(0 65% 50%)"];
+const REFETCH_MS = 30_000;
 
 function DeltaBadge({ delta }: { delta?: number }) {
   if (delta == null) return null;
@@ -34,20 +36,55 @@ function MetricCard({ label, value, icon: Icon, delta, color }: { label: string;
   );
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  done: "default", running: "secondary", scheduled: "outline", draft: "outline", paused: "destructive", cancelled: "destructive",
-};
-const STATUS_LABEL: Record<string, string> = {
-  done: "Завершена", running: "Активна", scheduled: "Запланирована", draft: "Черновик", paused: "Пауза", cancelled: "Отменена",
-};
+function RunningBadge({ status }: { status: string }) {
+  if (status === "running") {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+        Активна
+      </span>
+    );
+  }
+  const STATUS_COLOR: Record<string, string> = {
+    done: "default", scheduled: "outline", draft: "outline", paused: "destructive", cancelled: "destructive",
+  };
+  const STATUS_LABEL: Record<string, string> = {
+    done: "Завершена", scheduled: "Запланирована", draft: "Черновик", paused: "Пауза", cancelled: "Отменена",
+  };
+  return (
+    <Badge variant={STATUS_COLOR[status] as any || "outline"} className="text-[10px]">
+      {STATUS_LABEL[status] || status}
+    </Badge>
+  );
+}
+
+function RefreshIndicator({ lastRefresh }: { lastRefresh: Date }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const secs = Math.floor((Date.now() - lastRefresh.getTime()) / 1000);
+  const next = Math.max(0, REFETCH_MS / 1000 - secs);
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <RefreshCw size={11} className={secs < 2 ? "animate-spin text-emerald-400" : ""} />
+      <span>Обновление через {next}с</span>
+    </div>
+  );
+}
 
 export function Dashboard() {
-  const { data: overview, isLoading: ovLoading } = useGetAnalyticsOverview();
-  const { data: trend, isLoading: trendLoading } = useGetAnalyticsTrend({ days: 7 });
-  const { data: funnel } = useGetAnalyticsFunnel();
-  const { data: topCampaigns } = useGetTopCampaigns({ limit: 5 });
-  const { data: activity } = useGetActivityFeed({ limit: 8 });
-  const { data: cohort } = useGetAnalyticsCohort();
+  const [lastRefresh, setLastRefresh] = useState(new Date());
+
+  const queryOpts = { query: { refetchInterval: REFETCH_MS, onSuccess: () => setLastRefresh(new Date()) } };
+
+  const { data: overview, isLoading: ovLoading } = useGetAnalyticsOverview({ query: { refetchInterval: REFETCH_MS } });
+  const { data: trend, isLoading: trendLoading } = useGetAnalyticsTrend({ days: 7 }, { query: { refetchInterval: REFETCH_MS } });
+  const { data: funnel } = useGetAnalyticsFunnel({ query: { refetchInterval: REFETCH_MS } });
+  const { data: topCampaigns } = useGetTopCampaigns({ limit: 5 }, { query: { refetchInterval: REFETCH_MS } });
+  const { data: activity } = useGetActivityFeed({ limit: 8 }, { query: { refetchInterval: REFETCH_MS } });
+  const { data: cohort } = useGetAnalyticsCohort({ query: { refetchInterval: REFETCH_MS } });
 
   const pieData = overview
     ? [{ name: "Open Rate", value: overview.avgOpenRate }, { name: "Не открыто", value: 100 - overview.avgOpenRate }]
@@ -55,9 +92,12 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Обзор аналитики</h1>
-        <p className="text-muted-foreground text-sm mt-1">Сводные показатели по всем кампаниям</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Обзор аналитики</h1>
+          <p className="text-muted-foreground text-sm mt-1">Сводные показатели по всем кампаниям</p>
+        </div>
+        <RefreshIndicator lastRefresh={lastRefresh} />
       </div>
 
       {/* KPI Cards */}
@@ -193,9 +233,7 @@ export function Dashboard() {
                     <span className="text-purple-400 font-semibold">{c.ctr.toFixed(1)}%</span>
                   </td>
                   <td className="py-2.5">
-                    <Badge variant={STATUS_COLOR[c.status] as any || "outline"} className="text-[10px]">
-                      {STATUS_LABEL[c.status] || c.status}
-                    </Badge>
+                    <RunningBadge status={c.status} />
                   </td>
                 </tr>
               ))}

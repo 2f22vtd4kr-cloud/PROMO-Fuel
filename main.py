@@ -573,6 +573,11 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         key = f"upload_{int(time.time())}"
         db_set(key, extracted)
 
+        # Auto-enrich phone entries in the background (timeout 8s per lookup)
+        phone_entries = [e for e in extracted["entries"] if "phone" in e and "telegram" not in e]
+        if phone_entries:
+            asyncio.create_task(_auto_enrich_upload(key, phone_entries, extracted))
+
         count = len(extracted["entries"])
         await update.message.reply_text(
             f"✅ *Файл загружен и обработан!*\n\n"
@@ -864,7 +869,7 @@ async def _do_enrich_single(phone: str, entry: dict, client) -> bool:
     if "telegram" in entry:
         return False
     try:
-        entity = await client.get_entity(phone)
+        entity = await asyncio.wait_for(client.get_entity(phone), timeout=8.0)
         entry["telegram"] = {
             "username": getattr(entity, 'username', None),
             "id": str(entity.id),
@@ -872,11 +877,56 @@ async def _do_enrich_single(phone: str, entry: dict, client) -> bool:
             "enriched_at": datetime.now().isoformat(),
         }
         return True
+    except asyncio.TimeoutError:
+        return False
     except FloodWaitError as e:
-        await asyncio.sleep(e.seconds + 5)
+        await asyncio.sleep(min(e.seconds + 5, 60))
         return False
     except Exception:
         return False
+
+
+async def _enrich_users_db(client) -> int:
+    """Enrich users in campaigns.db who have no @username by chat_id lookup via Telethon."""
+    import sqlite3 as _sqlite3
+    enriched = 0
+    try:
+        conn = _sqlite3.connect("campaigns.db")
+        conn.row_factory = _sqlite3.Row
+        users = conn.execute(
+            "SELECT chat_id FROM users WHERE (username IS NULL OR username = '') LIMIT 100"
+        ).fetchall()
+        for u in users:
+            try:
+                entity = await asyncio.wait_for(client.get_entity(int(u["chat_id"])), timeout=8.0)
+                username = getattr(entity, "username", None)
+                if username:
+                    conn.execute("UPDATE users SET username = ? WHERE chat_id = ?", (username, u["chat_id"]))
+                    conn.commit()
+                    enriched += 1
+                await asyncio.sleep(1)
+            except Exception:
+                continue
+        conn.close()
+    except Exception:
+        pass
+    return enriched
+
+
+async def _auto_enrich_upload(key: str, phone_entries: list, extracted: dict):
+    """Background task: enrich phone entries from a freshly uploaded file."""
+    try:
+        client = await get_telethon_client()
+        updated = False
+        for entry in phone_entries:
+            phone = entry.get("phone", "")
+            if phone and await _do_enrich_single(phone, entry, client):
+                updated = True
+                await asyncio.sleep(2)
+        if updated:
+            db_set(key, extracted)
+    except Exception:
+        pass
 
 
 async def _enrich_loop(bot, chat_id: int):
@@ -911,9 +961,16 @@ async def _enrich_loop(bot, chat_id: int):
                 all_data[key] = record
                 db_save(all_data)
 
+        # Also enrich campaigns.db users who have no @username
+        users_enriched = await _enrich_users_db(client)
+
         await bot.send_message(
             chat_id=chat_id,
-            text=f"✅ Обогащение завершено!\n📱 Обработано номеров: *{processed}*",
+            text=(
+                f"✅ Обогащение завершено!\n"
+                f"📱 Номеров телефонов: *{processed}*\n"
+                f"👤 Пользователей в БД: *{users_enriched}*"
+            ),
             parse_mode="Markdown"
         )
     except Exception as e:
