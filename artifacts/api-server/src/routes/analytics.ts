@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import Database from "better-sqlite3";
 import { DB_PATH } from "../lib/db-path";
 
@@ -8,68 +8,66 @@ function getDb() {
 
 const router: IRouter = Router();
 
-router.get("/analytics/overview", (_req, res) => {
+function sendOverview(_req: Request, res: Response) {
   try {
     const db = getDb();
-    const total    = db.prepare("SELECT COUNT(*) as n FROM campaigns").get() as { n: number };
-    const active   = db.prepare("SELECT COUNT(*) as n FROM campaigns WHERE status = 'running'").get() as { n: number };
+    const total     = db.prepare("SELECT COUNT(*) as n FROM campaigns").get() as { n: number };
+    const active    = db.prepare("SELECT COUNT(*) as n FROM campaigns WHERE status = 'running'").get() as { n: number };
     const scheduled = db.prepare("SELECT COUNT(*) as n FROM campaigns WHERE status = 'scheduled'").get() as { n: number };
-    const sentRow  = db.prepare("SELECT COALESCE(SUM(sent_count),0) as s FROM campaigns").get() as { s: number };
-    const failRow  = db.prepare("SELECT COALESCE(SUM(failed_count),0) as f FROM campaigns").get() as { f: number };
+    const sentRow   = db.prepare("SELECT COALESCE(SUM(sent_count),0) as s FROM campaigns").get() as { s: number };
+    const failRow   = db.prepare("SELECT COALESCE(SUM(failed_count),0) as f FROM campaigns").get() as { f: number };
 
     let users = 0;
     try { users = (db.prepare("SELECT COUNT(*) as n FROM users").get() as { n: number }).n; } catch {}
 
-    // Real deltas: compare last 7 days vs previous 7 days using sends table
-    const now = new Date();
+    const now  = new Date();
     const t7   = new Date(now); t7.setDate(now.getDate() - 7);
     const t14  = new Date(now); t14.setDate(now.getDate() - 14);
-    const fmtISO = (d: Date) => d.toISOString().slice(0, 10) + "T00:00:00";
+    const fmt  = (d: Date) => d.toISOString().slice(0, 10) + "T00:00:00";
 
     let sentThisWeek = 0, sentLastWeek = 0;
     try {
       sentThisWeek = (db.prepare("SELECT COUNT(*) as n FROM sends WHERE sent_at >= ? AND sent_at < ?")
-        .get(fmtISO(t7), now.toISOString()) as { n: number }).n;
+        .get(fmt(t7), now.toISOString()) as { n: number }).n;
       sentLastWeek = (db.prepare("SELECT COUNT(*) as n FROM sends WHERE sent_at >= ? AND sent_at < ?")
-        .get(fmtISO(t14), fmtISO(t7)) as { n: number }).n;
+        .get(fmt(t14), fmt(t7)) as { n: number }).n;
     } catch {}
     const sentDelta = sentLastWeek > 0
       ? parseFloat(((sentThisWeek - sentLastWeek) / sentLastWeek * 100).toFixed(1))
       : sentThisWeek > 0 ? 100 : 0;
 
-    // Open-rate delta: compare delivered/sent ratio across recent vs older campaigns
     let openDelta = 0, ctrDelta = 0;
     try {
       const recent = db.prepare(
         "SELECT COALESCE(SUM(sent_count),0) as s, COALESCE(SUM(failed_count),0) as f FROM campaigns WHERE started_at >= ?"
-      ).get(fmtISO(t7)) as { s: number; f: number };
+      ).get(fmt(t7)) as { s: number; f: number };
       const older = db.prepare(
         "SELECT COALESCE(SUM(sent_count),0) as s, COALESCE(SUM(failed_count),0) as f FROM campaigns WHERE started_at >= ? AND started_at < ?"
-      ).get(fmtISO(t14), fmtISO(t7)) as { s: number; f: number };
+      ).get(fmt(t14), fmt(t7)) as { s: number; f: number };
       const rateRecent = recent.s > 0 ? (recent.s - recent.f) / recent.s : 0;
-      const rateOlder  = older.s > 0  ? (older.s  - older.f)  / older.s  : rateRecent;
+      const rateOlder  = older.s  > 0 ? (older.s  - older.f)  / older.s  : rateRecent;
       openDelta = rateOlder > 0 ? parseFloat(((rateRecent - rateOlder) / rateOlder * 100).toFixed(1)) : 0;
       ctrDelta  = parseFloat((openDelta * 0.33).toFixed(1));
     } catch {}
 
     db.close();
 
-    const sent      = sentRow.s;
-    const failed    = failRow.f;
-    const delivered = Math.max(0, sent - failed);
-    const avgOpenRate  = sent > 0 ? (delivered / sent) * 100 * 0.72 : 0;
-    const avgCtr       = avgOpenRate * 0.33;
+    const sent          = sentRow.s;
+    const failed        = failRow.f;
+    const delivered     = Math.max(0, sent - failed);
+    const avgOpenRate   = sent > 0 ? (delivered / sent) * 100 * 0.72 : 0;
+    const avgCtr        = avgOpenRate * 0.33;
     const avgBounceRate = sent > 0 ? (failed / sent) * 100 : 0;
 
     res.json({
-      totalSent:   sent,
-      totalUsers:  users,
-      totalCampaigns: total.n,
-      avgOpenRate: parseFloat(avgOpenRate.toFixed(2)),
-      avgCtr:      parseFloat(avgCtr.toFixed(2)),
-      avgBounceRate: parseFloat(avgBounceRate.toFixed(2)),
-      activeCampaigns: active.n,
+      totalSent:          sent,
+      totalUsers:         users,
+      totalCampaigns:     total.n,
+      activeCampaigns:    active.n,
       scheduledCampaigns: scheduled.n,
+      avgOpenRate:        parseFloat(avgOpenRate.toFixed(2)),
+      avgCtr:             parseFloat(avgCtr.toFixed(2)),
+      avgBounceRate:      parseFloat(avgBounceRate.toFixed(2)),
       sentDelta,
       openDelta,
       ctrDelta,
@@ -77,7 +75,11 @@ router.get("/analytics/overview", (_req, res) => {
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
-});
+}
+
+// Both paths return identical data
+router.get("/analytics/overview", sendOverview);
+router.get("/analytics/summary",  sendOverview);
 
 router.get("/analytics/trend", (req, res) => {
   try {
@@ -120,8 +122,8 @@ router.get("/analytics/funnel", (_req, res) => {
 
     res.json([
       { stage: "Подписчики", count: usersCount, pct: 100 },
-      { stage: "Охвачено",   count: Math.min(sent, usersCount),  pct: parseFloat(Math.min((sent / base) * 100, 100).toFixed(1)) },
-      { stage: "Доставлено", count: delivered,                   pct: parseFloat(Math.min((delivered / base) * 100, 100).toFixed(1)) },
+      { stage: "Охвачено",   count: Math.min(sent, usersCount), pct: parseFloat(Math.min((sent / base) * 100, 100).toFixed(1)) },
+      { stage: "Доставлено", count: delivered,                  pct: parseFloat(Math.min((delivered / base) * 100, 100).toFixed(1)) },
       { stage: "Открыли",    count: Math.round(delivered * 0.52), pct: parseFloat(Math.min((delivered * 0.52 / base) * 100, 100).toFixed(1)) },
       { stage: "Перешли",    count: Math.round(delivered * 0.17), pct: parseFloat(Math.min((delivered * 0.17 / base) * 100, 100).toFixed(1)) },
     ]);

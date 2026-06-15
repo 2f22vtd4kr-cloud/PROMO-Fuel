@@ -14,6 +14,20 @@ import {
 
 const API_BASE = "";
 
+function getCrmSecret(): string {
+  return sessionStorage.getItem("crm_secret") ?? "";
+}
+
+async function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const secret = getCrmSecret();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string> ?? {}),
+  };
+  if (secret) headers["Authorization"] = `Bearer ${secret}`;
+  return fetch(url, { ...options, headers });
+}
+
 const TG = {
   bg: "#07090f",
   glass: "rgba(255,255,255,0.065)",
@@ -1008,7 +1022,92 @@ function AccountsTab({ accounts, loading, onAction }: { accounts: Account[]; loa
   );
 }
 
+function LoginScreen({ onLogin }: { onLogin: (secret: string) => void }) {
+  const [pw, setPw] = useState("");
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleLogin() {
+    if (!pw.trim()) return;
+    setLoading(true); setErr("");
+    try {
+      const r = await fetch(`${API_BASE}/api/auth`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secret: pw }),
+      });
+      if (r.ok) {
+        sessionStorage.setItem("crm_secret", pw);
+        onLogin(pw);
+      } else {
+        setErr("Неверный пароль");
+      }
+    } catch {
+      setErr("Ошибка подключения");
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div style={{
+      width: "100vw", height: "100dvh", background: "#03040a",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif",
+    }}>
+      <div style={{ width: "100%", maxWidth: 360, padding: "0 24px" }}>
+        <div style={{
+          background: "linear-gradient(145deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.04) 60%, rgba(255,255,255,0.08) 100%)",
+          backdropFilter: "blur(40px) saturate(180%)",
+          WebkitBackdropFilter: "blur(40px) saturate(180%)",
+          border: "1px solid rgba(255,255,255,0.18)",
+          borderRadius: 24,
+          padding: "32px 24px 28px",
+          boxShadow: "0 8px 40px rgba(0,0,0,0.55)",
+        }}>
+          <div style={{ textAlign: "center", marginBottom: 28 }}>
+            <div style={{ fontSize: 36, marginBottom: 8 }}>⛽</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "#eef2ff", marginBottom: 4 }}>PROMO-Fuel CRM</div>
+            <div style={{ fontSize: 13, color: "rgba(160,190,230,0.6)" }}>Введите пароль для входа</div>
+          </div>
+          <input
+            type="password"
+            value={pw}
+            onChange={e => setPw(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleLogin()}
+            placeholder="Пароль"
+            style={{
+              width: "100%", boxSizing: "border-box",
+              background: "rgba(255,255,255,0.06)",
+              border: `1px solid ${err ? "rgba(255,80,80,0.5)" : "rgba(255,255,255,0.15)"}`,
+              borderRadius: 12, padding: "13px 16px",
+              color: "#eef2ff", fontSize: 15, outline: "none",
+              marginBottom: err ? 8 : 16,
+            }}
+          />
+          {err && <div style={{ color: "#ff6b7a", fontSize: 12, marginBottom: 12, textAlign: "center" }}>{err}</div>}
+          <button
+            onClick={handleLogin}
+            disabled={loading}
+            style={{
+              width: "100%", padding: "13px",
+              background: loading ? "rgba(255,255,255,0.06)" : "linear-gradient(135deg,rgba(107,168,229,0.5),rgba(45,232,151,0.35))",
+              border: "1px solid rgba(255,255,255,0.22)",
+              borderRadius: 12, color: "#eef2ff",
+              fontSize: 15, fontWeight: 700, cursor: loading ? "default" : "pointer",
+            }}
+          >{loading ? "Проверка…" : "Войти"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const [authed, setAuthed]       = useState(() => {
+    const s = sessionStorage.getItem("crm_secret");
+    if (!s) return false;
+    return true;
+  });
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [overview, setOverview]   = useState<Overview | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -1020,11 +1119,11 @@ export default function App() {
   const fetchAll = useCallback(async () => {
     try {
       const [ov, camps, tr, us, accs] = await Promise.all([
-        fetch(`${API_BASE}/api/analytics/overview`).then(r => r.json()).catch(() => null),
-        fetch(`${API_BASE}/api/campaigns`).then(r => r.json()).catch(() => []),
-        fetch(`${API_BASE}/api/analytics/trend?days=7`).then(r => r.json()).catch(() => []),
-        fetch(`${API_BASE}/api/users`).then(r => r.json()).catch(() => []),
-        fetch(`${API_BASE}/api/accounts`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API_BASE}/api/analytics/overview`).then(r => r.status === 401 ? null : r.json()).catch(() => null),
+        apiFetch(`${API_BASE}/api/campaigns`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_BASE}/api/analytics/trend?days=7`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_BASE}/api/users`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_BASE}/api/accounts`).then(r => r.ok ? r.json() : []).catch(() => []),
       ]);
       if (ov && !ov.error) setOverview(ov);
       if (Array.isArray(camps)) setCampaigns(camps);
@@ -1037,14 +1136,17 @@ export default function App() {
 
   const onAction = useCallback(async (path: string, method = "POST", body?: Record<string, unknown>) => {
     try {
-      await fetch(`${API_BASE}${path}`, {
+      await apiFetch(`${API_BASE}${path}`, {
         method,
-        headers: body ? { "Content-Type": "application/json" } : {},
         body: body ? JSON.stringify(body) : undefined,
       });
     } catch {}
     await fetchAll();
   }, [fetchAll]);
+
+  if (!authed) {
+    return <LoginScreen onLogin={() => { setAuthed(true); fetchAll(); }} />;
+  }
 
   useEffect(() => {
     fetchAll();

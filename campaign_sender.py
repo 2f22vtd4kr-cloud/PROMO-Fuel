@@ -1,4 +1,6 @@
 import asyncio
+import os
+import re
 import random
 import logging
 from datetime import datetime, timezone
@@ -6,6 +8,27 @@ from telegram import Bot
 from telegram.error import TelegramError, Forbidden
 
 import campaign_db as db
+
+DAILY_SEND_CAP = int(os.getenv("DAILY_SEND_CAP", "500"))
+
+
+def resolve_spintax(text: str) -> str:
+    """Resolve {option1|option2|option3} spintax patterns randomly."""
+    pattern = re.compile(r'\{([^{}|]+(?:\|[^{}|]*)+)\}')
+    max_iter = 20
+    for _ in range(max_iter):
+        m = pattern.search(text)
+        if not m:
+            break
+        chosen = random.choice(m.group(1).split('|'))
+        text = text[:m.start()] + chosen + text[m.end():]
+    return text
+
+
+async def human_delay(base: float, jitter_pct: float = 0.25) -> None:
+    """Sleep for base ± jitter_pct fraction with a natural feel."""
+    variation = base * jitter_pct * (2.0 * random.random() - 1.0)
+    await asyncio.sleep(max(0.5, base + variation))
 
 logger = logging.getLogger(__name__)
 
@@ -145,8 +168,15 @@ async def send_campaign(bot: Bot, campaign_id: int, notify_chat_id: int, tag: st
             await db.log_send(campaign_id, chat_id, "skipped_already_targeted")
             continue
 
+        # Check daily send cap
+        if state["sent"] >= DAILY_SEND_CAP:
+            logger.warning(f"Campaign {campaign_id}: daily cap {DAILY_SEND_CAP} reached — stopping")
+            state["cancelled"] = True
+            break
+
         name = user.get("first_name") or user.get("username") or "друг"
         text = text_template.replace("{name}", name).replace("{username}", user.get("username") or name)
+        text = resolve_spintax(text)
 
         if dry_run:
             state["sent"] += 1
@@ -161,11 +191,11 @@ async def send_campaign(bot: Bot, campaign_id: int, notify_chat_id: int, tag: st
             await db.log_send(campaign_id, chat_id, "ok")
             await db.increment_campaign_counts(campaign_id, sent=1)
             await db.mark_user_as_promo_targeted(chat_id)
-            # Conservative delay: 2–6s with occasional longer pause every 20 sends
+            # Human-like delay: 2–6s base, with longer pause every 20 sends
             delay = random.uniform(2.0, 6.0)
             if state["sent"] % 20 == 0:
                 delay += random.uniform(10.0, 25.0)
-            await asyncio.sleep(delay)
+            await human_delay(delay)
 
         except Forbidden:
             state["failed"] += 1

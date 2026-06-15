@@ -1,15 +1,22 @@
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
+function twaHeaders(): Record<string, string> {
+  const initData = (window as unknown as { Telegram?: { WebApp?: { initData?: string } } }).Telegram?.WebApp?.initData ?? "";
+  const h: Record<string, string> = { "Content-Type": "application/json" };
+  if (initData) h["X-Telegram-Init-Data"] = initData;
+  return h;
+}
+
 async function get<T>(path: string): Promise<T> {
-  const r = await fetch(`${API_BASE}/api${path}`);
+  const r = await fetch(`${API_BASE}/api/twa${path}`, { headers: twaHeaders() });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
-  const r = await fetch(`${API_BASE}/api${path}`, {
+  const r = await fetch(`${API_BASE}/api/twa${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: twaHeaders(),
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -17,9 +24,9 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 }
 
 async function put<T>(path: string, body?: unknown): Promise<T> {
-  const r = await fetch(`${API_BASE}/api${path}`, {
+  const r = await fetch(`${API_BASE}/api/twa${path}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: twaHeaders(),
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -27,7 +34,7 @@ async function put<T>(path: string, body?: unknown): Promise<T> {
 }
 
 async function del(path: string): Promise<void> {
-  await fetch(`${API_BASE}/api${path}`, { method: "DELETE" });
+  await fetch(`${API_BASE}/api/twa${path}`, { method: "DELETE", headers: twaHeaders() });
 }
 
 export interface Campaign {
@@ -104,8 +111,9 @@ export interface AccountBreakdown {
 
 export const api = {
   getCampaigns: (status?: string) => get<Campaign[]>(`/campaigns${status ? `?status=${status}` : ""}`),
-  getCampaign: (id: number) => get<Campaign>(`/campaigns/${id}`),
-  createCampaign: (data: { name: string; text_template: string; scheduled_at?: string }) => post<Campaign>("/campaigns", data),
+  getCampaign:  (id: number) => get<Campaign>(`/campaigns/${id}`),
+  createCampaign: (data: { name: string; text_template: string; scheduled_at?: string }) =>
+    post<Campaign>("/campaigns", data),
   updateCampaign: (id: number, data: Partial<Campaign>) => put<Campaign>(`/campaigns/${id}`, data),
   deleteCampaign: (id: number) => del(`/campaigns/${id}`),
   duplicateCampaign: (id: number) => post<Campaign>(`/campaigns/${id}/duplicate`),
@@ -114,14 +122,14 @@ export const api = {
   getCampaignBreakdown: (id: number) => get<AccountBreakdown[]>(`/campaigns/${id}/account-breakdown`),
 
   getAccounts: () => get<SenderAccount[]>("/accounts"),
-  getAccount: (id: number) => get<SenderAccount>(`/accounts/${id}`),
+  getAccount:  (id: number) => get<SenderAccount>(`/accounts/${id}`),
   patchAccount: (id: number, data: Partial<SenderAccount>) => put<SenderAccount>(`/accounts/${id}`, data),
   createAccount: (data: { phone: string; label?: string; username?: string; proxy?: string }) =>
     post<SenderAccount>("/accounts", data),
   deleteAccount: (id: number) => del(`/accounts/${id}`),
 
-  getOverview: () => get<AnalyticsOverview>("/analytics/overview"),
-  getUsers: () => get<User[]>("/users"),
+  getOverview: () => get<AnalyticsOverview>("/analytics/summary"),
+  getUsers:    () => get<User[]>("/users"),
 
   importUsers: (users: { chat_id: number; username?: string; first_name?: string; tags?: string }[]) =>
     post<{ ok: boolean; imported: number; skipped: number; total: number }>("/users/import", { users }),

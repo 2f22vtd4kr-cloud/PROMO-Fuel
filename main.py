@@ -51,11 +51,13 @@ def admin_only(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id if update.effective_user else None
         if user_id != ADMIN_ID:
-            if update.message:
-                await update.message.reply_text("⛔ Доступ запрещён.")
-            elif update.callback_query:
-                await update.callback_query.answer("⛔ Доступ запрещён.", show_alert=True)
+            # Silent — non-admin gets no reply, just a warning in logs
             logger.warning(f"Blocked unauthorized access from user_id={user_id}")
+            if update.callback_query:
+                try:
+                    await update.callback_query.answer()
+                except Exception:
+                    pass
             return
         return await func(update, context)
     wrapper.__name__ = func.__name__
@@ -63,6 +65,7 @@ def admin_only(func):
 
 
 DB_FILE = "bot_db.json"
+_db_lock = __import__("threading").Lock()
 
 def db_load():
     if os.path.exists(DB_FILE):
@@ -74,8 +77,19 @@ def db_load():
     return {}
 
 def db_save(data):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    import tempfile
+    with _db_lock:
+        fd, tmp = tempfile.mkstemp(dir=".", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, DB_FILE)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except Exception:
+                pass
+            raise
 
 def db_get(key, default=None):
     data = db_load()

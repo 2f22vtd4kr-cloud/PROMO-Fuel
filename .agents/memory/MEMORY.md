@@ -4,3 +4,4 @@
 - [Orval mixed-params collision](orval-params.md) — endpoints with BOTH path param AND query param generate colliding Params types; avoid by removing query params from such endpoints.
 - [Liquid glass CSS system](liquid-glass-css.md) — 3-layer glass material: `.lg` outer card, `::before` specular edge, `::after` prismatic overlay; `.lg-pill` for rounded buttons; haptics via `lib/haptics.ts`; 5-tab nav in BottomNav.tsx (home/campaigns/analytics/audience/accounts); editor is overlay not a tab.
 - [better-sqlite3 rebuild](better-sqlite3-rebuild.md) — sqlite3.o must be compiled first with gcc before linking the .node addon; headers at `/nix/store/jfar9wnj6kvr0gr6klh1gk7vgckkfr5j-nodejs-20.20.0/include/node`.
+- [V3 security arch](v3-security-arch.md) — Bearer middleware in app.ts (skips /twa /health /auth); TWA HMAC for /api/twa/* (skipped in dev); CRM login stores secret in sessionStorage; Mini App calls /api/twa/* with X-Telegram-Init-Data header.

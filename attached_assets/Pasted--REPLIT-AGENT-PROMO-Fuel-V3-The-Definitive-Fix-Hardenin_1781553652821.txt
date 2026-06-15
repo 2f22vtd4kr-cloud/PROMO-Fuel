@@ -1,0 +1,1931 @@
+# REPLIT AGENT — PROMO-Fuel V3: The Definitive Fix & Hardening Prompt
+
+> **⚠️ THIS IS THE AUTHORITATIVE PROMPT. IT SUPERSEDES ALL PREVIOUS INSTRUCTIONS.**
+> Read every section completely before touching a single file. Apply sections in order A → J. Do not skip, summarise, or defer any step. Do not add mock data, placeholder arrays, or simulated API responses anywhere — not even temporarily.
+
+---
+
+## 0. ARCHITECTURE MAP — READ THIS FIRST
+
+This monorepo has **4 services** that MUST ALL run simultaneously:
+
+| # | Service | Port | Root Entry Point | Language |
+|---|---|---|---|---|
+| 1 | Python Telegram Bot | — | `main.py` | Python 3.11 |
+| 2 | Telegram Mini App | 5000 | `artifacts/telegram-miniapp/` | React + Vite + TypeScript |
+| 3 | Express API Server | 8080 | `artifacts/api-server/` | Node + TypeScript + better-sqlite3 |
+| 4 | CRM Platform (browser) | 3001 | `artifacts/crm-platform/` | React + Vite + TypeScript |
+
+**Shared database:** `campaigns.db` (SQLite file at repo root) is written by the Python bot and read by the Express API server. Both processes share the same file. Do NOT create two separate databases.
+
+**Package manager:** `pnpm` with workspaces. Never use `npm` or `yarn`.
+
+**Current broken state (3 root causes):**
+1. **Security vacuum** — Bot responds to anyone, CRM has zero auth, API has zero auth
+2. **Fake data** — React components use hardcoded `useState([{...}])` arrays, never fetched from DB
+3. **Dead UI** — All `onClick` handlers are empty stubs; buttons do nothing; nav routes are missing
+
+---
+
+## SECTION A — PRE-FLIGHT: AUDIT EXISTING FILES
+
+Before writing any new code, run these diagnostic commands and fix what they reveal:
+
+```bash
+# A0.1 — Check all 4 services have their entry files
+ls main.py campaign_sender.py campaign_db.py
+ls artifacts/telegram-miniapp/src/main.tsx
+ls artifacts/api-server/src/app.ts
+ls artifacts/crm-platform/src/App.tsx
+
+# A0.2 — Find ALL mock/fake data in the frontend code
+echo "=== MOCK DATA FILES ==="
+grep -r "mock\|faker\|sample\|fixture\|dummy\|hardcode\|placeholder" \
+  artifacts/ --include="*.ts" --include="*.tsx" -l
+
+echo "=== HARDCODED CAMPAIGN ARRAYS ==="
+grep -rn "const campaigns = \[" artifacts/ --include="*.ts" --include="*.tsx"
+grep -rn "const users = \[" artifacts/ --include="*.ts" --include="*.tsx"
+grep -rn "const analytics = \[" artifacts/ --include="*.ts" --include="*.tsx"
+grep -rn "useState(\[{" artifacts/ --include="*.ts" --include="*.tsx"
+
+echo "=== EMPTY onClick HANDLERS ==="
+grep -rn "onClick={() => {}}" artifacts/ --include="*.tsx"
+grep -rn "onClick={() => console" artifacts/ --include="*.tsx"
+
+echo "=== LOCALHOST HARDCODED URLS ==="
+grep -rn "localhost:8080\|localhost:3001\|localhost:5000\|127.0.0.1" \
+  artifacts/ --include="*.ts" --include="*.tsx"
+
+# A0.3 — Check DB schema exists
+grep -A 50 "CREATE TABLE" campaign_db.py
+```
+
+Document every file the greps find. You will fix all of them in sections B–J below.
+
+---
+
+## SECTION B — ENVIRONMENT & CONFIGURATION
+
+### B1. Replit Secrets (`.env` is NOT used in production — Secrets are)
+
+Ensure ALL of the following are set in Replit Secrets. Do NOT hardcode any values:
+
+| Secret Key | Value | Description |
+|---|---|---|
+| `TELEGRAM_TOKEN` | from @BotFather | Bot API token |
+| `ADMIN_TELEGRAM_ID` | numeric user ID | Only this person controls everything |
+| `MINIAPP_URL` | Replit HTTPS URL for port 5000 | Where the mini app is hosted |
+| `API_SECRET` | random 32-char string | Shared secret for CRM Platform ↔ API auth |
+| `VITE_API_SECRET` | same as `API_SECRET` | Vite build-time var for CRM Platform |
+| `VITE_API_URL` | Replit HTTPS URL for port 8080 | API base URL for both frontend apps |
+| `DAILY_SEND_CAP` | `200` | Max messages per account per day |
+| `PORT` | `8080` | API server port |
+
+### B2. Create `.env` files for local dev (Vite needs these at build time)
+
+**`artifacts/crm-platform/.env`:**
+```env
+VITE_API_URL=https://YOUR-REPLIT-URL-8080.replit.dev
+VITE_API_SECRET=your_32_char_secret_here
+```
+
+**`artifacts/telegram-miniapp/.env`:**
+```env
+VITE_API_URL=https://YOUR-REPLIT-URL-8080.replit.dev
+```
+
+### B3. Create shared API utility — CRM Platform
+
+Create **`artifacts/crm-platform/src/lib/api.ts`** (overwrite if exists):
+
+```typescript
+const BASE = import.meta.env.VITE_API_URL || "";
+const SECRET = import.meta.env.VITE_API_SECRET || "";
+
+export interface ApiError extends Error {
+  status: number;
+}
+
+export async function apiFetch<T>(
+  path: string,
+  options?: RequestInit
+): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${SECRET}`,
+      ...(options?.headers ?? {}),
+    },
+  });
+
+  if (!res.ok) {
+    const err = new Error(`API error ${res.status} on ${path}`) as ApiError;
+    err.status = res.status;
+    throw err;
+  }
+  return res.json() as Promise<T>;
+}
+```
+
+### B4. Create shared API utility — Telegram Mini App
+
+Create **`artifacts/telegram-miniapp/src/lib/api.ts`** (overwrite if exists):
+
+```typescript
+declare global {
+  interface Window {
+    Telegram?: { WebApp?: { initData?: string } };
+  }
+}
+
+const BASE = import.meta.env.VITE_API_URL || "";
+
+export interface ApiError extends Error {
+  status: number;
+}
+
+export async function apiFetch<T>(
+  path: string,
+  options?: RequestInit
+): Promise<T> {
+  const initData = window.Telegram?.WebApp?.initData ?? "";
+  const res = await fetch(`${BASE}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Telegram-Init-Data": initData,
+      ...(options?.headers ?? {}),
+    },
+  });
+
+  if (!res.ok) {
+    const err = new Error(`API error ${res.status} on ${path}`) as ApiError;
+    err.status = res.status;
+    throw err;
+  }
+  return res.json() as Promise<T>;
+}
+```
+
+---
+
+## SECTION C — SECURITY: LOCK EVERYTHING DOWN
+
+### C1. `main.py` — Rewrite the `admin_only` decorator
+
+Find the existing `admin_only` decorator and **replace it entirely**:
+
+```python
+import functools
+from telegram import MenuButtonDefault
+
+def admin_only(func):
+    """Decorator: silently blocks all non-admin users. No exceptions."""
+    @functools.wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.effective_user
+        user_id = user.id if user else None
+        if user_id != ADMIN_ID:
+            # Remove the CRM menu button if a non-admin somehow triggers a command
+            if user_id:
+                try:
+                    await context.bot.set_chat_menu_button(
+                        chat_id=user_id,
+                        menu_button=MenuButtonDefault()
+                    )
+                except Exception:
+                    pass
+            # Completely silent — no reply whatsoever
+            return
+        return await func(update, context)
+    return wrapper
+```
+
+### C2. `main.py` — Rewrite the `start()` handler entirely
+
+Find the existing `start` function and **replace it entirely**:
+
+```python
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    u = update.effective_user
+    if not u:
+        return
+
+    # Always track the user in DB for audience building (silent operation)
+    try:
+        await cdb.upsert_user(u.id, username=u.username, first_name=u.first_name)
+    except Exception as e:
+        logger.warning(f"upsert_user failed: {e}")
+
+    if u.id != ADMIN_ID:
+        # Track referral / conversion silently
+        args = context.args or []
+        if args:
+            try:
+                async with aiosqlite.connect("campaigns.db") as db_conn:
+                    await db_conn.execute(
+                        """UPDATE users 
+                           SET converted = 1, converted_at = datetime('now') 
+                           WHERE chat_id = ?""",
+                        (u.id,)
+                    )
+                    await db_conn.commit()
+            except Exception as e:
+                logger.warning(f"Conversion tracking failed: {e}")
+        # Referral counter
+        if args and args[0].startswith("ref"):
+            try:
+                referrer = int(args[0][3:])
+                ref_key = f"ref_{referrer}_count"
+                db_set(ref_key, db_get(ref_key, 0) + 1)
+            except ValueError:
+                pass
+        return  # ← SILENT. Non-admins get NOTHING.
+
+    # ── ADMIN ONLY ──────────────────────────────────────────────────────────
+    miniapp_url = get_miniapp_url()
+    if miniapp_url:
+        try:
+            await context.bot.set_chat_menu_button(
+                chat_id=u.id,
+                menu_button=MenuButtonWebApp(
+                    text="⚙️ CRM",
+                    web_app=WebAppInfo(url=miniapp_url)
+                )
+            )
+        except Exception as e:
+            logger.warning(f"set_chat_menu_button failed: {e}")
+
+    welcome = (
+        "👋 *Добро пожаловать в PROMO-Fuel CRM*\n\n"
+        "📋 *Команды:*\n"
+        "/campaigns — список кампаний\n"
+        "/stats — статистика отправок\n"
+        "/audience — аудитория бота\n"
+        "/broadcast — ручная рассылка\n"
+        "/help — все команды\n\n"
+        "📱 Открой CRM через кнопку меню ниже."
+    )
+    await update.message.reply_text(welcome, parse_mode="Markdown")
+```
+
+### C3. `main.py` — Verify `@admin_only` is on EVERY handler
+
+In the `main()` function, scan the handler registration section. Confirm `@admin_only` is applied to every single one of these handlers. If any is missing, add it:
+
+- `/help`, `/campaigns`, `/stats`, `/audience`, `/broadcast`
+- `/inn`, `/ip`, `/weather`, `/currency`, `/checko`
+- `/ref`, `/listdata`, `/getdata`, `/deldata`
+- `/export`, `/search`, `/enrich`
+- `handle_document` (the document/file message handler)
+- `echo` (the catch-all text handler)
+
+The `start` handler does **NOT** use `@admin_only` — it handles non-admin tracking itself (see C2).
+
+### C4. API Server — Bearer token middleware
+
+Open **`artifacts/api-server/src/app.ts`**. Add this block **immediately after** `const app = express()` and **before** any `app.use(router)` call:
+
+```typescript
+// ── Global Auth Middleware ────────────────────────────────────────────────
+const API_SECRET = process.env.API_SECRET ?? "";
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  // Public paths — no auth required
+  const PUBLIC = ["/health", "/api/health"];
+  if (PUBLIC.includes(req.path)) return next();
+
+  // TWA paths — authenticated by Telegram initData in Section C5
+  if (req.path.startsWith("/api/twa/")) return next();
+
+  // All other paths require Bearer token
+  const authHeader = req.headers.authorization ?? "";
+  const queryToken = (req.query.token as string) ?? "";
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : queryToken;
+
+  if (!API_SECRET || token !== API_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  next();
+});
+```
+
+### C5. API Server — Telegram initData HMAC validation middleware
+
+In **`artifacts/api-server/src/app.ts`**, add this **after** the global auth middleware:
+
+```typescript
+import crypto from "crypto";
+
+function validateTelegramInitData(initData: string): number | null {
+  const BOT_TOKEN = process.env.TELEGRAM_TOKEN ?? "";
+  if (!initData || !BOT_TOKEN) return null;
+
+  const params = new URLSearchParams(initData);
+  const hash = params.get("hash");
+  if (!hash) return null;
+
+  params.delete("hash");
+  const dataCheckString = [...params.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n");
+
+  const secretKey = crypto
+    .createHmac("sha256", "WebAppData")
+    .update(BOT_TOKEN)
+    .digest();
+  const expected = crypto
+    .createHmac("sha256", secretKey)
+    .update(dataCheckString)
+    .digest("hex");
+
+  if (expected !== hash) return null;
+
+  try {
+    const user = JSON.parse(params.get("user") ?? "{}");
+    return typeof user.id === "number" ? user.id : null;
+  } catch {
+    return null;
+  }
+}
+
+// TWA middleware — admin-only Telegram WebApp routes
+app.use("/api/twa", (req: Request, res: Response, next: NextFunction) => {
+  const initData = (req.headers["x-telegram-init-data"] as string) ?? "";
+  const userId = validateTelegramInitData(initData);
+  const ADMIN_ID = parseInt(process.env.ADMIN_TELEGRAM_ID ?? "0", 10);
+
+  if (!userId || userId !== ADMIN_ID) {
+    return res.status(403).json({ error: "Forbidden: admin only" });
+  }
+  (req as any).telegramUserId = userId;
+  next();
+});
+```
+
+### C6. CRM Platform — Login screen
+
+Create **`artifacts/crm-platform/src/components/LoginScreen.tsx`**:
+
+```typescript
+import React, { useState } from "react";
+
+interface Props {
+  onAuth: (token: string) => void;
+}
+
+export default function LoginScreen({ onAuth }: Props) {
+  const [token, setToken] = useState("");
+  const [shake, setShake] = useState(false);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (token.trim()) {
+      onAuth(token.trim());
+    }
+  }
+
+  function handleError() {
+    setShake(true);
+    setTimeout(() => setShake(false), 600);
+  }
+
+  return (
+    <div className="login-wrapper">
+      <div className={`login-card ${shake ? "shake" : ""}`}>
+        <h1>⛽ PROMO-Fuel CRM</h1>
+        <p>Введите ключ доступа</p>
+        <form onSubmit={handleSubmit}>
+          <input
+            type="password"
+            value={token}
+            onChange={e => setToken(e.target.value)}
+            placeholder="API_SECRET"
+            autoFocus
+          />
+          <button type="submit">Войти →</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+```
+
+Open **`artifacts/crm-platform/src/App.tsx`**. At the very top of the root component, add the auth gate:
+
+```typescript
+import React from "react";
+import LoginScreen from "./components/LoginScreen";
+
+const STORED_KEY = "crm_auth_v1";
+
+export default function App() {
+  const [authed, setAuthed] = React.useState<boolean>(() => {
+    const stored = sessionStorage.getItem(STORED_KEY);
+    const secret = import.meta.env.VITE_API_SECRET;
+    return !!secret && stored === secret;
+  });
+
+  if (!authed) {
+    return (
+      <LoginScreen
+        onAuth={(token) => {
+          const secret = import.meta.env.VITE_API_SECRET;
+          if (token === secret) {
+            sessionStorage.setItem(STORED_KEY, token);
+            setAuthed(true);
+          } else {
+            alert("❌ Неверный ключ доступа");
+          }
+        }}
+      />
+    );
+  }
+
+  // ... rest of your existing App JSX (router, layout, etc.)
+}
+```
+
+Add login screen styles to **`artifacts/crm-platform/src/index.css`**:
+
+```css
+.login-wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0f0f1a;
+}
+.login-card {
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+  border-radius: 16px;
+  padding: 2.5rem;
+  width: min(400px, 90vw);
+  text-align: center;
+}
+.login-card h1 { font-size: 1.6rem; margin-bottom: 0.5rem; }
+.login-card p { color: #888; margin-bottom: 1.5rem; }
+.login-card input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background: #0f0f1a;
+  color: #fff;
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  box-sizing: border-box;
+}
+.login-card button {
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: #4a90e2;
+  color: #fff;
+  font-size: 1rem;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.login-card button:hover { background: #3a7bd5; }
+.shake { animation: shake 0.5s ease; }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+```
+
+---
+
+## SECTION D — DATABASE SCHEMA: ENSURE ALL TABLES EXIST
+
+### D1. `campaign_db.py` — Add missing columns safely
+
+In the `init_db()` async function, add these safe migrations **after** the existing `CREATE TABLE` statements:
+
+```python
+# Safe column additions — ignore errors if column already exists
+migrations = [
+    ("users", "promo_targeted", "INTEGER DEFAULT 0"),
+    ("users", "converted", "INTEGER DEFAULT 0"),
+    ("users", "converted_at", "TEXT"),
+    ("campaigns", "target_count", "INTEGER DEFAULT 0"),
+    ("campaigns", "failed_count", "INTEGER DEFAULT 0"),
+    ("campaigns", "scheduled_at", "TEXT"),
+    ("campaigns", "dry_run", "INTEGER DEFAULT 0"),
+]
+for table, col, definition in migrations:
+    try:
+        await db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {definition}")
+        await db.commit()
+    except Exception:
+        pass  # Column already exists — safe to ignore
+
+# Uploads table
+await db.execute("""
+    CREATE TABLE IF NOT EXISTS uploads (
+        key TEXT PRIMARY KEY,
+        filename TEXT NOT NULL,
+        entries_json TEXT NOT NULL,
+        uploaded_at TEXT DEFAULT (datetime('now')),
+        imported_count INTEGER DEFAULT 0
+    )
+""")
+
+# Sends table (per-message delivery tracking)
+await db.execute("""
+    CREATE TABLE IF NOT EXISTS sends (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        campaign_id INTEGER NOT NULL,
+        chat_id INTEGER NOT NULL,
+        username TEXT,
+        first_name TEXT,
+        status TEXT NOT NULL,
+        error TEXT,
+        sent_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (campaign_id) REFERENCES campaigns(id)
+    )
+""")
+await db.commit()
+```
+
+### D2. API Server — Drizzle schema sync
+
+In **`artifacts/api-server/src/db/schema.ts`** (or wherever the Drizzle schema is defined), ensure all tables mirror the Python DB exactly. The critical tables:
+
+```typescript
+// campaigns table must have these columns:
+// id, name, status, text_template, target_count, sent_count, failed_count,
+// dry_run, scheduled_at, created_at
+
+// users table must have:
+// id (PK), chat_id (unique), username, first_name, promo_targeted,
+// converted, converted_at, created_at
+
+// sends table must have:
+// id, campaign_id (FK), chat_id, username, first_name, status, error, sent_at
+
+// uploads table must have:
+// key (PK), filename, entries_json, uploaded_at, imported_count
+```
+
+After updating the schema, run:
+```bash
+pnpm --filter @workspace/api-server run db:push
+```
+
+---
+
+## SECTION E — API SERVER: ALL ROUTES
+
+Open **`artifacts/api-server/src/app.ts`** and ensure ALL routes below are registered. Create any missing route files.
+
+### E1. Health check
+
+```typescript
+app.get("/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
+```
+
+### E2. Analytics routes — `artifacts/api-server/src/routes/analytics.ts`
+
+```typescript
+import { Router } from "express";
+import { getDb } from "../db";
+
+const router = Router();
+
+router.get("/summary", (req, res) => {
+  const db = getDb();
+
+  const totalUsers    = (db.prepare("SELECT COUNT(*) as n FROM users").get() as any).n;
+  const totalSent     = (db.prepare("SELECT COALESCE(SUM(sent_count),0) as n FROM campaigns").get() as any).n;
+  const activeCamps   = (db.prepare("SELECT COUNT(*) as n FROM campaigns WHERE status = 'running'").get() as any).n;
+  const targeted      = (db.prepare("SELECT COUNT(*) as n FROM users WHERE promo_targeted = 1").get() as any).n;
+  const converted     = (db.prepare("SELECT COUNT(*) as n FROM users WHERE converted = 1").get() as any).n;
+  const totalCamps    = (db.prepare("SELECT COUNT(*) as n FROM campaigns").get() as any).n;
+
+  const recentSends   = db.prepare(`
+    SELECT date(sent_at) as day, COUNT(*) as count
+    FROM sends
+    WHERE status IN ('ok','ok_retry','dry_run')
+      AND sent_at >= date('now','-30 days')
+    GROUP BY day
+    ORDER BY day
+  `).all();
+
+  const statusBreakdown = db.prepare(`
+    SELECT status, COUNT(*) as count FROM campaigns GROUP BY status
+  `).all();
+
+  res.json({
+    totalUsers,
+    totalSent,
+    activeCampaigns: activeCamps,
+    totalCampaigns: totalCamps,
+    targetedUsers: targeted,
+    untargetedUsers: totalUsers - targeted,
+    convertedUsers: converted,
+    conversionRate: targeted > 0 ? ((converted / targeted) * 100).toFixed(1) : "0.0",
+    recentSends,
+    statusBreakdown,
+  });
+});
+
+export default router;
+```
+
+Register in `app.ts`:
+```typescript
+import analyticsRouter from "./routes/analytics";
+app.use("/api/analytics", analyticsRouter);        // CRM Platform
+app.use("/api/twa/analytics", analyticsRouter);    // Mini App
+```
+
+### E3. Campaigns routes — `artifacts/api-server/src/routes/campaigns.ts`
+
+```typescript
+import { Router } from "express";
+import { getDb } from "../db";
+
+const router = Router();
+
+// List all campaigns
+router.get("/", (req, res) => {
+  const db = getDb();
+  const rows = db.prepare(
+    "SELECT * FROM campaigns ORDER BY id DESC"
+  ).all();
+  res.json(rows);
+});
+
+// Get single campaign
+router.get("/:id", (req, res) => {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(req.params.id);
+  if (!row) return res.status(404).json({ error: "Not found" });
+  res.json(row);
+});
+
+// Create campaign
+router.post("/", (req, res) => {
+  const db = getDb();
+  const { name, text_template, dry_run, scheduled_at } = req.body;
+  if (!name || !text_template) {
+    return res.status(400).json({ error: "name and text_template are required" });
+  }
+  const result = db.prepare(`
+    INSERT INTO campaigns (name, text_template, status, dry_run, scheduled_at, created_at)
+    VALUES (?, ?, 'draft', ?, ?, datetime('now'))
+  `).run(name, text_template, dry_run ? 1 : 0, scheduled_at ?? null);
+  const created = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(result.lastInsertRowid);
+  res.status(201).json(created);
+});
+
+// Update campaign
+router.put("/:id", (req, res) => {
+  const db = getDb();
+  const { name, text_template, dry_run, scheduled_at } = req.body;
+  db.prepare(`
+    UPDATE campaigns
+    SET name = ?, text_template = ?, dry_run = ?, scheduled_at = ?
+    WHERE id = ? AND status = 'draft'
+  `).run(name, text_template, dry_run ? 1 : 0, scheduled_at ?? null, req.params.id);
+  const updated = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(req.params.id);
+  res.json(updated);
+});
+
+// Start campaign
+router.post("/:id/start", (req, res) => {
+  const db = getDb();
+  const campaign = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(req.params.id) as any;
+  if (!campaign) return res.status(404).json({ error: "Not found" });
+  if (!["draft","paused"].includes(campaign.status)) {
+    return res.status(409).json({ error: `Cannot start a campaign with status '${campaign.status}'` });
+  }
+  db.prepare("UPDATE campaigns SET status = 'running' WHERE id = ?").run(req.params.id);
+  res.json({ ok: true });
+});
+
+// Pause campaign
+router.post("/:id/pause", (req, res) => {
+  const db = getDb();
+  db.prepare(
+    "UPDATE campaigns SET status = 'paused' WHERE id = ? AND status = 'running'"
+  ).run(req.params.id);
+  res.json({ ok: true });
+});
+
+// Cancel campaign
+router.post("/:id/cancel", (req, res) => {
+  const db = getDb();
+  db.prepare(
+    "UPDATE campaigns SET status = 'cancelled' WHERE id = ? AND status IN ('running','paused','draft')"
+  ).run(req.params.id);
+  res.json({ ok: true });
+});
+
+// Delete campaign (only draft or cancelled)
+router.delete("/:id", (req, res) => {
+  const db = getDb();
+  const campaign = db.prepare("SELECT status FROM campaigns WHERE id = ?").get(req.params.id) as any;
+  if (!campaign) return res.status(404).json({ error: "Not found" });
+  if (!["draft","cancelled"].includes(campaign.status)) {
+    return res.status(409).json({ error: "Can only delete draft or cancelled campaigns" });
+  }
+  db.prepare("DELETE FROM sends WHERE campaign_id = ?").run(req.params.id);
+  db.prepare("DELETE FROM campaigns WHERE id = ?").run(req.params.id);
+  res.json({ ok: true });
+});
+
+// Get sends for a campaign
+router.get("/:id/sends", (req, res) => {
+  const db = getDb();
+  const limit = Math.min(parseInt((req.query.limit as string) ?? "200"), 1000);
+  const rows = db.prepare(`
+    SELECT * FROM sends WHERE campaign_id = ?
+    ORDER BY id DESC LIMIT ?
+  `).all(req.params.id, limit);
+  res.json(rows);
+});
+
+export default router;
+```
+
+Register in `app.ts`:
+```typescript
+import campaignsRouter from "./routes/campaigns";
+app.use("/api/campaigns", campaignsRouter);
+app.use("/api/twa/campaigns", campaignsRouter);
+```
+
+### E4. Audience routes — `artifacts/api-server/src/routes/audience.ts`
+
+```typescript
+import { Router } from "express";
+import { getDb } from "../db";
+
+const router = Router();
+
+router.get("/", (req, res) => {
+  const db = getDb();
+  const page = Math.max(1, parseInt((req.query.page as string) ?? "1"));
+  const limit = Math.min(parseInt((req.query.limit as string) ?? "50"), 200);
+  const offset = (page - 1) * limit;
+
+  const total = (db.prepare("SELECT COUNT(*) as n FROM users").get() as any).n;
+  const rows = db.prepare(
+    "SELECT * FROM users ORDER BY id DESC LIMIT ? OFFSET ?"
+  ).all(limit, offset);
+
+  res.json({ total, page, limit, users: rows });
+});
+
+export default router;
+```
+
+Register in `app.ts`:
+```typescript
+import audienceRouter from "./routes/audience";
+app.use("/api/audience", audienceRouter);
+app.use("/api/twa/audience", audienceRouter);
+```
+
+### E5. Upload routes — `artifacts/api-server/src/routes/upload.ts`
+
+First install multer:
+```bash
+pnpm --filter @workspace/api-server add multer
+pnpm --filter @workspace/api-server add -D @types/multer
+```
+
+```typescript
+import { Router } from "express";
+import multer from "multer";
+import { getDb } from "../db";
+
+const router = Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+});
+
+router.post("/", upload.single("file"), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+  const filename = req.file.originalname.toLowerCase();
+  const allowed = [".html", ".csv", ".tsv", ".json", ".jsonl"];
+  const ext = "." + filename.split(".").pop();
+  if (!allowed.includes(ext)) {
+    return res.status(400).json({ error: `Unsupported format. Allowed: ${allowed.join(", ")}` });
+  }
+
+  const content = req.file.buffer.toString("utf-8");
+  const key = `upload_${Date.now()}`;
+  const entries: any[] = [];
+
+  try {
+    if (ext === ".csv" || ext === ".tsv") {
+      const delimiter = ext === ".tsv" ? "\t" : ",";
+      const lines = content.split(/\r?\n/).filter(Boolean);
+      if (lines.length < 2) return res.status(400).json({ error: "File has no data rows" });
+      const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^"|"$/g, ""));
+      for (const line of lines.slice(1)) {
+        const vals = line.split(delimiter);
+        const row: Record<string, string> = {};
+        headers.forEach((h, i) => {
+          const v = (vals[i] ?? "").trim().replace(/^"|"$/g, "");
+          if (v) row[h] = v;
+        });
+        if (Object.keys(row).length > 0) entries.push(row);
+      }
+    } else if (ext === ".json") {
+      const data = JSON.parse(content);
+      if (Array.isArray(data)) entries.push(...data);
+      else entries.push(data);
+    } else if (ext === ".jsonl") {
+      for (const line of content.split(/\r?\n/).filter(Boolean)) {
+        try { entries.push(JSON.parse(line)); } catch { /* skip malformed lines */ }
+      }
+    } else if (ext === ".html") {
+      const phoneRe = /(?:\+7|8|7)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/g;
+      const phones = [...new Set(content.match(phoneRe) ?? [])];
+      for (const p of phones.slice(0, 500)) {
+        entries.push({ phone: p.replace(/[\s\-\(\)]/g, "") });
+      }
+    }
+  } catch (e: any) {
+    return res.status(400).json({ error: `Parse error: ${e.message}` });
+  }
+
+  const db = getDb();
+  db.prepare(`
+    INSERT OR REPLACE INTO uploads (key, filename, entries_json, uploaded_at)
+    VALUES (?, ?, ?, datetime('now'))
+  `).run(key, req.file.originalname, JSON.stringify(entries));
+
+  res.json({ key, filename: req.file.originalname, count: entries.length });
+});
+
+router.get("/", (req, res) => {
+  const db = getDb();
+  const rows = db.prepare(
+    "SELECT key, filename, uploaded_at, imported_count, json_array_length(entries_json) as count FROM uploads ORDER BY rowid DESC"
+  ).all();
+  res.json(rows);
+});
+
+export default router;
+```
+
+Register in `app.ts`:
+```typescript
+import uploadRouter from "./routes/upload";
+app.use("/api/upload", uploadRouter);
+app.use("/api/twa/upload", uploadRouter);
+```
+
+### E6. SSE Progress route — `artifacts/api-server/src/routes/events.ts`
+
+```typescript
+import { Router } from "express";
+import { getDb } from "../db";
+
+const router = Router();
+
+router.get("/campaigns/:id/progress", (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no"); // Disable Nginx buffering
+  res.flushHeaders();
+
+  const sendUpdate = () => {
+    const db = getDb();
+    const row = db.prepare(
+      "SELECT id, status, sent_count, failed_count, target_count FROM campaigns WHERE id = ?"
+    ).get(id) as any;
+
+    if (!row) {
+      res.write(`event: error\ndata: ${JSON.stringify({ error: "Campaign not found" })}\n\n`);
+      clearInterval(timer);
+      res.end();
+      return;
+    }
+
+    res.write(`data: ${JSON.stringify(row)}\n\n`);
+
+    if (row.status === "done" || row.status === "cancelled") {
+      clearInterval(timer);
+      res.write(`event: done\ndata: ${JSON.stringify(row)}\n\n`);
+      res.end();
+    }
+  };
+
+  sendUpdate(); // send immediately on connect
+  const timer = setInterval(sendUpdate, 2000);
+  req.on("close", () => clearInterval(timer));
+});
+
+export default router;
+```
+
+Register in `app.ts`:
+```typescript
+import eventsRouter from "./routes/events";
+app.use("/api/events", eventsRouter);
+app.use("/api/twa/events", eventsRouter);
+```
+
+---
+
+## SECTION F — PURGE ALL FAKE DATA FROM FRONTEND
+
+### F1. Remove every mock data file found in Section A
+
+For each file identified by the grep in Section A:
+
+1. If the file is named `mockData.ts`, `fixtures.ts`, `sampleData.ts` — **delete the file entirely**
+2. If it is a component/page file with hardcoded `useState([{...}])` — apply the real-data pattern below
+
+### F2. The universal real-data component pattern
+
+Apply this pattern to **every single page** in both `artifacts/crm-platform` and `artifacts/telegram-miniapp` that renders lists or stats:
+
+```typescript
+// ❌ NEVER DO THIS
+const [campaigns, setCampaigns] = useState([
+  { id: 1, name: "Акция на бензин", status: "done", sent_count: 150 },
+  { id: 2, name: "Летняя скидка", status: "draft", sent_count: 0 },
+]);
+
+// ✅ ALWAYS DO THIS
+import { apiFetch } from "../lib/api";
+import type { Campaign } from "../types";
+
+const [campaigns, setCampaigns]   = useState<Campaign[]>([]);
+const [loading, setLoading]       = useState(true);
+const [error, setError]           = useState<string | null>(null);
+
+// Use a ref to allow manual refresh
+const fetchCampaigns = useCallback(async () => {
+  setLoading(true);
+  setError(null);
+  try {
+    const data = await apiFetch<Campaign[]>("/api/twa/campaigns");
+    setCampaigns(data);
+  } catch (e: any) {
+    setError(e.message);
+  } finally {
+    setLoading(false);
+  }
+}, []);
+
+useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
+
+if (loading) return <LoadingSpinner />;
+if (error)   return <ErrorMessage message={error} onRetry={fetchCampaigns} />;
+```
+
+Create shared components **`artifacts/telegram-miniapp/src/components/LoadingSpinner.tsx`** and **`ErrorMessage.tsx`**:
+
+```typescript
+// LoadingSpinner.tsx
+export default function LoadingSpinner() {
+  return <div className="loading-spinner">⏳ Загрузка...</div>;
+}
+
+// ErrorMessage.tsx
+interface Props { message: string; onRetry?: () => void; }
+export default function ErrorMessage({ message, onRetry }: Props) {
+  return (
+    <div className="error-message">
+      <p>❌ Ошибка: {message}</p>
+      {onRetry && <button onClick={onRetry}>🔄 Повторить</button>}
+    </div>
+  );
+}
+```
+
+Create the same components for the CRM Platform in `artifacts/crm-platform/src/components/`.
+
+### F3. TypeScript types — create `src/types/index.ts` in BOTH apps
+
+**`artifacts/telegram-miniapp/src/types/index.ts`** and **`artifacts/crm-platform/src/types/index.ts`**:
+
+```typescript
+export interface Campaign {
+  id: number;
+  name: string;
+  status: "draft" | "running" | "paused" | "done" | "cancelled";
+  text_template: string;
+  target_count: number;
+  sent_count: number;
+  failed_count: number;
+  dry_run: number;
+  scheduled_at: string | null;
+  created_at: string;
+}
+
+export interface User {
+  id: number;
+  chat_id: number;
+  username: string | null;
+  first_name: string | null;
+  promo_targeted: number;
+  converted: number;
+  converted_at: string | null;
+  created_at: string;
+}
+
+export interface Send {
+  id: number;
+  campaign_id: number;
+  chat_id: number;
+  username: string | null;
+  first_name: string | null;
+  status: "ok" | "ok_retry" | "failed" | "blocked" | "dry_run" | "skipped_already_targeted";
+  error: string | null;
+  sent_at: string;
+}
+
+export interface AnalyticsSummary {
+  totalUsers: number;
+  totalSent: number;
+  activeCampaigns: number;
+  totalCampaigns: number;
+  targetedUsers: number;
+  untargetedUsers: number;
+  convertedUsers: number;
+  conversionRate: string;
+  recentSends: Array<{ day: string; count: number }>;
+  statusBreakdown: Array<{ status: string; count: number }>;
+}
+
+export interface UploadResult {
+  key: string;
+  filename: string;
+  count: number;
+}
+```
+
+---
+
+## SECTION G — FIX ALL BROKEN UI: NAVIGATION, BUTTONS, ROUTING
+
+### G1. Router — ensure ALL routes are defined in both apps
+
+Open the router file in each app (`App.tsx` or a dedicated `router.tsx`) and ensure these routes exist:
+
+**Both apps must have:**
+```typescript
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+
+// Required routes for BOTH apps:
+<Route path="/"              element={<HomePage />} />
+<Route path="/campaigns"     element={<CampaignsPage />} />
+<Route path="/campaigns/new" element={<CampaignEditorPage />} />
+<Route path="/campaigns/:id" element={<CampaignDetailPage />} />
+<Route path="/audience"      element={<AudiencePage />} />
+<Route path="/analytics"     element={<AnalyticsPage />} />
+<Route path="/upload"        element={<UploadPage />} />
+<Route path="/sends"         element={<SendsPage />} />
+<Route path="*"              element={<Navigate to="/" replace />} />
+```
+
+**Mini App also needs:**
+```typescript
+<Route path="/accounts"  element={<AccountsPage />} />
+```
+
+If any page component doesn't exist yet, create a minimal skeleton:
+```typescript
+export default function XxxPage() {
+  return <div className="page"><h2>Xxx</h2><p>Загрузка данных...</p></div>;
+}
+```
+
+Then implement the real data fetching per Section F.
+
+### G2. Fix all empty `onClick` handlers — Quick Actions
+
+In the Home/Dashboard page of both apps, find ALL `onClick={() => {}}` and replace them. Use `react-router-dom` `useNavigate`:
+
+```typescript
+import { useNavigate } from "react-router-dom";
+
+const navigate = useNavigate();
+
+const QUICK_ACTIONS = [
+  { icon: "➕", label: "Новая кампания", path: "/campaigns/new" },
+  { icon: "📋", label: "Кампании",       path: "/campaigns" },
+  { icon: "👥", label: "Аудитория",      path: "/audience" },
+  { icon: "📁", label: "Загрузка",       path: "/upload" },
+  { icon: "📊", label: "Аналитика",      path: "/analytics" },
+  { icon: "📨", label: "История",        path: "/sends" },
+];
+
+// Render:
+{QUICK_ACTIONS.map(a => (
+  <button key={a.path} className="quick-action-btn" onClick={() => navigate(a.path)}>
+    <span className="qa-icon">{a.icon}</span>
+    <span className="qa-label">{a.label}</span>
+  </button>
+))}
+```
+
+### G3. Fix the bottom navigation bar — always visible on mobile
+
+In the bottom nav component (`BottomNav.tsx` or similar), ensure the wrapper element has these exact styles applied either via CSS class or inline:
+
+```css
+.bottom-nav {
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  background: var(--tg-theme-bg-color, #1a1a2e);
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  min-height: 60px;
+}
+
+/* Prevent content from hiding behind fixed nav */
+.page-content, .page, main {
+  padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)) !important;
+}
+```
+
+The bottom nav should have tabs for: Home, Campaigns, Audience, Analytics, Upload.
+
+Use `useLocation()` to set the active tab:
+```typescript
+import { useLocation, useNavigate } from "react-router-dom";
+
+const location = useLocation();
+const navigate = useNavigate();
+
+const TABS = [
+  { icon: "🏠", label: "Главная",   path: "/" },
+  { icon: "📋", label: "Кампании",  path: "/campaigns" },
+  { icon: "👥", label: "Аудитория", path: "/audience" },
+  { icon: "📊", label: "Статистика",path: "/analytics" },
+  { icon: "📁", label: "Файлы",     path: "/upload" },
+];
+
+{TABS.map(tab => (
+  <button
+    key={tab.path}
+    className={`nav-tab ${location.pathname === tab.path ? "active" : ""}`}
+    onClick={() => navigate(tab.path)}
+  >
+    <span>{tab.icon}</span>
+    <span>{tab.label}</span>
+  </button>
+))}
+```
+
+### G4. Campaign action buttons — wire to real API calls
+
+In `CampaignsPage.tsx` and `CampaignDetailPage.tsx`, add these fully-wired action functions:
+
+```typescript
+const [actionLoading, setActionLoading] = useState<number | null>(null);
+
+async function campaignAction(
+  id: number,
+  endpoint: string,
+  method: "POST" | "DELETE",
+  confirmMsg?: string
+) {
+  if (confirmMsg && !window.confirm(confirmMsg)) return;
+  setActionLoading(id);
+  try {
+    await apiFetch(`/api/twa/campaigns/${id}${endpoint}`, { method });
+    await fetchCampaigns(); // re-fetch the list
+  } catch (e: any) {
+    alert(`Ошибка: ${e.message}`);
+  } finally {
+    setActionLoading(null);
+  }
+}
+
+// Buttons:
+<button
+  disabled={actionLoading === c.id || c.status !== "draft" && c.status !== "paused"}
+  onClick={() => campaignAction(c.id, "/start", "POST")}
+>▶️ Запустить</button>
+
+<button
+  disabled={actionLoading === c.id || c.status !== "running"}
+  onClick={() => campaignAction(c.id, "/pause", "POST")}
+>⏸ Пауза</button>
+
+<button
+  disabled={actionLoading === c.id || !["running","paused","draft"].includes(c.status)}
+  onClick={() => campaignAction(c.id, "/cancel", "POST", "Отменить кампанию?")}
+>⏹ Отменить</button>
+
+<button
+  disabled={actionLoading === c.id || !["draft","cancelled"].includes(c.status)}
+  onClick={() => campaignAction(c.id, "", "DELETE", "Удалить кампанию навсегда?")}
+>🗑 Удалить</button>
+```
+
+---
+
+## SECTION H — PAGE IMPLEMENTATIONS
+
+### H1. Home Dashboard — `src/pages/Home.tsx`
+
+```typescript
+import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { apiFetch } from "../lib/api";
+import type { AnalyticsSummary, Campaign } from "../types";
+import LoadingSpinner from "../components/LoadingSpinner";
+
+export default function HomePage() {
+  const navigate = useNavigate();
+  const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
+  const [lastCampaign, setLastCampaign] = useState<Campaign | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [sumData, camps] = await Promise.all([
+        apiFetch<AnalyticsSummary>("/api/twa/analytics/summary"),
+        apiFetch<Campaign[]>("/api/twa/campaigns"),
+      ]);
+      setSummary(sumData);
+      setLastCampaign(
+        camps.find(c => c.status === "running" || c.status === "done") ?? null
+      );
+    } catch { /* errors shown individually */ }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <div className="page">
+      <h1>⛽ PROMO-Fuel</h1>
+
+      {/* Stats row */}
+      {summary && (
+        <div className="stats-grid">
+          <div className="stat-card">
+            <span className="stat-num">{summary.totalUsers}</span>
+            <span className="stat-label">Пользователей</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-num">{summary.totalSent}</span>
+            <span className="stat-label">Отправлено</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-num">{summary.activeCampaigns}</span>
+            <span className="stat-label">Активных</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-num">{summary.conversionRate}%</span>
+            <span className="stat-label">Конверсия</span>
+          </div>
+        </div>
+      )}
+
+      {/* Last campaign card */}
+      {lastCampaign && (
+        <div className="glass-card" onClick={() => navigate(`/campaigns/${lastCampaign.id}`)}>
+          <h3>📊 {lastCampaign.name}</h3>
+          <p>✅ {lastCampaign.sent_count} / {lastCampaign.target_count} отправлено</p>
+          <p>❌ {lastCampaign.failed_count} ошибок</p>
+          <span className={`status-badge status-${lastCampaign.status}`}>
+            {lastCampaign.status}
+          </span>
+        </div>
+      )}
+
+      {/* Quick actions */}
+      <h2>Быстрые действия</h2>
+      <div className="quick-actions-grid">
+        {[
+          { icon: "➕", label: "Новая кампания", path: "/campaigns/new" },
+          { icon: "📋", label: "Кампании", path: "/campaigns" },
+          { icon: "👥", label: "Аудитория", path: "/audience" },
+          { icon: "📁", label: "Загрузить файл", path: "/upload" },
+          { icon: "📊", label: "Аналитика", path: "/analytics" },
+          { icon: "📨", label: "История отправок", path: "/sends" },
+        ].map(a => (
+          <button key={a.path} className="quick-action-btn" onClick={() => navigate(a.path)}>
+            <span>{a.icon}</span>
+            <span>{a.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+### H2. Campaign Detail with SSE Progress — `src/pages/CampaignDetail.tsx`
+
+```typescript
+import { useEffect, useState, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { apiFetch } from "../lib/api";
+import type { Campaign } from "../types";
+
+export default function CampaignDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [campaign, setCampaign] = useState<Campaign | null>(null);
+  const [progress, setProgress] = useState<Partial<Campaign>>({});
+
+  const fetchCampaign = useCallback(async () => {
+    if (!id) return;
+    const data = await apiFetch<Campaign>(`/api/twa/campaigns/${id}`);
+    setCampaign(data);
+  }, [id]);
+
+  useEffect(() => { fetchCampaign(); }, [fetchCampaign]);
+
+  // SSE live progress
+  useEffect(() => {
+    if (!campaign || campaign.status !== "running") return;
+    const apiBase = import.meta.env.VITE_API_URL || "";
+    const es = new EventSource(`${apiBase}/api/twa/events/campaigns/${campaign.id}/progress`);
+    es.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      setProgress(data);
+      if (data.status === "done" || data.status === "cancelled") {
+        fetchCampaign();
+        es.close();
+      }
+    };
+    es.onerror = () => es.close();
+    return () => es.close();
+  }, [campaign?.id, campaign?.status, fetchCampaign]);
+
+  if (!campaign) return <div className="loading">⏳ Загрузка...</div>;
+
+  const sent = progress.sent_count ?? campaign.sent_count;
+  const total = progress.target_count ?? campaign.target_count;
+  const pct = total > 0 ? Math.round((sent / total) * 100) : 0;
+
+  return (
+    <div className="page">
+      <button onClick={() => navigate("/campaigns")}>← Назад</button>
+      <h2>{campaign.name}</h2>
+      <span className={`status-badge status-${campaign.status}`}>{campaign.status}</span>
+
+      {campaign.status === "running" && (
+        <div className="progress-section">
+          <div className="progress-bar">
+            <div className="progress-fill" style={{ width: `${pct}%` }} />
+          </div>
+          <p>{sent} / {total} ({pct}%)</p>
+          <p>❌ Ошибок: {progress.failed_count ?? campaign.failed_count}</p>
+        </div>
+      )}
+
+      <div className="campaign-text">
+        <h3>Текст рассылки</h3>
+        <pre>{campaign.text_template}</pre>
+      </div>
+
+      <div className="campaign-meta">
+        <p>🔍 Dry-run: {campaign.dry_run ? "Да" : "Нет"}</p>
+        <p>📅 Создана: {campaign.created_at?.slice(0, 16)}</p>
+        {campaign.scheduled_at && <p>⏰ Запланирована: {campaign.scheduled_at.slice(0, 16)}</p>}
+      </div>
+    </div>
+  );
+}
+```
+
+### H3. Campaign Editor — `src/pages/CampaignEditor.tsx`
+
+```typescript
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { apiFetch } from "../lib/api";
+import type { Campaign } from "../types";
+
+export default function CampaignEditorPage() {
+  const navigate = useNavigate();
+  const [name, setName] = useState("");
+  const [text, setText] = useState("");
+  const [dryRun, setDryRun] = useState(true);
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSave() {
+    if (!name.trim() || !text.trim()) {
+      setError("Название и текст обязательны.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const campaign = await apiFetch<Campaign>("/api/twa/campaigns", {
+        method: "POST",
+        body: JSON.stringify({
+          name: name.trim(),
+          text_template: text.trim(),
+          dry_run: dryRun,
+          scheduled_at: scheduledAt || null,
+        }),
+      });
+      navigate(`/campaigns/${campaign.id}`);
+    } catch (e: any) {
+      setError(e.message);
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="page">
+      <button onClick={() => navigate("/campaigns")}>← Назад</button>
+      <h2>➕ Новая кампания</h2>
+
+      {error && <div className="error-banner">❌ {error}</div>}
+
+      <label>Название</label>
+      <input
+        value={name}
+        onChange={e => setName(e.target.value)}
+        placeholder="Например: Акция на дизель июнь"
+      />
+
+      <label>Текст рассылки</label>
+      <textarea
+        rows={6}
+        value={text}
+        onChange={e => setText(e.target.value)}
+        placeholder="{Привет|Здравствуй|Добрый день}, {name}! ⛽ Персональная акция на топливо → @fuel_fuel_fuel_bot"
+      />
+      <p className="hint">
+        💡 Спинтакс: <code>{"{Привет|Здравствуй|Добрый день}"}</code><br />
+        💡 Переменные: <code>{"{name}"}</code>, <code>{"{username}"}</code><br />
+        💡 Шаблон: <em>⛽ {"{name}"}, акция на топливо → @fuel_fuel_fuel_bot</em>
+      </p>
+
+      <label>
+        <input
+          type="checkbox"
+          checked={dryRun}
+          onChange={e => setDryRun(e.target.checked)}
+        />
+        {" "}🔍 Dry-run (не отправлять реальные сообщения)
+      </label>
+
+      <label>Запланировать (оставьте пустым для немедленного запуска)</label>
+      <input
+        type="datetime-local"
+        value={scheduledAt}
+        onChange={e => setScheduledAt(e.target.value)}
+      />
+
+      <button className="btn-primary" onClick={handleSave} disabled={saving}>
+        {saving ? "⏳ Сохранение..." : "💾 Создать кампанию"}
+      </button>
+    </div>
+  );
+}
+```
+
+### H4. Sends History Page — `src/pages/Sends.tsx`
+
+```typescript
+import { useEffect, useState } from "react";
+import { apiFetch } from "../lib/api";
+import type { Campaign, Send } from "../types";
+
+const STATUS_ICONS: Record<string, string> = {
+  ok: "✅", ok_retry: "✅⟳", failed: "❌",
+  blocked: "🚫", dry_run: "🔍", skipped_already_targeted: "⏭️",
+};
+
+export default function SendsPage() {
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [sends, setSends] = useState<Send[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    apiFetch<Campaign[]>("/api/twa/campaigns").then(setCampaigns);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    setLoading(true);
+    apiFetch<Send[]>(`/api/twa/campaigns/${selectedId}/sends`)
+      .then(setSends)
+      .finally(() => setLoading(false));
+  }, [selectedId]);
+
+  return (
+    <div className="page">
+      <h2>📨 История отправок</h2>
+
+      <select
+        value={selectedId ?? ""}
+        onChange={e => setSelectedId(e.target.value ? Number(e.target.value) : null)}
+      >
+        <option value="">— Выберите кампанию —</option>
+        {campaigns.map(c => (
+          <option key={c.id} value={c.id}>
+            {c.name} ({c.sent_count} отпр.)
+          </option>
+        ))}
+      </select>
+
+      {loading && <p>⏳ Загрузка...</p>}
+
+      {!loading && selectedId && sends.length === 0 && (
+        <p className="empty">Нет записей для этой кампании.</p>
+      )}
+
+      <div className="sends-list">
+        {sends.map(s => (
+          <div key={s.id} className={`send-row send-${s.status}`}>
+            <span className="send-icon">{STATUS_ICONS[s.status] ?? "❓"}</span>
+            <span className="send-name">
+              {s.username ? `@${s.username}` : s.first_name ?? String(s.chat_id)}
+            </span>
+            <span className="send-time">{s.sent_at?.slice(0, 16)}</span>
+            {s.error && <span className="send-error" title={s.error}>⚠️</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+### H5. File Upload Page — `src/pages/Upload.tsx`
+
+```typescript
+import { useState, useRef } from "react";
+
+const ALLOWED_EXT = [".html", ".csv", ".tsv", ".json", ".jsonl"];
+
+export default function UploadPage() {
+  const [file, setFile] = useState<File | null>(null);
+  const [status, setStatus] = useState<"idle"|"uploading"|"done"|"error">("idle");
+  const [result, setResult] = useState<{ key: string; count: number; filename: string } | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const apiBase = import.meta.env.VITE_API_URL || "";
+  const initData = window.Telegram?.WebApp?.initData ?? "";
+
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const ext = "." + f.name.split(".").pop()?.toLowerCase();
+    if (!ALLOWED_EXT.includes(ext)) {
+      alert(`Формат не поддерживается. Используйте: ${ALLOWED_EXT.join(", ")}`);
+      return;
+    }
+    setFile(f);
+    setStatus("idle");
+    setResult(null);
+  }
+
+  async function handleUpload() {
+    if (!file) return;
+    setStatus("uploading");
+    setErrorMsg("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${apiBase}/api/twa/upload`, {
+        method: "POST",
+        headers: { "X-Telegram-Init-Data": initData },
+        body: fd,
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt);
+      }
+      const data = await res.json();
+      setResult(data);
+      setStatus("done");
+    } catch (e: any) {
+      setErrorMsg(e.message);
+      setStatus("error");
+    }
+  }
+
+  return (
+    <div className="page upload-page">
+      <h2>📁 Загрузка аудитории</h2>
+      <p className="hint">Поддерживаемые форматы: {ALLOWED_EXT.join(", ")}</p>
+      <p className="hint">Максимальный размер: 10 МБ</p>
+
+      <div className="upload-zone" onClick={() => inputRef.current?.click()}>
+        <input
+          ref={inputRef}
+          type="file"
+          accept={ALLOWED_EXT.join(",")}
+          style={{ display: "none" }}
+          onChange={onFileChange}
+        />
+        {file
+          ? <p>📄 <strong>{file.name}</strong> ({(file.size / 1024).toFixed(1)} KB)</p>
+          : <p>👆 Нажми чтобы выбрать файл</p>
+        }
+      </div>
+
+      {file && status === "idle" && (
+        <button className="btn-primary" onClick={handleUpload}>⬆️ Загрузить</button>
+      )}
+      {status === "uploading" && <p>⏳ Загружаю файл...</p>}
+      {status === "error" && <p className="error-text">❌ {errorMsg}</p>}
+      {status === "done" && result && (
+        <div className="upload-result">
+          <p>✅ Успешно загружено: <strong>{result.count}</strong> записей</p>
+          <p>🔑 Ключ: <code>{result.key}</code></p>
+          <p>📄 Файл: {result.filename}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## SECTION I — PYTHON BOT: ANTI-BAN & RELIABILITY
+
+### I1. `main.py` — init DB first, reset stuck campaigns
+
+In the `main()` async function, the **very first lines** must be:
+
+```python
+async def main():
+    # ── Step 1: Init DB ──────────────────────────────────────────────────────
+    await cdb.init_db()
+    
+    # ── Step 2: Reset campaigns stuck in 'running' from a previous crash ─────
+    async with aiosqlite.connect("campaigns.db") as db_conn:
+        await db_conn.execute(
+            "UPDATE campaigns SET status = 'draft' WHERE status = 'running'"
+        )
+        await db_conn.commit()
+    logger.info("DB initialised and stuck campaigns reset.")
+    
+    # ... rest of your existing main() code below ...
+```
+
+### I2. `campaign_db.py` — Safe bot_db.json writes
+
+Replace the existing `db_save` / `db_get` / `db_set` functions:
+
+```python
+import threading
+import os
+import json
+
+_db_lock = threading.Lock()
+
+def db_load() -> dict:
+    try:
+        with open(DB_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def db_save(data: dict) -> None:
+    """Atomic write via temp file to prevent corruption."""
+    tmp = DB_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, DB_FILE)
+
+def db_get(key: str, default=None):
+    with _db_lock:
+        return db_load().get(key, default)
+
+def db_set(key: str, value) -> None:
+    with _db_lock:
+        data = db_load()
+        data[key] = value
+        db_save(data)
+```
+
+### I3. `campaign_sender.py` — Daily cap enforcement
+
+At the start of `send_campaign()`, after loading accounts, add:
+
+```python
+DAILY_CAP = int(os.getenv("DAILY_SEND_CAP", "200"))
+
+# Filter accounts that haven't hit their daily cap
+available_accounts = [a for a in accounts if a.get("sent_today", 0) < DAILY_CAP]
+if not available_accounts:
+    await bot.send_message(
+        chat_id=notify_chat_id,
+        text=(
+            f"⛔ Все аккаунты достигли дневного лимита ({DAILY_CAP} сообщений).\n"
+            f"Рассылка перенесена на завтра 09:00."
+        )
+    )
+    tomorrow_9am = (datetime.now() + timedelta(days=1)).replace(
+        hour=9, minute=0, second=0, microsecond=0
+    )
+    await cdb.update_campaign_status(
+        campaign_id, "paused",
+        scheduled_at=tomorrow_9am.isoformat()
+    )
+    return
+```
+
+### I4. `campaign_sender.py` — Spintax resolver
+
+Add this function at the top of `campaign_sender.py`:
+
+```python
+import re
+import random
+
+def resolve_spintax(text: str) -> str:
+    """
+    Resolves {option1|option2|option3} spintax patterns.
+    Handles nested spintax up to 10 levels deep.
+    Example: {Привет|Здравствуй}, {name}! → "Привет, {name}!" or "Здравствуй, {name}!"
+    """
+    for _ in range(10):
+        new_text = re.sub(
+            r'\{([^{}]+)\}',
+            lambda m: random.choice(m.group(1).split("|")),
+            text
+        )
+        if new_text == text:
+            break
+        text = new_text
+    return text
+```
+
+In the message sending loop, replace template variable substitution with:
+
+```python
+# Resolve spintax first, then substitute variables
+final_text = resolve_spintax(text_template)
+name = user.get("first_name") or user.get("username") or "друг"
+final_text = (
+    final_text
+    .replace("{name}", name)
+    .replace("{username}", user.get("username") or name)
+    .replace("{chat_id}", str(user.get("chat_id", "")))
+)
+```
+
+### I5. `campaign_sender.py` — Smart delay ladder
+
+Replace the current static sleep with this pacing function:
+
+```python
+async def human_delay(sent_count: int) -> None:
+    """
+    Mimics human typing/reading rhythm to reduce ban risk.
+    - Base: 3–8s per message
+    - Every 10 sends: extra 15–40s break
+    - Every 50 sends: longer 60–180s break
+    - Every 100 sends: rotate account
+    """
+    base = random.uniform(3.0, 8.0)
+    extra = 0.0
+
+    if sent_count > 0 and sent_count % 100 == 0:
+        extra = random.uniform(120.0, 300.0)
+        logger.info(f"[Sender] Major break after {sent_count} sends ({extra:.0f}s)...")
+    elif sent_count > 0 and sent_count % 50 == 0:
+        extra = random.uniform(60.0, 180.0)
+        logger.info(f"[Sender] Long break after {sent_count} sends ({extra:.0f}s)...")
+    elif sent_count > 0 and sent_count % 10 == 0:
+        extra = random.uniform(15.0, 40.0)
+        logger.info(f"[Sender] Short break after {sent_count} sends ({extra:.0f}s)...")
+
+    total = base + extra
+    logger.debug(f"[Sender] Sleeping {total:.1f}s...")
+    await asyncio.sleep(total)
+```
+
+---
+
+## SECTION J — STARTUP & BUILD CONFIGURATION
+
+### J1. Fix Replit `.replit` workflow — API server cold start
+
+Ensure the `.replit` file has a workflow that rebuilds `better-sqlite3` on every start. The API server workflow entry must be:
+
+```toml
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm rebuild better-sqlite3 && pnpm --filter @workspace/api-server run dev"
+```
+
+### J2. Create `scripts/post-merge.sh`
+
+```bash
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")/.."
+echo "▶ Rebuilding better-sqlite3 for current Node version..."
+pnpm rebuild better-sqlite3
+echo "✅ Done."
+```
+
+Make executable:
+```bash
+chmod +x scripts/post-merge.sh
+```
+
+### J3. Ensure all 4 services start in the correct order
+
+Verify the Replit `.replit` `run` command or workflow starts services in this order:
+1. Python bot (`main.py`) — starts last (depends on DB being ready)
+2. API server (port 8080) — must start before the bot tries to send status
+3. CRM Platform (port 3001) — static build, can start any time
+4. Mini App (port 5000) — static build, can start any time
+
+---
+
+## SECTION K — FINAL VALIDATION CHECKLIST
+
+Run these tests in exact order. **Do not mark the task complete until every item passes.**
+
+### 🔐 Security checks
+- [ ] **K1.** Send `/start` from a non-admin Telegram account → bot must be **completely silent** (no reply, no sticker, nothing)
+- [ ] **K2.** Send `/help` from a non-admin account → same, completely silent
+- [ ] **K3.** Send `/start` from the admin account → welcome message + CRM menu button appears
+- [ ] **K4.** Open `https://promo-fuel--gabrieletusakov.replit.app/crm-platform/` → **shows login screen**, not the dashboard
+- [ ] **K5.** Enter wrong password on login screen → error shown, dashboard NOT visible
+- [ ] **K6.** Enter correct `API_SECRET` value → dashboard loads
+- [ ] **K7.** `curl https://YOUR-API-URL/api/campaigns` without auth header → returns `401 Unauthorized`
+- [ ] **K8.** `curl https://YOUR-API-URL/api/twa/campaigns` without `X-Telegram-Init-Data` header → returns `403 Forbidden`
+
+### 📊 Real data checks
+- [ ] **K9.** Dashboard shows `0` campaigns/users (or real data), NOT mock arrays like `["Акция на бензин", "Летняя скидка"]`
+- [ ] **K10.** Analytics page shows real aggregate numbers from DB (all zeros is correct for empty DB)
+- [ ] **K11.** No `useState([{id: 1, ...}])` exists in any component file (re-run grep from Section A to verify)
+
+### 📁 Upload flow
+- [ ] **K12.** Open Upload page in Mini App → file picker works
+- [ ] **K13.** Upload a CSV with 3 rows → response shows `count: 3` and a key
+- [ ] **K14.** Open Audience page → rows appear (or navigate to the uploads list)
+
+### 📋 Campaign flow
+- [ ] **K15.** Open Campaign Editor → create a campaign with spintax text, dry-run enabled
+- [ ] **K16.** Campaign appears in Campaigns list with status `draft`
+- [ ] **K17.** Click **Запустить** → status changes to `running`
+- [ ] **K18.** Campaign detail page shows live progress bar updating every 2 seconds
+- [ ] **K19.** After completion, status is `done`
+- [ ] **K20.** Open Sends History, select the campaign → shows all rows with `dry_run` status
+
+### 🧭 Navigation
+- [ ] **K21.** Every quick action button navigates to the correct page
+- [ ] **K22.** Bottom nav bar is visible on all pages, including while scrolling
+- [ ] **K23.** Back buttons work on all detail pages
+- [ ] **K24.** Unknown URL (`/xyz`) redirects to home
+
+---
+
+## ENVIRONMENT VARIABLES SUMMARY
+
+All must be set in **Replit Secrets** (not `.env` files — those are for local dev only):
+
+| Key | Example Value | Required By |
+|---|---|---|
+| `TELEGRAM_TOKEN` | `7123456789:AAF...` | Python bot |
+| `ADMIN_TELEGRAM_ID` | `123456789` | Python bot, API server |
+| `MINIAPP_URL` | `https://xxx-5000.replit.dev` | Python bot |
+| `API_SECRET` | `abc123...` (32 chars) | API server, CRM Platform |
+| `VITE_API_SECRET` | same as `API_SECRET` | CRM Platform (Vite build) |
+| `VITE_API_URL` | `https://xxx-8080.replit.dev` | Both frontend apps |
+| `DAILY_SEND_CAP` | `200` | campaign_sender.py |
+| `PORT` | `8080` | API server |
+
+---
+
+> **FINAL INSTRUCTION TO REPLIT AGENT:**
+> You have now read the complete specification. Apply every section A through J in order without deviation. After completing all changes, run the validation checklist in Section K and report the result of each item. If any check fails, fix it before reporting completion. Under no circumstances introduce mock data, placeholder arrays, simulated responses, or `setTimeout`-based fake loading. Every piece of data shown in any UI must originate from a real SQLite query served through the Express API.
