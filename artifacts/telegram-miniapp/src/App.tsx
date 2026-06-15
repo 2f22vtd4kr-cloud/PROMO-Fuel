@@ -6,10 +6,18 @@ import { AccountsPage }  from "./pages/Accounts";
 import { AnalyticsPage } from "./pages/Analytics";
 import { AudiencePage }  from "./pages/Audience";
 import { BottomNav }     from "./components/BottomNav";
+import { ConsumerApp }   from "./ConsumerApp";
+import { getOwnerRole }  from "./lib/twa";
 
 export type Tab = "home" | "campaigns" | "analytics" | "audience" | "accounts";
 
 export function App() {
+  const role = getOwnerRole();
+  if (role === "user") return <ConsumerApp />;
+  return <OwnerApp />;
+}
+
+function OwnerApp() {
   const [tab, setTab]               = useState<Tab>("home");
   const [editCampaignId, setEditId] = useState<number | null>(null);
   const [showEditor, setShowEditor] = useState(false);

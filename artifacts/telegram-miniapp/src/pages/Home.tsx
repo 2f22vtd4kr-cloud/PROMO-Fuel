@@ -1,225 +1,244 @@
-import { useState, useEffect, useRef } from "react";
-import { Send, Users, TrendingUp, Zap, RefreshCw, Activity } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Bell, Megaphone, MapPin, Flame, BarChart2, ArrowUpRight, Fuel, Gift, Users2, TrendingUp } from "lucide-react";
 import { api, Campaign, AnalyticsOverview } from "../lib/api";
-import { TG, STATUS_META } from "../lib/theme";
-import { Header } from "../components/Header";
-import { CampaignRow } from "../components/CampaignRow";
-import { FullSpinner } from "../components/Spinner";
+import { TG } from "../lib/theme";
+import { GlassCard } from "../components/GlassCard";
 import { haptic } from "../lib/haptics";
 
-function GradText({ children, grad, style: s }: { children: React.ReactNode; grad: string; style?: React.CSSProperties }) {
-  return (
-    <span style={{ background: grad, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text", ...s }}>
-      {children}
-    </span>
-  );
-}
-
-function StatCard({ icon: Icon, label, value, delta, color, glow, grad, index }: {
-  icon: React.ElementType; label: string; value: string;
-  delta?: string; color: string; glow: string; grad: string; index: number;
-}) {
-  return (
-    <div className="lg fade-up stagger-item" style={{ padding: "16px 15px 14px" }}>
-      <div style={{
-        position: "absolute", top: -36, right: -36, width: 100, height: 100, borderRadius: "50%",
-        background: `radial-gradient(circle, ${glow} 0%, transparent 70%)`,
-        pointerEvents: "none", zIndex: 0,
-      }} />
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, position: "relative", zIndex: 2 }}>
-        <div style={{
-          width: 34, height: 34, borderRadius: 11, flexShrink: 0,
-          background: `linear-gradient(145deg,${color}22,${color}0e)`,
-          border: `1px solid ${color}30`,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: `0 0 18px ${glow}, inset 0 1px 0 ${color}28`,
-          position: "relative", overflow: "hidden",
-        }}>
-          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "50%", background: "linear-gradient(180deg,rgba(255,255,255,0.12),transparent)", pointerEvents: "none" }} />
-          <Icon size={15} color={color} strokeWidth={2.2} style={{ position: "relative", zIndex: 1 }} />
-        </div>
-        <span style={{ fontSize: 10, color: TG.muted, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-          {label}
-        </span>
-      </div>
-      <div style={{ fontSize: 27, fontWeight: 900, letterSpacing: "-1px", lineHeight: 1, position: "relative", zIndex: 2 }}>
-        <GradText grad={grad}>{value}</GradText>
-      </div>
-      {delta && (
-        <div style={{
-          marginTop: 9, display: "inline-flex", alignItems: "center", gap: 4,
-          background: `${TG.green}14`, border: `1px solid ${TG.green}24`,
-          borderRadius: 8, padding: "3px 9px", position: "relative", zIndex: 2,
-        }}>
-          <Activity size={9} color={TG.green} />
-          <span style={{ fontSize: 10, color: TG.green, fontWeight: 700 }}>{delta}</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LiveClock() {
-  const [time, setTime] = useState(new Date());
-  const [colon, setColon] = useState(true);
-  useEffect(() => {
-    const t = setInterval(() => { setTime(new Date()); setColon(c => !c); }, 500);
-    return () => clearInterval(t);
-  }, []);
-  const hh = time.getHours().toString().padStart(2, "0");
-  const mm = time.getMinutes().toString().padStart(2, "0");
-  return (
-    <span style={{ fontVariantNumeric: "tabular-nums" }}>
-      {hh}<span style={{ opacity: colon ? 1 : 0, transition: "opacity 0.1s" }}>:</span>{mm}
-    </span>
-  );
-}
-
 export function HomePage({ onNewCampaign, onViewCampaigns }: {
-  onNewCampaign: () => void; onViewCampaigns: () => void;
+  onNewCampaign: () => void;
+  onViewCampaigns: () => void;
 }) {
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [users, setUsers] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
-  async function load(manual = false) {
-    if (manual) setRefreshing(true); else setLoading(true);
-    try {
-      const [ov, cps, us] = await Promise.all([api.getOverview(), api.getCampaigns(), api.getUsers()]);
-      setOverview(ov); setCampaigns(cps.slice(0, 5)); setUsers(us.length);
-    } catch {}
-    setLoading(false); setRefreshing(false);
-  }
+  useEffect(() => {
+    Promise.all([api.getOverview(), api.getCampaigns(), api.getUsers()])
+      .then(([ov, cps, us]) => {
+        setOverview(ov);
+        setCampaigns(cps.slice(0, 3));
+        setUsers(us.length);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+    const t = setInterval(() => {
+      api.getOverview().then(setOverview).catch(() => {});
+    }, 30_000);
+    return () => clearInterval(t);
+  }, []);
 
-  useEffect(() => { load(); }, []);
-  useEffect(() => { const t = setInterval(() => load(), 30_000); return () => clearInterval(t); }, []);
+  const stats = [
+    {
+      label: "Отправлено",
+      value: overview ? (overview.totalSent >= 1000 ? `${(overview.totalSent / 1000).toFixed(0)}K` : String(overview.totalSent)) : "—",
+      sub: overview && overview.sentDelta > 0 ? `+${overview.sentDelta}% сегодня` : "за всё время",
+      color: TG.green,
+      glow: TG.greenGlow,
+      icon: Gift,
+    },
+    {
+      label: "Активных",
+      value: overview ? String(overview.activeCampaigns) : "—",
+      sub: "кампании",
+      color: "#ff9f40",
+      glow: "rgba(255,159,64,0.38)",
+      icon: Flame,
+    },
+    {
+      label: "Охват",
+      value: users >= 1000 ? `${(users / 1000).toFixed(1)}K` : String(users),
+      sub: "пользователей",
+      color: TG.accent ?? "#6ba8e5",
+      glow: "rgba(107,168,229,0.38)",
+      icon: Users2,
+    },
+    {
+      label: "Конверсия",
+      value: overview ? `${overview.avgOpenRate.toFixed(0)}%` : "—",
+      sub: overview && overview.avgCtr ? `CTR ${overview.avgCtr.toFixed(1)}%` : "open rate",
+      color: TG.purple,
+      glow: TG.purpleGlow,
+      icon: TrendingUp,
+    },
+  ];
 
-  const STAT_CARDS = [
-    { icon: Send,        label: "Отправлено", color: TG.accent,  glow: TG.accentGlow,  grad: "linear-gradient(135deg,#95c4f5,#5b96d4)", value: (overview?.totalSent ?? 0).toLocaleString("ru"), delta: overview && overview.sentDelta > 0 ? `↑ ${overview.sentDelta}%` : undefined },
-    { icon: Users,       label: "Подписчики", color: TG.green,   glow: TG.greenGlow,   grad: "linear-gradient(135deg,#2de897,#17a86a)", value: users.toLocaleString("ru"), delta: undefined },
-    { icon: TrendingUp,  label: "Open Rate",  color: TG.yellow,  glow: TG.yellowGlow,  grad: "linear-gradient(135deg,#ffc946,#d9852e)", value: `${(overview?.avgOpenRate ?? 0).toFixed(1)}%`, delta: undefined },
-    { icon: Zap,         label: "Кампаний",   color: TG.purple,  glow: TG.purpleGlow,  grad: "linear-gradient(135deg,#c4aeff,#7c5fcf)", value: (overview?.totalCampaigns ?? 0).toString(), delta: undefined },
+  const quickActions = [
+    { label: "Новая рассылка", icon: Megaphone, color: TG.green, glow: TG.greenGlow, action: () => { haptic.medium(); onNewCampaign(); } },
+    { label: "Добавить АЗС",   icon: MapPin,    color: "#ff9f40", glow: "rgba(255,159,64,0.38)", action: () => haptic.light() },
+    { label: "Промо-акция",    icon: Flame,     color: TG.yellow, glow: TG.yellowGlow, action: () => { haptic.light(); onNewCampaign(); } },
+    { label: "Статистика",     icon: BarChart2, color: TG.accent ?? "#6ba8e5", glow: "rgba(107,168,229,0.38)", action: () => haptic.light() },
   ];
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <Header
-        title="RUProbe Hub"
-        right={
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div className="lg-pill" style={{ fontSize: 13, fontWeight: 700, color: TG.textSecondary, padding: "5px 11px", letterSpacing: "0.04em" }}>
-              <LiveClock />
+    <div className="tab-content" style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "14px 14px 24px" }}>
+
+        {/* Welcome header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>
+              Добро пожаловать 👋
             </div>
-            <button onClick={() => { haptic.light(); load(true); }} className="tap"
-              style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.11)", borderRadius: 11, padding: 7, display: "flex", color: TG.muted }}>
-              <RefreshCw size={13} style={{ animation: refreshing ? "spin 0.72s linear infinite" : "none" }} />
-            </button>
-            <div style={{
-              background: `${TG.green}14`, border: `1px solid ${TG.green}28`,
-              backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
-              borderRadius: 20, padding: "5px 11px",
-              fontSize: 11, color: TG.green, fontWeight: 800,
-              display: "flex", alignItems: "center", gap: 5,
-            }}>
-              <div style={{ width: 6, height: 6, borderRadius: 3, background: TG.green, boxShadow: `0 0 8px 2px ${TG.greenGlow}`, animation: "pulse 2s ease-in-out infinite" }} />
-              Live
+            <div style={{ fontSize: 12, color: TG.textSecondary, marginTop: 2 }}>
+              PROMO-Fuel • Личный кабинет
             </div>
           </div>
-        }
-      />
-
-      {loading && !overview ? <FullSpinner /> : (
-        <div style={{ flex: 1, overflowY: "auto", padding: "14px 13px 20px", WebkitOverflowScrolling: "touch" }}>
-
-          {/* Hero band */}
-          <div className="lg fade-up" style={{
-            padding: "18px 18px 16px", marginBottom: 14,
-            background: "linear-gradient(135deg, rgba(91,150,212,0.14) 0%, rgba(45,232,151,0.07) 100%)",
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative", zIndex: 2 }}>
+          <div style={{ position: "relative" }}>
+            <GlassCard style={{ padding: "8px 10px", borderRadius: 14 }}>
+              <Bell size={17} color={TG.accent ?? "#6ba8e5"} style={{ display: "block" }} />
+            </GlassCard>
+            {!loading && (overview?.activeCampaigns ?? 0) > 0 && (
               <div style={{
-                width: 48, height: 48, borderRadius: 15,
-                background: "linear-gradient(145deg,rgba(91,150,212,0.32),rgba(45,232,151,0.16))",
-                border: "1px solid rgba(91,150,212,0.30)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                boxShadow: "0 0 28px rgba(91,150,212,0.32), inset 0 1px 0 rgba(255,255,255,0.18)",
-                flexShrink: 0, position: "relative", overflow: "hidden",
-              }}>
-                <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "50%", background: "linear-gradient(180deg,rgba(255,255,255,0.14),transparent)", pointerEvents: "none" }} />
-                <Activity size={22} color={TG.accentLight} style={{ position: "relative", zIndex: 1 }} />
-              </div>
-              <div>
-                <div style={{ fontSize: 11, color: TG.muted, fontWeight: 600, marginBottom: 3, letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                  {(overview?.activeCampaigns ?? 0) > 0 ? "Активных кампаний" : "Панель управления"}
-                </div>
-                <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.6px" }}>
-                  {(overview?.activeCampaigns ?? 0) > 0 ? (
-                    <GradText grad="linear-gradient(135deg,#2de897,#5b96d4)">
-                      {overview!.activeCampaigns} работает
-                    </GradText>
-                  ) : (
-                    <GradText grad="linear-gradient(135deg,#95c4f5,#c4aeff)">Всё готово</GradText>
-                  )}
-                </div>
-              </div>
-            </div>
+                position: "absolute", top: -3, right: -3,
+                width: 8, height: 8, borderRadius: "50%",
+                background: TG.green,
+                boxShadow: `0 0 6px 2px ${TG.greenGlow}`,
+                border: "1.5px solid #07090f",
+              }} />
+            )}
           </div>
-
-          {/* Stat grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 18 }}>
-            {STAT_CARDS.map((card, i) => <StatCard key={card.label} {...card} index={i} />)}
-          </div>
-
-          {/* Section header */}
-          <div style={{ marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 10, fontWeight: 800, color: TG.muted, textTransform: "uppercase", letterSpacing: "0.12em" }}>
-              Рассылки
-            </span>
-            <button onClick={() => { haptic.select(); onViewCampaigns(); }} className="tap" style={{
-              fontSize: 11.5, color: TG.accentLight,
-              background: `${TG.accent}14`, border: `1px solid ${TG.accent}24`,
-              borderRadius: 9, padding: "4px 10px", fontWeight: 700,
-            }}>
-              Все →
-            </button>
-          </div>
-
-          {/* Campaign list */}
-          <div className="lg" style={{ marginBottom: 16 }}>
-            {campaigns.length === 0 ? (
-              <div style={{ padding: "36px 20px", textAlign: "center", position: "relative", zIndex: 2 }}>
-                <div style={{ fontSize: 30, marginBottom: 8 }}>📭</div>
-                <div style={{ color: TG.muted, fontSize: 13 }}>Нет рассылок</div>
-              </div>
-            ) : campaigns.map((c, i) => (
-              <CampaignRow key={c.id} campaign={c} last={i === campaigns.length - 1} onClick={() => { haptic.select(); onViewCampaigns(); }} />
-            ))}
-          </div>
-
-          {/* CTA */}
-          <button onClick={() => { haptic.medium(); onNewCampaign(); }} className="tap" style={{
-            width: "100%", padding: "16px 0",
-            background: "linear-gradient(135deg, #5b96d4 0%, #3a6fad 55%, #2f5a9a 100%)",
-            border: "none", borderRadius: 20, color: "#fff",
-            fontSize: 15, fontWeight: 800, letterSpacing: "0.01em",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 9,
-            boxShadow: "0 8px 32px rgba(91,150,212,0.44), 0 1px 0 rgba(255,255,255,0.20) inset, 0 -1px 0 rgba(0,0,0,0.22) inset",
-            position: "relative", overflow: "hidden",
-          }}>
-            <div style={{
-              position: "absolute", top: 0, left: "-50%", width: "40%", height: "100%",
-              background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.16), transparent)",
-              transform: "skewX(-18deg)", animation: "shimmerX 3s ease-in-out infinite",
-            }} />
-            <Send size={16} style={{ position: "relative", zIndex: 1 }} />
-            <span style={{ position: "relative", zIndex: 1 }}>Новая рассылка</span>
-          </button>
-
-          <div style={{ height: 8 }} />
         </div>
-      )}
+
+        {/* Stats 2×2 grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          {stats.map((s) => {
+            const Icon = s.icon;
+            return (
+              <GlassCard key={s.label} glow={`${s.glow}30`} style={{ padding: "14px 14px 12px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div style={{
+                    width: 30, height: 30, borderRadius: 10,
+                    background: `${s.color}18`,
+                    border: `1px solid ${s.color}35`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    boxShadow: `0 0 12px ${s.glow}`,
+                  }}>
+                    <Icon size={14} color={s.color} />
+                  </div>
+                  <ArrowUpRight size={12} color={s.color} style={{ opacity: 0.7 }} />
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: TG.text, letterSpacing: "-0.03em", lineHeight: 1 }}>
+                  {loading ? <span style={{ opacity: 0.3 }}>—</span> : s.value}
+                </div>
+                <div style={{ fontSize: 10, color: TG.muted, marginTop: 3, fontWeight: 500 }}>{s.label}</div>
+                <div style={{ fontSize: 10, color: s.color, marginTop: 2, fontWeight: 600 }}>{s.sub}</div>
+              </GlassCard>
+            );
+          })}
+        </div>
+
+        {/* Quick actions */}
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TG.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>
+            Быстрые действия
+          </div>
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+            {quickActions.map((a) => {
+              const Icon = a.icon;
+              return (
+                <div key={a.label} style={{ flexShrink: 0 }} onClick={a.action}>
+                  <GlassCard glow={`${a.glow}28`} style={{ padding: "12px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 7, minWidth: 72, cursor: "pointer" }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 12,
+                      background: `linear-gradient(145deg,${a.color}30 0%,${a.color}10 100%)`,
+                      border: `1px solid ${a.color}40`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      boxShadow: `0 0 16px ${a.glow}50`,
+                    }}>
+                      <Icon size={16} color={a.color} />
+                    </div>
+                    <span style={{ fontSize: 9, color: TG.textSecondary, fontWeight: 700, textAlign: "center", letterSpacing: "0.02em", lineHeight: 1.2, maxWidth: 64 }}>
+                      {a.label}
+                    </span>
+                  </GlassCard>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Active campaigns */}
+        <div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: TG.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+              Активные акции
+            </div>
+            <span onClick={() => { haptic.light(); onViewCampaigns(); }} style={{ fontSize: 11, color: TG.accent ?? "#6ba8e5", fontWeight: 600, cursor: "pointer" }}>Все →</span>
+          </div>
+
+          {loading ? (
+            <div style={{ textAlign: "center", padding: "24px 0" }}>
+              <div style={{ width: 24, height: 24, borderRadius: "50%", border: `2px solid ${TG.green}40`, borderTopColor: TG.green, animation: "spin 0.8s linear infinite", display: "inline-block" }} />
+            </div>
+          ) : campaigns.length === 0 ? (
+            <GlassCard style={{ padding: "20px 16px", textAlign: "center" }}>
+              <div style={{ fontSize: 13, color: TG.muted }}>Нет активных кампаний</div>
+              <div onClick={() => { haptic.medium(); onNewCampaign(); }} style={{ marginTop: 10, fontSize: 12, color: TG.green, fontWeight: 700, cursor: "pointer" }}>+ Создать кампанию</div>
+            </GlassCard>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {campaigns.map((c, i) => {
+                const colors = ["#6ba8e5", "#2de897", "#ff9f40"];
+                const glows = ["rgba(107,168,229,0.38)", "rgba(45,232,151,0.38)", "rgba(255,159,64,0.38)"];
+                const badges = ["ТОП", "АКТИВНА", "НОВАЯ"];
+                const color = colors[i % colors.length]!;
+                const glow = glows[i % glows.length]!;
+                const badge = badges[i % badges.length]!;
+                const claimed = c.sent_count;
+                const total = c.target_count || 1;
+                const pct = Math.min(100, Math.round(claimed / total * 100));
+                return (
+                  <GlassCard key={c.id} glow={`${glow}20`} style={{ padding: "14px" }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
+                      <div style={{ flex: 1, marginRight: 10 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
+                          <div style={{
+                            width: 28, height: 28, borderRadius: 9,
+                            background: `linear-gradient(145deg,${color}35 0%,${color}15 100%)`,
+                            border: `1px solid ${color}50`,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            boxShadow: `0 0 12px ${glow}40`,
+                          }}>
+                            <Fuel size={13} color={color} />
+                          </div>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: TG.text }}>{c.name}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: TG.textSecondary, marginLeft: 35, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", maxWidth: 180 }}>
+                          {c.text_template}
+                        </div>
+                      </div>
+                      <span style={{
+                        fontSize: 9, fontWeight: 800, letterSpacing: "0.05em",
+                        color: color, background: `${color}20`,
+                        border: `1px solid ${color}40`,
+                        borderRadius: 20, padding: "2px 8px", flexShrink: 0,
+                      }}>{badge}</span>
+                    </div>
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                        <span style={{ fontSize: 10, color: TG.muted }}>Использовано</span>
+                        <span style={{ fontSize: 10, color: color, fontWeight: 700 }}>
+                          {claimed.toLocaleString("ru")} / {total.toLocaleString("ru")}
+                        </span>
+                      </div>
+                      <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                        <div style={{
+                          height: "100%", borderRadius: 2, width: `${pct}%`,
+                          background: `linear-gradient(90deg,${color},${color}bb)`,
+                          boxShadow: `0 0 8px ${glow}`,
+                          transition: "width 0.6s ease",
+                        }} />
+                      </div>
+                    </div>
+                  </GlassCard>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

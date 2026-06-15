@@ -1,9 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { initTelegram } from "./lib/twa";
 
-const tg = (window as any).Telegram?.WebApp;
-if (tg) { tg.ready(); tg.expand(); }
+initTelegram();
 
 const style = document.createElement("style");
 style.textContent = `
@@ -40,9 +40,10 @@ style.textContent = `
   @keyframes countUp    { from{transform:translateY(8px);opacity:0;} to{transform:translateY(0);opacity:1;} }
 
   /* ── Animation helpers ── */
-  .fade-up  { animation: fadeUp  0.44s cubic-bezier(0.16,1,0.3,1) both; }
-  .scale-in { animation: scaleIn 0.40s cubic-bezier(0.16,1,0.3,1) both; }
-  .slide-up { animation: slideUp 0.48s cubic-bezier(0.16,1,0.3,1) both; }
+  .fade-up   { animation: fadeUp  0.44s cubic-bezier(0.16,1,0.3,1) both; }
+  .scale-in  { animation: scaleIn 0.40s cubic-bezier(0.16,1,0.3,1) both; }
+  .slide-up  { animation: slideUp 0.48s cubic-bezier(0.16,1,0.3,1) both; }
+  .tab-content { animation: fadeUp 0.28s cubic-bezier(0.16,1,0.3,1) both; }
 
   .stagger-item:nth-child(1)  { animation-delay: 0ms; }
   .stagger-item:nth-child(2)  { animation-delay: 65ms; }

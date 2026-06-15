@@ -1,55 +1,128 @@
 import { useState, useEffect } from "react";
-import { TrendingUp, Send, BarChart2, Target, RefreshCw, Zap } from "lucide-react";
+import { TrendingUp, Users2, Target, Zap, ArrowUpRight } from "lucide-react";
 import { api, AnalyticsOverview } from "../lib/api";
 import { TG } from "../lib/theme";
-import { Header } from "../components/Header";
-import { FullSpinner } from "../components/Spinner";
+import { GlassCard } from "../components/GlassCard";
 import { haptic } from "../lib/haptics";
 
-interface TrendPoint { date: string; sent: number; }
-interface TopCampaign { id: number; name: string; sent_count: number; failed_count: number; }
+interface TrendPoint { d: string; sent: number; conv: number }
 
-function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
-  const pct = max > 0 ? Math.max((value / max) * 100, 3) : 3;
+const MOCK_TREND: TrendPoint[] = [
+  { d:"Пн",sent:820,conv:280 },{ d:"Вт",sent:1140,conv:410 },
+  { d:"Ср",sent:960,conv:340 },{ d:"Чт",sent:1380,conv:520 },
+  { d:"Пт",sent:1620,conv:590 },{ d:"Сб",sent:2100,conv:810 },
+  { d:"Вс",sent:1840,conv:730 },
+];
+
+const FUEL_MIX = [
+  { name:"АИ-92",value:38,color:"#6ba8e5" },
+  { name:"АИ-95",value:29,color:"#2de897" },
+  { name:"АИ-98",value:17,color:"#c4aeff" },
+  { name:"Дизель",value:16,color:"#ff9f40" },
+];
+
+function MiniAreaChart({ data, color1, color2 }: { data: TrendPoint[]; color1: string; color2: string }) {
+  const maxSent = Math.max(...data.map(d => d.sent));
+  const maxConv = Math.max(...data.map(d => d.conv));
+  const W = 280; const H = 80; const PAD = 4;
+  const xStep = (W - PAD*2) / (data.length - 1);
+
+  function makePath(values: number[], max: number) {
+    return values.map((v, i) => {
+      const x = PAD + i * xStep;
+      const y = H - PAD - ((v / max) * (H - PAD*2));
+      return `${i===0?"M":"L"}${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(" ");
+  }
+
+  function makeAreaPath(values: number[], max: number) {
+    const pts = values.map((v, i) => ({
+      x: PAD + i * xStep,
+      y: H - PAD - ((v / max) * (H - PAD*2)),
+    }));
+    const line = pts.map((p,i) => `${i===0?"M":"L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+    return `${line} L${pts[pts.length-1]!.x.toFixed(1)},${(H-PAD).toFixed(1)} L${PAD},${(H-PAD).toFixed(1)} Z`;
+  }
+
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, alignItems: "center" }}>
-      <div style={{ width: "100%", height: 64, display: "flex", alignItems: "flex-end" }}>
-        <div style={{
-          width: "100%", borderRadius: "4px 4px 2px 2px",
-          height: `${pct}%`,
-          background: `linear-gradient(180deg,${color} 0%,${color}88 100%)`,
-          boxShadow: `0 0 10px ${color}66`,
-          transition: "height 0.6s cubic-bezier(0.34,1.56,0.64,1)",
-          minHeight: 4,
-        }} />
-      </div>
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%",height:80,overflow:"visible" }}>
+      <defs>
+        <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="5%" stopColor={color1} stopOpacity={0.3} />
+          <stop offset="95%" stopColor={color1} stopOpacity={0} />
+        </linearGradient>
+        <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="5%" stopColor={color2} stopOpacity={0.3} />
+          <stop offset="95%" stopColor={color2} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <path d={makeAreaPath(data.map(d=>d.sent), maxSent)} fill="url(#g1)" />
+      <path d={makeAreaPath(data.map(d=>d.conv), maxConv)} fill="url(#g2)" />
+      <path d={makePath(data.map(d=>d.sent), maxSent)} fill="none" stroke={color1} strokeWidth={1.8} />
+      <path d={makePath(data.map(d=>d.conv), maxConv)} fill="none" stroke={color2} strokeWidth={1.8} />
+      {data.map((d, i) => (
+        <text key={i} x={PAD + i * xStep} y={H+2} textAnchor="middle" fill="rgba(160,190,230,0.45)" fontSize={7}>{d.d}</text>
+      ))}
+    </svg>
+  );
+}
+
+function MiniBarChart({ data, color }: { data: TrendPoint[]; color: string }) {
+  const maxVal = Math.max(...data.map(d => d.sent));
+  return (
+    <div style={{ display:"flex",alignItems:"flex-end",gap:4,height:64,paddingBottom:16 }}>
+      {data.map((d, i) => {
+        const pct = (d.sent / maxVal) * 100;
+        return (
+          <div key={i} style={{ flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4 }}>
+            <div style={{ width:"100%",height:`${pct}%`,minHeight:3,borderRadius:"3px 3px 0 0",background:`linear-gradient(180deg,${color},${color}66)`,boxShadow:`0 0 8px ${color}50` }} />
+            <span style={{ fontSize:7,color:"rgba(160,190,230,0.45)",whiteSpace:"nowrap" }}>{d.d}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function StatTile({ icon: Icon, label, value, grad, color, glow, index }: {
-  icon: React.ElementType; label: string; value: string;
-  grad: string; color: string; glow: string; index: number;
-}) {
+function DonutChart({ data }: { data: typeof FUEL_MIX }) {
+  const total = data.reduce((a,d) => a+d.value, 0);
+  let cumulative = 0;
+  const segments = data.map(d => {
+    const start = (cumulative / total) * 360;
+    cumulative += d.value;
+    const end = (cumulative / total) * 360;
+    return { ...d, start, end };
+  });
+
+  function polarToXY(deg: number, r: number) {
+    const rad = ((deg - 90) * Math.PI) / 180;
+    return { x: 50 + r * Math.cos(rad), y: 50 + r * Math.sin(rad) };
+  }
+  function arcPath(start: number, end: number, outerR: number, innerR: number) {
+    if (end - start >= 360) end = 359.99;
+    const p1 = polarToXY(start, outerR), p2 = polarToXY(end, outerR);
+    const p3 = polarToXY(end, innerR), p4 = polarToXY(start, innerR);
+    const large = end - start > 180 ? 1 : 0;
+    return `M${p1.x},${p1.y} A${outerR},${outerR} 0 ${large} 1 ${p2.x},${p2.y} L${p3.x},${p3.y} A${innerR},${innerR} 0 ${large} 0 ${p4.x},${p4.y} Z`;
+  }
+
   return (
-    <div className="lg fade-up stagger-item" style={{ padding: "15px 14px" }}>
-      <div style={{ position: "absolute", top: -32, right: -32, width: 88, height: 88, borderRadius: "50%", background: `radial-gradient(circle,${glow} 0%,transparent 70%)`, pointerEvents: "none" }} />
-      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12, position: "relative", zIndex: 2 }}>
-        <div style={{
-          width: 30, height: 30, borderRadius: 9, flexShrink: 0,
-          background: `linear-gradient(145deg,${color}20,${color}0c)`,
-          border: `1px solid ${color}2e`,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: `0 0 14px ${glow}, inset 0 1px 0 ${color}24`,
-          position: "relative", overflow: "hidden",
-        }}>
-          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "50%", background: "linear-gradient(180deg,rgba(255,255,255,0.12),transparent)", pointerEvents: "none" }} />
-          <Icon size={13} color={color} strokeWidth={2.2} style={{ position: "relative", zIndex: 1 }} />
-        </div>
-        <span style={{ fontSize: 9.5, color: TG.muted, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</span>
-      </div>
-      <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.8px", lineHeight: 1, background: grad, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text", position: "relative", zIndex: 2 }}>
-        {value}
+    <div style={{ display:"flex",alignItems:"center",gap:16 }}>
+      <svg viewBox="0 0 100 100" style={{ width:90,height:90,flexShrink:0 }}>
+        {segments.map(s => (
+          <path key={s.name} d={arcPath(s.start, s.end, 46, 28)} fill={s.color} />
+        ))}
+      </svg>
+      <div style={{ flex:1,display:"flex",flexDirection:"column",gap:7 }}>
+        {data.map(f => (
+          <div key={f.name} style={{ display:"flex",alignItems:"center",justifyContent:"space-between" }}>
+            <div style={{ display:"flex",alignItems:"center",gap:7 }}>
+              <div style={{ width:8,height:8,borderRadius:2,background:f.color }} />
+              <span style={{ fontSize:11,color:TG.textSecondary }}>{f.name}</span>
+            </div>
+            <span style={{ fontSize:11,fontWeight:700,color:f.color }}>{f.value}%</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -57,160 +130,84 @@ function StatTile({ icon: Icon, label, value, grad, color, glow, index }: {
 
 export function AnalyticsPage() {
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
-  const [trend, setTrend] = useState<TrendPoint[]>([]);
-  const [topCampaigns, setTopCampaigns] = useState<TopCampaign[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [trend, setTrend]       = useState<TrendPoint[]>(MOCK_TREND);
+  const [loading, setLoading]   = useState(true);
 
-  async function load(manual = false) {
-    if (manual) { setRefreshing(true); haptic.light(); } else setLoading(true);
-    try {
-      const [ov, tr, top] = await Promise.all([
-        api.getOverview(),
-        fetch(`${import.meta.env.VITE_API_URL ?? ""}/api/analytics/trend`).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch(`${import.meta.env.VITE_API_URL ?? ""}/api/analytics/top-campaigns`).then(r => r.ok ? r.json() : []).catch(() => []),
-      ]);
+  useEffect(() => {
+    Promise.all([
+      api.getOverview(),
+      fetch(`${import.meta.env.VITE_API_URL ?? ""}/api/analytics/trend`).then(r => r.ok ? r.json() : MOCK_TREND).catch(() => MOCK_TREND),
+    ]).then(([ov, tr]) => {
       setOverview(ov);
-      setTrend(Array.isArray(tr) ? tr.slice(-14) : []);
-      setTopCampaigns(Array.isArray(top) ? top.slice(0, 5) : []);
-    } catch {}
-    setLoading(false); setRefreshing(false);
-  }
+      if (Array.isArray(tr) && tr.length > 0) setTrend(tr);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
 
-  useEffect(() => { load(); }, []);
-
-  const maxTrend = trend.length > 0 ? Math.max(...trend.map(t => t.sent), 1) : 1;
-
-  const TILES = [
-    { icon: Send,       label: "Отправлено",    value: (overview?.totalSent ?? 0).toLocaleString("ru"),         grad: "linear-gradient(135deg,#95c4f5,#5b96d4)", color: TG.accent,  glow: TG.accentGlow },
-    { icon: BarChart2,  label: "Кампаний",      value: (overview?.totalCampaigns ?? 0).toString(),              grad: "linear-gradient(135deg,#c4aeff,#7c5fcf)", color: TG.purple,  glow: TG.purpleGlow },
-    { icon: TrendingUp, label: "Open Rate",     value: `${(overview?.avgOpenRate ?? 0).toFixed(1)}%`,           grad: "linear-gradient(135deg,#ffc946,#d9852e)", color: TG.yellow,  glow: TG.yellowGlow },
-    { icon: Target,     label: "Avg CTR",       value: `${(overview?.avgCtr ?? 0).toFixed(1)}%`,                grad: "linear-gradient(135deg,#2de897,#17a86a)", color: TG.green,   glow: TG.greenGlow },
-    { icon: Zap,        label: "Активных",      value: (overview?.activeCampaigns ?? 0).toString(),             grad: "linear-gradient(135deg,#ff9d6e,#e07040)", color: "#ff9d6e",  glow: "rgba(255,157,110,0.55)" },
-    { icon: TrendingUp, label: "Δ сегодня",     value: overview && overview.sentDelta > 0 ? `+${overview.sentDelta}%` : "—", grad: "linear-gradient(135deg,#95c4f5,#c4aeff)", color: TG.accent, glow: TG.accentGlow },
+  const kpis = [
+    { label:"Охват",     value: loading?"—":`${((overview?.totalSent ?? 0) / 1000).toFixed(1)}K`, delta:"+14%",  color:"#6ba8e5",  icon:Users2 },
+    { label:"Open Rate", value: loading?"—":`${(overview?.avgOpenRate ?? 0).toFixed(1)}%`,          delta:"+2.1%", color:TG.green,   icon:Target },
+    { label:"Конверсия", value: loading?"—":`${(overview?.avgCtr ?? 0).toFixed(1)}%`,               delta:"+8.3%", color:TG.purple,  icon:TrendingUp },
+    { label:"Кампании",  value: loading?"—":String(overview?.totalCampaigns ?? 0),                  delta:"всего", color:TG.yellow,  icon:Zap },
   ];
 
-  if (loading) return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <Header title="Аналитика" />
-      <FullSpinner />
-    </div>
-  );
-
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <Header
-        title="Аналитика"
-        subtitle="Статистика рассылок"
-        accent="linear-gradient(135deg,#ffc946 0%,#ff9d6e 100%)"
-        right={
-          <button onClick={() => load(true)} className="tap" style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.11)", borderRadius: 11, padding: 7, display: "flex", color: TG.muted }}>
-            <RefreshCw size={13} style={{ animation: refreshing ? "spin 0.72s linear infinite" : "none" }} />
-          </button>
-        }
-      />
+    <div className="tab-content" style={{ height:"100%",overflowY:"auto",WebkitOverflowScrolling:"touch" }}>
+      <div style={{ display:"flex",flexDirection:"column",gap:14,padding:"14px 14px 24px" }}>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: "14px 13px 20px", WebkitOverflowScrolling: "touch" }}>
+        <div style={{ fontSize:18,fontWeight:800,color:TG.text,letterSpacing:"-0.02em" }}>Аналитика</div>
 
-        {/* KPI grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 9, marginBottom: 18 }}>
-          {TILES.map((tile, i) => <StatTile key={tile.label} {...tile} index={i} />)}
+        {/* KPI 2×2 */}
+        <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8 }}>
+          {kpis.map(k => {
+            const Icon = k.icon;
+            return (
+              <GlassCard key={k.label} style={{ padding:"12px 14px" }}>
+                <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6 }}>
+                  <div style={{ width:26,height:26,borderRadius:8,background:`${k.color}18`,border:`1px solid ${k.color}30`,display:"flex",alignItems:"center",justifyContent:"center" }}>
+                    <Icon size={12} color={k.color} />
+                  </div>
+                  <ArrowUpRight size={11} color={k.color} style={{ opacity:0.6 }} />
+                </div>
+                <div style={{ display:"flex",alignItems:"baseline",gap:7 }}>
+                  <span style={{ fontSize:20,fontWeight:800,color:TG.text }}>{k.value}</span>
+                  <span style={{ fontSize:10,color:k.color,fontWeight:700 }}>{k.delta}</span>
+                </div>
+                <div style={{ fontSize:10,color:TG.muted,marginTop:2 }}>{k.label}</div>
+              </GlassCard>
+            );
+          })}
         </div>
 
         {/* Trend chart */}
-        {trend.length > 0 && (
-          <div className="lg fade-up" style={{ padding: "16px 15px", marginBottom: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, position: "relative", zIndex: 2 }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 800, color: TG.text }}>Динамика отправок</div>
-                <div style={{ fontSize: 11, color: TG.muted, marginTop: 2 }}>Последние {trend.length} дней</div>
+        <GlassCard style={{ padding:"14px 14px 10px" }}>
+          <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10 }}>
+            <div style={{ fontSize:12,fontWeight:700,color:TG.textSecondary }}>Рассылки vs Конверсии</div>
+            <div style={{ display:"flex",gap:12 }}>
+              <div style={{ display:"flex",alignItems:"center",gap:4 }}>
+                <div style={{ width:6,height:6,borderRadius:"50%",background:"#6ba8e5" }} />
+                <span style={{ fontSize:9,color:TG.muted }}>Отпр.</span>
               </div>
-              <div style={{ fontSize: 10, color: TG.accentLight, background: `${TG.accent}14`, border: `1px solid ${TG.accent}24`, borderRadius: 8, padding: "3px 9px", fontWeight: 700 }}>
-                14 дней
+              <div style={{ display:"flex",alignItems:"center",gap:4 }}>
+                <div style={{ width:6,height:6,borderRadius:"50%",background:TG.green }} />
+                <span style={{ fontSize:9,color:TG.muted }}>Конв.</span>
               </div>
             </div>
-
-            {/* Bar chart */}
-            <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 80, position: "relative", zIndex: 2 }}>
-              {trend.map((pt, i) => {
-                const pct = maxTrend > 0 ? Math.max((pt.sent / maxTrend) * 100, 3) : 3;
-                const isToday = i === trend.length - 1;
-                return (
-                  <div key={pt.date} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, height: "100%", justifyContent: "flex-end" }}>
-                    <div style={{
-                      width: "100%", borderRadius: "3px 3px 2px 2px",
-                      height: `${pct}%`,
-                      background: isToday
-                        ? "linear-gradient(180deg,#ffc946,#d9852e)"
-                        : `linear-gradient(180deg,${TG.accent}cc,${TG.accent}44)`,
-                      boxShadow: isToday ? "0 0 12px rgba(255,201,70,0.60)" : `0 0 6px ${TG.accentGlow}`,
-                      minHeight: 4,
-                      transition: "height 0.6s cubic-bezier(0.34,1.56,0.64,1)",
-                    }} />
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* X-axis labels */}
-            <div style={{ display: "flex", gap: 4, marginTop: 6, position: "relative", zIndex: 2 }}>
-              {trend.map((pt, i) => {
-                const isToday = i === trend.length - 1;
-                const day = new Date(pt.date).getDate();
-                const showLabel = i === 0 || i === Math.floor(trend.length / 2) || i === trend.length - 1;
-                return (
-                  <div key={pt.date} style={{ flex: 1, textAlign: "center", fontSize: 8.5, color: isToday ? TG.yellow : (showLabel ? TG.muted : "transparent"), fontWeight: isToday ? 800 : 400 }}>
-                    {showLabel ? (isToday ? "Сег" : day) : ""}
-                  </div>
-                );
-              })}
-            </div>
           </div>
-        )}
+          <MiniAreaChart data={trend} color1="#6ba8e5" color2={TG.green} />
+        </GlassCard>
 
-        {/* Top campaigns */}
-        {topCampaigns.length > 0 && (
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 10, fontWeight: 800, color: TG.muted, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 10 }}>
-              Топ рассылок
-            </div>
-            <div className="lg" style={{ borderRadius: 24 }}>
-              {topCampaigns.map((c, i) => {
-                const total = c.sent_count + c.failed_count;
-                const pct = total > 0 ? (c.sent_count / total) * 100 : 0;
-                const max = topCampaigns[0]?.sent_count ?? 1;
-                const barW = max > 0 ? (c.sent_count / max) * 100 : 0;
-                return (
-                  <div key={c.id} style={{ padding: "12px 15px", borderBottom: i < topCampaigns.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none", position: "relative", zIndex: 2 }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "64%", color: TG.text }}>{c.name}</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                        <span style={{ fontSize: 12, fontWeight: 800, color: TG.accentLight }}>{c.sent_count.toLocaleString("ru")}</span>
-                        <span style={{ fontSize: 10, color: pct > 90 ? TG.green : pct > 70 ? TG.yellow : TG.red, background: pct > 90 ? `${TG.green}14` : pct > 70 ? `${TG.yellow}14` : `${TG.red}14`, border: `1px solid ${pct > 90 ? TG.green : pct > 70 ? TG.yellow : TG.red}28`, borderRadius: 7, padding: "1px 6px", fontWeight: 700 }}>
-                          {pct.toFixed(0)}%
-                        </span>
-                      </div>
-                    </div>
-                    <div style={{ height: 3, background: "rgba(255,255,255,0.055)", borderRadius: 2, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${barW}%`, background: `linear-gradient(90deg,${TG.accent},${TG.accentLight})`, borderRadius: 2, transition: "width 0.7s cubic-bezier(0.34,1.56,0.64,1)", boxShadow: `0 0 8px ${TG.accentGlow}` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        {/* Fuel mix pie */}
+        <GlassCard style={{ padding:"14px" }}>
+          <div style={{ fontSize:12,fontWeight:700,color:TG.textSecondary,marginBottom:12 }}>Топливный микс</div>
+          <DonutChart data={FUEL_MIX} />
+        </GlassCard>
 
-        {trend.length === 0 && topCampaigns.length === 0 && (
-          <div className="lg fade-up" style={{ padding: "40px 24px", textAlign: "center" }}>
-            <div style={{ fontSize: 36, marginBottom: 14 }}>📊</div>
-            <div style={{ color: TG.muted, fontSize: 14, lineHeight: 1.55, position: "relative", zIndex: 2 }}>
-              Данных пока нет.<br />Запустите первую рассылку.
-            </div>
-          </div>
-        )}
+        {/* Bar chart */}
+        <GlassCard style={{ padding:"14px 14px 10px" }}>
+          <div style={{ fontSize:12,fontWeight:700,color:TG.textSecondary,marginBottom:8 }}>Скидки по дням</div>
+          <MiniBarChart data={trend} color="#ff9f40" />
+        </GlassCard>
 
-        <div style={{ height: 8 }} />
       </div>
     </div>
   );
