@@ -3,7 +3,26 @@ set -e
 
 echo "=== PROMO-Fuel deployment build ==="
 
-# Step 1: Rebuild better-sqlite3 native addon
+# Step 1: Install all workspace dependencies
+echo "Installing dependencies..."
+pnpm install --frozen-lockfile
+
+# Fix missing .bin symlinks for vite in workspace packages
+VITE_BIN=$(find "$(pwd)/node_modules/.pnpm" -maxdepth 3 -name "vite.js" -path "*/vite/bin/vite.js" 2>/dev/null | head -1)
+if [ -n "$VITE_BIN" ]; then
+  for pkg in artifacts/crm-platform artifacts/telegram-miniapp artifacts/mockup-sandbox; do
+    if [ -d "$pkg/node_modules" ]; then
+      mkdir -p "$pkg/node_modules/.bin"
+      if [ ! -f "$pkg/node_modules/.bin/vite" ]; then
+        ln -sf "$VITE_BIN" "$pkg/node_modules/.bin/vite"
+        chmod +x "$pkg/node_modules/.bin/vite"
+        echo "Linked vite for $pkg"
+      fi
+    fi
+  done
+fi
+
+# Step 2: Rebuild better-sqlite3 native addon
 BSQ="$(pwd)/node_modules/.pnpm/better-sqlite3@12.10.1/node_modules/better-sqlite3"
 if [ -d "$BSQ" ]; then
   echo "Rebuilding better-sqlite3..."

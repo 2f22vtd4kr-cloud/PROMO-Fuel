@@ -1,0 +1,40 @@
+Replit Prompt to Fix the Deployment Issue:
+Fix the Replit deployment for this monorepo project (PROMO-Fuel). 
+
+The logs show:
+- The api-server artifact (Node.js/Express in artifacts/api-server/dist/index.mjs) starts but healthchecks to /api repeatedly return 500.
+- Port detection fails: "not all artifact ports opened within timeout expected=[8080] detected=0" and seccomp fallback issues.
+- It kills the process with SIGTERM.
+- There's also a static handler for /crm-platform/.
+
+Key files:
+- artifacts/api-server/.replit-artifact/artifact.toml defines the service on localPort 8080 with paths ["/api"] and health at /api/healthz.
+- The server listens on process.env.PORT (set to 8080 in production).
+- Main .replit configures monorepo artifacts.
+
+Common Replit monorepo/artifact deployment problems:
+1. Server must listen on host "0.0.0.0" (not localhost/127.0.0.1) for published deployments and healthchecks.
+2. Healthcheck path mismatch or /api route throwing errors (check for unhandled exceptions, missing DB connections, env vars, or import errors in routes).
+3. Build step failing silently or dist/ not up-to-date.
+4. Port configuration conflicts in .replit or artifact config.
+5. Dependencies (pnpm workspace, native modules) or Python side effects.
+
+Steps to diagnose and fix:
+- Add explicit host binding: In artifacts/api-server/src/index.ts or app setup, use app.listen(port, '0.0.0.0', ...).
+- Add better error logging around startup and routes (especially /api and /api/healthz).
+- Ensure /api/healthz returns 200 quickly (it's there but maybe upstream errors).
+- Verify build: Run the production build command and check dist/index.mjs.
+- Update .replit / artifact.toml ports if needed (externalPort 80 mapping).
+- Check for missing env vars, DB connections (campaigns.db etc.), or async init that fails.
+- Make startup faster and more robust for Replit's healthcheck timeout.
+
+Output:
+- Updated code/config changes.
+- Test commands to run locally in Replit.
+- Confirmation it should pass port opening + healthchecks.
+Quick Manual Checks You Can Do Now:
+	1	In the Replit Shell, run the build: pnpm --filter @workspace/api-server run build
+	2	Check logs for actual errors (not just healthcheck 500) — look for stack traces on startup.
+	3	Ensure the server code binds to 0.0.0.0.
+	4	Test the health endpoint manually: curl http://localhost:8080/api/healthz after starting the server.
+This prompt should guide Replit Agent (or you) to resolve the most common causes for this exact error pattern. Paste it into your Replit chat with the Agent!

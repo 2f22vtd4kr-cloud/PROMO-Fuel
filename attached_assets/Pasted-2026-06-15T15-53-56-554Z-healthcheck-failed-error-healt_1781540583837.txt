@@ -1,0 +1,100 @@
+2026-06-15T15:53:56.554Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:53:58.411Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:53:59.586Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:53:59.930Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:54:00.864Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:54:02.115Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:54:02.385Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:54:02.614Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:54:04.275Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:54:05.152Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:54:07.095Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:54:07.790Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:54:09.330Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:54:10.651Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:54:11.977Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:54:12.054Z seccomp port detection incomplete, trying /proc/net/tcp fallback expected=[8080] seccompDetected=0
+2026-06-15T15:54:12.055Z all artifact processes stopped
+2026-06-15T15:54:12.055Z not all artifact ports opened within timeout expected=[8080] detected=0
+2026-06-15T15:54:12.055Z a port configuration was specified but the required port was never opened
+2026-06-15T15:54:12.055Z sending SIGTERM to artifact process artifact=artifacts/api-server
+2026-06-15T15:54:13.852Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:18.785Z starting up user application
+2026-06-15T15:57:18.785Z artifact mode enabled runnable=1 static=1
+2026-06-15T15:57:18.786Z starting artifact processes for monorepo deployment
+2026-06-15T15:57:18.788Z metasidecar: loaded enterprise status from environment is_enterprise=false
+2026-06-15T15:57:18.793Z forwarding local port 0 to external port 80 (mapped as 1104)
+2026-06-15T15:57:18.793Z registered static handler for artifact path=/crm-platform/ publicDir=artifacts/crm-platform/dist/public
+2026-06-15T15:57:18.793Z waiting for runnable artifact ports ports=[8080]
+2026-06-15T15:57:18.805Z baseline ports snapshot before artifact start ports=[1104 1106 1105]
+2026-06-15T15:57:18.805Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:18.806Z starting artifact processes count=1
+2026-06-15T15:57:18.809Z starting artifact process args=[node --enable-source-maps artifacts/api-server/dist/index.mjs] port=8080 artifact=artifacts/api-server
+2026-06-15T15:57:18.810Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:18.815Z artifact process started pid=19 artifact=artifacts/api-server
+2026-06-15T15:57:18.834Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:18.872Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:18.951Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:18.995Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:19.231Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:19.264Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:19.302Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:24.692Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:25.483Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:25.736Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:27.104Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:28.001Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:29.460Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:31.094Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:32.507Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:32.692Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:32.796Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:34.358Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:36.061Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:37.655Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:38.417Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:40.124Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:40.637Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:41.501Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:42.461Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:44.122Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:45.553Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:46.020Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:46.334Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:48.181Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:50.142Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:50.944Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:51.825Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:53.252Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:55.241Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:56.365Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:57.040Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:57.936Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:57:59.312Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:00.356Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:01.745Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:02.493Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:03.368Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:03.904Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:05.182Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:06.246Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:07.284Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:09.246Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:10.086Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:11.253Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:12.460Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:13.111Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:14.673Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:14.878Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:15.414Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:17.113Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:17.611Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:17.674Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:18.806Z seccomp port detection incomplete, trying /proc/net/tcp fallback expected=[8080] seccompDetected=0
+2026-06-15T15:58:18.808Z sending SIGTERM to artifact process artifact=artifacts/api-server
+2026-06-15T15:58:18.808Z not all artifact ports opened within timeout expected=[8080] detected=0
+2026-06-15T15:58:18.808Z a port configuration was specified but the required port was never opened
+2026-06-15T15:58:18.808Z all artifact processes stopped
+2026-06-15T15:58:18.947Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:19.153Z healthcheck failed error=healthcheck /api returned status 500
+2026-06-15T15:58:20.061Z healthcheck failed error=healthcheck /api returned status 500
