@@ -10,5 +10,6 @@ export const modules: ModuleMap = {
   "./components/mockups/telegram-miniapp/Dashboard.tsx": () => import("../components/mockups/telegram-miniapp/Dashboard.tsx"),
   "./components/mockups/telegram-miniapp/Editor.tsx": () => import("../components/mockups/telegram-miniapp/Editor.tsx"),
   "./components/mockups/telegram-miniapp/Home.tsx": () => import("../components/mockups/telegram-miniapp/Home.tsx"),
-  "./components/mockups/telegram-miniapp/Journey.tsx": () => import("../components/mockups/telegram-miniapp/Journey.tsx")
+  "./components/mockups/telegram-miniapp/Journey.tsx": () => import("../components/mockups/telegram-miniapp/Journey.tsx"),
+  "./components/mockups/telegram-miniapp/LiquidGlass.tsx": () => import("../components/mockups/telegram-miniapp/LiquidGlass.tsx")
 };
