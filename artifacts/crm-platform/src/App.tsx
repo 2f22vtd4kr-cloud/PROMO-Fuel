@@ -8,6 +8,9 @@ import { Journey } from "@/pages/journey";
 import { Campaigns } from "@/pages/campaigns";
 import { CampaignDetail } from "@/pages/campaign-detail";
 import { Audience } from "@/pages/audience";
+import { AccountsPage } from "@/pages/accounts";
+import { TemplatesPage } from "@/pages/templates";
+import { SettingsPage } from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -21,6 +24,9 @@ function Router() {
         <Route path="/campaigns" component={Campaigns} />
         <Route path="/campaigns/:id" component={CampaignDetail} />
         <Route path="/audience" component={Audience} />
+        <Route path="/accounts" component={AccountsPage} />
+        <Route path="/templates" component={TemplatesPage} />
+        <Route path="/settings" component={SettingsPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

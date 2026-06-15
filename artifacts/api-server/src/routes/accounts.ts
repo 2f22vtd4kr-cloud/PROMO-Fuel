@@ -122,4 +122,24 @@ router.post("/accounts/:id/reset-daily", (req, res) => {
   }
 });
 
+router.get("/accounts/:id/logs", (req, res) => {
+  try {
+    const db = getDb(true);
+    const rows = db.prepare(
+      `SELECT s.id, s.campaign_id, s.chat_id, s.status, s.sent_at, s.error,
+              c.name as campaign_name,
+              u.username, u.first_name
+       FROM sends s
+       LEFT JOIN campaigns c ON c.id = s.campaign_id
+       LEFT JOIN users u ON u.chat_id = s.chat_id
+       WHERE s.account_id = ?
+       ORDER BY s.sent_at DESC LIMIT 100`
+    ).all(parseInt(req.params.id));
+    db.close();
+    res.json(rows);
+  } catch (err) {
+    res.json([]);
+  }
+});
+
 export default router;

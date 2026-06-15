@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useListUsers, useCreateUser, useDeleteUser, useUpdateUser } from "@workspace/api-client-react";
 import { getListUsersQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Trash2, Tag, User } from "lucide-react";
+import { Plus, Search, Trash2, Tag, User, Download, Upload } from "lucide-react";
 
 const TAG_COLORS: Record<string, string> = {
   vip: "text-amber-400 bg-amber-400/10 border-amber-400/20",
@@ -26,9 +26,23 @@ export function Audience() {
   const [q, setQ] = useState("");
   const [tagFilter, setTagFilter] = useState("all");
   const [addOpen, setAddOpen] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [newId, setNewId] = useState("");
   const [newName, setNewName] = useState("");
   const [newTag, setNewTag] = useState("");
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkTag, setBulkTag] = useState("");
   const qc = useQueryClient();
 
   const params = tagFilter !== "all" ? { tag: tagFilter } : undefined;
@@ -65,8 +79,94 @@ export function Audience() {
     qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
   }
 
+  function toggleSelect(chatId: number) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(chatId) ? next.delete(chatId) : next.add(chatId);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (selected.size === filtered.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(filtered.map(u => u.chat_id)));
+    }
+  }
+
+  async function handleBulkTag() {
+    if (!bulkTag.trim() || selected.size === 0) return;
+    const tag = bulkTag.trim();
+    for (const chatId of selected) {
+      const user = (users || []).find(u => u.chat_id === chatId);
+      if (!user) continue;
+      const tags = parseTags(user.tags);
+      if (!tags.includes(tag)) {
+        await updateMut.mutateAsync({ chatId, data: { tags: JSON.stringify([...tags, tag]) } });
+      }
+    }
+    qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
+    setSelected(new Set());
+    setBulkTag("");
+  }
+
+  async function handleBulkDelete() {
+    if (!confirm(`Удалить ${selected.size} пользователей?`)) return;
+    for (const chatId of selected) {
+      await deleteMut.mutateAsync({ chatId });
+    }
+    qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
+    setSelected(new Set());
+  }
+
   // Collect all unique tags
   const allTags = Array.from(new Set((users || []).flatMap(u => parseTags(u.tags))));
+
+  function exportCSV() {
+    if (!users?.length) return;
+    const rows = [
+      ["chat_id", "username", "first_name", "tags", "first_seen", "last_seen"],
+      ...(users || []).map(u => [
+        u.chat_id,
+        u.username ?? "",
+        u.first_name ?? "",
+        parseTags(u.tags).join(";"),
+        u.first_seen?.slice(0, 10) ?? "",
+        u.last_seen?.slice(0, 10) ?? "",
+      ]),
+    ];
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `audience_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function importCSV(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    const lines = text.split("\n").slice(1); // skip header
+    let added = 0;
+    for (const line of lines) {
+      const cols = line.split(",").map(c => c.replace(/^"|"$/g, "").replace(/""/g, '"'));
+      const [chatIdStr, username, first_name, tagsRaw] = cols;
+      const chatId = parseInt(chatIdStr);
+      if (!chatId || isNaN(chatId)) continue;
+      const tags = tagsRaw ? JSON.stringify(tagsRaw.split(";").filter(Boolean)) : "[]";
+      try {
+        await createMut.mutateAsync({ data: { chat_id: chatId, username: username || undefined, first_name: first_name || undefined, tags } });
+        added++;
+      } catch { }
+    }
+    qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
+    alert(`Импортировано: ${added} пользователей`);
+    e.target.value = "";
+  }
 
   return (
     <div className="space-y-6">
@@ -75,9 +175,20 @@ export function Audience() {
           <h1 className="text-2xl font-bold tracking-tight">Аудитория</h1>
           <p className="text-muted-foreground text-sm mt-1">Управление получателями кампаний</p>
         </div>
-        <Button onClick={() => setAddOpen(true)} size="sm">
-          <Plus size={15} className="mr-1.5" /> Добавить
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={exportCSV} disabled={!users?.length}>
+            <Download size={13} className="mr-1.5" /> Экспорт CSV
+          </Button>
+          <label className="cursor-pointer">
+            <Button variant="outline" size="sm" asChild>
+              <span><Upload size={13} className="mr-1.5" /> Импорт CSV</span>
+            </Button>
+            <input type="file" accept=".csv" className="hidden" onChange={importCSV} />
+          </label>
+          <Button onClick={() => setAddOpen(true)} size="sm">
+            <Plus size={15} className="mr-1.5" /> Добавить
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -96,7 +207,7 @@ export function Audience() {
       <div className="flex gap-3">
         <div className="relative flex-1 max-w-sm">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input className="pl-9 h-9 text-sm" placeholder="Поиск по имени или ID..." value={q} onChange={e => setQ(e.target.value)} />
+          <Input ref={searchRef} className="pl-9 h-9 text-sm" placeholder="Поиск по имени или ID... [/]" value={q} onChange={e => setQ(e.target.value)} />
         </div>
         <Select value={tagFilter} onValueChange={setTagFilter}>
           <SelectTrigger className="w-40 h-9 text-sm">
@@ -109,11 +220,42 @@ export function Audience() {
         </Select>
       </div>
 
+      {/* Bulk actions bar */}
+      {selected.size > 0 && (
+        <div className="bg-primary/10 border border-primary/30 rounded-xl px-4 py-2.5 flex items-center gap-3">
+          <span className="text-sm font-medium text-primary">{selected.size} выбрано</span>
+          <div className="flex items-center gap-2 ml-auto">
+            <Input
+              className="h-7 text-xs w-32"
+              placeholder="Тег..."
+              value={bulkTag}
+              onChange={e => setBulkTag(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") handleBulkTag(); }}
+            />
+            <Button size="sm" className="h-7 text-xs" disabled={!bulkTag.trim()} onClick={handleBulkTag}>
+              <Tag size={11} className="mr-1" /> Добавить тег
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 text-xs text-destructive hover:text-destructive" onClick={handleBulkDelete}>
+              <Trash2 size={11} className="mr-1" /> Удалить
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setSelected(new Set())}>
+              Отменить
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-secondary/30">
+              <th className="px-4 py-3 text-left w-8">
+                <input type="checkbox" className="rounded"
+                  checked={filtered.length > 0 && selected.size === filtered.length}
+                  onChange={toggleAll}
+                />
+              </th>
               {["Пользователь", "Chat ID", "Теги", "Добавлен", "Был онлайн", ""].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">{h}</th>
               ))}
@@ -122,13 +264,17 @@ export function Audience() {
           <tbody className="divide-y divide-border">
             {isLoading
               ? Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i}><td colSpan={6} className="px-4 py-3"><Skeleton className="h-5 w-full" /></td></tr>
+                <tr key={i}><td colSpan={7} className="px-4 py-3"><Skeleton className="h-5 w-full" /></td></tr>
               ))
               : filtered.map(u => {
                 const tags = parseTags(u.tags);
                 const displayName = u.username ? `@${u.username}` : u.first_name || `User ${u.chat_id}`;
+                const isSelected = selected.has(u.chat_id);
                 return (
-                  <tr key={u.chat_id} className="hover:bg-secondary/20 transition-colors">
+                  <tr key={u.chat_id} className={`hover:bg-secondary/20 transition-colors ${isSelected ? "bg-primary/5" : ""}`}>
+                    <td className="px-4 py-3">
+                      <input type="checkbox" className="rounded" checked={isSelected} onChange={() => toggleSelect(u.chat_id)} />
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
@@ -161,7 +307,7 @@ export function Audience() {
               })
             }
             {!isLoading && filtered.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground text-sm">Пользователи не найдены</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">Пользователи не найдены</td></tr>
             )}
           </tbody>
         </table>

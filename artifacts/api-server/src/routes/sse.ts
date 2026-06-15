@@ -15,17 +15,29 @@ function broadcastEvent(event: string, data: unknown) {
   }
 }
 
-let lastSnapshot = "";
+let lastCampaignSnap = "";
+let lastAccountSnap = "";
 
 function pollDb() {
   try {
     const db = new Database(DB_PATH, { readonly: true });
-    const campaigns = db.prepare("SELECT id, status, sent_count, failed_count FROM campaigns ORDER BY id").all();
-    const snap = JSON.stringify(campaigns);
-    if (snap !== lastSnapshot) {
-      lastSnapshot = snap;
+
+    const campaigns = db.prepare("SELECT id, name, status, sent_count, failed_count, target_count FROM campaigns ORDER BY id").all();
+    const campSnap = JSON.stringify(campaigns);
+    if (campSnap !== lastCampaignSnap) {
+      lastCampaignSnap = campSnap;
       broadcastEvent("campaigns", campaigns);
     }
+
+    try {
+      const accounts = db.prepare("SELECT id, label, phone, username, telegram_id, status, sent_today, sent_total, failed_total, is_banned, is_active FROM sender_accounts ORDER BY id").all();
+      const accSnap = JSON.stringify(accounts);
+      if (accSnap !== lastAccountSnap) {
+        lastAccountSnap = accSnap;
+        broadcastEvent("accounts", accounts);
+      }
+    } catch {}
+
     db.close();
   } catch {}
 }

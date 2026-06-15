@@ -202,4 +202,32 @@ router.get("/analytics/cohort", (_req, res) => {
   }
 });
 
+router.get("/analytics/send-rate", (_req, res) => {
+  try {
+    const db = getDb();
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = db.prepare(`
+      SELECT strftime('%H', sent_at) as hour,
+             COUNT(*) as total,
+             SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) as ok,
+             SUM(CASE WHEN status != 'ok' THEN 1 ELSE 0 END) as errors
+      FROM sends
+      WHERE sent_at >= ? AND sent_at < ?
+      GROUP BY hour
+      ORDER BY hour
+    `).all(today + "T00:00:00", today + "T23:59:59") as any[];
+    db.close();
+    // Fill all 24 hours
+    const hourMap: Record<string, { hour: string; total: number; ok: number; errors: number }> = {};
+    for (let i = 0; i < 24; i++) {
+      const h = String(i).padStart(2, "0");
+      hourMap[h] = { hour: `${h}:00`, total: 0, ok: 0, errors: 0 };
+    }
+    rows.forEach(r => { if (hourMap[r.hour]) { hourMap[r.hour] = { hour: `${r.hour}:00`, total: r.total, ok: r.ok, errors: r.errors }; } });
+    res.json(Object.values(hourMap));
+  } catch (err) {
+    res.json([]);
+  }
+});
+
 export default router;

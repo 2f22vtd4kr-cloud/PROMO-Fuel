@@ -14,6 +14,27 @@ _active: dict = {}  # campaign_id -> state dict
 _scheduler_task = None
 
 
+async def daily_reset_loop():
+    """Resets sent_today counter on all sender accounts at midnight MSK."""
+    logger.info("🔄 Daily reset loop started")
+    while True:
+        try:
+            now = datetime.now()
+            # Calculate seconds until next midnight
+            from datetime import timedelta
+            next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=5, microsecond=0)
+            secs = (next_midnight - now).total_seconds()
+            logger.info(f"🕛 Daily reset in {secs/3600:.1f}h at {next_midnight.strftime('%H:%M')}")
+            await asyncio.sleep(secs)
+            await db.reset_daily_counts()
+            logger.info("✅ Daily account limits reset")
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Daily reset error: {e}")
+            await asyncio.sleep(60)
+
+
 async def scheduler_loop(bot: Bot):
     """Background loop: fires scheduled campaigns when their time comes."""
     logger.info("📅 Campaign scheduler started")
@@ -42,11 +63,16 @@ async def scheduler_loop(bot: Bot):
         await asyncio.sleep(30)
 
 
+_daily_reset_task = None
+
 def start_scheduler(bot: Bot):
-    global _scheduler_task
+    global _scheduler_task, _daily_reset_task
     if _scheduler_task is None or _scheduler_task.done():
         _scheduler_task = asyncio.create_task(scheduler_loop(bot))
         logger.info("✅ Scheduler task created")
+    if _daily_reset_task is None or _daily_reset_task.done():
+        _daily_reset_task = asyncio.create_task(daily_reset_loop())
+        logger.info("✅ Daily reset task created")
 
 
 def get_active_campaign_id() -> int | None:

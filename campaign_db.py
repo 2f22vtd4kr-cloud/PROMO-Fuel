@@ -35,10 +35,31 @@ CREATE TABLE IF NOT EXISTS sends (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     campaign_id INTEGER NOT NULL,
     chat_id     INTEGER NOT NULL,
+    account_id  INTEGER,
     status      TEXT NOT NULL,
     sent_at     TEXT NOT NULL,
     error       TEXT,
-    FOREIGN KEY (campaign_id) REFERENCES campaigns(id)
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
+    FOREIGN KEY (account_id)  REFERENCES sender_accounts(id)
+);
+
+CREATE TABLE IF NOT EXISTS sender_accounts (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    label         TEXT NOT NULL DEFAULT '',
+    phone         TEXT UNIQUE NOT NULL,
+    telegram_id   INTEGER,
+    username      TEXT,
+    session_file  TEXT,
+    proxy         TEXT,
+    status        TEXT NOT NULL DEFAULT 'idle',
+    sent_today    INTEGER NOT NULL DEFAULT 0,
+    sent_total    INTEGER NOT NULL DEFAULT 0,
+    failed_total  INTEGER NOT NULL DEFAULT 0,
+    last_error    TEXT,
+    last_used_at  TEXT,
+    is_banned     INTEGER NOT NULL DEFAULT 0,
+    is_active     INTEGER NOT NULL DEFAULT 1,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """
 
@@ -55,9 +76,37 @@ async def init_db():
             ("scheduled_at",  "TEXT"),
             ("scheduled_tag", "TEXT"),
             ("notify_chat",   "INTEGER"),
+            ("finished_at",   "TEXT"),
+            ("notes",         "TEXT DEFAULT ''"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE campaigns ADD COLUMN {col} {definition}")
+                await db.commit()
+            except Exception:
+                pass
+        for col, definition in [
+            ("account_id", "INTEGER"),
+        ]:
+            try:
+                await db.execute(f"ALTER TABLE sends ADD COLUMN {col} {definition}")
+                await db.commit()
+            except Exception:
+                pass
+        # sender_accounts column migrations
+        for col, definition in [
+            ("label",        "TEXT NOT NULL DEFAULT ''"),
+            ("proxy",        "TEXT"),
+            ("session_file", "TEXT"),
+            ("is_banned",    "INTEGER NOT NULL DEFAULT 0"),
+            ("is_active",    "INTEGER NOT NULL DEFAULT 1"),
+            ("sent_today",   "INTEGER NOT NULL DEFAULT 0"),
+            ("sent_total",   "INTEGER NOT NULL DEFAULT 0"),
+            ("failed_total", "INTEGER NOT NULL DEFAULT 0"),
+            ("last_error",   "TEXT"),
+            ("last_used_at", "TEXT"),
+        ]:
+            try:
+                await db.execute(f"ALTER TABLE sender_accounts ADD COLUMN {col} {definition}")
                 await db.commit()
             except Exception:
                 pass  # column already exists
@@ -232,4 +281,140 @@ async def get_campaign_sends(campaign_id: int, limit: int = 50) -> list[dict]:
             WHERE s.campaign_id = ?
             ORDER BY s.sent_at DESC LIMIT ?
         """, (campaign_id, limit)) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+
+# ── Sender account helpers ───────────────────────────────────────────────────
+
+async def get_active_accounts() -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM sender_accounts WHERE is_active = 1 AND is_banned = 0 ORDER BY sent_today ASC"
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_account_by_phone(phone: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM sender_accounts WHERE phone = ?", (phone,)) as cur:
+            row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def upsert_account(phone: str, **kwargs) -> int:
+    now = datetime.now().isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("""
+            INSERT INTO sender_accounts (phone, created_at)
+            VALUES (?, ?)
+            ON CONFLICT(phone) DO UPDATE SET phone = excluded.phone
+        """, (phone, now))
+        await db.commit()
+        acc_id = cur.lastrowid if cur.lastrowid else (
+            await (await db.execute("SELECT id FROM sender_accounts WHERE phone = ?", (phone,))).fetchone()
+        )[0]
+        if kwargs:
+            fields = ", ".join(f"{k} = ?" for k in kwargs)
+            await db.execute(
+                f"UPDATE sender_accounts SET {fields} WHERE id = ?",
+                list(kwargs.values()) + [acc_id]
+            )
+            await db.commit()
+    return acc_id
+
+
+async def account_mark_sending(account_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE sender_accounts SET status = 'sending', last_used_at = ? WHERE id = ?",
+            (datetime.now().isoformat(), account_id)
+        )
+        await db.commit()
+
+
+async def account_mark_idle(account_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE sender_accounts SET status = 'idle' WHERE id = ?",
+            (account_id,)
+        )
+        await db.commit()
+
+
+async def account_record_send(account_id: int, success: bool, error: str = None) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        if success:
+            await db.execute("""
+                UPDATE sender_accounts
+                SET sent_today = sent_today + 1,
+                    sent_total = sent_total + 1,
+                    last_error = NULL,
+                    last_used_at = ?
+                WHERE id = ?
+            """, (datetime.now().isoformat(), account_id))
+        else:
+            await db.execute("""
+                UPDATE sender_accounts
+                SET failed_total = failed_total + 1,
+                    last_error = ?,
+                    last_used_at = ?
+                WHERE id = ?
+            """, (error, datetime.now().isoformat(), account_id))
+        await db.commit()
+
+
+async def account_flag_banned(account_id: int, error: str = None) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE sender_accounts
+            SET is_banned = 1, status = 'banned', last_error = ?
+            WHERE id = ?
+        """, (error, account_id))
+        await db.commit()
+
+
+async def account_flood_wait(account_id: int, seconds: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE sender_accounts
+            SET status = 'flood_wait',
+                last_error = ?
+            WHERE id = ?
+        """, (f"FloodWait {seconds}s", account_id))
+        await db.commit()
+
+
+async def reset_daily_counts() -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE sender_accounts SET sent_today = 0")
+        await db.commit()
+
+
+async def log_send_with_account(campaign_id: int, chat_id: int, status: str,
+                                 account_id: int = None, error: str = None) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO sends (campaign_id, chat_id, account_id, status, sent_at, error)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (campaign_id, chat_id, account_id, status, datetime.now().isoformat(), error))
+        await db.commit()
+
+
+async def get_campaign_account_breakdown(campaign_id: int) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT
+                sa.id, sa.label, sa.phone, sa.username,
+                COUNT(*) as total,
+                SUM(CASE WHEN s.status = 'ok' THEN 1 ELSE 0 END) as ok,
+                SUM(CASE WHEN s.status = 'error' THEN 1 ELSE 0 END) as errors
+            FROM sends s
+            JOIN sender_accounts sa ON sa.id = s.account_id
+            WHERE s.campaign_id = ?
+            GROUP BY s.account_id
+            ORDER BY total DESC
+        """, (campaign_id,)) as cur:
             return [dict(r) for r in await cur.fetchall()]

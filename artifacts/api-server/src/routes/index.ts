@@ -5,6 +5,7 @@ import usersRouter from "./users";
 import analyticsRouter from "./analytics";
 import sseRouter from "./sse";
 import accountsRouter from "./accounts";
+import templatesRouter from "./templates";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(usersRouter);
 router.use(analyticsRouter);
 router.use(sseRouter);
 router.use(accountsRouter);
+router.use(templatesRouter);
 
 export default router;

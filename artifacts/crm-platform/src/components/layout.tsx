@@ -4,6 +4,8 @@ import {
   Map, 
   Megaphone, 
   Users, 
+  Shield,
+  FileText,
   Settings,
   PanelLeftClose,
   PanelLeftOpen
@@ -19,6 +21,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/journey", label: "Путь клиента", icon: Map },
     { href: "/campaigns", label: "Кампании", icon: Megaphone },
     { href: "/audience", label: "Аудитория", icon: Users },
+    { href: "/accounts", label: "Аккаунты", icon: Shield },
+    { href: "/templates", label: "Шаблоны", icon: FileText },
+    { href: "/settings", label: "Настройки", icon: Settings },
   ];
 
   return (

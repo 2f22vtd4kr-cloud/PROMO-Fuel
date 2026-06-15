@@ -1,12 +1,25 @@
 import { useGetAnalyticsOverview, useGetAnalyticsTrend, useGetAnalyticsFunnel, useGetTopCampaigns, useGetActivityFeed, useGetAnalyticsCohort } from "@workspace/api-client-react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { TrendingUp, TrendingDown, Send, Users, Megaphone, Mail, MousePointerClick, Zap, RefreshCw } from "lucide-react";
+import { useState, useEffect } from "react";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from "recharts";
+import { TrendingUp, TrendingDown, Send, Users, Megaphone, Mail, MousePointerClick, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState, useEffect } from "react";
+import { useCampaignSSE } from "@/hooks/use-sse";
 
 const FUNNEL_COLORS = ["hsl(224 76% 55%)", "hsl(260 65% 55%)", "hsl(300 55% 50%)", "hsl(330 65% 50%)", "hsl(0 65% 50%)"];
 const REFETCH_MS = 30_000;
+const API_BASE = import.meta.env.VITE_API_URL ?? "";
+
+function useSendRate() {
+  const [data, setData] = useState<any[]>([]);
+  useEffect(() => {
+    const fetch_ = () => fetch(`${API_BASE}/api/analytics/send-rate`).then(r => r.json()).then(d => setData(Array.isArray(d) ? d : [])).catch(() => {});
+    fetch_();
+    const id = setInterval(fetch_, 60_000);
+    return () => clearInterval(id);
+  }, []);
+  return data;
+}
 
 function DeltaBadge({ delta }: { delta?: number }) {
   if (delta == null) return null;
@@ -58,26 +71,9 @@ function RunningBadge({ status }: { status: string }) {
   );
 }
 
-function RefreshIndicator({ lastRefresh }: { lastRefresh: Date }) {
-  const [, tick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => tick(t => t + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
-  const secs = Math.floor((Date.now() - lastRefresh.getTime()) / 1000);
-  const next = Math.max(0, REFETCH_MS / 1000 - secs);
-  return (
-    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-      <RefreshCw size={11} className={secs < 2 ? "animate-spin text-emerald-400" : ""} />
-      <span>Обновление через {next}с</span>
-    </div>
-  );
-}
 
 export function Dashboard() {
-  const [lastRefresh, setLastRefresh] = useState(new Date());
-
-  const queryOpts = { query: { refetchInterval: REFETCH_MS, onSuccess: () => setLastRefresh(new Date()) } };
+  useCampaignSSE();
 
   const { data: overview, isLoading: ovLoading } = useGetAnalyticsOverview({ query: { refetchInterval: REFETCH_MS } });
   const { data: trend, isLoading: trendLoading } = useGetAnalyticsTrend({ days: 7 }, { query: { refetchInterval: REFETCH_MS } });
@@ -85,6 +81,7 @@ export function Dashboard() {
   const { data: topCampaigns } = useGetTopCampaigns({ limit: 5 }, { query: { refetchInterval: REFETCH_MS } });
   const { data: activity } = useGetActivityFeed({ limit: 8 }, { query: { refetchInterval: REFETCH_MS } });
   const { data: cohort } = useGetAnalyticsCohort({ query: { refetchInterval: REFETCH_MS } });
+  const sendRate = useSendRate();
 
   const pieData = overview
     ? [{ name: "Open Rate", value: overview.avgOpenRate }, { name: "Не открыто", value: 100 - overview.avgOpenRate }]
@@ -97,7 +94,10 @@ export function Dashboard() {
           <h1 className="text-2xl font-bold tracking-tight">Обзор аналитики</h1>
           <p className="text-muted-foreground text-sm mt-1">Сводные показатели по всем кампаниям</p>
         </div>
-        <RefreshIndicator lastRefresh={lastRefresh} />
+        <div className="flex items-center gap-1.5 text-xs text-emerald-400">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          Live SSE
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -301,6 +301,34 @@ export function Dashboard() {
             <div className="py-6 text-xs text-muted-foreground text-center">Недостаточно данных</div>
           )}
         </div>
+      </div>
+
+      {/* Hourly Send Rate */}
+      <div className="bg-card border border-border rounded-xl p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <div className="font-semibold text-sm">Почасовая отправка</div>
+            <div className="text-xs text-muted-foreground mt-0.5">Успешных и ошибок по часам за сегодня</div>
+          </div>
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: "hsl(160 60% 45%)" }} /> OK</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: "hsl(0 62% 55%)" }} /> Ошибки</span>
+          </div>
+        </div>
+        {sendRate.length > 0 ? (
+          <ResponsiveContainer width="100%" height={140}>
+            <BarChart data={sendRate} barSize={8} barGap={2}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+              <XAxis dataKey="hour" tick={{ fill: "hsl(215 20% 45%)", fontSize: 10 }} axisLine={false} tickLine={false} interval={3} />
+              <YAxis tick={{ fill: "hsl(215 20% 45%)", fontSize: 10 }} axisLine={false} tickLine={false} width={28} />
+              <Tooltip contentStyle={{ background: "hsl(222 47% 9%)", border: "1px solid hsl(217 33% 17%)", borderRadius: 8, color: "hsl(210 40% 98%)", fontSize: 12 }} />
+              <Bar dataKey="ok" fill="hsl(160 60% 45%)" radius={[2, 2, 0, 0]} name="OK" />
+              <Bar dataKey="errors" fill="hsl(0 62% 55%)" radius={[2, 2, 0, 0]} name="Ошибки" />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-24 flex items-center justify-center text-xs text-muted-foreground">Нет данных за сегодня</div>
+        )}
       </div>
     </div>
   );

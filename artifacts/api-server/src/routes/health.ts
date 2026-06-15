@@ -8,4 +8,8 @@ router.get("/healthz", (_req, res) => {
   res.json(data);
 });
 
+router.get("/health", (_req, res) => {
+  res.json({ status: "ok", uptime: process.uptime(), time: new Date().toISOString() });
+});
+
 export default router;
