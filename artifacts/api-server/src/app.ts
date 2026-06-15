@@ -36,7 +36,7 @@ app.use("/api", router);
 const FRONTEND_DIST = join(process.cwd(), "artifacts", "telegram-miniapp", "dist");
 if (existsSync(FRONTEND_DIST)) {
   app.use(express.static(FRONTEND_DIST));
-  app.get("*", (_req, res) => {
+  app.get("/*path", (_req, res) => {
     res.sendFile(join(FRONTEND_DIST, "index.html"));
   });
   logger.info({ path: FRONTEND_DIST }, "Serving frontend static files");
