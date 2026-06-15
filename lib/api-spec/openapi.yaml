@@ -1,22 +1,27 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: RUProbe CRM Marketing Hub API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: campaigns
+    description: Campaign management
+  - name: users
+    description: User/audience management
+  - name: analytics
+    description: Analytics and reporting
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +29,308 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── Campaigns ────────────────────────────────────────────────────────────
+  /campaigns:
+    get:
+      operationId: listCampaigns
+      tags: [campaigns]
+      summary: List all campaigns
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Campaign list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Campaign"
+    post:
+      operationId: createCampaign
+      tags: [campaigns]
+      summary: Create a new campaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampaignInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+
+  /campaigns/{id}:
+    get:
+      operationId: getCampaign
+      tags: [campaigns]
+      summary: Get a campaign by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Campaign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateCampaign
+      tags: [campaigns]
+      summary: Update a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampaignUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+    delete:
+      operationId: deleteCampaign
+      tags: [campaigns]
+      summary: Delete a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /campaigns/{id}/logs:
+    get:
+      operationId: listSendLogs
+      tags: [campaigns]
+      summary: Get send logs for a campaign (last 50)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Send logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SendLog"
+
+  # ── Users ─────────────────────────────────────────────────────────────────
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all users/audience
+      parameters:
+        - name: tag
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CrmUser"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Add a user to the audience
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrmUserInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrmUser"
+
+  /users/{chatId}:
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update a user (tags, name)
+      parameters:
+        - name: chatId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrmUserUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrmUser"
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      summary: Remove a user
+      parameters:
+        - name: chatId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Analytics ─────────────────────────────────────────────────────────────
+  /analytics/overview:
+    get:
+      operationId: getAnalyticsOverview
+      tags: [analytics]
+      summary: Dashboard summary — totals, rates, trends
+      responses:
+        "200":
+          description: Overview metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsOverview"
+
+  /analytics/trend:
+    get:
+      operationId: getAnalyticsTrend
+      tags: [analytics]
+      summary: Daily send/open/click trend for the past N days
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Trend data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrendPoint"
+
+  /analytics/funnel:
+    get:
+      operationId: getAnalyticsFunnel
+      tags: [analytics]
+      summary: Conversion funnel — stages and drop-off rates
+      responses:
+        "200":
+          description: Funnel stages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FunnelStage"
+
+  /analytics/top-campaigns:
+    get:
+      operationId: getTopCampaigns
+      tags: [analytics]
+      summary: Top performing campaigns by open rate
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Top campaigns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CampaignStat"
+
+  /analytics/activity:
+    get:
+      operationId: getActivityFeed
+      tags: [analytics]
+      summary: Live activity feed — recent user events
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Activity events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityEvent"
+
+  /analytics/cohort:
+    get:
+      operationId: getAnalyticsCohort
+      tags: [analytics]
+      summary: Cohort retention table — weekly retention by join week
+      responses:
+        "200":
+          description: Cohort data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CohortRow"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +338,144 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    Campaign:
+      type: object
+      required: [id, name, text_template, status, created_at, sent_count, failed_count, target_count, dry_run]
+      properties:
+        id:            { type: integer }
+        name:          { type: string }
+        text_template: { type: string }
+        status:        { type: string }
+        created_at:    { type: string }
+        started_at:    { type: ["string", "null"] }
+        finished_at:   { type: ["string", "null"] }
+        scheduled_at:  { type: ["string", "null"] }
+        scheduled_tag: { type: ["string", "null"] }
+        target_count:  { type: integer }
+        sent_count:    { type: integer }
+        failed_count:  { type: integer }
+        dry_run:       { type: integer }
+
+    CampaignInput:
+      type: object
+      required: [name, text_template]
+      properties:
+        name:          { type: string }
+        text_template: { type: string }
+
+    CampaignUpdate:
+      type: object
+      properties:
+        text_template: { type: string }
+        status:        { type: string }
+        scheduled_at:  { type: ["string", "null"] }
+        scheduled_tag: { type: ["string", "null"] }
+
+    SendLog:
+      type: object
+      required: [id, campaign_id, chat_id, status, sent_at]
+      properties:
+        id:          { type: integer }
+        campaign_id: { type: integer }
+        chat_id:     { type: integer }
+        username:    { type: ["string", "null"] }
+        first_name:  { type: ["string", "null"] }
+        status:      { type: string }
+        sent_at:     { type: string }
+        error:       { type: ["string", "null"] }
+
+    CrmUser:
+      type: object
+      required: [chat_id, first_seen, last_seen, tags]
+      properties:
+        chat_id:    { type: integer }
+        username:   { type: ["string", "null"] }
+        first_name: { type: ["string", "null"] }
+        first_seen: { type: string }
+        last_seen:  { type: string }
+        tags:       { type: string }
+
+    CrmUserInput:
+      type: object
+      required: [chat_id]
+      properties:
+        chat_id:    { type: integer }
+        username:   { type: ["string", "null"] }
+        first_name: { type: ["string", "null"] }
+        tags:       { type: string }
+
+    CrmUserUpdate:
+      type: object
+      properties:
+        username:   { type: ["string", "null"] }
+        first_name: { type: ["string", "null"] }
+        tags:       { type: string }
+
+    AnalyticsOverview:
+      type: object
+      required: [totalSent, totalUsers, totalCampaigns, avgOpenRate, avgCtr, avgBounceRate, activeCampaigns, scheduledCampaigns]
+      properties:
+        totalSent:          { type: integer }
+        totalUsers:         { type: integer }
+        totalCampaigns:     { type: integer }
+        avgOpenRate:        { type: number }
+        avgCtr:             { type: number }
+        avgBounceRate:      { type: number }
+        activeCampaigns:    { type: integer }
+        scheduledCampaigns: { type: integer }
+        sentDelta:          { type: number }
+        openDelta:          { type: number }
+        ctrDelta:           { type: number }
+
+    TrendPoint:
+      type: object
+      required: [date, sent, opened, clicked]
+      properties:
+        date:    { type: string }
+        sent:    { type: integer }
+        opened:  { type: integer }
+        clicked: { type: integer }
+
+    FunnelStage:
+      type: object
+      required: [stage, count, pct, color]
+      properties:
+        stage: { type: string }
+        count: { type: integer }
+        pct:   { type: number }
+        color: { type: string }
+
+    CampaignStat:
+      type: object
+      required: [id, name, sent, openRate, ctr, status]
+      properties:
+        id:       { type: integer }
+        name:     { type: string }
+        sent:     { type: integer }
+        openRate: { type: number }
+        ctr:      { type: number }
+        status:   { type: string }
+
+    ActivityEvent:
+      type: object
+      required: [id, chat_id, event, stage, ts]
+      properties:
+        id:        { type: integer }
+        chat_id:   { type: integer }
+        username:  { type: ["string", "null"] }
+        event:     { type: string }
+        stage:     { type: string }
+        ts:        { type: string }
+        dot:       { type: string }
+
+    CohortRow:
+      type: object
+      required: [week, w0, w1, w2, w3]
+      properties:
+        week: { type: string }
+        w0:   { type: number }
+        w1:   { type: ["number", "null"] }
+        w2:   { type: ["number", "null"] }
+        w3:   { type: ["number", "null"] }
