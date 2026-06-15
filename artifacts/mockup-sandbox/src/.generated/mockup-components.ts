@@ -8,6 +8,7 @@ export const modules: ModuleMap = {
   "./components/mockups/crm/PolishColor.tsx": () => import("../components/mockups/crm/PolishColor.tsx"),
   "./components/mockups/crm/PolishComplete.tsx": () => import("../components/mockups/crm/PolishComplete.tsx"),
   "./components/mockups/crm/PolishTypography.tsx": () => import("../components/mockups/crm/PolishTypography.tsx"),
+  "./components/mockups/crm/PolishTypographyMobile.tsx": () => import("../components/mockups/crm/PolishTypographyMobile.tsx"),
   "./components/mockups/crm/RefinedClarity.tsx": () => import("../components/mockups/crm/RefinedClarity.tsx"),
   "./components/mockups/crm/RefinedDepth.tsx": () => import("../components/mockups/crm/RefinedDepth.tsx"),
   "./components/mockups/crm/UsabilityAccessibility.tsx": () => import("../components/mockups/crm/UsabilityAccessibility.tsx"),
