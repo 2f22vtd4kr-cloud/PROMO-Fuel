@@ -122,4 +122,7 @@ export const api = {
 
   getOverview: () => get<AnalyticsOverview>("/analytics/overview"),
   getUsers: () => get<User[]>("/users"),
+
+  importUsers: (users: { chat_id: number; username?: string; first_name?: string; tags?: string }[]) =>
+    post<{ ok: boolean; imported: number; skipped: number; total: number }>("/users/import", { users }),
 };

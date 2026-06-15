@@ -6,12 +6,14 @@ DB_PATH = "campaigns.db"
 
 CREATE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
-    chat_id     INTEGER PRIMARY KEY,
-    username    TEXT,
-    first_name  TEXT,
-    first_seen  TEXT NOT NULL,
-    last_seen   TEXT NOT NULL,
-    tags        TEXT DEFAULT '[]'
+    chat_id        INTEGER PRIMARY KEY,
+    username       TEXT,
+    first_name     TEXT,
+    first_seen     TEXT NOT NULL,
+    last_seen      TEXT NOT NULL,
+    tags           TEXT DEFAULT '[]',
+    promo_targeted INTEGER DEFAULT 0,
+    last_promo_at  TEXT
 );
 
 CREATE TABLE IF NOT EXISTS campaigns (
@@ -72,6 +74,15 @@ async def init_db():
                 await db.execute(stmt)
         await db.commit()
         # Migrate existing DBs — add new columns if absent
+        for col, definition in [
+            ("promo_targeted", "INTEGER DEFAULT 0"),
+            ("last_promo_at",  "TEXT"),
+        ]:
+            try:
+                await db.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
+                await db.commit()
+            except Exception:
+                pass
         for col, definition in [
             ("scheduled_at",  "TEXT"),
             ("scheduled_tag", "TEXT"),
@@ -139,6 +150,45 @@ async def get_users_by_tag(tag: str):
         async with db.execute("SELECT * FROM users") as cur:
             rows = [dict(r) for r in await cur.fetchall()]
     return [r for r in rows if tag in json.loads(r.get("tags") or "[]")]
+
+
+async def get_untargeted_users() -> list[dict]:
+    """Return users who have never received a promo (promo_targeted = 0)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM users WHERE promo_targeted = 0 ORDER BY first_seen"
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_untargeted_users_by_tag(tag: str) -> list[dict]:
+    """Return un-targeted users filtered by tag."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM users WHERE promo_targeted = 0"
+        ) as cur:
+            rows = [dict(r) for r in await cur.fetchall()]
+    return [r for r in rows if tag in json.loads(r.get("tags") or "[]")]
+
+
+async def is_promo_targeted(chat_id: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT promo_targeted FROM users WHERE chat_id = ?", (chat_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    return bool(row and row[0])
+
+
+async def mark_user_as_promo_targeted(chat_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET promo_targeted = 1, last_promo_at = ? WHERE chat_id = ?",
+            (datetime.now().isoformat(), chat_id)
+        )
+        await db.commit()
 
 
 async def tag_user(chat_id: int, tag: str):

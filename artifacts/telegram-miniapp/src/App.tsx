@@ -42,7 +42,7 @@ function OwnerApp() {
       <MeshBackground />
 
       <div style={{ flex: 1, overflow: "hidden", position: "relative", zIndex: 1 }}>
-        {tab === "home"      && <HomePage      onNewCampaign={() => openEditor()} onViewCampaigns={() => setTab("campaigns")} />}
+        {tab === "home"      && <HomePage      onNewCampaign={() => openEditor()} onViewCampaigns={() => setTab("campaigns")} onNavigate={(t) => setTab(t as Tab)} />}
         {tab === "campaigns" && <CampaignsPage onEdit={openEditor} />}
         {tab === "analytics" && <AnalyticsPage />}
         {tab === "audience"  && <AudiencePage />}

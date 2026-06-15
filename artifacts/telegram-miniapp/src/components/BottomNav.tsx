@@ -83,7 +83,7 @@ export function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => v
               <div style={{ position: "relative", zIndex: 1 }}>
                 <Icon
                   size={isActive ? 21 : 19}
-                  color={isActive ? color : "rgba(160,190,230,0.32)"}
+                  color={isActive ? color : "rgba(160,190,230,0.72)"}
                   strokeWidth={isActive ? 2.4 : 1.6}
                   style={{
                     transition: "color 0.22s, stroke-width 0.22s, filter 0.22s",
@@ -96,7 +96,7 @@ export function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => v
               <span style={{
                 fontSize: 9, fontWeight: isActive ? 800 : 400,
                 letterSpacing: "0.03em",
-                color: isActive ? color : "rgba(160,190,230,0.30)",
+                color: isActive ? color : "rgba(160,190,230,0.65)",
                 textTransform: "uppercase",
                 transition: "color 0.22s",
                 position: "relative", zIndex: 1,

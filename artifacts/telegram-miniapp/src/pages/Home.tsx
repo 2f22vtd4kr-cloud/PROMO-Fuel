@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
-import { Bell, Megaphone, MapPin, Flame, BarChart2, ArrowUpRight, Fuel, Gift, Users2, TrendingUp } from "lucide-react";
+import { Bell, Megaphone, BarChart2, ArrowUpRight, Gift, Users2, TrendingUp, Shield, Flame, Fuel } from "lucide-react";
 import { api, Campaign, AnalyticsOverview } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
 import { haptic } from "../lib/haptics";
 
-export function HomePage({ onNewCampaign, onViewCampaigns }: {
+export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
   onNewCampaign: () => void;
   onViewCampaigns: () => void;
+  onNavigate: (tab: string) => void;
 }) {
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -65,10 +66,10 @@ export function HomePage({ onNewCampaign, onViewCampaigns }: {
   ];
 
   const quickActions = [
-    { label: "Новая рассылка", icon: Megaphone, color: TG.green, glow: TG.greenGlow, action: () => { haptic.medium(); onNewCampaign(); } },
-    { label: "Добавить АЗС",   icon: MapPin,    color: "#ff9f40", glow: "rgba(255,159,64,0.38)", action: () => haptic.light() },
-    { label: "Промо-акция",    icon: Flame,     color: TG.yellow, glow: TG.yellowGlow, action: () => { haptic.light(); onNewCampaign(); } },
-    { label: "Статистика",     icon: BarChart2, color: TG.accent ?? "#6ba8e5", glow: "rgba(107,168,229,0.38)", action: () => haptic.light() },
+    { label: "Новая рассылка", icon: Megaphone, color: TG.green,          glow: TG.greenGlow,                action: () => { haptic.medium(); onNewCampaign(); } },
+    { label: "Статистика",     icon: BarChart2, color: TG.accent ?? "#6ba8e5", glow: "rgba(107,168,229,0.38)", action: () => { haptic.light(); onNavigate("analytics"); } },
+    { label: "Аудитория",      icon: Users2,    color: "#c4aeff",          glow: "rgba(196,174,255,0.38)",    action: () => { haptic.light(); onNavigate("audience"); } },
+    { label: "Аккаунты",       icon: Shield,    color: "#ff7eb3",          glow: "rgba(255,126,179,0.38)",    action: () => { haptic.light(); onNavigate("accounts"); } },
   ];
 
   return (

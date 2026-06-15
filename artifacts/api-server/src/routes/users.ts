@@ -84,4 +84,38 @@ router.delete("/users/:chatId", (req, res) => {
   }
 });
 
+router.post("/users/import", (req, res) => {
+  try {
+    const db = getDb(false);
+    const { users } = req.body as { users: { chat_id: number; username?: string; first_name?: string; tags?: string }[] };
+    if (!Array.isArray(users) || users.length === 0) {
+      return void res.status(400).json({ error: "users array required" });
+    }
+    const now = new Date().toISOString();
+    const stmt = db.prepare(
+      `INSERT INTO users (chat_id, username, first_name, first_seen, last_seen, tags)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(chat_id) DO UPDATE SET
+         username = COALESCE(excluded.username, username),
+         first_name = COALESCE(excluded.first_name, first_name),
+         last_seen = excluded.last_seen,
+         tags = CASE WHEN excluded.tags != '[]' THEN excluded.tags ELSE tags END`
+    );
+    let imported = 0;
+    let skipped = 0;
+    const insert = db.transaction(() => {
+      for (const u of users) {
+        if (!u.chat_id) { skipped++; continue; }
+        stmt.run(u.chat_id, u.username ?? null, u.first_name ?? null, now, now, u.tags ?? "[]");
+        imported++;
+      }
+    });
+    insert();
+    db.close();
+    res.json({ ok: true, imported, skipped, total: users.length });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 export default router;

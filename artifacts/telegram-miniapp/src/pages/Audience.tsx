@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Award, Zap, Star, Clock, Search, Filter } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Award, Zap, Star, Clock, Search, Filter, Upload } from "lucide-react";
 import { api, User } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
@@ -9,15 +9,63 @@ const SEGMENT_COLORS = ["#c4aeff", "#2de897", "#6ba8e5", "rgba(160,190,230,0.50)
 const SEGMENT_ICONS  = [Award, Zap, Star, Clock];
 const SEGMENT_LABELS = ["Премиум", "Активные", "Новые", "Спящие"];
 
-export function AudiencePage() {
-  const [users, setUsers]       = useState<User[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [search, setSearch]     = useState("");
-  const [focused, setFocused]   = useState(false);
+function parseCSV(text: string): { chat_id: number; username?: string; first_name?: string }[] {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const headers = lines[0]!.split(",").map(h => h.trim().toLowerCase());
+  return lines.slice(1).flatMap(line => {
+    const vals = line.split(",").map(v => v.trim().replace(/^"|"$/g, ""));
+    const obj: Record<string, string> = {};
+    headers.forEach((h, i) => { obj[h] = vals[i] ?? ""; });
+    const chat_id = parseInt(obj["chat_id"] ?? obj["id"] ?? "");
+    if (!chat_id) return [];
+    return [{ chat_id, username: obj["username"] || undefined, first_name: obj["first_name"] || obj["name"] || undefined }];
+  });
+}
 
-  useEffect(() => {
-    api.getUsers().then(setUsers).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+export function AudiencePage() {
+  const [users, setUsers]           = useState<User[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [search, setSearch]         = useState("");
+  const [focused, setFocused]       = useState(false);
+  const [importing, setImporting]   = useState(false);
+  const [importMsg, setImportMsg]   = useState<string | null>(null);
+  const fileRef                     = useRef<HTMLInputElement>(null);
+
+  const reload = () => api.getUsers().then(setUsers).catch(() => {}).finally(() => setLoading(false));
+
+  useEffect(() => { reload(); }, []);
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportMsg(null);
+    haptic.medium();
+    try {
+      const text = await file.text();
+      let users: { chat_id: number; username?: string; first_name?: string }[] = [];
+      if (file.name.endsWith(".json") || file.name.endsWith(".jsonl")) {
+        const parsed = file.name.endsWith(".jsonl")
+          ? text.trim().split("\n").map(l => JSON.parse(l))
+          : JSON.parse(text);
+        users = (Array.isArray(parsed) ? parsed : [parsed]).filter(u => u.chat_id);
+      } else {
+        users = parseCSV(text);
+      }
+      if (!users.length) { setImportMsg("Не найдено записей с chat_id"); setImporting(false); return; }
+      const res = await api.importUsers(users);
+      setImportMsg(`✅ Импорт: ${res.imported} добавлено, ${res.skipped} пропущено`);
+      haptic.success();
+      reload();
+    } catch (err) {
+      setImportMsg(`❌ Ошибка: ${err}`);
+      haptic.error();
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
 
   const filtered = search.trim()
     ? users.filter(u =>
@@ -39,13 +87,38 @@ export function AudiencePage() {
 
         <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between" }}>
           <div style={{ fontSize:18,fontWeight:800,color:TG.text,letterSpacing:"-0.02em" }}>Аудитория</div>
-          <GlassCard style={{ padding:"8px 12px",borderRadius:14 }}>
-            <div style={{ display:"flex",alignItems:"center",gap:6 }}>
-              <Filter size={13} color="#6ba8e5" />
-              <span style={{ fontSize:11,color:"#6ba8e5",fontWeight:700 }}>Фильтр</span>
-            </div>
-          </GlassCard>
+          <div style={{ display:"flex",gap:8 }}>
+            <input ref={fileRef} type="file" accept=".csv,.json,.jsonl" style={{ display:"none" }} onChange={handleFile} />
+            <GlassCard
+              style={{ padding:"8px 12px",borderRadius:14,cursor:"pointer",opacity:importing?0.6:1 }}
+              onClick={() => { if (!importing) { haptic.light(); fileRef.current?.click(); } }}
+            >
+              <div style={{ display:"flex",alignItems:"center",gap:6 }}>
+                <Upload size={13} color="#2de897" />
+                <span style={{ fontSize:11,color:"#2de897",fontWeight:700 }}>
+                  {importing ? "..." : "Импорт"}
+                </span>
+              </div>
+            </GlassCard>
+            <GlassCard style={{ padding:"8px 12px",borderRadius:14 }}>
+              <div style={{ display:"flex",alignItems:"center",gap:6 }}>
+                <Filter size={13} color="#6ba8e5" />
+                <span style={{ fontSize:11,color:"#6ba8e5",fontWeight:700 }}>Фильтр</span>
+              </div>
+            </GlassCard>
+          </div>
         </div>
+
+        {importMsg && (
+          <div style={{
+            padding:"10px 14px",borderRadius:12,fontSize:12,fontWeight:600,
+            background: importMsg.startsWith("✅") ? "rgba(45,232,151,0.12)" : "rgba(255,80,80,0.12)",
+            border: `1px solid ${importMsg.startsWith("✅") ? "rgba(45,232,151,0.35)" : "rgba(255,80,80,0.35)"}`,
+            color: importMsg.startsWith("✅") ? "#2de897" : "#ff7070",
+          }}>
+            {importMsg}
+          </div>
+        )}
 
         {/* Total users card */}
         <GlassCard glow="rgba(107,168,229,0.20)" style={{ padding:"16px" }}>

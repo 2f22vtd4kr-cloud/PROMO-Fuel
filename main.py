@@ -9,7 +9,7 @@ import requests
 import aiohttp
 from io import StringIO
 from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MenuButtonWebApp, MenuButtonDefault, WebAppInfo
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     filters, ContextTypes, CallbackQueryHandler
@@ -115,39 +115,60 @@ async def send_promo(update: Update):
         await target.reply_text(PROMO_TEXT, parse_mode="Markdown")
 
 
-@admin_only
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u = update.effective_user
-    await cdb.upsert_user(u.id, username=u.username, first_name=u.first_name)
-    args = context.args
-    referrer = None
-    if args and args[0].startswith("ref"):
+    user_id = u.id
+    # Always track user in audience DB
+    await cdb.upsert_user(user_id, username=u.username, first_name=u.first_name)
+
+    if user_id == ADMIN_ID:
+        # Set CRM Mini App button for admin
+        miniapp_url = os.getenv("MINIAPP_URL", "")
+        if miniapp_url:
+            try:
+                await context.bot.set_chat_menu_button(
+                    chat_id=user_id,
+                    menu_button=MenuButtonWebApp(text="CRM", web_app=WebAppInfo(url=miniapp_url))
+                )
+            except Exception:
+                pass
+
+        welcome = (
+            "👋 Привет, Администратор!\n\n"
+            "📋 *Команды управления:*\n"
+            "/campaigns — список кампаний\n"
+            "/stats — статистика отправок\n"
+            "/audience — аудитория бота\n"
+            "/broadcast — ручная рассылка\n"
+            "/help — все команды\n\n"
+            "📱 Открой CRM-панель через кнопку меню внизу."
+        )
+        await update.message.reply_text(welcome, parse_mode="Markdown")
+    else:
+        # Remove CRM menu button for regular users
         try:
-            referrer = int(args[0][3:])
-            ref_key = f"ref_{referrer}_count"
-            db_set(ref_key, db_get(ref_key, 0) + 1)
-        except ValueError:
+            await context.bot.set_chat_menu_button(
+                chat_id=user_id,
+                menu_button=MenuButtonDefault()
+            )
+        except Exception:
             pass
 
-    welcome = (
-        "👋 Привет! Я *RUProbeHelper* — бот для работы с публичными открытыми данными.\n\n"
-        "📋 *Команды:*\n"
-        "/inn `[ИНН/ОГРН]` — поиск организации\n"
-        "/weather `[город]` — погода\n"
-        "/currency — курсы валют (ЦБ РФ)\n"
-        "/ip `[адрес]` — инфо по IP\n"
-        "/ref — твоя реферальная ссылка\n"
-        "/stats — твоя статистика\n"
-        "/checko — ресурсы для глубокого поиска\n"
-        "/help — все команды\n\n"
-        "📁 Отправь файл (.html/.csv/.json/.jsonl/.tsv) — сохраню данные в базу.\n\n"
-        "✅ Только открытые источники. Никаких приватных баз."
-    )
-    if referrer:
-        welcome += f"\n\n_(Ты пришёл по реферальной ссылке пользователя {referrer})_"
+        # Handle referral tracking
+        args = context.args
+        if args and args[0].startswith("ref"):
+            try:
+                referrer = int(args[0][3:])
+                ref_key = f"ref_{referrer}_count"
+                db_set(ref_key, db_get(ref_key, 0) + 1)
+            except ValueError:
+                pass
 
-    await update.message.reply_text(welcome, parse_mode="Markdown")
-    await send_promo(update)
+        await update.message.reply_text(
+            "⛽ Привет! Подпишитесь на наши акции и получайте выгодные предложения на топливо.",
+            parse_mode="Markdown"
+        )
+        await send_promo(update)
 
 
 @admin_only

@@ -36,16 +36,19 @@ async def daily_reset_loop():
 
 
 async def scheduler_loop(bot: Bot):
-    """Background loop: fires scheduled campaigns when their time comes."""
+    """Background loop: fires scheduled & running campaigns."""
+    import os
+    ADMIN_ID = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
     logger.info("📅 Campaign scheduler started")
     while True:
         try:
+            # Fire due scheduled campaigns
             due = await db.get_due_campaigns()
             for c in due:
                 if c["id"] in _active:
                     continue
                 logger.info(f"📅 Firing scheduled campaign '{c['name']}' (id={c['id']})")
-                notify = c.get("notify_chat") or 0
+                notify = c.get("notify_chat") or ADMIN_ID
                 tag = c.get("scheduled_tag")
                 await db.update_campaign_status(c["id"], "running", scheduled_at=None)
                 asyncio.create_task(send_campaign(bot, c["id"], notify, tag))
@@ -58,9 +61,19 @@ async def scheduler_loop(bot: Bot):
                         )
                     except Exception:
                         pass
+
+            # Also pick up campaigns set to 'running' via API (not yet in _active)
+            all_camps = await db.list_campaigns()
+            for c in all_camps:
+                if c["status"] == "running" and c["id"] not in _active:
+                    logger.info(f"▶️ Resuming API-started campaign '{c['name']}' (id={c['id']})")
+                    notify = c.get("notify_chat") or ADMIN_ID
+                    tag = c.get("scheduled_tag")
+                    asyncio.create_task(send_campaign(bot, c["id"], notify, tag))
+
         except Exception as e:
             logger.error(f"Scheduler error: {e}")
-        await asyncio.sleep(30)
+        await asyncio.sleep(15)
 
 
 _daily_reset_task = None
@@ -94,7 +107,9 @@ async def send_campaign(bot: Bot, campaign_id: int, notify_chat_id: int, tag: st
     if campaign_id in _active and _active[campaign_id]["status"] == "running":
         return
 
-    users = await db.get_users_by_tag(tag) if tag else await db.get_all_users()
+    # One-and-Done: load only users who haven't been promo-targeted yet
+    users = (await db.get_untargeted_users_by_tag(tag) if tag
+             else await db.get_untargeted_users())
 
     _active[campaign_id] = {
         "status": "running",
@@ -102,6 +117,7 @@ async def send_campaign(bot: Bot, campaign_id: int, notify_chat_id: int, tag: st
         "sent": 0,
         "failed": 0,
         "skipped": 0,
+        "skipped_promo": 0,
         "started_at": datetime.now().isoformat(),
         "paused": False,
         "cancelled": False,
@@ -122,6 +138,13 @@ async def send_campaign(bot: Bot, campaign_id: int, notify_chat_id: int, tag: st
             break
 
         chat_id = user["chat_id"]
+
+        # Double-check one-and-done at send time (race-condition guard)
+        if await db.is_promo_targeted(chat_id):
+            state["skipped_promo"] += 1
+            await db.log_send(campaign_id, chat_id, "skipped_already_targeted")
+            continue
+
         name = user.get("first_name") or user.get("username") or "друг"
         text = text_template.replace("{name}", name).replace("{username}", user.get("username") or name)
 
@@ -137,7 +160,11 @@ async def send_campaign(bot: Bot, campaign_id: int, notify_chat_id: int, tag: st
             state["sent"] += 1
             await db.log_send(campaign_id, chat_id, "ok")
             await db.increment_campaign_counts(campaign_id, sent=1)
-            delay = random.uniform(1.5, 4.0)
+            await db.mark_user_as_promo_targeted(chat_id)
+            # Conservative delay: 2–6s with occasional longer pause every 20 sends
+            delay = random.uniform(2.0, 6.0)
+            if state["sent"] % 20 == 0:
+                delay += random.uniform(10.0, 25.0)
             await asyncio.sleep(delay)
 
         except Forbidden:
@@ -154,12 +181,13 @@ async def send_campaign(bot: Bot, campaign_id: int, notify_chat_id: int, tag: st
                 except Exception:
                     pass
                 logger.warning(f"Rate limited — sleeping {wait}s")
-                await asyncio.sleep(wait + random.randint(3, 10))
+                await asyncio.sleep(wait + random.randint(5, 15))
                 try:
                     await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
                     state["sent"] += 1
                     await db.log_send(campaign_id, chat_id, "ok_retry")
                     await db.increment_campaign_counts(campaign_id, sent=1)
+                    await db.mark_user_as_promo_targeted(chat_id)
                 except Exception as e2:
                     state["failed"] += 1
                     await db.log_send(campaign_id, chat_id, "failed", str(e2)[:200])
@@ -185,6 +213,7 @@ async def send_campaign(bot: Bot, campaign_id: int, notify_chat_id: int, tag: st
         f"👥 Всего получателей: {state['total']}\n"
         f"✅ Отправлено: {state['sent']}\n"
         f"❌ Ошибок: {state['failed']}\n"
+        f"⏭ Уже получали ранее: {state['skipped_promo']}\n"
         f"⏱ Начато: {state['started_at'][:19]}\n"
         f"⏱ Завершено: {datetime.now().isoformat()[:19]}"
     )

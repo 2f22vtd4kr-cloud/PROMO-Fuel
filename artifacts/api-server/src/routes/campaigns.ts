@@ -144,7 +144,6 @@ router.post("/accounts/reset-all-daily", (_req, res) => {
 
 router.post("/campaigns/:id/action", (req, res) => {
   let { action } = req.body as { action: string };
-  // accept friendly aliases from older clients
   if (action === "pause")   action = "paused";
   if (action === "resume")  action = "running";
   if (action === "start")   action = "running";
@@ -153,10 +152,15 @@ router.post("/campaigns/:id/action", (req, res) => {
   if (!action || !allowed.includes(action)) return void res.status(400).json({ error: "invalid action" });
   try {
     const db = new Database(DB_PATH);
-    const camp = db.prepare("SELECT id, status FROM campaigns WHERE id = ?").get(parseInt(req.params.id)) as any;
+    const camp = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(parseInt(req.params.id)) as any;
     if (!camp) return void res.status(404).json({ error: "not found" });
     const extra: Record<string, unknown> = {};
     if (action === "running" && !camp.started_at) extra.started_at = new Date().toISOString();
+    // When starting a campaign, ensure notify_chat is set to ADMIN_TELEGRAM_ID
+    if (action === "running" && !camp.notify_chat) {
+      const adminId = parseInt(process.env["ADMIN_TELEGRAM_ID"] ?? "0");
+      if (adminId) extra.notify_chat = adminId;
+    }
     const sets = ["status = ?", ...Object.keys(extra).map(k => `${k} = ?`)].join(", ");
     db.prepare(`UPDATE campaigns SET ${sets} WHERE id = ?`).run(action, ...Object.values(extra), camp.id);
     const updated = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(camp.id);
@@ -216,7 +220,7 @@ router.post("/campaigns/:id/test-send", (req, res) => {
     if (!campaign) return void res.status(404).json({ error: "not found" });
     const { chat_id } = req.body as { chat_id?: number | string };
     if (!chat_id) return void res.status(400).json({ error: "chat_id required" });
-    broadcastEvent({ type: "test_send_queued", campaign_id: campaign.id, chat_id: String(chat_id) });
+    broadcastEvent("test_send_queued", { campaign_id: campaign.id, chat_id: String(chat_id) });
     res.json({ ok: true, message: "Test send event queued via SSE" });
   } catch (err) {
     res.status(500).json({ error: String(err) });
