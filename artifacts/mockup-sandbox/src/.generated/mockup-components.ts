@@ -4,8 +4,11 @@ export const modules: ModuleMap = {
   "./components/mockups/crm/AnalyticsDashboard.tsx": () => import("../components/mockups/crm/AnalyticsDashboard.tsx"),
   "./components/mockups/crm/CampaignManager.tsx": () => import("../components/mockups/crm/CampaignManager.tsx"),
   "./components/mockups/crm/CustomerJourney.tsx": () => import("../components/mockups/crm/CustomerJourney.tsx"),
+  "./components/mockups/telegram-miniapp/Accounts.tsx": () => import("../components/mockups/telegram-miniapp/Accounts.tsx"),
   "./components/mockups/telegram-miniapp/Audience.tsx": () => import("../components/mockups/telegram-miniapp/Audience.tsx"),
   "./components/mockups/telegram-miniapp/Campaigns.tsx": () => import("../components/mockups/telegram-miniapp/Campaigns.tsx"),
   "./components/mockups/telegram-miniapp/Dashboard.tsx": () => import("../components/mockups/telegram-miniapp/Dashboard.tsx"),
+  "./components/mockups/telegram-miniapp/Editor.tsx": () => import("../components/mockups/telegram-miniapp/Editor.tsx"),
+  "./components/mockups/telegram-miniapp/Home.tsx": () => import("../components/mockups/telegram-miniapp/Home.tsx"),
   "./components/mockups/telegram-miniapp/Journey.tsx": () => import("../components/mockups/telegram-miniapp/Journey.tsx")
 };
