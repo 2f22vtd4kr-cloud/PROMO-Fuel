@@ -41,13 +41,13 @@ args = "python3 main.py"
 name = "artifacts/telegram-miniapp: Telegram Mini App"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm --filter @workspace/telegram-miniapp run dev"
-waitForPort = 3000
-
-[workflows.workflow.metadata]
-outputType = "console"
+waitForPort = 5000
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -60,6 +60,10 @@ timeoutMs = 20000
 [[ports]]
 localPort = 3000
 externalPort = 4200
+
+[[ports]]
+localPort = 5000
+externalPort = 5000
 
 [[ports]]
 localPort = 8080
