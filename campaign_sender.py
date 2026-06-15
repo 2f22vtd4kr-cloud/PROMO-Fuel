@@ -1,0 +1,157 @@
+import asyncio
+import random
+import logging
+from datetime import datetime
+from telegram import Bot
+from telegram.error import TelegramError, Forbidden, ChatMigrated
+
+import campaign_db as db
+
+logger = logging.getLogger(__name__)
+
+# Active campaign state
+_active: dict = {}  # campaign_id -> state dict
+
+
+def get_active_campaign_id() -> int | None:
+    for cid, state in _active.items():
+        if state["status"] == "running":
+            return cid
+    return None
+
+
+def get_state(campaign_id: int) -> dict | None:
+    return _active.get(campaign_id)
+
+
+async def send_campaign(bot: Bot, campaign_id: int, notify_chat_id: int, tag: str = None):
+    campaign = await db.get_campaign_by_id(campaign_id)
+    if not campaign:
+        return
+
+    if campaign_id in _active and _active[campaign_id]["status"] == "running":
+        return
+
+    users = await db.get_users_by_tag(tag) if tag else await db.get_all_users()
+
+    _active[campaign_id] = {
+        "status": "running",
+        "total": len(users),
+        "sent": 0,
+        "failed": 0,
+        "skipped": 0,
+        "started_at": datetime.now().isoformat(),
+        "paused": False,
+        "cancelled": False,
+    }
+
+    await db.update_campaign_status(campaign_id, "running", target_count=len(users))
+
+    dry_run = bool(campaign.get("dry_run"))
+    text_template = campaign["text_template"]
+
+    for user in users:
+        state = _active[campaign_id]
+
+        while state["paused"] and not state["cancelled"]:
+            await asyncio.sleep(1)
+
+        if state["cancelled"]:
+            break
+
+        chat_id = user["chat_id"]
+        name = user.get("first_name") or user.get("username") or "друг"
+        text = text_template.replace("{name}", name).replace("{username}", user.get("username") or name)
+
+        if dry_run:
+            state["sent"] += 1
+            await db.log_send(campaign_id, chat_id, "dry_run")
+            await db.increment_campaign_counts(campaign_id, sent=1)
+            await asyncio.sleep(0.05)
+            continue
+
+        try:
+            await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+            state["sent"] += 1
+            await db.log_send(campaign_id, chat_id, "ok")
+            await db.increment_campaign_counts(campaign_id, sent=1)
+            delay = random.uniform(1.5, 4.0)
+            await asyncio.sleep(delay)
+
+        except Forbidden:
+            state["failed"] += 1
+            await db.log_send(campaign_id, chat_id, "blocked", "User blocked the bot")
+            await db.increment_campaign_counts(campaign_id, failed=1)
+
+        except TelegramError as e:
+            err_str = str(e)
+            if "Too Many Requests" in err_str:
+                wait = 30
+                try:
+                    wait = int(err_str.split("retry after ")[1])
+                except Exception:
+                    pass
+                logger.warning(f"Rate limited — sleeping {wait}s")
+                await asyncio.sleep(wait + random.randint(3, 10))
+                try:
+                    await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+                    state["sent"] += 1
+                    await db.log_send(campaign_id, chat_id, "ok_retry")
+                    await db.increment_campaign_counts(campaign_id, sent=1)
+                except Exception as e2:
+                    state["failed"] += 1
+                    await db.log_send(campaign_id, chat_id, "failed", str(e2)[:200])
+                    await db.increment_campaign_counts(campaign_id, failed=1)
+            else:
+                state["failed"] += 1
+                await db.log_send(campaign_id, chat_id, "failed", err_str[:200])
+                await db.increment_campaign_counts(campaign_id, failed=1)
+
+        except Exception as e:
+            state["failed"] += 1
+            await db.log_send(campaign_id, chat_id, "failed", str(e)[:200])
+            await db.increment_campaign_counts(campaign_id, failed=1)
+
+    state = _active[campaign_id]
+    final_status = "cancelled" if state["cancelled"] else "done"
+    _active[campaign_id]["status"] = final_status
+    await db.update_campaign_status(campaign_id, final_status)
+
+    summary = (
+        f"{'🏁' if final_status == 'done' else '⏹'} *Кампания «{campaign['name']}» завершена*\n\n"
+        f"{'🔍 Режим: DRY RUN (не отправлялось)' + chr(10) if dry_run else ''}"
+        f"👥 Всего получателей: {state['total']}\n"
+        f"✅ Отправлено: {state['sent']}\n"
+        f"❌ Ошибок: {state['failed']}\n"
+        f"⏱ Начато: {state['started_at'][:19]}\n"
+        f"⏱ Завершено: {datetime.now().isoformat()[:19]}"
+    )
+    try:
+        await bot.send_message(chat_id=notify_chat_id, text=summary, parse_mode="Markdown")
+    except Exception:
+        pass
+
+
+def pause_campaign(campaign_id: int) -> bool:
+    if campaign_id in _active and _active[campaign_id]["status"] == "running":
+        _active[campaign_id]["paused"] = True
+        _active[campaign_id]["status"] = "paused"
+        return True
+    return False
+
+
+def resume_campaign(campaign_id: int) -> bool:
+    if campaign_id in _active and _active[campaign_id]["status"] == "paused":
+        _active[campaign_id]["paused"] = False
+        _active[campaign_id]["status"] = "running"
+        return True
+    return False
+
+
+def cancel_campaign(campaign_id: int) -> bool:
+    if campaign_id in _active:
+        _active[campaign_id]["cancelled"] = True
+        _active[campaign_id]["paused"] = False
+        _active[campaign_id]["status"] = "cancelled"
+        return True
+    return False

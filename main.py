@@ -16,6 +16,8 @@ from telegram.ext import (
 )
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError, FloodWaitError
+import campaign_db as cdb
+import campaign_sender as cs
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
@@ -115,6 +117,8 @@ async def send_promo(update: Update):
 
 @admin_only
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    u = update.effective_user
+    await cdb.upsert_user(u.id, username=u.username, first_name=u.first_name)
     args = context.args
     referrer = None
     if args and args[0].startswith("ref"):
@@ -1051,6 +1055,261 @@ async def enrich(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+STATUS_EMOJI = {
+    "draft": "📝", "running": "🟢", "paused": "⏸",
+    "done": "✅", "cancelled": "⏹",
+}
+
+
+@admin_only
+async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    subcmd = args[0].lower() if args else ""
+
+    # ── /campaign create <name> <text...> ──────────────────────────────────
+    if subcmd == "create":
+        if len(args) < 3:
+            await update.message.reply_text(
+                "Использование: `/campaign create имя Текст сообщения`\n\n"
+                "Поддерживает переменные: `{name}` `{username}`",
+                parse_mode="Markdown"
+            )
+            return
+        name = args[1]
+        text = " ".join(args[2:])
+        existing = await cdb.get_campaign(name)
+        if existing:
+            await update.message.reply_text(f"❌ Кампания «{name}» уже существует.")
+            return
+        cid = await cdb.create_campaign(name, text)
+        await update.message.reply_text(
+            f"✅ Кампания *«{name}»* создана (ID {cid})\n\n"
+            f"📝 Текст:\n_{text}_\n\n"
+            f"Команды:\n"
+            f"`/campaign send {name}` — запустить\n"
+            f"`/campaign dryrun {name}` — тест без отправки\n"
+            f"`/campaign delete {name}` — удалить",
+            parse_mode="Markdown"
+        )
+
+    # ── /campaign list ─────────────────────────────────────────────────────
+    elif subcmd == "list":
+        campaigns = await cdb.list_campaigns()
+        if not campaigns:
+            await update.message.reply_text(
+                "📭 Нет кампаний. Создай командой:\n`/campaign create имя Текст`",
+                parse_mode="Markdown"
+            )
+            return
+        lines = ["📋 *Все кампании:*\n"]
+        for c in campaigns:
+            emoji = STATUS_EMOJI.get(c["status"], "❓")
+            lines.append(
+                f"{emoji} *{c['name']}* — {c['status']}\n"
+                f"   ✅ {c['sent_count']} отправлено  ❌ {c['failed_count']} ошибок  "
+                f"👥 {c['target_count']} получателей"
+            )
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+    # ── /campaign send <name> [tag] ────────────────────────────────────────
+    elif subcmd in ("send", "dryrun"):
+        if len(args) < 2:
+            await update.message.reply_text(
+                f"Использование: `/campaign {subcmd} имя [тег]`",
+                parse_mode="Markdown"
+            )
+            return
+        name = args[1]
+        tag = args[2] if len(args) > 2 else None
+        c = await cdb.get_campaign(name)
+        if not c:
+            await update.message.reply_text(f"❌ Кампания «{name}» не найдена.")
+            return
+        if c["status"] == "running":
+            await update.message.reply_text("⚙️ Кампания уже запущена.")
+            return
+
+        dry = subcmd == "dryrun"
+        if dry:
+            await cdb.update_campaign_status(c["id"], "draft", dry_run=1)
+        else:
+            await cdb.update_campaign_status(c["id"], "draft", dry_run=0)
+
+        users = await cdb.get_users_by_tag(tag) if tag else await cdb.get_all_users()
+        if not users:
+            await update.message.reply_text(
+                "📭 Нет пользователей в базе.\n\n"
+                "Пользователи появляются когда они пишут боту (/start).\n"
+                "Можно добавить вручную: `/campaign adduser <chat_id>`",
+                parse_mode="Markdown"
+            )
+            return
+
+        await update.message.reply_text(
+            f"{'🔍 DRY RUN — ' if dry else ''}🚀 *Запускаю кампанию «{name}»*\n\n"
+            f"👥 Получателей: {len(users)}"
+            + (f"\n🏷 Тег: {tag}" if tag else "") +
+            "\n\nБуду отправлять ~1 сообщение в 1.5–4 секунды.\n"
+            "Уведомлю по завершении. Для паузы: `/campaign pause`",
+            parse_mode="Markdown"
+        )
+        asyncio.create_task(
+            cs.send_campaign(context.bot, c["id"], update.effective_chat.id, tag)
+        )
+
+    # ── /campaign status ───────────────────────────────────────────────────
+    elif subcmd == "status":
+        active_id = cs.get_active_campaign_id()
+        if not active_id:
+            campaigns = await cdb.list_campaigns()
+            running = [c for c in campaigns if c["status"] in ("running", "paused")]
+            if not running:
+                await update.message.reply_text("ℹ️ Нет активных кампаний.")
+                return
+        else:
+            state = cs.get_state(active_id)
+            c = await cdb.get_campaign_by_id(active_id)
+            pct = int(state["sent"] / state["total"] * 100) if state["total"] else 0
+            bar = "█" * (pct // 10) + "░" * (10 - pct // 10)
+            await update.message.reply_text(
+                f"📊 *Кампания «{c['name']}»*\n\n"
+                f"Статус: {STATUS_EMOJI.get(state['status'], '❓')} {state['status']}\n"
+                f"Прогресс: `[{bar}]` {pct}%\n"
+                f"👥 Всего: {state['total']}\n"
+                f"✅ Отправлено: {state['sent']}\n"
+                f"❌ Ошибок: {state['failed']}\n\n"
+                f"`/campaign pause` — пауза\n"
+                f"`/campaign cancel` — отмена",
+                parse_mode="Markdown"
+            )
+
+    # ── /campaign pause ────────────────────────────────────────────────────
+    elif subcmd == "pause":
+        active_id = cs.get_active_campaign_id()
+        if active_id and cs.pause_campaign(active_id):
+            c = await cdb.get_campaign_by_id(active_id)
+            await cdb.update_campaign_status(active_id, "paused")
+            await update.message.reply_text(
+                f"⏸ Кампания «{c['name']}» поставлена на паузу.\n"
+                "`/campaign resume` — продолжить",
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text("ℹ️ Нет активной кампании для паузы.")
+
+    # ── /campaign resume ───────────────────────────────────────────────────
+    elif subcmd == "resume":
+        for cid, state in cs._active.items():
+            if state["status"] == "paused":
+                cs.resume_campaign(cid)
+                c = await cdb.get_campaign_by_id(cid)
+                await cdb.update_campaign_status(cid, "running")
+                await update.message.reply_text(f"▶️ Кампания «{c['name']}» возобновлена.")
+                return
+        await update.message.reply_text("ℹ️ Нет приостановленной кампании.")
+
+    # ── /campaign cancel ───────────────────────────────────────────────────
+    elif subcmd == "cancel":
+        active_id = cs.get_active_campaign_id()
+        for cid, state in cs._active.items():
+            if state["status"] in ("running", "paused"):
+                cs.cancel_campaign(cid)
+                c = await cdb.get_campaign_by_id(cid)
+                await update.message.reply_text(f"⏹ Кампания «{c['name']}» отменена.")
+                return
+        await update.message.reply_text("ℹ️ Нет активной кампании для отмены.")
+
+    # ── /campaign delete <name> ────────────────────────────────────────────
+    elif subcmd == "delete":
+        if len(args) < 2:
+            await update.message.reply_text("Использование: `/campaign delete имя`", parse_mode="Markdown")
+            return
+        name = args[1]
+        if await cdb.delete_campaign(name):
+            await update.message.reply_text(f"🗑 Кампания «{name}» удалена.")
+        else:
+            await update.message.reply_text(f"❌ Не удалось удалить (не найдена или запущена).")
+
+    # ── /campaign adduser <chat_id> [tag] ──────────────────────────────────
+    elif subcmd == "adduser":
+        if len(args) < 2:
+            await update.message.reply_text(
+                "Использование: `/campaign adduser <chat_id> [тег]`", parse_mode="Markdown"
+            )
+            return
+        try:
+            uid = int(args[1])
+        except ValueError:
+            await update.message.reply_text("❌ chat_id должен быть числом.")
+            return
+        tag = args[2] if len(args) > 2 else None
+        await cdb.upsert_user(uid)
+        if tag:
+            await cdb.tag_user(uid, tag)
+        await update.message.reply_text(
+            f"✅ Пользователь `{uid}` добавлен в базу кампаний."
+            + (f"\n🏷 Тег: `{tag}`" if tag else ""),
+            parse_mode="Markdown"
+        )
+
+    # ── /campaign users [tag] ──────────────────────────────────────────────
+    elif subcmd == "users":
+        tag = args[1] if len(args) > 1 else None
+        users = await cdb.get_users_by_tag(tag) if tag else await cdb.get_all_users()
+        if not users:
+            await update.message.reply_text("📭 Нет пользователей в базе.")
+            return
+        lines = [f"👥 *Пользователи в базе:* {len(users)}\n"]
+        for u in users[:30]:
+            uname = f"@{u['username']}" if u.get("username") else u.get("first_name") or "—"
+            tags_str = ", ".join(json.loads(u.get("tags") or "[]")) or "нет"
+            lines.append(f"• `{u['chat_id']}` {uname} — теги: _{tags_str}_")
+        if len(users) > 30:
+            lines.append(f"\n_...и ещё {len(users) - 30}_")
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+    # ── /campaign logs <name> ──────────────────────────────────────────────
+    elif subcmd == "logs":
+        if len(args) < 2:
+            await update.message.reply_text("Использование: `/campaign logs имя`", parse_mode="Markdown")
+            return
+        c = await cdb.get_campaign(args[1])
+        if not c:
+            await update.message.reply_text(f"❌ Кампания «{args[1]}» не найдена.")
+            return
+        sends = await cdb.get_campaign_sends(c["id"], limit=25)
+        if not sends:
+            await update.message.reply_text("📭 Нет записей отправки.")
+            return
+        lines = [f"📋 *Лог кампании «{c['name']}»* (последние {len(sends)})\n"]
+        for s in sends:
+            icon = "✅" if s["status"].startswith("ok") else ("🔍" if s["status"] == "dry_run" else "❌")
+            name = f"@{s['username']}" if s.get("username") else s.get("first_name") or str(s["chat_id"])
+            err = f" — _{s['error']}_" if s.get("error") else ""
+            lines.append(f"{icon} `{s['chat_id']}` {name}{err}")
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+    # ── help ───────────────────────────────────────────────────────────────
+    else:
+        await update.message.reply_text(
+            "📣 *Система кампаний:*\n\n"
+            "`/campaign create имя Текст` — создать кампанию\n"
+            "`/campaign list` — все кампании\n"
+            "`/campaign send имя [тег]` — запустить рассылку\n"
+            "`/campaign dryrun имя` — тест без отправки\n"
+            "`/campaign status` — прогресс текущей\n"
+            "`/campaign pause` — пауза\n"
+            "`/campaign resume` — продолжить\n"
+            "`/campaign cancel` — отменить\n"
+            "`/campaign delete имя` — удалить\n"
+            "`/campaign users [тег]` — список получателей\n"
+            "`/campaign adduser <id> [тег]` — добавить вручную\n"
+            "`/campaign logs имя` — лог отправки\n\n"
+            "💡 Текст поддерживает: `{name}` `{username}`",
+            parse_mode="Markdown"
+        )
+
+
 def main():
     if not TOKEN:
         raise ValueError("TELEGRAM_TOKEN не задан. Добавь его в Secrets.")
@@ -1076,11 +1335,13 @@ def main():
     app.add_handler(CommandHandler("export", export_data))
     app.add_handler(CommandHandler("broadcast", broadcast))
     app.add_handler(CommandHandler("enrich", enrich))
+    app.add_handler(CommandHandler("campaign", campaign))
 
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
+    asyncio.get_event_loop().run_until_complete(cdb.init_db())
     logger.info("🤖 Бот запускается...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
