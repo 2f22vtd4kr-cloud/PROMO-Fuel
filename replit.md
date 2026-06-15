@@ -1,45 +1,56 @@
-# [Project name]
+# PROMO-Fuel
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A Telegram Mini App for fuel station owners to run targeted promo campaigns, manage sender accounts, and track audience analytics — with an Apple Liquid Glass dark UI.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
+- `pnpm --filter @workspace/telegram-miniapp run dev` — run the Mini App dev server (port 3000)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `scripts/post-merge.sh` — run after any dependency change to rebuild better-sqlite3
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- pnpm workspaces, Node.js 20, TypeScript 5.9
+- Mini App: React 19 + Vite 7, Liquid Glass CSS system
+- API: Express 5, better-sqlite3 (SQLite), Drizzle ORM
+- Telegram: python-telegram-bot (main bot), window.Telegram.WebApp (Mini App)
+- Build: esbuild (API), Vite (Mini App)
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/telegram-miniapp/src/` — Mini App React source
+  - `pages/` — Home, Campaigns, Analytics, Audience, Accounts, Editor
+  - `components/GlassCard.tsx` — shared glass material component
+  - `lib/twa.ts` — typed Telegram WebApp wrapper (window.Telegram global)
+  - `lib/theme.ts` — TG color tokens
+- `artifacts/api-server/src/` — Express API
+  - `routes/` — campaigns, accounts, analytics, users, events (SSE)
+  - `app.ts` — serves telegram-miniapp/dist as static SPA in production
+- `main.py` / `bot/` — Python Telegram bot
+- `campaigns.db` — SQLite database (campaigns, users, sends)
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- **better-sqlite3** must be rebuilt from source on every cold start (see `scripts/post-merge.sh`). The `.node` binary is not committed.
+- **No @twa-dev/sdk package** — uses `window.Telegram.WebApp` global loaded from `https://telegram.org/js/telegram-web-app.js` in index.html. Avoids version mismatch issues.
+- **Role detection** via `VITE_OWNER_IDS` env var (comma-separated Telegram user IDs). If unset → defaults to owner view for development.
+- **API server** runs on port 8080 in dev, `PORT` env var in production (Replit autoscale sets this automatically).
+- **SVG charts** instead of recharts — keeps the telegram-miniapp bundle lean with no extra dependencies.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+PROMO-Fuel lets gas station operators send targeted discount promos to their Telegram audience via a Mini App. Owners manage campaigns, sender accounts, and audience segments. Consumers see available promos, a map, and their reward balance.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Apple Liquid Glass dark design system throughout
+- Russian language UI
+- Real data from SQLite via Express API — no mocked data
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- **better-sqlite3** needs `scripts/post-merge.sh` to run after merges or cold starts. Deployment build runs `scripts/deploy-build.sh` which handles this automatically.
+- API server PORT: requires `PORT` env var (or defaults to 8080). Replit autoscale sets this.
+- `pnpm.onlyBuiltDependencies` in root `package.json` must include `better-sqlite3` — otherwise pnpm skips the native build.
