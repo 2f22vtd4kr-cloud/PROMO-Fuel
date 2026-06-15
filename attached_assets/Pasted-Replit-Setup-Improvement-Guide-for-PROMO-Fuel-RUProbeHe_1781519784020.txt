@@ -1,0 +1,87 @@
+Replit Setup & Improvement Guide for PROMO-Fuel (RUProbeHelper)
+This guide is written specifically for the Replit environment so you (the repo owner/developer) can quickly implement the enhancements I suggested earlier. The project already uses a hybrid setup: Python bot (main.py with python-telegram-bot + Telethon), a Telegram Mini App (TS/React via pnpm), and Replit workflows.14
+1. Current Replit Configuration (Quick Audit)
+	•	.replit: Multi-workflow (Telegram Bot + Mini App on port 3000). Uses Autoscale deployment. Nix packages include OpenSSL.14
+	•	pyproject.toml: Dependencies include telethon, python-telegram-bot, aiohttp, etc. (uv-managed).15
+	•	Secrets: Add these in Replit Secrets tab (not in code):
+	◦	TELEGRAM_TOKEN
+	◦	ADMIN_TELEGRAM_ID
+	◦	TELETHON_API_ID, TELETHON_API_HASH, TELETHON_PHONE
+	•	Persistent Storage: bot_db.json works for now but has limitations on Replit (ephemeral disks on some plans).
+Immediate Action: Go to your Repl → Tools → Secrets and ensure all env vars are set. Restart the bot.
+2. Core Setup Improvements (Easy Wins)
+	1	Better Persistence (Replace JSON DB):
+	◦	Install aiosqlite (already in deps) or add sqlalchemy / tortoise-orm.
+	◦	Create database.py or extend campaign_db.py for SQLite/Postgres.
+	◦	On Replit: Use Replit DB (built-in) for simple key-value or migrate to PostgreSQL (free tier via Replit Services).
+	2	Example addition to pyproject.toml: dependencies = [
+	3	    ...
+	4	    "aiosqlite>=0.20",
+	5	    "pydantic>=2.0"  # for models
+	6	]
+	7	
+	8	Environment & Dependencies:
+	◦	Run in Shell: uv sync or pip install -e . to ensure consistency.
+	◦	Update .replit postBuild if needed for Python deps.
+	9	Always-On Bot:
+	◦	Replit Autoscale + run_polling() is okay, but for long-running Telethon background tasks, consider a Reserved VM deployment or use Replit Deployments with “Always On” (if available on your plan).
+	◦	Add uptime monitoring: Ping a health endpoint or use Replit’s scheduler.
+3. Enhanced Telegram Enrichment Algorithms (Implement Step-by-Step)
+Update the /enrich handler and Telethon logic in main.py.
+A. Multi-Session & Proxy Support (Mitigate Flood/Bans)
+# Add to top
+import os
+PROXIES = os.getenv("TELETHON_PROXIES", "").split(",")  # e.g. http://user:pass@ip:port
+
+async def create_telethon_client(session_name="session1"):
+    client = TelegramClient(session_name, API_ID, API_HASH, proxy=PROXIES[0] if PROXIES else None)
+    # ... connect + auth
+    return client
+B. Improved Phone Normalization & Batch Processing
+def normalize_phone(phone: str) -> str:
+    phone = re.sub(r'\D', '', phone)
+    if phone.startswith('8'): phone = '7' + phone[1:]
+    if not phone.startswith('+'): phone = '+' + phone
+    return phone
+
+# In enrich command: process in batches with semaphore (limit concurrency)
+sem = asyncio.Semaphore(5)  # Adjust based on limits
+C. Caching & Confidence Scoring Use SQLite table:
+	•	Columns: phone, tg_id, username, full_name, confidence (0-100), last_updated, status (“success”, “hidden”, “not_found”).
+D. Multi-Source Enrichment
+	•	After phone → TG: Fetch profile + bio, then regex for emails/usernames.
+	•	Add username lookup: client.get_entity('@username').
+	•	Fuzzy name matching: Add rapidfuzz dependency.
+Recommended New Command Structure:
+	•	/enrich phone +71234567890
+	•	/enrich file (batch from uploaded data)
+	•	/enrich username @user
+4. Advanced CRM & Scalability Upgrades
+	•	Switch to Proper DB: Migrate bot_db.json → SQLite. Add indexes on phones/names.
+	•	Background Jobs: Use asyncio tasks + Replit’s scheduler or add APScheduler for campaigns.
+	•	Deduplication: Implement fuzzy + embedding matching (add sentence-transformers if heavy lifting needed, but keep lightweight).
+	•	Mini App Enhancements: In artifacts/telegram-miniapp, add UI for enriched leads, search, export.
+	•	Rate Limiting & Monitoring: Wrap Telethon calls with exponential backoff. Log to Replit Console + optional Discord webhook.
+5. Deployment & Maintenance Checklist
+	•	Git Sync: Keep pushing to GitHub — Replit auto-pulls.
+	•	Secrets Rotation: Never commit sessions (*.session files) — add to .replitignore and .gitignore.
+	•	Testing:
+	1	Run locally in Replit Shell: python main.py
+	2	Test /enrich auth first for Telethon.
+	3	Upload sample CSV with phones.
+	•	Scaling Tips:
+	◦	For >1000 lookups/day: Multiple Repls + load balancing (or move Telethon part to a separate always-on service).
+	◦	Monitor usage in Replit Dashboard → Usage tab.
+	◦	Consider Reserved VM for stable Telethon sessions.
+6. Quick Implementation Priority Order
+	1	Fix/add Secrets + test current bot.
+	2	Add SQLite persistence (1-2 hours).
+	3	Improve phone normalization + caching in enrich function.
+	4	Multi-session support.
+	5	Fuzzy matching + confidence scores.
+	6	Mini App dashboard polish.
+Next Steps for You:
+	•	Fork/update the repo with these changes.
+	•	If you need code snippets for specific files (e.g., full enrich handler or DB migration), tell me which part and I’ll generate them.
+	•	Test thoroughly on a separate Repl before production.
+This keeps everything ethical/public-data focused while making the tool much more robust as a CRM enrichment bot. Let me know what to expand on!
