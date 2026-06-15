@@ -1,0 +1,52 @@
+[15.06.2026 16:42] Artem: You are working directly inside the existing PROMO-Fuel Replit project. This is the owner's personal CRM app for managing the PROMO-Fuel Telegram promo bot for fuel/gas stations (discounts, campaigns, user rewards, and bulk messaging).
+
+Project Context (Strictly Respect & Build Upon Existing Code):
+- Monorepo with pnpm workspaces, TypeScript, lib/api-client-react, lib/api-spec, lib/db, etc.
+- Python backend (main.py, campaign_db.py, campaign_sender.py, SQLite/Postgres) for Telegram bot logic, campaigns, audience, and real-time updates.
+- Existing CRM dashboard with mobile adaptations, analytics, audience management, campaign tools, and ongoing Liquid Glass design work (from recent Replit Agent commits).
+- Attached assets and interactive mockups already present — use them.
+- Goal: Transform/enhance this into a polished Telegram Mini App that also serves as the owner's personal CRM interface (accessible via Telegram Web App or direct web).
+
+Core Purpose as Personal CRM + User-Facing Mini App:
+- For the owner (you): Full CRM capabilities — create/edit campaigns, audience segmentation, real-time analytics, broadcast messaging, user management, reward tracking, station management.
+- For end-users (fuel customers via Telegram): Promo discovery, claiming discounts, rewards wallet, station finder, referrals, profile.
+- Seamless role-based views: Owner sees admin/CRM tabs; regular users see simplified consumer flows.
+- Integrate deeply with the Python bot (use existing API client for endpoints).
+
+Design Direction: Premium Apple Liquid Glass (Dynamic & Fluid)
+- Fully embrace Apple’s new Liquid Glass meta-material: translucent refractive glass panels with advanced backdrop-filter blurs, subtle lensing/distortion effects, shifting light reflections/highlights, and liquid-like behaviors.
+- Heavy use of fluid animations (Framer Motion / React Spring): squish on touch, ripple/pour effects, parallax layers, springy transitions, content magnification on focus.
+- Glass cards/panels that float, morph, and refract underlying content (fuel-themed imagery, maps, data).
+- Bottom glassy tab bar (morphing icons) + top navigation for CRM sections.
+- Color palette: Telegram-adaptive + energetic fuel branding (vibrant greens/oranges/blues for energy & savings) with translucent glass layers.
+- Micro-interactions: Claiming a promo triggers liquid "fill/pour", analytics charts with refractive highlights, campaign launch with satisfying fluid feedback.
+- Haptic feedback via @twa-dev/sdk, dynamic theme sync.
+
+Key Sections & Flows to Build/Enhance (Personal CRM Focus):
+1. Home/Dashboard — Owner overview: Active campaigns, real-time stats (savings distributed, engagement, revenue), quick actions. Personalized greeting + featured promos.
+2. Campaigns Hub — Create, edit, schedule fuel promos. Audience targeting, A/B testing, real-time preview with Liquid Glass mockups.
+3. Audience & Users — Manage Telegram users, segmentation, import/export, engagement history.
+4. Analytics — Dashboards with charts (glass-styled), performance metrics, export reports.
+5. Promos Feed (User View) — Browse/claim discounts, filters, station integration.
+6. Rewards & Wallet — Track user rewards/points (owner can manage global rewards).
+7. Map/Stations — Manage stations + user-facing finder.
+8. Profile/Settings — Owner tools (bot config, notifications, API keys) + user profile.
+9. Broadcast/Messaging — Bulk send promos via bot integration.
+
+Technical Requirements:
+- Telegram Mini App ready: Use @twa-dev/sdk for initData auth, MainButton, BackButton, theme, viewport, payments (Telegram Stars if needed).
+- Full mobile-first, performant in WebView (optimize blurs/animations).
+- Role-based routing and UI (owner vs user).
+- Connect all flows to existing lib/api-client-react and Python backend.
+- Demo data fallback + real API integration.
+- Add Telegram launch logic and PWA-like install hints if applicable.
+
+Implementation Guidelines:
+- Review current src/ (or equivalent), components, styles, and Liquid Glass implementations first.
+[15.06.2026 16:42] Artem: - Global Liquid Glass theme system (CSS variables, custom hooks for effects).
+- Use existing assets from attached_assets/.
+- Ensure accessibility (contrast over glass, ARIA).
+- Output clear file updates, new components, and routing changes.
+- Make it immediately runnable and deployable as Telegram Web App URL.
+
+Start by assessing the current CRM dashboard and Liquid Glass state, then expand it into the full Telegram Mini App experience with deep personal CRM capabilities. Prioritize stunning, immersive Liquid Glass aesthetics while keeping everything functional, fast, and true to the promo/fuel savings mission.
