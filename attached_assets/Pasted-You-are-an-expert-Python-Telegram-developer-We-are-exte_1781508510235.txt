@@ -1,0 +1,44 @@
+You are an expert Python Telegram developer. We are extending the existing PROMO-Fuel bot from https://github.com/2f22vtd4kr-cloud/PROMO-Fuel.
+
+Project goal: Build a safe, scalable, anti-block **массированная рассылка** (bulk messaging) system for Russian audience using multiple Telethon user accounts.
+
+Requirements:
+
+1. Keep the existing structure (python-telegram-bot v20+ as control bot + Telethon userbots).
+
+2. Add robust proxy support (SOCKS5 residential RU proxies) for all Telethon clients. Make proxy loading from .env or proxies.json (rotating + sticky sessions).
+
+3. Improve DB: Use SQLite (or aiosqlite) with tables:
+   - users (chat_id, user_id, consent_timestamp, tags, last_sent)
+   - campaigns (id, name, text_template, status, sent_count)
+   - accounts (session_name, phone, proxy, status, last_used)
+
+4. Add admin commands:
+   - /add_proxy <proxy_string>
+   - /add_account <session_name>
+   - /broadcast <campaign_name> or /broadcast <text> — starts bulk send only to users with consent
+   - /campaigns, /status, /pause, /resume
+   - /enrich (keep existing + save to DB with consent flag)
+
+5. Core bulk sender architecture:
+   - Async queue (asyncio.Queue or Redis if possible)
+   - Multiple worker Telethon clients (load 5-20 sessions)
+   - Rate limiting: 1 message every 1.5-4 seconds per account with random jitter
+   - Exponential backoff + FloodWaitError handling (sleep + retry)
+   - Human-like behavior: random typing delay, occasional emoji variations, message templates with personalization
+   - Progress tracking and auto-pause on too many errors
+   - Logging of every sent message and errors
+
+6. Safety features:
+   - Only send to users who have consent (never cold spam)
+   - Account warming logic simulation
+   - Auto-switch to next account on ban/flood
+   - Max daily limit per account configurable
+   - Dry-run mode
+
+7. Structure the code cleanly:
+   - Separate modules: db.py, proxy_manager.py, account_manager.py, bulk_sender.py, handlers.py
+   - Use .env for API_ID, API_HASH, BOT_TOKEN
+   - Make it easy to run multiple Replit instances or scale
+
+Provide the complete updated code structure with all new files and modifications. Start by showing the file tree, then give full code for each important file. Focus on reliability and anti-block measures for Telegram in Russia.
