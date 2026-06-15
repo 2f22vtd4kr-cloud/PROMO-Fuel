@@ -2,9 +2,10 @@ modules = ["nodejs-20", "python-3.11", "web", "bash"]
 
 [deployment]
 router = "application"
-deploymentTarget = "autoscale"
+deploymentTarget = "static"
 run = ["sh", "-c", "node --enable-source-maps ./artifacts/api-server/dist/index.mjs"]
-build = ["sh", "-c", "bash scripts/deploy-build.sh"]
+build = ["pnpm", "--filter", "@workspace/telegram-miniapp", "run", "build"]
+publicDir = "artifacts/telegram-miniapp/dist"
 
 [deployment.postBuild]
 args = ["pnpm", "store", "prune"]
