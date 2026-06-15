@@ -5,7 +5,6 @@ router = "application"
 deploymentTarget = "autoscale"
 run = ["sh", "-c", "node --enable-source-maps ./artifacts/api-server/dist/index.mjs"]
 build = ["sh", "-c", "bash scripts/deploy-build.sh"]
-publicDir = "artifacts/telegram-miniapp/dist"
 
 [deployment.postBuild]
 args = ["pnpm", "store", "prune"]
