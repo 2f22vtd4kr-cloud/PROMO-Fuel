@@ -1533,6 +1533,15 @@ def main():
 
     asyncio.get_event_loop().run_until_complete(cdb.init_db())
 
+    # Reset campaigns stuck in 'running' from a previous crash
+    async def _reset_stuck():
+        import aiosqlite
+        async with aiosqlite.connect("campaigns.db") as _db:
+            await _db.execute("UPDATE campaigns SET status = 'draft' WHERE status = 'running'")
+            await _db.commit()
+        logger.info("Stuck campaigns reset to draft.")
+    asyncio.get_event_loop().run_until_complete(_reset_stuck())
+
     async def post_init(application):
         cs.start_scheduler(application.bot)
 

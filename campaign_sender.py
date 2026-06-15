@@ -25,10 +25,28 @@ def resolve_spintax(text: str) -> str:
     return text
 
 
-async def human_delay(base: float, jitter_pct: float = 0.25) -> None:
-    """Sleep for base ± jitter_pct fraction with a natural feel."""
-    variation = base * jitter_pct * (2.0 * random.random() - 1.0)
-    await asyncio.sleep(max(0.5, base + variation))
+async def human_delay(sent_count: int) -> None:
+    """
+    Tier-based human-like delay to reduce ban risk.
+    - Base: 3–8s per message
+    - Every 10 sends: extra 15–40s break
+    - Every 50 sends: extra 60–180s break
+    - Every 100 sends: extra 120–300s major break
+    """
+    base = random.uniform(3.0, 8.0)
+    extra = 0.0
+
+    if sent_count > 0 and sent_count % 100 == 0:
+        extra = random.uniform(120.0, 300.0)
+        logger.info(f"[Sender] Major break after {sent_count} sends ({extra:.0f}s)...")
+    elif sent_count > 0 and sent_count % 50 == 0:
+        extra = random.uniform(60.0, 180.0)
+        logger.info(f"[Sender] Long break after {sent_count} sends ({extra:.0f}s)...")
+    elif sent_count > 0 and sent_count % 10 == 0:
+        extra = random.uniform(15.0, 40.0)
+        logger.info(f"[Sender] Short break after {sent_count} sends ({extra:.0f}s)...")
+
+    await asyncio.sleep(base + extra)
 
 logger = logging.getLogger(__name__)
 
@@ -191,11 +209,7 @@ async def send_campaign(bot: Bot, campaign_id: int, notify_chat_id: int, tag: st
             await db.log_send(campaign_id, chat_id, "ok")
             await db.increment_campaign_counts(campaign_id, sent=1)
             await db.mark_user_as_promo_targeted(chat_id)
-            # Human-like delay: 2–6s base, with longer pause every 20 sends
-            delay = random.uniform(2.0, 6.0)
-            if state["sent"] % 20 == 0:
-                delay += random.uniform(10.0, 25.0)
-            await human_delay(delay)
+            await human_delay(state["sent"])
 
         except Forbidden:
             state["failed"] += 1

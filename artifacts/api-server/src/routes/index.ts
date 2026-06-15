@@ -28,5 +28,7 @@ router.use("/twa", usersRouter);
 router.use("/twa", analyticsRouter);
 router.use("/twa", accountsRouter);
 router.use("/twa", audienceRouter);
+router.use("/twa", uploadRouter);
+router.use("/twa", sseRouter);
 
 export default router;

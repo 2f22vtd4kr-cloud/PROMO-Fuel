@@ -210,6 +210,72 @@ router.get("/stats/daily", (_req, res) => {
   }
 });
 
+// Dedicated action shortcuts (spec-compatible aliases for /action)
+router.post("/campaigns/:id/start", (req, res) => {
+  try {
+    const db = new Database(DB_PATH);
+    const camp = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(parseInt(req.params.id)) as any;
+    if (!camp) return void res.status(404).json({ error: "not found" });
+    if (!["draft", "paused"].includes(camp.status)) {
+      db.close();
+      return void res.status(409).json({ error: `Cannot start a campaign with status '${camp.status}'` });
+    }
+    const now = new Date().toISOString();
+    const extra: Record<string, unknown> = { status: "running" };
+    if (!camp.started_at) extra.started_at = now;
+    if (!camp.notify_chat) {
+      const adminId = parseInt(process.env["ADMIN_TELEGRAM_ID"] ?? "0");
+      if (adminId) extra.notify_chat = adminId;
+    }
+    const sets = Object.keys(extra).map(k => `${k} = ?`).join(", ");
+    db.prepare(`UPDATE campaigns SET ${sets} WHERE id = ?`).run(...Object.values(extra), camp.id);
+    const updated = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(camp.id);
+    db.close();
+    broadcastEvent("campaigns", [updated]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+router.post("/campaigns/:id/pause", (req, res) => {
+  try {
+    const db = new Database(DB_PATH);
+    db.prepare("UPDATE campaigns SET status = 'paused' WHERE id = ? AND status = 'running'").run(parseInt(req.params.id));
+    const updated = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(parseInt(req.params.id));
+    db.close();
+    broadcastEvent("campaigns", [updated]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+router.post("/campaigns/:id/cancel", (req, res) => {
+  try {
+    const db = new Database(DB_PATH);
+    db.prepare("UPDATE campaigns SET status = 'cancelled' WHERE id = ? AND status IN ('running','paused','draft')").run(parseInt(req.params.id));
+    const updated = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(parseInt(req.params.id));
+    db.close();
+    broadcastEvent("campaigns", [updated]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// /sends alias for /logs (spec-compatible)
+router.get("/campaigns/:id/sends", (req, res) => {
+  try {
+    const db = getDb();
+    const limit = Math.min(parseInt((req.query.limit as string) ?? "200"), 1000);
+    const rows = db.prepare(`
+      SELECT s.id, s.campaign_id, s.chat_id, s.account_id, s.status, s.sent_at, s.error,
+             u.username, u.first_name
+      FROM sends s
+      LEFT JOIN users u ON u.chat_id = s.chat_id
+      WHERE s.campaign_id = ?
+      ORDER BY s.sent_at DESC LIMIT ?
+    `).all(parseInt(req.params.id), limit);
+    db.close();
+    res.json(rows);
+  } catch (err) { res.json([]); }
+});
+
 router.post("/campaigns/:id/test-send", (req, res) => {
   try {
     const db = new Database(DB_PATH, { readonly: true });

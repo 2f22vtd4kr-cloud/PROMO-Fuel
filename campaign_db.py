@@ -103,6 +103,27 @@ async def init_db():
                 await db.commit()
             except Exception:
                 pass
+        # V3 user column migrations
+        for col, definition in [
+            ("converted",    "INTEGER DEFAULT 0"),
+            ("converted_at", "TEXT"),
+        ]:
+            try:
+                await db.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
+                await db.commit()
+            except Exception:
+                pass
+        # Uploads table
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS uploads (
+                key TEXT PRIMARY KEY,
+                filename TEXT NOT NULL,
+                entries_json TEXT NOT NULL,
+                uploaded_at TEXT DEFAULT (datetime('now')),
+                imported_count INTEGER DEFAULT 0
+            )
+        """)
+        await db.commit()
         # sender_accounts column migrations
         for col, definition in [
             ("label",        "TEXT NOT NULL DEFAULT ''"),

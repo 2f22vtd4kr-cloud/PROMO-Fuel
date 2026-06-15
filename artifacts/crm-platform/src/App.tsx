@@ -6,6 +6,7 @@ import {
   Award, ArrowUpRight,
   Filter, User, Wallet, Zap, Star,
   AlertTriangle, ShieldCheck, WifiOff, Activity, ShieldOff,
+  FolderUp, CheckCircle2,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, ResponsiveContainer,
@@ -305,13 +306,14 @@ function MeshBg() {
   );
 }
 
-type Tab = "home" | "campaigns" | "analytics" | "audience" | "accounts";
+type Tab = "home" | "campaigns" | "analytics" | "audience" | "accounts" | "upload";
 const NAV_ITEMS: { id: Tab; icon: React.ElementType; label: string; color: string; glow: string }[] = [
   { id: "home",      icon: LayoutGrid, label: "Главная",   color: "#95c4f5", glow: "rgba(107,168,229,0.55)" },
   { id: "campaigns", icon: Megaphone,  label: "Рассылки",  color: "#2de897", glow: "rgba(45,232,151,0.55)" },
   { id: "analytics", icon: BarChart2,  label: "Аналитика", color: "#ffc946", glow: "rgba(255,201,70,0.55)" },
   { id: "audience",  icon: Users2,     label: "Аудитория", color: "#c4aeff", glow: "rgba(196,174,255,0.55)" },
   { id: "accounts",  icon: Shield,     label: "Аккаунты",  color: "#ff7eb3", glow: "rgba(255,126,179,0.55)" },
+  { id: "upload",    icon: FolderUp,   label: "Файлы",     color: "#ff9f40", glow: "rgba(255,159,64,0.55)" },
 ];
 
 function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => void }) {
@@ -1102,6 +1104,173 @@ function LoginScreen({ onLogin }: { onLogin: (secret: string) => void }) {
   );
 }
 
+function UploadTab() {
+  const [file, setFile]       = useState<File | null>(null);
+  const [status, setStatus]   = useState<"idle" | "uploading" | "done" | "error">("idle");
+  const [result, setResult]   = useState<{ key: string; count: number; filename: string } | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [uploads, setUploads] = useState<{ key: string; filename: string; uploaded_at: string; count: number }[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const ALLOWED = [".html", ".csv", ".tsv", ".json", ".jsonl"];
+
+  useEffect(() => {
+    apiFetch(`${API_BASE}/api/upload`).then(r => r.ok ? r.json() : []).then(data => {
+      if (Array.isArray(data)) setUploads(data);
+    }).catch(() => {});
+  }, [result]);
+
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const ext = "." + f.name.split(".").pop()?.toLowerCase();
+    if (!ALLOWED.includes(ext)) {
+      alert(`Формат не поддерживается. Используйте: ${ALLOWED.join(", ")}`);
+      return;
+    }
+    setFile(f);
+    setStatus("idle");
+    setResult(null);
+  }
+
+  async function handleUpload() {
+    if (!file) return;
+    setStatus("uploading");
+    setErrorMsg("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const secret = getCrmSecret();
+      const headers: Record<string, string> = {};
+      if (secret) headers["Authorization"] = `Bearer ${secret}`;
+      const res = await fetch(`${API_BASE}/api/upload`, {
+        method: "POST",
+        headers,
+        body: fd,
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt);
+      }
+      const data = await res.json();
+      setResult(data);
+      setStatus("done");
+      setFile(null);
+    } catch (e: unknown) {
+      setErrorMsg((e as Error).message);
+      setStatus("error");
+    }
+  }
+
+  return (
+    <div className="tab-content" style={{ display: "flex", flexDirection: "column", gap: 14, padding: "0 14px", paddingBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0 6px" }}>
+        <div>
+          <div style={{ fontSize: 19, fontWeight: 800, color: "#eef2ff" }}>📁 Файлы аудитории</div>
+          <div style={{ fontSize: 12, color: "rgba(238,242,255,0.4)", marginTop: 2 }}>Загрузка CSV, TSV, JSON, JSONL, HTML</div>
+        </div>
+      </div>
+
+      <div
+        onClick={() => inputRef.current?.click()}
+        style={{
+          borderRadius: 16,
+          border: "2px dashed rgba(255,159,64,0.4)",
+          background: "rgba(255,159,64,0.05)",
+          padding: "32px 20px",
+          textAlign: "center",
+          cursor: "pointer",
+          transition: "all 0.2s",
+        }}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept={ALLOWED.join(",")}
+          style={{ display: "none" }}
+          onChange={onFileChange}
+        />
+        {file ? (
+          <>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>📄</div>
+            <div style={{ color: "#ff9f40", fontWeight: 700, fontSize: 14 }}>{file.name}</div>
+            <div style={{ color: "rgba(238,242,255,0.4)", fontSize: 12, marginTop: 4 }}>
+              {(file.size / 1024).toFixed(1)} KB
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>☁️</div>
+            <div style={{ color: "rgba(238,242,255,0.6)", fontSize: 14 }}>Нажмите для выбора файла</div>
+            <div style={{ color: "rgba(238,242,255,0.3)", fontSize: 12, marginTop: 4 }}>
+              {ALLOWED.join(", ")} · до 10 МБ
+            </div>
+          </>
+        )}
+      </div>
+
+      {file && status === "idle" && (
+        <button
+          onClick={handleUpload}
+          style={{
+            padding: "13px",
+            borderRadius: 12,
+            background: "linear-gradient(135deg,rgba(255,159,64,0.5),rgba(255,159,64,0.3))",
+            border: "1px solid rgba(255,159,64,0.4)",
+            color: "#ff9f40",
+            fontSize: 15, fontWeight: 700, cursor: "pointer",
+          }}
+        >
+          ⬆️ Загрузить файл
+        </button>
+      )}
+      {status === "uploading" && <div style={{ textAlign: "center", color: "rgba(238,242,255,0.5)", fontSize: 14, padding: 8 }}>⏳ Загружаю...</div>}
+      {status === "error" && <div style={{ color: "#ff6b7a", fontSize: 13, padding: "8px 0" }}>❌ {errorMsg}</div>}
+      {status === "done" && result && (
+        <div style={{
+          borderRadius: 14, background: "rgba(45,232,151,0.08)", border: "1px solid rgba(45,232,151,0.25)",
+          padding: "14px 16px", display: "flex", alignItems: "center", gap: 12,
+        }}>
+          <CheckCircle2 size={20} color="#2de897" />
+          <div>
+            <div style={{ color: "#2de897", fontWeight: 700, fontSize: 14 }}>
+              Загружено {result.count} записей
+            </div>
+            <div style={{ color: "rgba(238,242,255,0.4)", fontSize: 12, marginTop: 2 }}>{result.filename}</div>
+          </div>
+        </div>
+      )}
+
+      {uploads.length > 0 && (
+        <>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(238,242,255,0.5)", paddingTop: 8, paddingBottom: 2 }}>
+            ИСТОРИЯ ЗАГРУЗОК
+          </div>
+          {uploads.map(u => (
+            <div key={u.key} style={{
+              borderRadius: 14,
+              background: "linear-gradient(145deg,rgba(255,255,255,0.06) 0%,rgba(255,255,255,0.02) 100%)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              padding: "12px 14px",
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+            }}>
+              <div>
+                <div style={{ color: "#eef2ff", fontSize: 13, fontWeight: 600 }}>{u.filename}</div>
+                <div style={{ color: "rgba(238,242,255,0.4)", fontSize: 11, marginTop: 2 }}>
+                  {u.uploaded_at?.slice(0, 16).replace("T", " ")}
+                </div>
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#ff9f40" }}>
+                {u.count} записей
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [authed, setAuthed]       = useState(() => {
     const s = sessionStorage.getItem("crm_secret");
@@ -1174,6 +1343,7 @@ export default function App() {
           {activeTab === "analytics" && <AnalyticsTab overview={overview} trend={trend} loading={loading} />}
           {activeTab === "audience"  && <AudienceTab  users={users} overview={overview} loading={loading} />}
           {activeTab === "accounts"  && <AccountsTab  accounts={accounts} loading={loading} onAction={onAction} />}
+          {activeTab === "upload"    && <UploadTab />}
           <div style={{ height: 16 }} />
         </div>
         <div style={{ position: "relative", zIndex: 10, flexShrink: 0 }}>

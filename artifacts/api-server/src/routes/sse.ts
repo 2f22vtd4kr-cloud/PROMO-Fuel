@@ -69,5 +69,54 @@ router.get("/events", (req: Request, res: Response) => {
   });
 });
 
+// Per-campaign SSE progress stream
+router.get("/events/campaigns/:id/progress", (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"]), 10);
+  if (isNaN(id)) return void res.status(400).json({ error: "Invalid id" });
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const sendUpdate = () => {
+    try {
+      const db = new Database(DB_PATH, { readonly: true });
+      const row = db.prepare(
+        "SELECT id, status, sent_count, failed_count, target_count FROM campaigns WHERE id = ?"
+      ).get(id) as { id: number; status: string; sent_count: number; failed_count: number; target_count: number } | undefined;
+      db.close();
+
+      if (!row) {
+        res.write(`event: error\ndata: ${JSON.stringify({ error: "Campaign not found" })}\n\n`);
+        clearInterval(timer);
+        res.end();
+        return;
+      }
+
+      res.write(`data: ${JSON.stringify(row)}\n\n`);
+
+      if (row.status === "done" || row.status === "cancelled") {
+        clearInterval(timer);
+        res.write(`event: done\ndata: ${JSON.stringify(row)}\n\n`);
+        res.end();
+      }
+    } catch { /* db not ready yet */ }
+  };
+
+  sendUpdate();
+  const timer = setInterval(sendUpdate, 2000);
+
+  const keepAlive = setInterval(() => {
+    try { res.write(`: ping\n\n`); } catch { clearInterval(keepAlive); }
+  }, 15000);
+
+  req.on("close", () => {
+    clearInterval(timer);
+    clearInterval(keepAlive);
+  });
+});
+
 export { broadcastEvent };
 export default router;

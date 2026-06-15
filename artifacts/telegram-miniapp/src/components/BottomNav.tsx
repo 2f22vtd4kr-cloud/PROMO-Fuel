@@ -1,4 +1,4 @@
-import { LayoutGrid, Megaphone, BarChart2, Users2, Shield } from "lucide-react";
+import { LayoutGrid, Megaphone, BarChart2, Users2, FolderUp } from "lucide-react";
 import type { Tab } from "../App";
 import { TG } from "../lib/theme";
 import { haptic } from "../lib/haptics";
@@ -8,7 +8,7 @@ const ITEMS: { id: Tab; icon: React.ElementType; label: string; color: string; g
   { id: "campaigns", icon: Megaphone,  label: "Рассылки",  color: "#2de897", glow: "rgba(45,232,151,0.55)" },
   { id: "analytics", icon: BarChart2,  label: "Аналитика", color: "#ffc946", glow: "rgba(255,201,70,0.55)" },
   { id: "audience",  icon: Users2,     label: "Аудитория", color: "#c4aeff", glow: "rgba(196,174,255,0.55)" },
-  { id: "accounts",  icon: Shield,     label: "Аккаунты",  color: "#ff7eb3", glow: "rgba(255,126,179,0.55)" },
+  { id: "upload",    icon: FolderUp,   label: "Файлы",     color: "#ff9f40", glow: "rgba(255,159,64,0.55)" },
 ];
 
 export function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => void }) {

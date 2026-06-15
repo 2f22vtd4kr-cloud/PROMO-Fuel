@@ -61,13 +61,13 @@ waitForPort = 5000
 name = "API Server"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/api-server run dev"
-waitForPort = 8080
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm rebuild better-sqlite3 && pnpm --filter @workspace/api-server run dev"
+waitForPort = 8080
 
 [[workflows.workflow]]
 name = "CRM Platform"
@@ -104,10 +104,6 @@ externalPort = 5000
 [[ports]]
 localPort = 8080
 externalPort = 8080
-
-[[ports]]
-localPort = 8081
-externalPort = 80
 
 [[ports]]
 localPort = 8082

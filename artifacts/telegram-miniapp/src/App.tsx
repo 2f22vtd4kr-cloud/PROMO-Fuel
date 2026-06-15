@@ -2,14 +2,14 @@ import { useState } from "react";
 import { HomePage }      from "./pages/Home";
 import { CampaignsPage } from "./pages/Campaigns";
 import { EditorPage }    from "./pages/Editor";
-import { AccountsPage }  from "./pages/Accounts";
 import { AnalyticsPage } from "./pages/Analytics";
 import { AudiencePage }  from "./pages/Audience";
+import { UploadPage }    from "./pages/Upload";
 import { BottomNav }     from "./components/BottomNav";
 import { ConsumerApp }   from "./ConsumerApp";
 import { getOwnerRole }  from "./lib/twa";
 
-export type Tab = "home" | "campaigns" | "analytics" | "audience" | "accounts";
+export type Tab = "home" | "campaigns" | "analytics" | "audience" | "upload";
 
 export function App() {
   const role = getOwnerRole();
@@ -46,7 +46,7 @@ function OwnerApp() {
         {tab === "campaigns" && <CampaignsPage onEdit={openEditor} />}
         {tab === "analytics" && <AnalyticsPage />}
         {tab === "audience"  && <AudiencePage />}
-        {tab === "accounts"  && <AccountsPage />}
+        {tab === "upload"    && <UploadPage />}
       </div>
 
       {showEditor && (

@@ -63,7 +63,7 @@ app.use("/api/twa", (req: Request, res: Response, next: NextFunction) => {
   if (NODE_ENV === "development" || !TELEGRAM_TOKEN) return next();
   const initData = (req.headers["x-telegram-init-data"] as string) ?? "";
   if (!validateTWAInitData(initData, TELEGRAM_TOKEN)) {
-    return void res.status(401).json({ error: "Invalid TWA initData" });
+    return void res.status(403).json({ error: "Forbidden: invalid TWA initData" });
   }
   next();
 });

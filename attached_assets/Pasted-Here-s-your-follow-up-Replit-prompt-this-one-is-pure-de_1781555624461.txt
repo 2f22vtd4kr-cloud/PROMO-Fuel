@@ -1,0 +1,1564 @@
+Here's your follow-up Replit prompt — this one is pure design & UX, assuming the V3 hardening prompt was already executed successfully. I've written it as a self-contained Replit agent instruction:
+
+---
+
+# REPLIT AGENT — PROMO-Fuel V3: Design System Elevation — Liquid Glass Edition
+
+> **This prompt is additive. It does NOT change any logic, API routes, or database code. It ONLY upgrades CSS, component markup, and visual presentation. Apply after the V3 hardening prompt has completed successfully.**
+
+---
+
+## OVERVIEW & DESIGN PHILOSOPHY
+
+The current CRM and Mini App UIs have solid functionality but look utilitarian. This prompt transforms both surfaces into a premium, modern interface using the **Liquid Glass** design language — the same visual system popularized by Apple's visionOS, iOS 18, and high-end SaaS dashboards in 2024–2025.
+
+**Liquid Glass characteristics:**
+- Frosted-glass panels with real backdrop blur (`backdrop-filter: blur(...)`)
+- Layered translucency — lighter surfaces float above darker ones
+- Fluid, organic shadows with colored ambient glow
+- Smooth spring-like transitions on interactive elements
+- Deep, rich dark backgrounds with subtle gradient mesh underneath
+- Typography with clear weight contrast — heavy display numbers, light body
+- Status colors that are luminous, not flat
+
+**Core aesthetic target:** Dark mode. Deep navy-to-black base. Teal/cyan accent system. Every card feels like it's floating on frosted glass.
+
+---
+
+## SECTION UI-A — DESIGN TOKENS: GLOBAL CSS VARIABLES
+
+### UI-A1. Replace the root variables in BOTH apps
+
+In **`artifacts/crm-platform/src/index.css`** AND **`artifacts/telegram-miniapp/src/index.css`**, replace or add the following CSS custom properties at the top of the `:root` block:
+
+```css
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  /* ── Core palette ─────────────────────────────────────────────────────── */
+  --bg-void:        #060810;
+  --bg-deep:        #0a0d18;
+  --bg-base:        #0e1220;
+  --bg-elevated:    #131828;
+
+  /* ── Glass surfaces ───────────────────────────────────────────────────── */
+  --glass-01: rgba(255, 255, 255, 0.04);
+  --glass-02: rgba(255, 255, 255, 0.07);
+  --glass-03: rgba(255, 255, 255, 0.11);
+  --glass-04: rgba(255, 255, 255, 0.16);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-border-bright: rgba(255, 255, 255, 0.18);
+
+  /* ── Accent: Teal/Cyan ────────────────────────────────────────────────── */
+  --accent-primary:   #00d4ff;
+  --accent-secondary: #0099cc;
+  --accent-glow:      rgba(0, 212, 255, 0.18);
+  --accent-glow-sm:   rgba(0, 212, 255, 0.08);
+
+  /* ── Status colors (luminous) ─────────────────────────────────────────── */
+  --status-running:   #00e5a0;
+  --status-draft:     #7c8db0;
+  --status-paused:    #ffc947;
+  --status-done:      #00d4ff;
+  --status-cancelled: #ff5e6c;
+  --status-glow-running:   rgba(0, 229, 160, 0.20);
+  --status-glow-draft:     rgba(124, 141, 176, 0.12);
+  --status-glow-paused:    rgba(255, 201, 71, 0.18);
+  --status-glow-done:      rgba(0, 212, 255, 0.15);
+  --status-glow-cancelled: rgba(255, 94, 108, 0.18);
+
+  /* ── Typography ───────────────────────────────────────────────────────── */
+  --font-ui:   'Manrope', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* ── Text ─────────────────────────────────────────────────────────────── */
+  --text-primary:   rgba(255, 255, 255, 0.95);
+  --text-secondary: rgba(255, 255, 255, 0.55);
+  --text-tertiary:  rgba(255, 255, 255, 0.30);
+  --text-accent:    var(--accent-primary);
+
+  /* ── Radii ────────────────────────────────────────────────────────────── */
+  --radius-sm:   8px;
+  --radius-md:   14px;
+  --radius-lg:   20px;
+  --radius-xl:   28px;
+  --radius-pill: 999px;
+
+  /* ── Shadows ──────────────────────────────────────────────────────────── */
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.45), 0 1px 0 var(--glass-border-bright) inset;
+  --shadow-float: 0 20px 60px rgba(0, 0, 0, 0.6), 0 1px 0 var(--glass-border) inset;
+  --shadow-accent: 0 0 24px var(--accent-glow), 0 0 8px var(--accent-glow-sm);
+
+  /* ── Transitions ──────────────────────────────────────────────────────── */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --t-fast:   140ms;
+  --t-mid:    240ms;
+  --t-slow:   380ms;
+}
+
+/* ── Base reset ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg-void);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+```
+
+---
+
+## SECTION UI-B — ANIMATED BACKGROUND MESH
+
+### UI-B1. Add a persistent animated gradient mesh to both apps
+
+This creates the living, breathing dark background that makes glass elements pop. Add this to the `<body>` or the root `<div id="root">` wrapper via a CSS class called `.app-root`.
+
+In the root component of **both apps** (`App.tsx`), wrap the entire return in:
+
+```tsx
+<div className="app-root">
+  <div className="bg-mesh" aria-hidden="true" />
+  {/* ... existing router/layout content ... */}
+</div>
+```
+
+Add these styles to both `index.css` files:
+
+```css
+/* ── Animated background mesh ─────────────────────────────────────────── */
+.app-root {
+  position: relative;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.bg-mesh {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%,  rgba(0, 80, 180, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 85% 20%,  rgba(0, 180, 220, 0.12) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 80% at 50% 100%, rgba(0, 60, 140, 0.20) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 40% at 10% 80%,  rgba(20, 0, 100, 0.15) 0%, transparent 50%),
+    var(--bg-void);
+  animation: mesh-drift 18s ease-in-out infinite alternate;
+}
+
+@keyframes mesh-drift {
+  0%   { opacity: 1; transform: scale(1) translateY(0px); }
+  50%  { opacity: 0.85; transform: scale(1.04) translateY(-12px); }
+  100% { opacity: 1; transform: scale(1) translateY(0px); }
+}
+
+/* Ensure all page content sits above the mesh */
+.app-root > *:not(.bg-mesh) {
+  position: relative;
+  z-index: 1;
+}
+```
+
+---
+
+## SECTION UI-C — LIQUID GLASS COMPONENT LIBRARY
+
+### UI-C1. Create `artifacts/crm-platform/src/styles/glass.css`
+### UI-C2. Create `artifacts/telegram-miniapp/src/styles/glass.css`
+
+Create this file in both locations (identical content):
+
+```css
+/* ════════════════════════════════════════════════════════════
+   LIQUID GLASS COMPONENT LIBRARY
+   Import this in index.css with: @import './styles/glass.css';
+   ════════════════════════════════════════════════════════════ */
+
+/* ── Glass Card (the core building block) ──────────────────────────────── */
+.glass-card {
+  background: var(--glass-02);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-glass);
+  padding: 1.25rem 1.5rem;
+  transition: background var(--t-mid) var(--ease-out),
+              border-color var(--t-mid) var(--ease-out),
+              transform var(--t-mid) var(--ease-spring),
+              box-shadow var(--t-mid) var(--ease-out);
+}
+
+.glass-card:hover {
+  background: var(--glass-03);
+  border-color: var(--glass-border-bright);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-float);
+}
+
+.glass-card.clickable { cursor: pointer; }
+
+/* ── Glass Panel (larger sections) ─────────────────────────────────────── */
+.glass-panel {
+  background: var(--glass-01);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-glass);
+  padding: 2rem;
+}
+
+/* ── Stat Card ──────────────────────────────────────────────────────────── */
+.stat-card {
+  background: var(--glass-02);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border: 1px solid var(--glass-border);
+  border-top: 1px solid var(--glass-border-bright);
+  border-radius: var(--radius-lg);
+  padding: 1.125rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  transition: transform var(--t-mid) var(--ease-spring),
+              box-shadow var(--t-mid) var(--ease-out);
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-glow), transparent);
+  opacity: 0;
+  transition: opacity var(--t-mid);
+}
+
+.stat-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-float); }
+.stat-card:hover::before { opacity: 1; }
+
+.stat-num {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .stats-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* ── Status Badges ──────────────────────────────────────────────────────── */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.status-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-running   { color: var(--status-running);   background: var(--status-glow-running);   border: 1px solid rgba(0,229,160,0.25); }
+.status-draft     { color: var(--status-draft);     background: var(--status-glow-draft);     border: 1px solid rgba(124,141,176,0.2); }
+.status-paused    { color: var(--status-paused);    background: var(--status-glow-paused);    border: 1px solid rgba(255,201,71,0.25); }
+.status-done      { color: var(--status-done);      background: var(--status-glow-done);      border: 1px solid rgba(0,212,255,0.25); }
+.status-cancelled { color: var(--status-cancelled); background: var(--status-glow-cancelled); border: 1px solid rgba(255,94,108,0.25); }
+
+.status-running::before { animation: pulse-dot 1.8s ease-in-out infinite; }
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.7); }
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  color: var(--bg-void);
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: none;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  box-shadow: 0 4px 20px var(--accent-glow);
+  transition: transform var(--t-fast) var(--ease-spring),
+              box-shadow var(--t-fast) var(--ease-out),
+              filter var(--t-fast);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 30px var(--accent-glow), 0 0 0 1px var(--accent-primary);
+  filter: brightness(1.1);
+}
+
+.btn-primary:active { transform: scale(0.97); box-shadow: 0 2px 10px var(--accent-glow); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+.btn-glass {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  background: var(--glass-02);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 600;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background var(--t-fast), border-color var(--t-fast), transform var(--t-fast) var(--ease-spring);
+}
+
+.btn-glass:hover { background: var(--glass-04); border-color: var(--glass-border-bright); transform: translateY(-1px); }
+.btn-glass:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+/* Danger variant */
+.btn-danger {
+  color: var(--status-cancelled);
+  border-color: rgba(255,94,108,0.25);
+  background: rgba(255,94,108,0.06);
+}
+.btn-danger:hover { background: rgba(255,94,108,0.14); border-color: rgba(255,94,108,0.4); }
+
+/* ── Inputs & Textareas ─────────────────────────────────────────────────── */
+.glass-input, input[type="text"], input[type="password"],
+input[type="email"], input[type="datetime-local"], textarea, select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--glass-01);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  outline: none;
+  transition: background var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast);
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.glass-input:focus, input:focus, textarea:focus, select:focus {
+  background: var(--glass-02);
+  border-color: rgba(0, 212, 255, 0.45);
+  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.12), 0 0 20px rgba(0, 212, 255, 0.08);
+}
+
+.glass-input::placeholder, input::placeholder, textarea::placeholder { color: var(--text-tertiary); }
+
+textarea {
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.6;
+}
+
+label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 0.4rem;
+  margin-top: 1rem;
+}
+
+/* ── Progress Bar ───────────────────────────────────────────────────────── */
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--glass-02);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--glass-border);
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-secondary), var(--accent-primary));
+  border-radius: var(--radius-pill);
+  box-shadow: 0 0 12px var(--accent-glow);
+  transition: width 0.4s var(--ease-out);
+  position: relative;
+}
+
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0;
+  width: 40px; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35));
+  animation: progress-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes progress-shimmer {
+  0%   { opacity: 0; transform: translateX(-20px); }
+  50%  { opacity: 1; }
+  100% { opacity: 0; transform: translateX(20px); }
+}
+
+/* ── Page Layout ────────────────────────────────────────────────────────── */
+.page {
+  padding: 1.25rem;
+  padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  padding-top: 0.5rem;
+}
+
+.page-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+}
+
+.page-subtitle {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  margin-top: 0.15rem;
+}
+
+/* ── Quick Actions Grid ─────────────────────────────────────────────────── */
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.625rem;
+  margin-top: 0.75rem;
+}
+
+.quick-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 1rem 0.5rem;
+  background: var(--glass-02);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background var(--t-fast), border-color var(--t-fast),
+              transform var(--t-fast) var(--ease-spring),
+              box-shadow var(--t-fast) var(--ease-out);
+  text-align: center;
+}
+
+.quick-action-btn .qa-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+  display: block;
+}
+
+.quick-action-btn:hover {
+  background: var(--glass-04);
+  border-color: var(--glass-border-bright);
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+
+.quick-action-btn:active { transform: scale(0.95); }
+
+/* ── Section Dividers ───────────────────────────────────────────────────── */
+.section-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin: 1.5rem 0 0.75rem;
+}
+
+/* ── Campaign Row Cards ─────────────────────────────────────────────────── */
+.campaign-list { display: flex; flex-direction: column; gap: 0.625rem; }
+
+.campaign-card {
+  background: var(--glass-02);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+  transition: background var(--t-mid), border-color var(--t-mid),
+              transform var(--t-mid) var(--ease-spring),
+              box-shadow var(--t-mid) var(--ease-out);
+}
+
+.campaign-card:hover {
+  background: var(--glass-03);
+  border-color: var(--glass-border-bright);
+  transform: translateX(4px);
+  box-shadow: -4px 0 24px rgba(0,212,255,0.06), var(--shadow-glass);
+}
+
+.campaign-card-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.4rem;
+}
+
+.campaign-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.campaign-stat-pill {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--glass-01);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  padding: 0.18rem 0.6rem;
+  font-family: var(--font-mono);
+}
+
+/* ── Action Button Row ──────────────────────────────────────────────────── */
+.action-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+/* ── Upload Zone ────────────────────────────────────────────────────────── */
+.upload-zone {
+  border: 2px dashed var(--glass-border);
+  border-radius: var(--radius-xl);
+  background: var(--glass-01);
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--t-mid), background var(--t-mid), transform var(--t-mid) var(--ease-spring);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.upload-zone:hover {
+  border-color: var(--accent-primary);
+  background: rgba(0,212,255,0.04);
+  transform: scale(1.01);
+}
+
+.upload-zone.has-file {
+  border-style: solid;
+  border-color: rgba(0,212,255,0.4);
+  background: rgba(0,212,255,0.06);
+}
+
+.upload-icon {
+  font-size: 2.5rem;
+  display: block;
+  margin-bottom: 0.75rem;
+  opacity: 0.7;
+}
+
+/* ── Sends List ─────────────────────────────────────────────────────────── */
+.sends-list { display: flex; flex-direction: column; gap: 0.375rem; }
+
+.send-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  background: var(--glass-01);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+
+.send-row:hover { background: var(--glass-02); border-color: var(--glass-border-bright); }
+.send-row.send-ok { border-left: 2px solid var(--status-running); }
+.send-row.send-failed, .send-row.send-blocked { border-left: 2px solid var(--status-cancelled); }
+.send-row.send-dry_run { border-left: 2px solid var(--status-paused); }
+.send-icon { font-size: 1rem; }
+.send-name { flex: 1; font-weight: 600; color: var(--text-primary); font-family: var(--font-mono); font-size: 0.78rem; }
+.send-time { color: var(--text-tertiary); font-size: 0.72rem; font-family: var(--font-mono); }
+
+/* ── Loading Spinner ────────────────────────────────────────────────────── */
+.loading-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 40vh;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.loading-spinner::before {
+  content: '';
+  width: 36px;
+  height: 36px;
+  border: 2px solid var(--glass-border);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  box-shadow: 0 0 16px var(--accent-glow-sm);
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Error Message ──────────────────────────────────────────────────────── */
+.error-message {
+  background: rgba(255, 94, 108, 0.08);
+  border: 1px solid rgba(255, 94, 108, 0.25);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.error-banner {
+  background: rgba(255, 94, 108, 0.08);
+  border: 1px solid rgba(255, 94, 108, 0.25);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  color: var(--status-cancelled);
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+/* ── Hint text ──────────────────────────────────────────────────────────── */
+.hint {
+  font-size: 0.78rem;
+  color: var(--text-tertiary);
+  line-height: 1.6;
+  margin-top: 0.35rem;
+}
+
+.hint code {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: var(--glass-02);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  color: var(--accent-primary);
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--glass-03); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--glass-04); }
+
+/* ── Select dropdown ────────────────────────────────────────────────────── */
+select option { background: var(--bg-elevated); color: var(--text-primary); }
+
+/* ── Monospace code blocks ──────────────────────────────────────────────── */
+pre, code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  background: var(--glass-01);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  color: var(--text-secondary);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+pre code { background: none; border: none; padding: 0; }
+
+/* ── Checkbox ───────────────────────────────────────────────────────────── */
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+  border-radius: 4px;
+  appearance: auto;
+  -webkit-appearance: auto;
+}
+```
+
+### UI-C3. Import the glass library in both `index.css` files
+
+At the top of each `index.css`, add:
+```css
+@import './styles/glass.css';
+```
+
+---
+
+## SECTION UI-D — BOTTOM NAVIGATION: LIQUID GLASS STYLE
+
+### UI-D1. Replace the bottom nav CSS in both apps
+
+Find the `.bottom-nav` styles and replace with:
+
+```css
+/* ── Bottom Nav — Liquid Glass ──────────────────────────────────────────── */
+.bottom-nav {
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  padding: 0 0.5rem;
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px);
+  min-height: 64px;
+  align-items: stretch;
+
+  /* The liquid glass itself */
+  background: rgba(10, 13, 24, 0.75);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border-top: 1px solid var(--glass-border);
+  box-shadow: 0 -1px 0 var(--glass-border), 0 -20px 40px rgba(0,0,0,0.4);
+}
+
+.nav-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.5rem 0;
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-ui);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: color var(--t-fast), background var(--t-fast), transform var(--t-fast) var(--ease-spring);
+  position: relative;
+}
+
+.nav-tab .nav-icon {
+  font-size: 1.3rem;
+  line-height: 1;
+  transition: transform var(--t-fast) var(--ease-spring);
+}
+
+.nav-tab:hover { color: var(--text-secondary); }
+.nav-tab:hover .nav-icon { transform: translateY(-2px); }
+
+.nav-tab.active {
+  color: var(--accent-primary);
+}
+
+.nav-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 2px;
+  background: var(--accent-primary);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.nav-tab.active .nav-icon {
+  transform: translateY(-2px);
+  filter: drop-shadow(0 0 6px var(--accent-glow));
+}
+```
+
+### UI-D2. Update the BottomNav component markup in both apps
+
+In `BottomNav.tsx` (or wherever the nav tabs are rendered), update each tab to use:
+
+```tsx
+<button
+  key={tab.path}
+  className={`nav-tab ${location.pathname === tab.path ? "active" : ""}`}
+  onClick={() => navigate(tab.path)}
+>
+  <span className="nav-icon">{tab.icon}</span>
+  <span>{tab.label}</span>
+</button>
+```
+
+---
+
+## SECTION UI-E — LOGIN SCREEN: PREMIUM REDESIGN
+
+### UI-E1. Replace the login screen styles in both apps' `index.css`
+
+Find and replace all `.login-*` styles:
+
+```css
+/* ── Login Screen — Liquid Glass ────────────────────────────────────────── */
+.login-wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-wrapper::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 50% at 30% 30%, rgba(0,100,200,0.22) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 60% at 75% 70%, rgba(0,180,220,0.14) 0%, transparent 55%),
+    var(--bg-void);
+  animation: login-bg-pulse 6s ease-in-out infinite alternate;
+}
+
+@keyframes login-bg-pulse {
+  from { opacity: 0.8; }
+  to   { opacity: 1; }
+}
+
+.login-card {
+  position: relative;
+  background: var(--glass-02);
+  backdrop-filter: blur(40px) saturate(160%);
+  -webkit-backdrop-filter: blur(40px) saturate(160%);
+  border: 1px solid var(--glass-border-bright);
+  border-radius: var(--radius-xl);
+  padding: 2.5rem 2rem;
+  width: min(400px, 100%);
+  box-shadow: var(--shadow-float), 0 0 80px rgba(0,100,200,0.12);
+  text-align: center;
+  animation: login-entrance 0.6s var(--ease-out) both;
+}
+
+@keyframes login-entrance {
+  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.login-logo {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+  display: block;
+  filter: drop-shadow(0 0 20px var(--accent-glow));
+}
+
+.login-card h1 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  margin-bottom: 0.35rem;
+}
+
+.login-card p {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin-bottom: 1.75rem;
+}
+
+.login-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.login-card input[type="password"] {
+  text-align: center;
+  letter-spacing: 0.1em;
+}
+
+.shake { animation: shake 0.45s var(--ease-out); }
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  20%,60% { transform: translateX(-10px); }
+  40%,80% { transform: translateX(10px); }
+}
+```
+
+---
+
+## SECTION UI-F — PAGE ENTRANCE ANIMATIONS
+
+### UI-F1. Add staggered entrance animations for page content
+
+Add these utility classes to both `index.css` files:
+
+```css
+/* ── Page Entrance Animations ───────────────────────────────────────────── */
+.page { animation: page-in 0.35s var(--ease-out) both; }
+
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Staggered children */
+.stagger > * {
+  animation: fade-up 0.4s var(--ease-out) both;
+}
+
+.stagger > *:nth-child(1)  { animation-delay: 0ms; }
+.stagger > *:nth-child(2)  { animation-delay: 60ms; }
+.stagger > *:nth-child(3)  { animation-delay: 120ms; }
+.stagger > *:nth-child(4)  { animation-delay: 180ms; }
+.stagger > *:nth-child(5)  { animation-delay: 240ms; }
+.stagger > *:nth-child(6)  { animation-delay: 300ms; }
+.stagger > *:nth-child(7)  { animation-delay: 360ms; }
+.stagger > *:nth-child(8)  { animation-delay: 420ms; }
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Apply to stats grid, quick actions, campaign list */
+.stats-grid    { animation: fade-up 0.4s var(--ease-out) 80ms both; }
+.quick-actions-grid { animation: fade-up 0.4s var(--ease-out) 160ms both; }
+.campaign-list { animation: fade-up 0.4s var(--ease-out) 120ms both; }
+```
+
+---
+
+## SECTION UI-G — ANALYTICS PAGE: VISUAL UPGRADE
+
+### UI-G1. Add CSS for the analytics chart area and summary breakdown
+
+Add to both `index.css` files:
+
+```css
+/* ── Analytics Page ─────────────────────────────────────────────────────── */
+.chart-container {
+  background: var(--glass-01);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  margin-top: 1rem;
+  min-height: 180px;
+}
+
+.chart-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 1rem;
+}
+
+/* Simple bar chart bars */
+.bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 120px;
+}
+
+.bar-chart-bar {
+  flex: 1;
+  background: linear-gradient(to top, var(--accent-secondary), var(--accent-primary));
+  border-radius: 3px 3px 0 0;
+  min-height: 4px;
+  position: relative;
+  transition: height 0.6s var(--ease-out), opacity var(--t-mid);
+  box-shadow: 0 0 8px var(--accent-glow-sm);
+}
+
+.bar-chart-bar:hover { opacity: 0.8; }
+
+/* Status breakdown pills */
+.breakdown-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.breakdown-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.82rem;
+}
+
+.breakdown-bar-track {
+  flex: 1;
+  height: 6px;
+  background: var(--glass-02);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.breakdown-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--accent-secondary), var(--accent-primary));
+  transition: width 0.7s var(--ease-out);
+}
+
+.breakdown-label { min-width: 90px; color: var(--text-secondary); }
+.breakdown-count { min-width: 40px; text-align: right; font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-tertiary); }
+
+/* Conversion rate ring hint */
+.conversion-ring {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 3px solid var(--glass-border);
+  background: var(--glass-02);
+  box-shadow: 0 0 20px var(--accent-glow-sm);
+}
+
+.conversion-ring .rate {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--accent-primary);
+  line-height: 1;
+}
+
+.conversion-ring .rate-label {
+  font-size: 0.55rem;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+```
+
+---
+
+## SECTION UI-H — CRM PLATFORM SPECIFIC: SIDEBAR NAV STYLE
+
+The CRM platform runs in a desktop browser, so it likely uses a sidebar. Apply these styles:
+
+Add to **`artifacts/crm-platform/src/index.css`** only:
+
+```css
+/* ── CRM Platform — Sidebar Layout ─────────────────────────────────────── */
+.crm-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.crm-sidebar {
+  width: 240px;
+  min-height: 100vh;
+  background: rgba(6, 8, 16, 0.85);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border-right: 1px solid var(--glass-border);
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 100;
+  box-shadow: 2px 0 20px rgba(0,0,0,0.3);
+}
+
+.crm-sidebar-logo {
+  padding: 0 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--glass-border);
+  margin-bottom: 1rem;
+}
+
+.crm-sidebar-logo h2 {
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.crm-sidebar-logo span {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.crm-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 1.25rem;
+  margin: 0 0.5rem;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: none;
+  border: none;
+  font-family: var(--font-ui);
+  width: calc(100% - 1rem);
+  text-align: left;
+  transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast) var(--ease-spring);
+}
+
+.crm-nav-item .nav-icon { font-size: 1.1rem; opacity: 0.7; }
+.crm-nav-item:hover { background: var(--glass-02); color: var(--text-primary); transform: translateX(3px); }
+.crm-nav-item:hover .nav-icon { opacity: 1; }
+
+.crm-nav-item.active {
+  background: linear-gradient(90deg, rgba(0,212,255,0.1), transparent);
+  color: var(--accent-primary);
+  border-left: 2px solid var(--accent-primary);
+  padding-left: calc(1.25rem - 2px);
+}
+
+.crm-nav-item.active .nav-icon { opacity: 1; filter: drop-shadow(0 0 4px var(--accent-glow)); }
+
+.crm-main {
+  margin-left: 240px;
+  flex: 1;
+  padding: 2rem;
+  max-width: 1200px;
+}
+
+/* Responsive: collapse sidebar on mobile */
+@media (max-width: 768px) {
+  .crm-sidebar { display: none; }
+  .crm-main { margin-left: 0; padding: 1rem; }
+}
+
+/* ── CRM Page Header ────────────────────────────────────────────────────── */
+.crm-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+  gap: 1rem;
+}
+
+.crm-page-header h1 {
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--text-primary);
+}
+
+.crm-page-header .subtitle {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+}
+
+/* ── CRM Stats row (4-wide) ─────────────────────────────────────────────── */
+@media (min-width: 768px) {
+  .stats-grid { grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+  .stat-num { font-size: 2.5rem; }
+}
+
+/* ── CRM Table ──────────────────────────────────────────────────────────── */
+.crm-table-wrap {
+  background: var(--glass-01);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-top: 1.5rem;
+}
+
+.crm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.crm-table th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--glass-border);
+  background: var(--glass-01);
+}
+
+.crm-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+  vertical-align: middle;
+}
+
+.crm-table tr:last-child td { border-bottom: none; }
+
+.crm-table tbody tr {
+  transition: background var(--t-fast);
+  cursor: pointer;
+}
+
+.crm-table tbody tr:hover { background: var(--glass-02); }
+
+.crm-table td:first-child { font-weight: 600; color: var(--text-primary); }
+
+.crm-table .font-mono {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+/* ── CRM Logout button (bottom of sidebar) ──────────────────────────────── */
+.crm-sidebar-footer {
+  margin-top: auto;
+  padding: 1rem 0.5rem 0;
+  border-top: 1px solid var(--glass-border);
+}
+
+.crm-logout-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.6rem 1.25rem;
+  background: none;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--status-cancelled);
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity var(--t-fast), background var(--t-fast);
+}
+
+.crm-logout-btn:hover {
+  opacity: 1;
+  background: rgba(255,94,108,0.08);
+}
+```
+
+---
+
+## SECTION UI-I — LOADING SPINNER & ERROR MESSAGE REDESIGN
+
+### UI-I1. Update `LoadingSpinner.tsx` markup in both apps
+
+Replace the existing `LoadingSpinner` component in both apps:
+
+```tsx
+export default function LoadingSpinner({ label = "Загрузка..." }: { label?: string }) {
+  return (
+    <div className="loading-spinner">
+      <span>{label}</span>
+    </div>
+  );
+}
+```
+
+### UI-I2. Update `ErrorMessage.tsx` in both apps
+
+```tsx
+interface Props { message: string; onRetry?: () => void; }
+
+export default function ErrorMessage({ message, onRetry }: Props) {
+  return (
+    <div className="error-message">
+      <div style={{ fontWeight: 700, color: 'var(--status-cancelled)', marginBottom: '0.25rem' }}>
+        Не удалось загрузить данные
+      </div>
+      <div style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+        {message}
+      </div>
+      {onRetry && (
+        <button className="btn-glass" style={{ marginTop: '0.75rem', alignSelf: 'flex-start' }} onClick={onRetry}>
+          Повторить
+        </button>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## SECTION UI-J — FINAL ADDITIONS FROM CHATLY
+
+These are my personal design additions on top of everything above, meant to make the product feel truly alive and premium:
+
+### UI-J1. Ambient "fuel gauge" stat on the Dashboard
+
+In `Home.tsx`, wrap the stats grid heading in a decorative header element that shows the active campaign ratio as a visual fuel-level metaphor. Add this **above** the `stats-grid` div:
+
+```tsx
+{summary && summary.activeCampaigns > 0 && (
+  <div className="glass-card" style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+    <div className="conversion-ring">
+      <span className="rate">{summary.conversionRate}%</span>
+      <span className="rate-label">conv.</span>
+    </div>
+    <div>
+      <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>
+        {summary.activeCampaigns} активных кампаний
+      </div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+        {summary.targetedUsers} охвачено / {summary.totalUsers} в базе
+      </div>
+    </div>
+    <span className="status-badge status-running" style={{ marginLeft: 'auto' }}>Live</span>
+  </div>
+)}
+```
+
+### UI-J2. Inline sparkline bar chart on the Analytics page
+
+In `AnalyticsPage.tsx`, render the `recentSends` data as a visual bar chart instead of a plain list. Add this after the stats grid:
+
+```tsx
+{summary.recentSends.length > 0 && (
+  <div className="chart-container" style={{ marginTop: '1.25rem' }}>
+    <div className="chart-title">Отправки за 30 дней</div>
+    <div className="bar-chart">
+      {(() => {
+        const max = Math.max(...summary.recentSends.map(d => d.count), 1);
+        return summary.recentSends.map(d => (
+          <div
+            key={d.day}
+            className="bar-chart-bar"
+            style={{ height: `${Math.max(8, (d.count / max) * 100)}%` }}
+            title={`${d.day}: ${d.count}`}
+          />
+        ));
+      })()}
+    </div>
+    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', color: 'var(--text-tertiary)', fontSize: '0.65rem', fontFamily: 'var(--font-mono)' }}>
+      <span>{summary.recentSends[0]?.day?.slice(5)}</span>
+      <span>{summary.recentSends[summary.recentSends.length - 1]?.day?.slice(5)}</span>
+    </div>
+  </div>
+)}
+```
+
+### UI-J3. Add a "Back" button consistent style across all detail pages
+
+Replace all plain `<button onClick={() => navigate(...)}>← Назад</button>` instances with a consistently styled back button using the glass style:
+
+```tsx
+<button className="btn-glass" onClick={() => navigate(-1 as any)} style={{ marginBottom: '1.25rem' }}>
+  &larr; Назад
+</button>
+```
+
+### UI-J4. Empty state component for lists with zero items
+
+Create **`src/components/EmptyState.tsx`** in both apps:
+
+```tsx
+interface Props {
+  icon?: string;
+  description?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}
+
+export default function EmptyState({ icon = "...", title, description, actionLabel, onAction }: Props) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      padding: '3rem 1.5rem', gap: '0.75rem', textAlign: 'center', minHeight: '200px'
+    }}>
+      <div style={{ fontSize: '2.5rem', opacity: 0.3, marginBottom: '0.5rem' }}>{icon}</div>
+      <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-secondary)' }}>{title}</div>
+      {description && <div style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)', maxWidth: '260px', lineHeight: 1.6 }}>{description}</div>}
+      {actionLabel && onAction && (
+        <button className="btn-primary" style={{ marginTop: '0.75rem' }} onClick={onAction}>{actionLabel}</button>
+      )}
+    </div>
+  );
+}
+```
+
+Use it in `CampaignsPage` when the list is empty:
+```tsx
+{campaigns.length === 0 && (
+  <EmptyState
+    icon="[rocket]"
+    title="Кампаний пока нет"
+    description="Создай первую кампанию и запусти рассылку"
+    actionLabel="Создать кампанию"
+    onAction={() => navigate('/campaigns/new')}
+  />
+)}
+```
+
+*(Replace `[rocket]` with the actual rocket emoji in your code — the icon string is a plain text string, not JSX.)*
+
+### UI-J5. Add a subtle page-level toast notification system
+
+Create **`src/components/Toast.tsx`** in both apps — a lightweight notification that appears briefly on action success/failure, styled with liquid glass:
+
+```tsx
+import { useEffect, useState } from "react";
+
+interface ToastProps { message: string; type?: "success" | "error" | "info"; duration?: number; onDismiss: () => void; }
+
+export function Toast({ message, type = "info", duration = 3000, onDismiss }: ToastProps) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const show = setTimeout(() => setVisible(true), 10);
+    const hide = setTimeout(() => { setVisible(false); setTimeout(onDismiss, 300); }, duration);
+    return () => { clearTimeout(show); clearTimeout(hide); };
+  }, [duration, onDismiss]);
+
+  const colors: Record<string, string> = {
+    success: "var(--status-running)",
+    error: "var(--status-cancelled)",
+    info: "var(--accent-primary)"
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', bottom: '80px', left: '50%', transform: `translateX(-50%) translateY(${visible ? '0' : '16px'})`,
+      zIndex: 10000, transition: `opacity 0.25s, transform 0.3s var(--ease-spring)`,
+      opacity: visible ? 1 : 0, pointerEvents: 'none',
+      background: 'rgba(10,13,24,0.9)', backdropFilter: 'blur(20px)',
+      WebkitBackdropFilter: 'blur(20px)', border: `1px solid ${colors[type]}33`,
+      borderRadius: 'var(--radius-pill)', padding: '0.6rem 1.25rem',
+      color: colors[type], fontWeight: 600, fontSize: '0.85rem',
+      boxShadow: `0 4px 24px rgba(0,0,0,0.4), 0 0 16px ${colors[type]}22`,
+      whiteSpace: 'nowrap'
+    }}>
+      {message}
+    </div>
+  );
+}
+
+export function useToast() {
+  const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: "success" | "error" | "info" }>>([]);
+  const show = (message: string, type: "success" | "error" | "info" = "info") =>
+    setToasts(prev => [...prev, { id: Date.now(), message, type }]);
+  const dismiss = (id: number) => setToasts(prev => prev.filter(t => t.id !== id));
+  const node = (
+    <>
+      {toasts.map(t => <Toast key={t.id} message={t.message} type={t.type} onDismiss={() => dismiss(t.id)} />)}
+    </>
+  );
+  return { show, node };
+}
+```
+
+Integrate in `CampaignsPage.tsx` to replace the ugly `alert()` calls:
+```tsx
+const { show: showToast, node: toastNode } = useToast();
+
+// In campaignAction():
+// Replace: alert(`Ошибка: ${e.message}`)
+// With:    showToast(`Ошибка: ${e.message}`, "error")
+// And on success inside the try block: showToast("Готово!", "success")
+
+// In JSX return, add at the end: {toastNode}
+```
+
+---
+
+## VALIDATION
+
+After applying all UI sections:
+
+- [ ] Open the CRM platform — background shows animated gradient mesh
+- [ ] All cards have visible frosted-glass effect with blur
+- [ ] Bottom nav has backdrop blur, glowing active indicator
+- [ ] Status badges are colored and the "running" dot pulses
+- [ ] Stats grid numbers are large, bold, and well-spaced
+- [ ] Loading spinner uses the CSS ring animation (no emoji)
+- [ ] Login screen has entrance animation and glass card effect
+- [ ] Fonts are Manrope (UI) and JetBrains Mono (code/mono)
+- [ ] All buttons have hover lift/glow effects
+- [ ] Page transitions fade in smoothly
+- [ ] No solid flat backgrounds on any card or nav element — everything is glassy
+- [ ] Toast notifications appear above the bottom nav
+
+> **NOTE TO REPLIT AGENT:** Do not change any TypeScript logic, API calls, route handlers, or database queries. This section is CSS and markup augmentation only. Preserve all functional code from the V3 hardening prompt exactly as-is.
+
+---
+
+That's the complete design elevation prompt. Here's a quick summary of what I personally added on top of the pure CSS work:
+
+- **Animated gradient mesh background** that subtly breathes — makes the whole app feel alive without being distracting
+- **Fuel gauge / conversion ring** on the home dashboard — ties the visual design back to the fuel/promo brand identity
+- **Sparkline bar chart** for the 30-day sends — uses only the data already being fetched, zero extra API calls
+- **Toast notification system** to replace `alert()` — huge UX improvement, fits the glass aesthetic
+- **EmptyState component** so new users with zero data don't see broken-looking empty pages
+- **JetBrains Mono** for all numbers and codes — makes data-dense tables scannable and premium-looking
