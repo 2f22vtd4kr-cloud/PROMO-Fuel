@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
-import { TrendingUp, Users2, Target, Zap, ArrowUpRight } from "lucide-react";
+import { TrendingUp, Users2, Target, Zap, ArrowUpRight, Trophy } from "lucide-react";
 import { api, AnalyticsOverview } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
 import { haptic } from "../lib/haptics";
+
+interface TopCampaign { id: number; name: string; status: string; sent: number; openRate: number; ctr: number }
 
 interface TrendPoint { d: string; sent: number; conv: number }
 
@@ -131,23 +133,28 @@ function DonutChart({ data }: { data: typeof FUEL_MIX }) {
 export function AnalyticsPage() {
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
   const [trend, setTrend]       = useState<TrendPoint[]>(MOCK_TREND);
+  const [topCamps, setTopCamps] = useState<TopCampaign[]>([]);
   const [loading, setLoading]   = useState(true);
+  const BASE = import.meta.env.VITE_API_URL ?? "";
 
   useEffect(() => {
     Promise.all([
       api.getOverview(),
-      fetch(`${import.meta.env.VITE_API_URL ?? ""}/api/analytics/trend`).then(r => r.ok ? r.json() : MOCK_TREND).catch(() => MOCK_TREND),
-    ]).then(([ov, tr]) => {
+      fetch(`${BASE}/api/analytics/trend`).then(r => r.ok ? r.json() : MOCK_TREND).catch(() => MOCK_TREND),
+      fetch(`${BASE}/api/analytics/top-campaigns?limit=5`).then(r => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([ov, tr, tc]) => {
       setOverview(ov);
       if (Array.isArray(tr) && tr.length > 0) setTrend(tr);
+      if (Array.isArray(tc)) setTopCamps(tc);
     }).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  }, [BASE]);
 
+  const ov = overview;
   const kpis = [
-    { label:"Охват",     value: loading?"—":`${((overview?.totalSent ?? 0) / 1000).toFixed(1)}K`, delta:"+14%",  color:"#6ba8e5",  icon:Users2 },
-    { label:"Open Rate", value: loading?"—":`${(overview?.avgOpenRate ?? 0).toFixed(1)}%`,          delta:"+2.1%", color:TG.green,   icon:Target },
-    { label:"Конверсия", value: loading?"—":`${(overview?.avgCtr ?? 0).toFixed(1)}%`,               delta:"+8.3%", color:TG.purple,  icon:TrendingUp },
-    { label:"Кампании",  value: loading?"—":String(overview?.totalCampaigns ?? 0),                  delta:"всего", color:TG.yellow,  icon:Zap },
+    { label:"Охват",     value: loading?"—":`${((ov?.totalSent ?? 0) / 1000).toFixed(1)}K`,   delta: ov ? (ov.sentDelta >= 0 ? `+${ov.sentDelta}%` : `${ov.sentDelta}%`) : "—",  color:"#6ba8e5",  icon:Users2 },
+    { label:"Open Rate", value: loading?"—":`${(ov?.avgOpenRate ?? 0).toFixed(1)}%`,           delta: ov ? (ov.openDelta >= 0 ? `+${ov.openDelta}%` : `${ov.openDelta}%`) : "—", color:TG.green,   icon:Target },
+    { label:"CTR",       value: loading?"—":`${(ov?.avgCtr ?? 0).toFixed(1)}%`,                delta: ov ? (ov.ctrDelta >= 0  ? `+${ov.ctrDelta}%`  : `${ov.ctrDelta}%`)  : "—", color:TG.purple,  icon:TrendingUp },
+    { label:"Кампании",  value: loading?"—":String(ov?.totalCampaigns ?? 0),                   delta:"всего",                                                                    color:TG.yellow,  icon:Zap },
   ];
 
   return (
@@ -204,9 +211,43 @@ export function AnalyticsPage() {
 
         {/* Bar chart */}
         <GlassCard style={{ padding:"14px 14px 10px" }}>
-          <div style={{ fontSize:12,fontWeight:700,color:TG.textSecondary,marginBottom:8 }}>Скидки по дням</div>
+          <div style={{ fontSize:12,fontWeight:700,color:TG.textSecondary,marginBottom:8 }}>Отправки по дням</div>
           <MiniBarChart data={trend} color="#ff9f40" />
         </GlassCard>
+
+        {/* Top campaigns */}
+        {topCamps.length > 0 && (
+          <GlassCard style={{ padding:"14px" }}>
+            <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:12 }}>
+              <Trophy size={13} color={TG.yellow} />
+              <span style={{ fontSize:12,fontWeight:700,color:TG.textSecondary }}>Топ кампании</span>
+            </div>
+            <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
+              {topCamps.map((c, i) => {
+                const medals = ["🥇","🥈","🥉","4️⃣","5️⃣"];
+                const maxSent = topCamps[0]?.sent ?? 1;
+                const pct = Math.round((c.sent / maxSent) * 100);
+                return (
+                  <div key={c.id}>
+                    <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4 }}>
+                      <div style={{ display:"flex",alignItems:"center",gap:7,flex:1,minWidth:0 }}>
+                        <span style={{ fontSize:13 }}>{medals[i]}</span>
+                        <span style={{ fontSize:11,color:TG.text,fontWeight:600,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",flex:1 }}>{c.name}</span>
+                      </div>
+                      <div style={{ textAlign:"right",flexShrink:0,marginLeft:8 }}>
+                        <span style={{ fontSize:11,fontWeight:800,color:TG.green }}>{c.sent.toLocaleString("ru")}</span>
+                        <span style={{ fontSize:10,color:TG.muted,marginLeft:4 }}>отпр.</span>
+                      </div>
+                    </div>
+                    <div style={{ height:2,borderRadius:1,background:"rgba(255,255,255,0.07)" }}>
+                      <div style={{ height:"100%",width:`${pct}%`,borderRadius:1,background:`linear-gradient(90deg,${TG.green},${TG.blue})`,opacity:0.7 }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </GlassCard>
+        )}
 
       </div>
     </div>

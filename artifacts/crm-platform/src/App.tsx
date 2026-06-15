@@ -111,6 +111,55 @@ function fmtNum(n: number): string {
   return n.toLocaleString("ru");
 }
 
+function GlassInput({ value, onChange, placeholder, multiline = false, style = {} }: {
+  value: string; onChange: (v: string) => void; placeholder?: string; multiline?: boolean; style?: React.CSSProperties;
+}) {
+  const base: React.CSSProperties = {
+    width: "100%", boxSizing: "border-box",
+    background: "rgba(255,255,255,0.055)",
+    border: `1px solid rgba(255,255,255,0.14)`,
+    borderRadius: 12, color: TG.text,
+    fontSize: 13, fontFamily: "inherit",
+    padding: "10px 12px",
+    outline: "none",
+    resize: "none",
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
+    caretColor: TG.blue,
+    ...style,
+  };
+  return multiline
+    ? <textarea rows={4} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        style={base as React.CSSProperties} />
+    : <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={base} />;
+}
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999,
+      display: "flex", alignItems: "flex-end", justifyContent: "center",
+      background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)",
+    }} onClick={onClose}>
+      <div style={{
+        width: "100%", maxWidth: 430,
+        background: "linear-gradient(160deg, rgba(22,25,45,0.98) 0%, rgba(10,12,24,0.99) 100%)",
+        border: `1px solid rgba(255,255,255,0.14)`,
+        borderRadius: "22px 22px 0 0",
+        padding: "22px 18px 36px",
+        display: "flex", flexDirection: "column", gap: 14,
+        boxShadow: "0 -16px 60px rgba(0,0,0,0.8)",
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+          <span style={{ fontSize: 15, fontWeight: 800, color: TG.text }}>{title}</span>
+          <div onClick={onClose} style={{ width: 28, height: 28, borderRadius: 9, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: TG.muted, fontSize: 15, fontWeight: 700 }}>✕</div>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function GlassCard({
   children, style = {}, glow, onClick,
 }: { children: React.ReactNode; style?: React.CSSProperties; glow?: string; onClick?: () => void }) {
@@ -454,7 +503,15 @@ function HomeTab({ overview, campaigns, loading }: { overview: Overview | null; 
   );
 }
 
-function CampaignsTab({ campaigns, loading }: { campaigns: Campaign[]; loading: boolean }) {
+type ActionFn = (path: string, method?: string, body?: Record<string, unknown>) => Promise<void>;
+
+function CampaignsTab({ campaigns, loading, onAction }: { campaigns: Campaign[]; loading: boolean; onAction: ActionFn }) {
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName]       = useState("");
+  const [newText, setNewText]       = useState("");
+  const [creating, setCreating]     = useState(false);
+  const [actionId, setActionId]     = useState<number | null>(null);
+
   const running   = campaigns.filter(c => c.status === "running").length;
   const scheduled = campaigns.filter(c => c.status === "scheduled").length;
   const paused    = campaigns.filter(c => c.status === "paused").length;
@@ -462,11 +519,43 @@ function CampaignsTab({ campaigns, loading }: { campaigns: Campaign[]; loading: 
     running: TG.green, scheduled: TG.yellow, paused: TG.blue, done: TG.muted, draft: TG.muted, cancelled: TG.red,
   };
 
+  async function handleCreate() {
+    if (!newName.trim()) return;
+    setCreating(true);
+    await onAction("/api/campaigns", "POST", { name: newName.trim(), text_template: newText.trim(), status: "draft" });
+    setNewName(""); setNewText(""); setCreating(false); setShowCreate(false);
+  }
+
+  async function handleToggle(c: Campaign) {
+    if (actionId === c.id) return;
+    const next = c.status === "running" ? "paused" : "running";
+    setActionId(c.id);
+    await onAction(`/api/campaigns/${c.id}/action`, "POST", { action: next });
+    setActionId(null);
+  }
+
   return (
+    <>
+    {showCreate && (
+      <Modal title="Новая кампания" onClose={() => setShowCreate(false)}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <GlassInput value={newName} onChange={setNewName} placeholder="Название кампании" />
+          <GlassInput value={newText} onChange={setNewText} placeholder="Текст сообщения…" multiline />
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+          <div onClick={() => setShowCreate(false)} style={{ flex: 1, padding: "11px 0", borderRadius: 14, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", textAlign: "center", fontSize: 13, fontWeight: 700, color: TG.muted, cursor: "pointer" }}>
+            Отмена
+          </div>
+          <div onClick={handleCreate} style={{ flex: 2, padding: "11px 0", borderRadius: 14, background: creating ? `${TG.green}25` : `linear-gradient(135deg,${TG.green}55 0%,${TG.blue}44 100%)`, border: `1px solid ${TG.green}55`, textAlign: "center", fontSize: 13, fontWeight: 800, color: TG.green, cursor: "pointer", opacity: creating ? 0.7 : 1 }}>
+            {creating ? "Создание…" : "Создать черновик"}
+          </div>
+        </div>
+      </Modal>
+    )}
     <div className="tab-content" style={{ display: "flex", flexDirection: "column", gap: 14, padding: "0 14px", paddingBottom: 8 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 4 }}>
         <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>Рассылки</div>
-        <GlassCard style={{ padding: "8px 12px", borderRadius: 14, cursor: "pointer" }}>
+        <GlassCard style={{ padding: "8px 12px", borderRadius: 14, cursor: "pointer" }} onClick={() => setShowCreate(true)}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <Plus size={14} color={TG.green} />
             <span style={{ fontSize: 12, color: TG.green, fontWeight: 700 }}>Создать</span>
@@ -489,12 +578,14 @@ function CampaignsTab({ campaigns, loading }: { campaigns: Campaign[]; loading: 
       ) : campaigns.length === 0 ? (
         <GlassCard style={{ padding: "32px 14px", textAlign: "center" }}>
           <div style={{ fontSize: 13, color: TG.muted }}>Нет кампаний</div>
+          <div onClick={() => setShowCreate(true)} style={{ fontSize: 11, color: TG.green, marginTop: 8, fontWeight: 600, cursor: "pointer" }}>+ Создать первую кампанию</div>
         </GlassCard>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {campaigns.map(c => {
             const color = CAMP_COLORS[c.status] ?? TG.muted;
             const pct = c.target_count > 0 ? Math.round(c.sent_count / c.target_count * 100) : 0;
+            const isActing = actionId === c.id;
             return (
               <GlassCard key={c.id} style={{ padding: "14px" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
@@ -511,14 +602,15 @@ function CampaignsTab({ campaigns, loading }: { campaigns: Campaign[]; loading: 
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
-                    {c.status === "running" && (
-                      <div style={{ width: 28, height: 28, borderRadius: 9, background: `${TG.green}18`, border: `1px solid ${TG.green}35`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <Pause size={12} color={TG.green} />
-                      </div>
-                    )}
-                    {c.status === "paused" && (
-                      <div style={{ width: 28, height: 28, borderRadius: 9, background: `${TG.blue}18`, border: `1px solid ${TG.blue}35`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <Play size={12} color={TG.blue} />
+                    {(c.status === "running" || c.status === "paused") && (
+                      <div onClick={() => handleToggle(c)} style={{
+                        width: 30, height: 30, borderRadius: 10, cursor: isActing ? "default" : "pointer", opacity: isActing ? 0.5 : 1,
+                        background: c.status === "running" ? `${TG.green}18` : `${TG.blue}18`,
+                        border: `1px solid ${c.status === "running" ? TG.green : TG.blue}40`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "opacity 0.2s",
+                      }}>
+                        {c.status === "running" ? <Pause size={13} color={TG.green} /> : <Play size={13} color={TG.blue} />}
                       </div>
                     )}
                   </div>
@@ -544,6 +636,7 @@ function CampaignsTab({ campaigns, loading }: { campaigns: Campaign[]; loading: 
         </div>
       )}
     </div>
+    </>
   );
 }
 
@@ -776,7 +869,12 @@ function AudienceTab({ users, overview, loading }: { users: UserRow[]; overview:
   );
 }
 
-function AccountsTab({ accounts, loading }: { accounts: Account[]; loading: boolean }) {
+function AccountsTab({ accounts, loading, onAction }: { accounts: Account[]; loading: boolean; onAction: ActionFn }) {
+  const [showAdd, setShowAdd]     = useState(false);
+  const [newPhone, setNewPhone]   = useState("");
+  const [newLabel, setNewLabel]   = useState("");
+  const [adding, setAdding]       = useState(false);
+
   const active  = accounts.filter(a => a.is_active && !a.is_banned);
   const sending = accounts.filter(a => a.status === "sending");
   const banned  = accounts.filter(a => a.is_banned);
@@ -797,11 +895,38 @@ function AccountsTab({ accounts, loading }: { accounts: Account[]; loading: bool
     return acc.status in statusMeta ? acc.status : "idle";
   }
 
+  async function handleAdd() {
+    if (!newPhone.trim()) return;
+    setAdding(true);
+    await onAction("/api/accounts", "POST", { phone: newPhone.trim(), label: newLabel.trim() || newPhone.trim(), status: "idle", is_active: 1, is_banned: 0 });
+    setNewPhone(""); setNewLabel(""); setAdding(false); setShowAdd(false);
+  }
+
   return (
+    <>
+    {showAdd && (
+      <Modal title="Добавить аккаунт" onClose={() => setShowAdd(false)}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <GlassInput value={newPhone} onChange={setNewPhone} placeholder="+7 900 000 00 00" />
+          <GlassInput value={newLabel} onChange={setNewLabel} placeholder="Метка (необязательно)" />
+          <div style={{ fontSize: 11, color: TG.muted, lineHeight: 1.5 }}>
+            После добавления запустите авторизацию через бота для привязки сессии.
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+          <div onClick={() => setShowAdd(false)} style={{ flex: 1, padding: "11px 0", borderRadius: 14, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", textAlign: "center", fontSize: 13, fontWeight: 700, color: TG.muted, cursor: "pointer" }}>
+            Отмена
+          </div>
+          <div onClick={handleAdd} style={{ flex: 2, padding: "11px 0", borderRadius: 14, background: adding ? `${TG.pink}20` : `linear-gradient(135deg,${TG.pink}55 0%,${TG.purple}44 100%)`, border: `1px solid ${TG.pink}55`, textAlign: "center", fontSize: 13, fontWeight: 800, color: TG.pink, cursor: "pointer", opacity: adding ? 0.7 : 1 }}>
+            {adding ? "Добавление…" : "Добавить аккаунт"}
+          </div>
+        </div>
+      </Modal>
+    )}
     <div className="tab-content" style={{ display: "flex", flexDirection: "column", gap: 14, padding: "0 14px", paddingBottom: 8 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 4 }}>
         <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>Аккаунты</div>
-        <GlassCard style={{ padding: "8px 12px", borderRadius: 14, cursor: "pointer" }}>
+        <GlassCard style={{ padding: "8px 12px", borderRadius: 14, cursor: "pointer" }} onClick={() => setShowAdd(true)}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <Plus size={14} color={TG.pink} />
             <span style={{ fontSize: 12, color: TG.pink, fontWeight: 700 }}>Добавить</span>
@@ -879,6 +1004,7 @@ function AccountsTab({ accounts, loading }: { accounts: Account[]; loading: bool
         </div>
       )}
     </div>
+    </>
   );
 }
 
@@ -909,6 +1035,17 @@ export default function App() {
     setLoading(false);
   }, []);
 
+  const onAction = useCallback(async (path: string, method = "POST", body?: Record<string, unknown>) => {
+    try {
+      await fetch(`${API_BASE}${path}`, {
+        method,
+        headers: body ? { "Content-Type": "application/json" } : {},
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch {}
+    await fetchAll();
+  }, [fetchAll]);
+
   useEffect(() => {
     fetchAll();
     const id = setInterval(fetchAll, 30_000);
@@ -931,10 +1068,10 @@ export default function App() {
         <MeshBg />
         <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", paddingTop: 4, scrollbarWidth: "none", position: "relative", zIndex: 5 }}>
           {activeTab === "home"      && <HomeTab      overview={overview} campaigns={campaigns} loading={loading} />}
-          {activeTab === "campaigns" && <CampaignsTab campaigns={campaigns} loading={loading} />}
+          {activeTab === "campaigns" && <CampaignsTab campaigns={campaigns} loading={loading} onAction={onAction} />}
           {activeTab === "analytics" && <AnalyticsTab overview={overview} trend={trend} loading={loading} />}
           {activeTab === "audience"  && <AudienceTab  users={users} overview={overview} loading={loading} />}
-          {activeTab === "accounts"  && <AccountsTab  accounts={accounts} loading={loading} />}
+          {activeTab === "accounts"  && <AccountsTab  accounts={accounts} loading={loading} onAction={onAction} />}
           <div style={{ height: 16 }} />
         </div>
         <div style={{ position: "relative", zIndex: 10, flexShrink: 0 }}>

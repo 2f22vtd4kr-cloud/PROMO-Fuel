@@ -143,14 +143,22 @@ router.post("/accounts/reset-all-daily", (_req, res) => {
 });
 
 router.post("/campaigns/:id/action", (req, res) => {
-  const { action } = req.body;
-  const allowed = ["running", "paused", "cancelled", "draft"];
+  let { action } = req.body as { action: string };
+  // accept friendly aliases from older clients
+  if (action === "pause")   action = "paused";
+  if (action === "resume")  action = "running";
+  if (action === "start")   action = "running";
+  if (action === "cancel")  action = "cancelled";
+  const allowed = ["running", "paused", "cancelled", "draft", "scheduled"];
   if (!action || !allowed.includes(action)) return void res.status(400).json({ error: "invalid action" });
   try {
     const db = new Database(DB_PATH);
     const camp = db.prepare("SELECT id, status FROM campaigns WHERE id = ?").get(parseInt(req.params.id)) as any;
     if (!camp) return void res.status(404).json({ error: "not found" });
-    db.prepare("UPDATE campaigns SET status = ? WHERE id = ?").run(action, camp.id);
+    const extra: Record<string, unknown> = {};
+    if (action === "running" && !camp.started_at) extra.started_at = new Date().toISOString();
+    const sets = ["status = ?", ...Object.keys(extra).map(k => `${k} = ?`)].join(", ");
+    db.prepare(`UPDATE campaigns SET ${sets} WHERE id = ?`).run(action, ...Object.values(extra), camp.id);
     const updated = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(camp.id);
     db.close();
     broadcastEvent("campaigns", [updated]);

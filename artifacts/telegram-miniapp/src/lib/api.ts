@@ -60,11 +60,16 @@ export interface SenderAccount {
 
 export interface AnalyticsOverview {
   totalSent: number;
+  totalUsers: number;
   totalCampaigns: number;
   activeCampaigns: number;
+  scheduledCampaigns: number;
   avgOpenRate: number;
   avgCtr: number;
+  avgBounceRate: number;
   sentDelta: number;
+  openDelta: number;
+  ctrDelta: number;
 }
 
 export interface User {

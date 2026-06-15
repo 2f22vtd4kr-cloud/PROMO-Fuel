@@ -11,8 +11,9 @@ function statusPriority(s: string) { const i = STATUS_ORDER.indexOf(s); return i
 function CampaignCard({ campaign, onEdit, onRefresh }: {
   campaign: Campaign; onEdit: (id: number) => void; onRefresh: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy]         = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showText, setShowText] = useState(false);
 
   const isActive   = campaign.status === "running" || campaign.status === "sending";
   const isPaused   = campaign.status === "paused";
@@ -24,6 +25,12 @@ function CampaignCard({ campaign, onEdit, onRefresh }: {
   async function togglePause() {
     haptic.medium(); setBusy(true);
     try { await api.actionCampaign(campaign.id, isActive ? "pause" : "resume"); haptic.success(); onRefresh(); }
+    catch { haptic.error(); } finally { setBusy(false); }
+  }
+
+  async function launchDraft() {
+    haptic.medium(); setBusy(true);
+    try { await api.actionCampaign(campaign.id, "running"); haptic.success(); onRefresh(); }
     catch { haptic.error(); } finally { setBusy(false); }
   }
   async function duplicate() {
@@ -60,6 +67,12 @@ function CampaignCard({ campaign, onEdit, onRefresh }: {
               {isActive ? <Pause size={12} color={TG.green} /> : <Play size={12} color="#6ba8e5" />}
             </div>
           )}
+          {campaign.status === "draft" && (
+            <div onClick={launchDraft} style={{ height:28,borderRadius:9,background:`${TG.green}20`,border:`1px solid ${TG.green}40`,display:"flex",alignItems:"center",justifyContent:"center",cursor:busy?"not-allowed":"pointer",opacity:busy?0.7:1,padding:"0 10px",gap:5 }}>
+              <Play size={11} color={TG.green} />
+              <span style={{ fontSize:10,fontWeight:700,color:TG.green }}>Запустить</span>
+            </div>
+          )}
           {isEditable && (
             <div onClick={() => { haptic.light(); onEdit(campaign.id); }} style={{ width:28,height:28,borderRadius:9,background:"rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer" }}>
               <Settings size={12} color={TG.muted} />
@@ -93,6 +106,20 @@ function CampaignCard({ campaign, onEdit, onRefresh }: {
           <div style={{ height:3,borderRadius:2,background:"rgba(255,255,255,0.07)",overflow:"hidden" }}>
             <div style={{ height:"100%",borderRadius:2,width:`${pct}%`,background:`linear-gradient(90deg,${color},${color}aa)`,boxShadow:pct>0?`0 0 6px ${color}88`:"none",transition:"width 0.6s ease" }} />
           </div>
+        </div>
+      )}
+
+      {campaign.text_template && (
+        <div style={{ marginTop:10 }}>
+          <div onClick={() => { haptic.light(); setShowText(p => !p); }} style={{ display:"flex",alignItems:"center",gap:5,cursor:"pointer" }}>
+            <span style={{ fontSize:10,color:TG.blue,fontWeight:600 }}>{showText ? "Скрыть текст" : "Показать текст"}</span>
+            <span style={{ fontSize:10,color:TG.blue,transform:showText?"rotate(180deg)":"rotate(0)",display:"inline-block",transition:"transform 0.2s" }}>▾</span>
+          </div>
+          {showText && (
+            <div style={{ marginTop:8,padding:"10px 12px",background:"rgba(107,168,229,0.07)",border:"1px solid rgba(107,168,229,0.18)",borderRadius:10,fontSize:12,color:TG.textSecondary,lineHeight:1.55,wordBreak:"break-word" }}>
+              {campaign.text_template}
+            </div>
+          )}
         </div>
       )}
     </GlassCard>

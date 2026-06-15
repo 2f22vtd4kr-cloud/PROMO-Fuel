@@ -1503,8 +1503,27 @@ def main():
 
     app.post_init = post_init
 
+    async def error_handler(update: object, context) -> None:
+        from telegram.error import Conflict, NetworkError, RetryAfter
+        err = context.error
+        if isinstance(err, Conflict):
+            logger.warning("⚠️ Конфликт: другой экземпляр бота занял polling. Ждём 15с...")
+            import asyncio; await asyncio.sleep(15)
+        elif isinstance(err, RetryAfter):
+            logger.warning(f"⚠️ Flood control: ждём {err.retry_after}с")
+            import asyncio; await asyncio.sleep(err.retry_after)
+        elif isinstance(err, NetworkError):
+            logger.warning(f"⚠️ NetworkError: {err}")
+        else:
+            logger.error(f"❌ Ошибка обновления: {err}", exc_info=context.error)
+
+    app.add_error_handler(error_handler)
+
     logger.info("🤖 Бот запускается...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,
+    )
 
 
 if __name__ == "__main__":
