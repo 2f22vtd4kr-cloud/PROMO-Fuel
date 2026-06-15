@@ -1,11 +1,9 @@
 import { Router, type IRouter } from "express";
 import Database from "better-sqlite3";
-import path from "path";
-
-const BOT_DB_PATH = path.resolve(process.cwd(), "../../campaigns.db");
+import { DB_PATH } from "../lib/db-path";
 
 function getDb(readonly = true) {
-  return new Database(BOT_DB_PATH, { readonly });
+  return new Database(DB_PATH, { readonly });
 }
 
 const router: IRouter = Router();
