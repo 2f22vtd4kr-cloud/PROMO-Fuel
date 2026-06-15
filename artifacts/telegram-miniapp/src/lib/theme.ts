@@ -1,44 +1,59 @@
 export const TG = {
-  bg: "#0b0f1a",
-  bgGrad: "linear-gradient(145deg, #0b0f1a 0%, #0f1628 30%, #101830 60%, #0b1220 100%)",
-  glass: "rgba(255,255,255,0.06)",
-  glassBorder: "rgba(255,255,255,0.10)",
-  glassHover: "rgba(255,255,255,0.10)",
-  glassStrong: "rgba(255,255,255,0.12)",
-  card: "rgba(255,255,255,0.06)",
-  cardHover: "rgba(255,255,255,0.10)",
-  nav: "rgba(11,15,26,0.85)",
-  accent: "#5288c1",
-  accentLight: "#7ab0e0",
-  accentGrad: "linear-gradient(135deg, #5288c1 0%, #3b6fa8 100%)",
-  accentGlow: "rgba(82,136,193,0.35)",
-  green: "#34d399",
-  greenGlow: "rgba(52,211,153,0.3)",
-  red: "#f87171",
-  redGlow: "rgba(248,113,113,0.3)",
-  yellow: "#fbbf24",
-  yellowGlow: "rgba(251,191,36,0.3)",
-  purple: "#a78bfa",
-  purpleGlow: "rgba(167,139,250,0.3)",
-  pink: "#f472b6",
-  text: "#f0f4ff",
-  textSecondary: "rgba(240,244,255,0.7)",
-  muted: "rgba(160,185,220,0.6)",
-  border: "rgba(255,255,255,0.08)",
-  navHeight: 68,
-  inputBg: "rgba(255,255,255,0.05)",
-  inputBorder: "rgba(255,255,255,0.12)",
-  inputFocus: "rgba(82,136,193,0.5)",
+  bg: "#080c15",
+  glass:       "rgba(255,255,255,0.055)",
+  glassMid:    "rgba(255,255,255,0.09)",
+  glassStrong: "rgba(255,255,255,0.14)",
+  glassHover:  "rgba(255,255,255,0.11)",
+  glassBorder: "rgba(255,255,255,0.11)",
+  glassBorderStrong: "rgba(255,255,255,0.18)",
+  shine: "linear-gradient(180deg, rgba(255,255,255,0.13) 0%, rgba(255,255,255,0) 60%)",
+
+  nav: "rgba(8,12,21,0.82)",
+
+  accent:      "#5b96d4",
+  accentLight: "#85b8ef",
+  accentGrad:  "linear-gradient(135deg, #5b96d4 0%, #3a6fad 100%)",
+  accentGlow:  "rgba(91,150,212,0.38)",
+  accentShine: "rgba(133,184,239,0.18)",
+
+  green:      "#2de897",
+  greenDim:   "#21c07a",
+  greenGlow:  "rgba(45,232,151,0.32)",
+
+  red:        "#ff6b7a",
+  redDim:     "#e04a5a",
+  redGlow:    "rgba(255,107,122,0.32)",
+
+  yellow:     "#ffc946",
+  yellowDim:  "#d9a52e",
+  yellowGlow: "rgba(255,201,70,0.32)",
+
+  purple:     "#b39dff",
+  purpleDim:  "#9178e0",
+  purpleGlow: "rgba(179,157,255,0.32)",
+
+  pink:       "#ff7eb3",
+  pinkGlow:   "rgba(255,126,179,0.32)",
+
+  text:          "#eef2ff",
+  textSecondary: "rgba(220,230,255,0.65)",
+  muted:         "rgba(160,185,220,0.55)",
+
+  border:  "rgba(255,255,255,0.08)",
+  navHeight: 76,
+  inputBg:     "rgba(255,255,255,0.04)",
+  inputBorder: "rgba(255,255,255,0.13)",
 };
 
-export const STATUS_META: Record<string, { color: string; glow: string; label: string }> = {
-  running:   { color: TG.green,  glow: TG.greenGlow,  label: "Активна" },
-  scheduled: { color: TG.yellow, glow: TG.yellowGlow, label: "Запланирована" },
-  done:      { color: TG.muted,  glow: "transparent", label: "Завершена" },
-  paused:    { color: TG.accent, glow: TG.accentGlow, label: "Пауза" },
-  draft:     { color: TG.muted,  glow: "transparent", label: "Черновик" },
-  cancelled: { color: TG.red,    glow: TG.redGlow,    label: "Отменена" },
+export const STATUS_META: Record<string, { color: string; dim: string; glow: string; label: string; grad: string }> = {
+  running:   { color: "#2de897", dim: "#21c07a", glow: "rgba(45,232,151,0.32)",   label: "Активна",       grad: "linear-gradient(135deg,#2de897,#17a86a)" },
+  scheduled: { color: "#ffc946", dim: "#d9a52e", glow: "rgba(255,201,70,0.32)",   label: "Запланирована", grad: "linear-gradient(135deg,#ffc946,#d9852e)" },
+  done:      { color: "rgba(160,185,220,0.55)", dim: "rgba(120,150,180,0.4)", glow: "transparent", label: "Завершена",      grad: "linear-gradient(135deg,#8aa3c0,#607080)" },
+  paused:    { color: "#5b96d4", dim: "#3a6fad", glow: "rgba(91,150,212,0.32)",   label: "Пауза",         grad: "linear-gradient(135deg,#5b96d4,#3a6fad)" },
+  draft:     { color: "rgba(160,185,220,0.55)", dim: "rgba(120,150,180,0.4)", glow: "transparent", label: "Черновик",       grad: "linear-gradient(135deg,#8aa3c0,#607080)" },
+  cancelled: { color: "#ff6b7a", dim: "#e04a5a", glow: "rgba(255,107,122,0.32)",  label: "Отменена",      grad: "linear-gradient(135deg,#ff6b7a,#c03040)" },
 };
 
-export const BLUR = "blur(24px)";
-export const BLUR_NAV = "blur(32px)";
+export const BLUR   = "blur(28px)";
+export const BLUR_NAV = "blur(40px)";
+export const BLUR_HEAVY = "blur(48px)";

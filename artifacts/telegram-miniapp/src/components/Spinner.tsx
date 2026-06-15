@@ -1,22 +1,32 @@
 import { TG } from "../lib/theme";
 
-export function Spinner({ size = 24, color }: { size?: number; color?: string }) {
+export function Spinner({ size = 28, color }: { size?: number; color?: string }) {
+  const c = color ?? TG.accentLight;
   return (
-    <div style={{
-      width: size, height: size,
-      border: `2px solid rgba(255,255,255,0.08)`,
-      borderTopColor: color ?? TG.accentLight,
-      borderRadius: "50%",
-      animation: "spin 0.75s linear infinite",
-    }} />
+    <div style={{ position: "relative", width: size, height: size }}>
+      <div style={{
+        position: "absolute", inset: 0,
+        border: "2px solid rgba(255,255,255,0.07)",
+        borderTopColor: c,
+        borderRadius: "50%",
+        animation: "spin 0.72s linear infinite",
+      }} />
+      <div style={{
+        position: "absolute", inset: 4,
+        border: "1.5px solid rgba(255,255,255,0.04)",
+        borderTopColor: c + "55",
+        borderRadius: "50%",
+        animation: "spin 1.2s linear infinite reverse",
+      }} />
+    </div>
   );
 }
 
-export function FullSpinner() {
+export function FullSpinner({ label }: { label?: string }) {
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14 }}>
-      <Spinner size={36} />
-      <span style={{ fontSize: 13, color: TG.muted }}>Загрузка...</span>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
+      <Spinner size={40} />
+      <span style={{ fontSize: 13, color: TG.muted, letterSpacing: "0.02em" }}>{label ?? "Загрузка..."}</span>
     </div>
   );
 }

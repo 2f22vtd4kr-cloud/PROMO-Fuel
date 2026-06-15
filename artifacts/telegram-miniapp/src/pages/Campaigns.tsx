@@ -5,41 +5,46 @@ import {
   ChevronDown, ChevronUp, Users2,
 } from "lucide-react";
 import { api, Campaign, SendLog, AccountBreakdown } from "../lib/api";
-import { TG, STATUS_META, BLUR } from "../lib/theme";
+import { TG, STATUS_META, BLUR, BLUR_HEAVY } from "../lib/theme";
 import { Header } from "../components/Header";
 import { CampaignRow } from "../components/CampaignRow";
 import { FullSpinner } from "../components/Spinner";
 import { useSse } from "../lib/useSse";
 
+/* ─── Send logs panel ─── */
 function SendLogsPanel({ campaignId }: { campaignId: number }) {
   const [logs, setLogs] = useState<SendLog[]>([]);
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     api.getCampaignLogs(campaignId).then(setLogs).catch(() => setLogs([])).finally(() => setLoading(false));
   }, [campaignId]);
 
-  if (loading) return <div style={{ padding: "14px", textAlign: "center", color: TG.muted, fontSize: 12 }}>Загрузка...</div>;
-  if (logs.length === 0) return <div style={{ padding: "14px", textAlign: "center", color: TG.muted, fontSize: 12 }}>Нет отправок</div>;
+  if (loading) return <div style={{ padding: "16px", textAlign: "center", color: TG.muted, fontSize: 12 }}>Загрузка...</div>;
+  if (logs.length === 0) return <div style={{ padding: "16px", textAlign: "center", color: TG.muted, fontSize: 12 }}>Нет отправок</div>;
 
   return (
-    <div style={{ maxHeight: 260, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
-      {logs.map(log => {
+    <div style={{ maxHeight: 280, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+      {logs.map((log, i) => {
         const ok = log.status === "ok";
         return (
-          <div key={log.id} style={{
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "9px 14px",
-            borderBottom: "1px solid rgba(255,255,255,0.05)",
+          <div key={log.id} className="fade-up stagger-item" style={{
+            display: "flex", alignItems: "center", gap: 10, padding: "9px 15px",
+            borderBottom: i < logs.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
           }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: ok ? TG.green : TG.red, flexShrink: 0, boxShadow: `0 0 6px ${ok ? TG.greenGlow : TG.redGlow}` }} />
+            <div style={{
+              width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+              background: ok ? TG.green : TG.red,
+              boxShadow: `0 0 7px 2px ${ok ? TG.greenGlow : TG.redGlow}`,
+            }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {log.first_name || log.username ? `${log.first_name ?? ""}${log.username ? ` @${log.username}` : ""}`.trim() : `ID ${log.chat_id}`}
+                {log.first_name || log.username
+                  ? `${log.first_name ?? ""}${log.username ? ` @${log.username}` : ""}`.trim()
+                  : `ID ${log.chat_id}`}
               </div>
               {log.error && <div style={{ fontSize: 10, color: TG.red, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{log.error}</div>}
             </div>
-            <div style={{ fontSize: 10, color: TG.muted, flexShrink: 0 }}>{log.sent_at ? log.sent_at.slice(11, 16) : ""}</div>
+            <div style={{ fontSize: 10, color: TG.muted, flexShrink: 0 }}>{log.sent_at?.slice(11, 16)}</div>
           </div>
         );
       })}
@@ -47,36 +52,36 @@ function SendLogsPanel({ campaignId }: { campaignId: number }) {
   );
 }
 
+/* ─── Account breakdown ─── */
 function BreakdownPanel({ campaignId }: { campaignId: number }) {
   const [data, setData] = useState<AccountBreakdown[]>([]);
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     api.getCampaignBreakdown(campaignId).then(setData).catch(() => setData([])).finally(() => setLoading(false));
   }, [campaignId]);
 
-  if (loading) return <div style={{ padding: "14px", textAlign: "center", color: TG.muted, fontSize: 12 }}>Загрузка...</div>;
-  if (data.length === 0) return <div style={{ padding: "14px", textAlign: "center", color: TG.muted, fontSize: 12 }}>Нет данных</div>;
+  if (loading) return <div style={{ padding: "16px", textAlign: "center", color: TG.muted, fontSize: 12 }}>Загрузка...</div>;
+  if (data.length === 0) return <div style={{ padding: "16px", textAlign: "center", color: TG.muted, fontSize: 12 }}>Нет данных</div>;
 
   return (
     <div>
-      {data.map(acc => {
+      {data.map((acc, i) => {
         const pct = acc.total > 0 ? (acc.ok / acc.total) * 100 : 0;
         const barColor = pct > 80 ? TG.green : pct > 50 ? TG.yellow : TG.red;
         return (
-          <div key={acc.id} style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <div key={acc.id} style={{ padding: "10px 15px", borderBottom: i < data.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
               <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "60%", color: TG.text }}>
                 {acc.label || acc.phone}
               </div>
               <div style={{ fontSize: 11, color: TG.muted, flexShrink: 0 }}>
                 <span style={{ color: TG.green }}>{acc.ok}</span>
-                {acc.errors > 0 && <span style={{ color: TG.red }}> / {acc.errors} ош.</span>}
-                <span> из {acc.total}</span>
+                {acc.errors > 0 && <span style={{ color: TG.red }}> / {acc.errors}</span>}
+                <span> / {acc.total}</span>
               </div>
             </div>
-            <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${pct}%`, background: barColor, borderRadius: 2, boxShadow: `0 0 6px ${barColor}88` }} />
+            <div style={{ height: 4, background: "rgba(255,255,255,0.055)", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${pct}%`, background: barColor, borderRadius: 2, boxShadow: `0 0 8px ${barColor}88` }} />
             </div>
           </div>
         );
@@ -85,50 +90,87 @@ function BreakdownPanel({ campaignId }: { campaignId: number }) {
   );
 }
 
+/* ─── Glass accordion ─── */
 function GlassAccordion({ title, icon: Icon, iconColor, children }: {
   title: string; icon: React.ElementType; iconColor: string; children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <div style={{
-      background: TG.glass, backdropFilter: BLUR, WebkitBackdropFilter: BLUR,
-      border: `1px solid ${open ? "rgba(255,255,255,0.13)" : TG.glassBorder}`,
-      borderRadius: 18, overflow: "hidden", marginBottom: 12,
-      transition: "border-color 0.2s",
-    }}>
+    <div className="glass-card" style={{ marginBottom: 12, borderRadius: 18 }}>
       <button onClick={() => setOpen(o => !o)} className="tap" style={{
         width: "100%", padding: "14px 16px", background: "none", border: "none",
         display: "flex", alignItems: "center", gap: 9, cursor: "pointer",
       }}>
-        <div style={{ background: iconColor + "1a", border: `1px solid ${iconColor}30`, borderRadius: 8, padding: 6, display: "flex" }}>
+        <div style={{
+          background: `${iconColor}18`, border: `1px solid ${iconColor}2e`,
+          borderRadius: 9, padding: 6, display: "flex",
+        }}>
           <Icon size={13} color={iconColor} />
         </div>
         <span style={{ flex: 1, textAlign: "left", fontSize: 13, fontWeight: 700, color: TG.text }}>{title}</span>
-        {open ? <ChevronUp size={14} color={TG.muted} /> : <ChevronDown size={14} color={TG.muted} />}
+        {open ? <ChevronUp size={13} color={TG.muted} /> : <ChevronDown size={13} color={TG.muted} />}
       </button>
       {open && <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>{children}</div>}
     </div>
   );
 }
 
+/* ─── Glass toast ─── */
 function GlassToast({ msg }: { msg: string }) {
   return (
     <div style={{
-      position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)",
-      background: "rgba(20,30,50,0.92)",
-      backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-      border: "1px solid rgba(255,255,255,0.15)",
-      borderRadius: 14, padding: "10px 20px", fontSize: 13,
-      zIndex: 999, color: TG.text,
-      boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-      animation: "toastIn 0.3s cubic-bezier(0.16,1,0.3,1) both",
+      position: "fixed", top: 22, left: "50%", transform: "translateX(-50%)",
+      background: "rgba(12,18,32,0.94)",
+      backdropFilter: BLUR_HEAVY, WebkitBackdropFilter: BLUR_HEAVY,
+      border: "1px solid rgba(255,255,255,0.16)",
+      borderRadius: 16, padding: "11px 22px", fontSize: 13,
+      zIndex: 999, color: TG.text, fontWeight: 600,
+      boxShadow: "0 10px 40px rgba(0,0,0,0.45)",
+      animation: "toastIn 0.32s cubic-bezier(0.16,1,0.3,1) both",
       whiteSpace: "nowrap",
-    }}>
-      {msg}
-    </div>
+    }}>{msg}</div>
   );
 }
 
+/* ─── Action button ─── */
+function ActionBtn({
+  onClick, disabled, children, variant = "ghost",
+}: {
+  onClick: () => void; disabled: boolean; children: React.ReactNode;
+  variant?: "primary" | "ghost" | "danger" | "green";
+}) {
+  const styles: Record<string, React.CSSProperties> = {
+    primary: {
+      background: "linear-gradient(135deg,#5b96d4,#3a6fad)",
+      border: "none", color: "#fff",
+      boxShadow: "0 6px 24px rgba(91,150,212,0.36), 0 1px 0 rgba(255,255,255,0.18) inset",
+    },
+    green: {
+      background: "rgba(45,232,151,0.09)", border: "1px solid rgba(45,232,151,0.26)", color: TG.green,
+    },
+    ghost: {
+      background: "rgba(255,255,255,0.055)", border: "1px solid rgba(255,255,255,0.10)", color: TG.textSecondary,
+    },
+    danger: {
+      background: "rgba(255,107,122,0.07)", border: "1px solid rgba(255,107,122,0.22)", color: TG.red,
+    },
+  };
+  return (
+    <button onClick={onClick} disabled={disabled} className="tap" style={{
+      width: "100%", padding: "14px",
+      borderRadius: 17, fontSize: 14, fontWeight: 700,
+      cursor: disabled ? "not-allowed" : "pointer",
+      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+      opacity: disabled ? 0.65 : 1,
+      backdropFilter: BLUR, WebkitBackdropFilter: BLUR,
+      ...styles[variant],
+    }}>
+      {children}
+    </button>
+  );
+}
+
+/* ─── Detail view ─── */
 function DetailView({ id, onBack }: { id: number; onBack: () => void }) {
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);
@@ -145,33 +187,31 @@ function DetailView({ id, onBack }: { id: number; onBack: () => void }) {
 
   useSse(useCallback((type, data) => {
     if (type === "campaigns" && Array.isArray(data)) {
-      const update = (data as Array<{ id: number; status: string; sent_count: number; failed_count: number; target_count: number }>).find(c => c.id === id);
+      const update = (data as any[]).find((c: any) => c.id === id);
       if (update) setCampaign(prev => prev ? { ...prev, ...update } : prev);
     }
   }, [id]));
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 2200); }
 
-  async function handleAction(newStatus: string, label: string) {
+  async function handleAction(status: string, label: string) {
     setBusy(true);
-    try { await api.actionCampaign(id, newStatus); await load(); showToast(label); }
+    try { await api.actionCampaign(id, status); await load(); showToast(label); }
     catch { showToast("Ошибка"); }
     setBusy(false);
   }
-
   async function handleDuplicate() {
     setBusy(true);
     try { await api.duplicateCampaign(id); showToast("Кампания скопирована"); }
     catch { showToast("Ошибка"); }
     setBusy(false);
   }
-
   async function handleDelete() {
     if (!(window as any).Telegram?.WebApp?.showConfirm) {
       if (!confirm("Удалить кампанию?")) return;
     } else {
-      await new Promise<void>(resolve => {
-        (window as any).Telegram.WebApp.showConfirm("Удалить кампанию?", (ok: boolean) => { if (!ok) return; resolve(); });
+      await new Promise<void>(res => {
+        (window as any).Telegram.WebApp.showConfirm("Удалить кампанию?", (ok: boolean) => { if (!ok) return; res(); });
       });
     }
     setBusy(true);
@@ -180,17 +220,27 @@ function DetailView({ id, onBack }: { id: number; onBack: () => void }) {
     setBusy(false);
   }
 
+  const backBtn = (
+    <button onClick={onBack} className="tap" style={{
+      background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.11)",
+      borderRadius: 11, cursor: "pointer", color: TG.text, padding: 8, display: "flex",
+    }}>
+      <ChevronLeft size={17} />
+    </button>
+  );
+
   if (loading) return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <Header title="Кампания" right={<button onClick={onBack} className="tap" style={{ background: "none", border: "none", cursor: "pointer", color: TG.muted, padding: 4 }}><ChevronLeft size={20} /></button>} />
+      <Header title="Кампания" right={backBtn} />
       <FullSpinner />
     </div>
   );
-
   if (!campaign) return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <Header title="Не найдено" right={<button onClick={onBack} className="tap" style={{ background: "none", border: "none", cursor: "pointer", color: TG.muted, padding: 4 }}><ChevronLeft size={20} /></button>} />
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: TG.muted }}>Кампания не найдена</div>
+      <Header title="Не найдено" right={backBtn} />
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: TG.muted }}>
+        Кампания не найдена
+      </div>
     </div>
   );
 
@@ -201,23 +251,32 @@ function DetailView({ id, onBack }: { id: number; onBack: () => void }) {
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }} className="fade-up">
       {toast && <GlassToast msg={toast} />}
 
+      {/* Detail header */}
       <div style={{
-        background: "rgba(11,15,26,0.75)", backdropFilter: BLUR, WebkitBackdropFilter: BLUR,
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
-        padding: "14px 16px 14px", display: "flex", alignItems: "center", gap: 10, flexShrink: 0,
+        background: "rgba(8,12,21,0.76)", backdropFilter: BLUR_HEAVY, WebkitBackdropFilter: BLUR_HEAVY,
+        borderBottom: "1px solid rgba(255,255,255,0.08)", padding: "13px 16px",
+        display: "flex", alignItems: "center", gap: 11, flexShrink: 0,
+        position: "relative",
       }}>
-        <button onClick={onBack} className="tap" style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 10, cursor: "pointer", color: TG.text, padding: 7, display: "flex", marginLeft: -2 }}>
-          <ChevronLeft size={17} />
-        </button>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: "linear-gradient(90deg,transparent,rgba(255,255,255,0.16),transparent)", pointerEvents: "none" }} />
+        {backBtn}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 16, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: "-0.3px" }}>{campaign.name}</div>
-          <div style={{ fontSize: 12, color: meta.color, marginTop: 2, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}>
-            <div style={{ width: 6, height: 6, borderRadius: 3, background: meta.color, boxShadow: `0 0 6px ${meta.glow}` }} />
-            {meta.label}
+          <div style={{
+            fontSize: 16, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            letterSpacing: "-0.4px",
+            background: "linear-gradient(135deg,#eef2ff,rgba(200,220,255,0.8))",
+            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
+          }}>{campaign.name}</div>
+          <div style={{ fontSize: 11.5, fontWeight: 700, marginTop: 3, display: "flex", alignItems: "center", gap: 5 }}>
+            <div style={{ width: 6, height: 6, borderRadius: 3, background: meta.color, boxShadow: `0 0 7px 2px ${meta.glow}` }} />
+            <span style={{ color: meta.color }}>{meta.label}</span>
           </div>
         </div>
         {campaign.scheduled_at && (
-          <div style={{ fontSize: 10, color: TG.yellow, background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.25)", borderRadius: 9, padding: "4px 9px", flexShrink: 0 }}>
+          <div style={{
+            fontSize: 10, color: TG.yellow, background: "rgba(255,201,70,0.11)",
+            border: "1px solid rgba(255,201,70,0.22)", borderRadius: 10, padding: "4px 9px", flexShrink: 0,
+          }}>
             {new Date(campaign.scheduled_at).toLocaleString("ru-RU", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
           </div>
         )}
@@ -226,47 +285,67 @@ function DetailView({ id, onBack }: { id: number; onBack: () => void }) {
       <div style={{ flex: 1, overflowY: "auto", padding: "14px", WebkitOverflowScrolling: "touch" }}>
 
         {/* Progress card */}
-        <div style={{ background: TG.glass, backdropFilter: BLUR, WebkitBackdropFilter: BLUR, border: `1px solid ${TG.glassBorder}`, borderRadius: 18, padding: "16px", marginBottom: 12, position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", top: -30, right: -30, width: 100, height: 100, borderRadius: "50%", background: `radial-gradient(circle, ${meta.glow} 0%, transparent 70%)`, pointerEvents: "none" }} />
+        <div className="glass-card" style={{ padding: "16px", marginBottom: 12 }}>
+          <div style={{ position: "absolute", top: -28, right: -28, width: 90, height: 90, borderRadius: "50%", background: `radial-gradient(circle,${meta.glow} 0%,transparent 70%)`, pointerEvents: "none" }} />
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-            <span style={{ fontSize: 13, color: TG.muted }}>Прогресс рассылки</span>
-            <span style={{ fontSize: 14, fontWeight: 800, color: TG.text }}>{pct.toFixed(0)}%</span>
+            <span style={{ fontSize: 12, color: TG.muted, fontWeight: 600 }}>Прогресс рассылки</span>
+            <span style={{
+              fontSize: 16, fontWeight: 900, letterSpacing: "-0.3px",
+              background: meta.grad, WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent", backgroundClip: "text",
+            }}>{pct.toFixed(0)}%</span>
           </div>
-          <div style={{ height: 8, background: "rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${pct}%`, background: `linear-gradient(90deg, ${meta.color}, ${meta.color}bb)`, borderRadius: 4, transition: "width 0.6s cubic-bezier(0.34,1.56,0.64,1)", boxShadow: `0 0 10px ${meta.glow}` }} />
+          <div style={{ height: 8, background: "rgba(255,255,255,0.055)", borderRadius: 4, overflow: "hidden" }}>
+            <div style={{
+              height: "100%", width: `${pct}%`, background: meta.grad, borderRadius: 4,
+              transition: "width 0.7s cubic-bezier(0.34,1.56,0.64,1)",
+              boxShadow: `0 0 14px ${meta.glow}`,
+            }} />
           </div>
         </div>
 
         {/* KPI grid */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 12 }}>
           {[
-            { icon: BarChart2,   label: "Отправлено",   value: campaign.sent_count.toLocaleString("ru"),    color: TG.accent, glow: TG.accentGlow },
-            { icon: CheckCircle, label: "Получателей",  value: campaign.target_count.toLocaleString("ru"),  color: TG.green,  glow: TG.greenGlow },
-            { icon: XCircle,     label: "Ошибок",       value: campaign.failed_count.toLocaleString("ru"),  color: campaign.failed_count > 0 ? TG.red : TG.muted, glow: campaign.failed_count > 0 ? TG.redGlow : "transparent" },
-            { icon: Clock,       label: "Создана",      value: campaign.created_at.slice(0, 10),            color: TG.muted,  glow: "transparent" },
-          ].map(({ icon: Icon, label, value, color, glow }) => (
-            <div key={label} style={{ background: TG.glass, backdropFilter: BLUR, WebkitBackdropFilter: BLUR, border: `1px solid ${TG.glassBorder}`, borderRadius: 15, padding: "12px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
-                <Icon size={13} color={color} />
-                <span style={{ fontSize: 11, color: TG.muted }}>{label}</span>
+            { icon: BarChart2,   label: "Отправлено",  value: campaign.sent_count.toLocaleString("ru"),    color: TG.accent,  glow: TG.accentGlow,  grad: "linear-gradient(135deg,#85b8ef,#5b96d4)" },
+            { icon: CheckCircle, label: "Получателей", value: campaign.target_count.toLocaleString("ru"),  color: TG.green,   glow: TG.greenGlow,   grad: "linear-gradient(135deg,#2de897,#17a86a)" },
+            { icon: XCircle,     label: "Ошибок",      value: campaign.failed_count.toLocaleString("ru"),  color: campaign.failed_count > 0 ? TG.red : TG.muted, glow: campaign.failed_count > 0 ? TG.redGlow : "transparent", grad: campaign.failed_count > 0 ? "linear-gradient(135deg,#ff6b7a,#c03040)" : "linear-gradient(135deg,#8aa3c0,#607080)" },
+            { icon: Clock,       label: "Создана",     value: campaign.created_at.slice(0, 10),            color: TG.muted,   glow: "transparent",  grad: "linear-gradient(135deg,#8aa3c0,#607080)" },
+          ].map(({ icon: Icon, label, value, color, glow, grad }) => (
+            <div key={label} className="glass-card" style={{ padding: "12px 13px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                <Icon size={12} color={color} />
+                <span style={{ fontSize: 10.5, color: TG.muted, fontWeight: 600 }}>{label}</span>
               </div>
-              <div style={{ fontSize: 19, fontWeight: 800, color: TG.text, letterSpacing: "-0.3px" }}>{value}</div>
+              <div style={{
+                fontSize: 20, fontWeight: 900, letterSpacing: "-0.5px",
+                background: grad, WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent", backgroundClip: "text",
+              }}>{value}</div>
             </div>
           ))}
         </div>
 
         {/* Message preview */}
-        <div style={{ background: TG.glass, backdropFilter: BLUR, WebkitBackdropFilter: BLUR, border: `1px solid ${TG.glassBorder}`, borderRadius: 18, padding: "16px", marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: TG.muted, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.07em" }}>Текст сообщения</div>
-          <pre style={{ fontSize: 13, color: TG.text, whiteSpace: "pre-wrap", fontFamily: "inherit", lineHeight: 1.6, margin: 0 }}>
+        <div className="glass-card" style={{ padding: "15px 16px", marginBottom: 12 }}>
+          <div style={{ fontSize: 10.5, color: TG.muted, fontWeight: 800, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            Текст сообщения
+          </div>
+          <pre style={{ fontSize: 13, color: TG.text, whiteSpace: "pre-wrap", fontFamily: "inherit", lineHeight: 1.65, margin: 0 }}>
             {campaign.text_template}
           </pre>
         </div>
 
         {campaign.notes && (
-          <div style={{ background: "rgba(251,191,36,0.07)", border: "1px solid rgba(251,191,36,0.20)", borderRadius: 15, padding: "13px", marginBottom: 12 }}>
-            <div style={{ fontSize: 11, color: TG.yellow, fontWeight: 700, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.07em" }}>Заметки</div>
-            <div style={{ fontSize: 13, color: TG.textSecondary, lineHeight: 1.55 }}>{campaign.notes}</div>
+          <div style={{
+            background: "rgba(255,201,70,0.07)", border: "1px solid rgba(255,201,70,0.18)",
+            backdropFilter: BLUR, WebkitBackdropFilter: BLUR,
+            borderRadius: 16, padding: "13px 15px", marginBottom: 12,
+          }}>
+            <div style={{ fontSize: 10.5, color: TG.yellow, fontWeight: 800, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+              Заметки
+            </div>
+            <div style={{ fontSize: 13, color: TG.textSecondary, lineHeight: 1.6 }}>{campaign.notes}</div>
           </div>
         )}
 
@@ -276,55 +355,26 @@ function DetailView({ id, onBack }: { id: number; onBack: () => void }) {
         {/* Actions */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
           {(campaign.status === "draft" || campaign.status === "paused") && (
-            <button disabled={busy} onClick={() => handleAction("running", "Запущена!")} className="tap" style={{
-              width: "100%", padding: "14px",
-              background: "linear-gradient(135deg, #5288c1, #3b6fa8)",
-              border: "none", borderRadius: 16, color: "#fff",
-              fontSize: 14, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: busy ? 0.7 : 1,
-              boxShadow: "0 4px 20px rgba(82,136,193,0.3), 0 1px 0 rgba(255,255,255,0.15) inset",
-            }}>
+            <ActionBtn onClick={() => handleAction("running", "Запущена!")} disabled={busy} variant="primary">
               <Play size={15} fill="currentColor" /> Запустить
-            </button>
+            </ActionBtn>
           )}
           {campaign.status === "running" && (
-            <button disabled={busy} onClick={() => handleAction("paused", "Поставлена на паузу")} className="tap" style={{
-              width: "100%", padding: "14px",
-              background: TG.glass, backdropFilter: BLUR, WebkitBackdropFilter: BLUR,
-              border: `1px solid ${TG.glassBorder}`, borderRadius: 16, color: TG.text,
-              fontSize: 14, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: busy ? 0.7 : 1,
-            }}>
+            <ActionBtn onClick={() => handleAction("paused", "На паузе")} disabled={busy} variant="ghost">
               <Pause size={15} /> Пауза
-            </button>
+            </ActionBtn>
           )}
           {(campaign.status === "running" || campaign.status === "paused") && (
-            <button disabled={busy} onClick={() => handleAction("cancelled", "Отменена")} className="tap" style={{
-              width: "100%", padding: "14px",
-              background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)", borderRadius: 16, color: TG.red,
-              fontSize: 14, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: busy ? 0.7 : 1,
-            }}>
+            <ActionBtn onClick={() => handleAction("cancelled", "Отменена")} disabled={busy} variant="danger">
               <X size={15} /> Отменить
-            </button>
+            </ActionBtn>
           )}
-          <button disabled={busy} onClick={handleDuplicate} className="tap" style={{
-            width: "100%", padding: "14px",
-            background: TG.glass, backdropFilter: BLUR, WebkitBackdropFilter: BLUR,
-            border: `1px solid ${TG.glassBorder}`, borderRadius: 16, color: TG.muted,
-            fontSize: 14, fontWeight: 600, cursor: busy ? "not-allowed" : "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-          }}>
+          <ActionBtn onClick={handleDuplicate} disabled={busy} variant="ghost">
             <Copy size={15} /> Дублировать
-          </button>
-          <button disabled={busy} onClick={handleDelete} className="tap" style={{
-            width: "100%", padding: "14px",
-            background: "transparent", border: "1px solid rgba(248,113,113,0.18)", borderRadius: 16, color: "rgba(248,113,113,0.7)",
-            fontSize: 14, fontWeight: 500, cursor: busy ? "not-allowed" : "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-          }}>
+          </ActionBtn>
+          <ActionBtn onClick={handleDelete} disabled={busy} variant="danger">
             <Trash2 size={15} /> Удалить
-          </button>
+          </ActionBtn>
         </div>
         <div style={{ height: 16 }} />
       </div>
@@ -332,6 +382,7 @@ function DetailView({ id, onBack }: { id: number; onBack: () => void }) {
   );
 }
 
+/* ─── Campaigns list page ─── */
 export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -349,21 +400,21 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
   useSse(useCallback((type, data) => {
     if (type === "campaigns" && Array.isArray(data)) {
       setCampaigns(prev => {
-        const updates = data as Array<{ id: number; status: string; sent_count: number; failed_count: number; target_count: number }>;
-        return prev.map(c => { const u = updates.find(x => x.id === c.id); return u ? { ...c, ...u } : c; });
+        const updates = data as any[];
+        return prev.map(c => { const u = updates.find((x: any) => x.id === c.id); return u ? { ...c, ...u } : c; });
       });
     }
   }, []));
 
   if (detail !== null) return <DetailView id={detail} onBack={() => { setDetail(null); load(); }} />;
 
-  const filters: { id: string; label: string }[] = [
+  const filters: { id: string; label: string; color?: string }[] = [
     { id: "all",       label: "Все" },
-    { id: "running",   label: "Активные" },
-    { id: "scheduled", label: "Планы" },
+    { id: "running",   label: "Активные",    color: TG.green },
+    { id: "scheduled", label: "Планы",       color: TG.yellow },
     { id: "draft",     label: "Черновики" },
     { id: "done",      label: "Завершённые" },
-    { id: "cancelled", label: "Отменённые" },
+    { id: "cancelled", label: "Отменённые",  color: TG.red },
   ];
 
   const filtered = filter === "all" ? campaigns : campaigns.filter(c => c.status === filter);
@@ -375,10 +426,10 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
         subtitle={`${campaigns.length} кампаний`}
         right={
           <button onClick={() => onEdit()} className="tap" style={{
-            background: "linear-gradient(135deg, #5288c1, #3b6fa8)",
-            border: "none", borderRadius: 11,
-            padding: "7px 14px", fontSize: 13, fontWeight: 700, color: "#fff",
-            cursor: "pointer", boxShadow: "0 2px 12px rgba(82,136,193,0.3)",
+            background: "linear-gradient(135deg,#5b96d4,#3a6fad)",
+            border: "none", borderRadius: 12, padding: "7px 14px",
+            fontSize: 13, fontWeight: 800, color: "#fff",
+            boxShadow: "0 4px 16px rgba(91,150,212,0.3)",
           }}>
             + Новая
           </button>
@@ -387,22 +438,22 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
 
       {/* Filter chips */}
       <div style={{
-        display: "flex", gap: 7, padding: "10px 14px",
+        display: "flex", gap: 6, padding: "10px 14px",
         borderBottom: "1px solid rgba(255,255,255,0.06)",
-        overflowX: "auto", flexShrink: 0,
-        WebkitOverflowScrolling: "touch",
+        overflowX: "auto", flexShrink: 0, WebkitOverflowScrolling: "touch",
       }}>
         {filters.map(f => {
           const isActive = filter === f.id;
+          const c = f.color ?? TG.accent;
           return (
             <button key={f.id} onClick={() => setFilter(f.id)} className="tap" style={{
-              flexShrink: 0, padding: "6px 14px", borderRadius: 20,
-              border: `1px solid ${isActive ? "rgba(82,136,193,0.4)" : "rgba(255,255,255,0.08)"}`,
-              background: isActive ? "rgba(82,136,193,0.15)" : "rgba(255,255,255,0.04)",
-              backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
-              color: isActive ? TG.accentLight : TG.muted,
-              fontSize: 12, fontWeight: isActive ? 700 : 400, cursor: "pointer",
-              boxShadow: isActive ? "0 0 12px rgba(82,136,193,0.15)" : "none",
+              flexShrink: 0, padding: "5px 14px", borderRadius: 20,
+              border: `1px solid ${isActive ? `${c}40` : "rgba(255,255,255,0.08)"}`,
+              background: isActive ? `${c}16` : "rgba(255,255,255,0.04)",
+              backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
+              color: isActive ? c : TG.muted,
+              fontSize: 11.5, fontWeight: isActive ? 800 : 400,
+              boxShadow: isActive ? `0 0 14px ${c}22` : "none",
             }}>
               {f.label}
             </button>
@@ -413,16 +464,13 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
       {loading ? <FullSpinner /> : (
         <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
           {filtered.length === 0 ? (
-            <div style={{ padding: 48, textAlign: "center", color: TG.muted, fontSize: 14 }}>
-              Нет кампаний
+            <div style={{ padding: 56, textAlign: "center" }}>
+              <div style={{ fontSize: 36, marginBottom: 12 }}>📭</div>
+              <div style={{ color: TG.muted, fontSize: 14 }}>Нет кампаний</div>
             </div>
           ) : (
             <div style={{ padding: "14px" }}>
-              <div style={{
-                background: TG.glass, backdropFilter: BLUR, WebkitBackdropFilter: BLUR,
-                border: `1px solid ${TG.glassBorder}`,
-                borderRadius: 20, overflow: "hidden",
-              }}>
+              <div className="glass-card" style={{ borderRadius: 22 }}>
                 {filtered.map((c, i) => (
                   <CampaignRow key={c.id} campaign={c} last={i === filtered.length - 1} onClick={() => setDetail(c.id)} />
                 ))}
