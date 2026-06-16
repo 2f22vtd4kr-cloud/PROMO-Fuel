@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   LayoutGrid, Megaphone, BarChart2, Users2, Shield,
-  Flame, TrendingUp, Gift, Bell, Settings,
+  Flame, TrendingUp, Gift, Bell,
   Plus, Play, Pause, Clock,
   Award, ArrowUpRight,
-  Filter, User, Wallet, Zap, Star,
+  Filter, User, Zap, Star,
   AlertTriangle, ShieldCheck, WifiOff, Activity, ShieldOff,
-  FolderUp, CheckCircle2,
+  FolderUp, CheckCircle2, Trash2,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, ResponsiveContainer,
@@ -384,7 +384,7 @@ function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => void }) 
   );
 }
 
-function HomeTab({ overview, campaigns, loading }: { overview: Overview | null; campaigns: Campaign[]; loading: boolean }) {
+function HomeTab({ overview, campaigns, loading, onNav }: { overview: Overview | null; campaigns: Campaign[]; loading: boolean; onNav: (t: Tab) => void }) {
   const running = campaigns.filter(c => c.status === "running");
   const stats = overview ? [
     { label: "Отправлено",  value: fmtNum(overview.totalSent),       sub: `${overview.sentDelta >= 0 ? "+" : ""}${overview.sentDelta.toFixed(1)}% сегодня`, color: TG.green,  glow: TG.greenGlow,  icon: Gift },
@@ -393,11 +393,11 @@ function HomeTab({ overview, campaigns, loading }: { overview: Overview | null; 
     { label: "Open Rate",  value: `${overview.avgOpenRate.toFixed(1)}%`, sub: `${overview.openDelta >= 0 ? "+" : ""}${overview.openDelta.toFixed(1)}% за неделю`, color: TG.purple, glow: TG.purpleGlow, icon: TrendingUp },
   ] : [];
 
-  const quickActions = [
-    { label: "Новая рассылка", icon: Megaphone, color: TG.green,  glow: TG.greenGlow },
-    { label: "Статистика",     icon: BarChart2, color: TG.blue,   glow: TG.blueGlow },
-    { label: "Аудитория",      icon: Users2,    color: TG.purple, glow: TG.purpleGlow },
-    { label: "Аккаунты",       icon: Shield,    color: TG.pink,   glow: TG.pinkGlow },
+  const quickActions: { label: string; icon: React.ElementType; color: string; glow: string; tab: Tab }[] = [
+    { label: "Новая рассылка", icon: Megaphone, color: TG.green,  glow: TG.greenGlow,  tab: "campaigns" },
+    { label: "Статистика",     icon: BarChart2, color: TG.blue,   glow: TG.blueGlow,   tab: "analytics" },
+    { label: "Аудитория",      icon: Users2,    color: TG.purple, glow: TG.purpleGlow, tab: "audience" },
+    { label: "Аккаунты",       icon: Shield,    color: TG.pink,   glow: TG.pinkGlow,   tab: "accounts" },
   ];
 
   const CAMP_COLORS = [TG.blue, TG.green, TG.orange, TG.purple, TG.pink];
@@ -451,7 +451,7 @@ function HomeTab({ overview, campaigns, loading }: { overview: Overview | null; 
           {quickActions.map(a => {
             const Icon = a.icon;
             return (
-              <div key={a.label} style={{ flexShrink: 0 }}>
+              <div key={a.label} style={{ flexShrink: 0 }} onClick={() => onNav(a.tab)}>
                 <GlassCard glow={a.glow + "28"} style={{ padding: "12px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 7, minWidth: 72, cursor: "pointer" }}>
                   <div style={{ width: 36, height: 36, borderRadius: 12, background: `linear-gradient(145deg,${a.color}30 0%,${a.color}10 100%)`, border: `1px solid ${a.color}40`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 0 16px ${a.glow}50` }}>
                     <Icon size={16} color={a.color} />
@@ -527,6 +527,8 @@ function CampaignsTab({ campaigns, loading, onAction }: { campaigns: Campaign[];
   const [newText, setNewText]       = useState("");
   const [creating, setCreating]     = useState(false);
   const [actionId, setActionId]     = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<Campaign | null>(null);
+  const [deleting, setDeleting]     = useState(false);
 
   const running   = campaigns.filter(c => c.status === "running").length;
   const scheduled = campaigns.filter(c => c.status === "scheduled").length;
@@ -550,8 +552,30 @@ function CampaignsTab({ campaigns, loading, onAction }: { campaigns: Campaign[];
     setActionId(null);
   }
 
+  async function handleDelete(c: Campaign) {
+    setDeleting(true);
+    await onAction(`/api/campaigns/${c.id}`, "DELETE");
+    setDeleting(false);
+    setDeleteConfirm(null);
+  }
+
   return (
     <>
+    {deleteConfirm && (
+      <Modal title="Удалить кампанию?" onClose={() => setDeleteConfirm(null)}>
+        <div style={{ fontSize: 13, color: TG.textSecondary, lineHeight: 1.6 }}>
+          Кампания <span style={{ color: TG.text, fontWeight: 700 }}>«{deleteConfirm.name}»</span> будет удалена без возможности восстановления.
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+          <div onClick={() => setDeleteConfirm(null)} style={{ flex: 1, padding: "11px 0", borderRadius: 14, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", textAlign: "center", fontSize: 13, fontWeight: 700, color: TG.muted, cursor: "pointer" }}>
+            Отмена
+          </div>
+          <div onClick={() => handleDelete(deleteConfirm)} style={{ flex: 2, padding: "11px 0", borderRadius: 14, background: deleting ? `${TG.red}15` : `${TG.red}25`, border: `1px solid ${TG.red}55`, textAlign: "center", fontSize: 13, fontWeight: 800, color: TG.red, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.7 : 1 }}>
+            {deleting ? "Удаление…" : "Удалить"}
+          </div>
+        </div>
+      </Modal>
+    )}
     {showCreate && (
       <Modal title="Новая кампания" onClose={() => setShowCreate(false)}>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -627,6 +651,17 @@ function CampaignsTab({ campaigns, loading, onAction }: { campaigns: Campaign[];
                         transition: "opacity 0.2s",
                       }}>
                         {c.status === "running" ? <Pause size={13} color={TG.green} /> : <Play size={13} color={TG.blue} />}
+                      </div>
+                    )}
+                    {(c.status === "draft" || c.status === "done" || c.status === "cancelled") && (
+                      <div onClick={() => setDeleteConfirm(c)} style={{
+                        width: 30, height: 30, borderRadius: 10, cursor: "pointer",
+                        background: `${TG.red}12`,
+                        border: `1px solid ${TG.red}35`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "opacity 0.2s",
+                      }}>
+                        <Trash2 size={13} color={TG.red} />
                       </div>
                     )}
                   </div>
@@ -1248,9 +1283,7 @@ function UploadTab() {
 
 export default function App() {
   const [authed, setAuthed]       = useState(() => {
-    const s = sessionStorage.getItem("crm_secret");
-    if (!s) return false;
-    return true;
+    return !!sessionStorage.getItem("crm_secret");
   });
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [overview, setOverview]   = useState<Overview | null>(null);
@@ -1282,21 +1315,36 @@ export default function App() {
     try {
       await apiFetch(`${API_BASE}${path}`, {
         method,
+        headers: { "Content-Type": "application/json" },
         body: body ? JSON.stringify(body) : undefined,
       });
     } catch {}
     await fetchAll();
   }, [fetchAll]);
 
-  if (!authed) {
-    return <LoginScreen onLogin={() => { setAuthed(true); fetchAll(); }} />;
-  }
+  useEffect(() => {
+    if (!authed) return;
+    fetchAll();
+    const slow = setInterval(fetchAll, 30_000);
+    return () => clearInterval(slow);
+  }, [authed, fetchAll]);
 
   useEffect(() => {
-    fetchAll();
-    const id = setInterval(fetchAll, 30_000);
-    return () => clearInterval(id);
-  }, [fetchAll]);
+    if (!authed) return;
+    const fast = setInterval(async () => {
+      const running = campaigns.some(c => c.status === "running");
+      if (!running) return;
+      try {
+        const camps = await apiFetch(`${API_BASE}/api/campaigns`).then(r => r.ok ? r.json() : null);
+        if (Array.isArray(camps)) setCampaigns(camps);
+      } catch {}
+    }, 5_000);
+    return () => clearInterval(fast);
+  }, [authed, campaigns]);
+
+  if (!authed) {
+    return <LoginScreen onLogin={() => { setAuthed(true); }} />;
+  }
 
   return (
     <div className="app-root" style={{
@@ -1314,7 +1362,7 @@ export default function App() {
       }}>
         <MeshBg />
         <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", paddingTop: 4, scrollbarWidth: "none", position: "relative", zIndex: 5 }}>
-          {activeTab === "home"      && <HomeTab      overview={overview} campaigns={campaigns} loading={loading} />}
+          {activeTab === "home"      && <HomeTab      overview={overview} campaigns={campaigns} loading={loading} onNav={setActiveTab} />}
           {activeTab === "campaigns" && <CampaignsTab campaigns={campaigns} loading={loading} onAction={onAction} />}
           {activeTab === "analytics" && <AnalyticsTab overview={overview} trend={trend} loading={loading} />}
           {activeTab === "audience"  && <AudienceTab  users={users} overview={overview} loading={loading} />}

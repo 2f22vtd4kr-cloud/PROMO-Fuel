@@ -16,7 +16,11 @@ const ALLOWED_EXT = [".html", ".csv", ".tsv", ".json", ".jsonl"];
 router.post("/upload", upload.single("file"), (req, res) => {
   if (!req.file) return void res.status(400).json({ error: "No file uploaded" });
 
-  const filename = req.file.originalname.toLowerCase();
+  const rawName = req.file.originalname;
+  const decodedName = (() => {
+    try { return Buffer.from(rawName, "latin1").toString("utf8"); } catch { return rawName; }
+  })();
+  const filename = decodedName.toLowerCase();
   const ext = "." + filename.split(".").pop();
   if (!ALLOWED_EXT.includes(ext)) {
     return void res.status(400).json({ error: `Unsupported format. Allowed: ${ALLOWED_EXT.join(", ")}` });
@@ -65,13 +69,13 @@ router.post("/upload", upload.single("file"), (req, res) => {
     db.prepare(`
       INSERT OR REPLACE INTO uploads (key, filename, entries_json, uploaded_at)
       VALUES (?, ?, ?, datetime('now'))
-    `).run(key, req.file.originalname, JSON.stringify(entries));
+    `).run(key, decodedName, JSON.stringify(entries));
     db.close();
   } catch (e: unknown) {
     return void res.status(500).json({ error: `DB error: ${(e as Error).message}` });
   }
 
-  res.json({ key, filename: req.file.originalname, count: entries.length });
+  res.json({ key, filename: decodedName, count: entries.length });
 });
 
 // List previous uploads
