@@ -29,12 +29,19 @@ router.get("/campaigns", (req, res) => {
 router.post("/campaigns", (req, res) => {
   try {
     const db = new Database(DB_PATH);
-    const { name, text_template } = req.body as { name: string; text_template: string };
+    const { name, text_template, sender_account_id, send_delay_seconds, scheduled_at } = req.body as {
+      name: string; text_template: string;
+      sender_account_id?: number; send_delay_seconds?: number; scheduled_at?: string;
+    };
     if (!name || !text_template) return void res.status(400).json({ error: "name and text_template required" });
     const now = new Date().toISOString();
+    for (const [col, def] of [["sender_account_id", "INTEGER"], ["send_delay_seconds", "INTEGER DEFAULT 15"]] as [string, string][]) {
+      try { db.exec(`ALTER TABLE campaigns ADD COLUMN ${col} ${def}`); } catch {}
+    }
     const info = db.prepare(
-      "INSERT INTO campaigns (name, text_template, status, created_at, sent_count, failed_count, target_count, dry_run) VALUES (?, ?, 'draft', ?, 0, 0, 0, 0)"
-    ).run(name, text_template, now);
+      `INSERT INTO campaigns (name, text_template, status, created_at, sent_count, failed_count, target_count, dry_run, sender_account_id, send_delay_seconds, scheduled_at)
+       VALUES (?, ?, 'draft', ?, 0, 0, 0, 0, ?, ?, ?)`
+    ).run(name, text_template, now, sender_account_id ?? null, send_delay_seconds ?? 15, scheduled_at ?? null);
     const row = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(info.lastInsertRowid);
     db.close();
     res.status(201).json(row);

@@ -384,7 +384,7 @@ function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => void }) 
   );
 }
 
-function HomeTab({ overview, campaigns, loading, onNav }: { overview: Overview | null; campaigns: Campaign[]; loading: boolean; onNav: (t: Tab) => void }) {
+function HomeTab({ overview, campaigns, loading, onNav, onCreateCampaign }: { overview: Overview | null; campaigns: Campaign[]; loading: boolean; onNav: (t: Tab) => void; onCreateCampaign: () => void }) {
   const running = campaigns.filter(c => c.status === "running");
   const stats = overview ? [
     { label: "Отправлено",  value: fmtNum(overview.totalSent),       sub: `${overview.sentDelta >= 0 ? "+" : ""}${overview.sentDelta.toFixed(1)}% сегодня`, color: TG.green,  glow: TG.greenGlow,  icon: Gift },
@@ -478,7 +478,7 @@ function HomeTab({ overview, campaigns, loading, onNav }: { overview: Overview |
         ) : running.length === 0 ? (
           <GlassCard style={{ padding: "20px 14px", textAlign: "center" }}>
             <div style={{ fontSize: 12, color: TG.muted }}>Нет активных кампаний</div>
-            <div style={{ fontSize: 11, color: TG.blue, marginTop: 8, fontWeight: 600 }}>+ Создать кампанию</div>
+            <div onClick={onCreateCampaign} style={{ fontSize: 11, color: TG.blue, marginTop: 8, fontWeight: 600, cursor: "pointer" }}>+ Создать кампанию</div>
           </GlassCard>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -521,14 +521,24 @@ function HomeTab({ overview, campaigns, loading, onNav }: { overview: Overview |
 
 type ActionFn = (path: string, method?: string, body?: Record<string, unknown>) => Promise<void>;
 
-function CampaignsTab({ campaigns, loading, onAction }: { campaigns: Campaign[]; loading: boolean; onAction: ActionFn }) {
+function CampaignsTab({ campaigns, loading, onAction, accounts, openCreate, onCreateClose }: {
+  campaigns: Campaign[]; loading: boolean; onAction: ActionFn;
+  accounts: Account[]; openCreate: boolean; onCreateClose: () => void;
+}) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName]       = useState("");
   const [newText, setNewText]       = useState("");
+  const [newAccountId, setNewAccountId] = useState<string>("");
+  const [newDelay, setNewDelay]     = useState(15);
+  const [newScheduled, setNewScheduled] = useState("");
   const [creating, setCreating]     = useState(false);
   const [actionId, setActionId]     = useState<number | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Campaign | null>(null);
   const [deleting, setDeleting]     = useState(false);
+
+  useEffect(() => {
+    if (openCreate) { setShowCreate(true); onCreateClose(); }
+  }, [openCreate, onCreateClose]);
 
   const running   = campaigns.filter(c => c.status === "running").length;
   const scheduled = campaigns.filter(c => c.status === "scheduled").length;
@@ -538,10 +548,19 @@ function CampaignsTab({ campaigns, loading, onAction }: { campaigns: Campaign[];
   };
 
   async function handleCreate() {
-    if (!newName.trim()) return;
+    if (!newName.trim() || !newText.trim()) return;
     setCreating(true);
-    await onAction("/api/campaigns", "POST", { name: newName.trim(), text_template: newText.trim(), status: "draft" });
-    setNewName(""); setNewText(""); setCreating(false); setShowCreate(false);
+    const body: Record<string, unknown> = {
+      name: newName.trim(),
+      text_template: newText.trim(),
+      status: "draft",
+      send_delay_seconds: newDelay,
+    };
+    if (newAccountId) body.sender_account_id = parseInt(newAccountId);
+    if (newScheduled) body.scheduled_at = newScheduled;
+    await onAction("/api/campaigns", "POST", body);
+    setNewName(""); setNewText(""); setNewAccountId(""); setNewDelay(15); setNewScheduled("");
+    setCreating(false); setShowCreate(false);
   }
 
   async function handleToggle(c: Campaign) {
@@ -579,14 +598,67 @@ function CampaignsTab({ campaigns, loading, onAction }: { campaigns: Campaign[];
     {showCreate && (
       <Modal title="Новая кампания" onClose={() => setShowCreate(false)}>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <GlassInput value={newName} onChange={setNewName} placeholder="Название кампании" />
-          <GlassInput value={newText} onChange={setNewText} placeholder="Текст сообщения…" multiline />
+          <GlassInput value={newName} onChange={setNewName} placeholder="Название кампании *" />
+          <GlassInput value={newText} onChange={setNewText} placeholder="Текст сообщения… *" multiline />
+          {accounts.length > 0 && (
+            <select
+              value={newAccountId}
+              onChange={e => setNewAccountId(e.target.value)}
+              style={{
+                width: "100%", boxSizing: "border-box",
+                background: "rgba(255,255,255,0.055)",
+                border: "1px solid rgba(255,255,255,0.14)",
+                borderRadius: 12, color: newAccountId ? TG.text : TG.muted,
+                fontSize: 13, fontFamily: "inherit", padding: "10px 12px",
+                outline: "none", backdropFilter: "blur(8px)",
+              }}
+            >
+              <option value="">— Аккаунт-отправитель (опционально) —</option>
+              {accounts.filter(a => a.is_active && !a.is_banned).map(a => (
+                <option key={a.id} value={String(a.id)} style={{ background: "#0d1021" }}>
+                  {a.label || a.phone} ({a.phone})
+                </option>
+              ))}
+            </select>
+          )}
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, color: TG.muted, marginBottom: 4 }}>Задержка между сообщениями (сек)</div>
+              <input
+                type="number" min={5} max={120} value={newDelay}
+                onChange={e => setNewDelay(Math.max(5, parseInt(e.target.value) || 15))}
+                style={{
+                  width: "100%", boxSizing: "border-box",
+                  background: "rgba(255,255,255,0.055)",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  borderRadius: 12, color: TG.text,
+                  fontSize: 13, fontFamily: "inherit", padding: "10px 12px",
+                  outline: "none",
+                }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, color: TG.muted, marginBottom: 4 }}>Запланировать (необяз.)</div>
+              <input
+                type="datetime-local" value={newScheduled}
+                onChange={e => setNewScheduled(e.target.value)}
+                style={{
+                  width: "100%", boxSizing: "border-box",
+                  background: "rgba(255,255,255,0.055)",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  borderRadius: 12, color: TG.text,
+                  fontSize: 12, fontFamily: "inherit", padding: "10px 8px",
+                  outline: "none", colorScheme: "dark",
+                }}
+              />
+            </div>
+          </div>
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
           <div onClick={() => setShowCreate(false)} style={{ flex: 1, padding: "11px 0", borderRadius: 14, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", textAlign: "center", fontSize: 13, fontWeight: 700, color: TG.muted, cursor: "pointer" }}>
             Отмена
           </div>
-          <div onClick={handleCreate} style={{ flex: 2, padding: "11px 0", borderRadius: 14, background: creating ? `${TG.green}25` : `linear-gradient(135deg,${TG.green}55 0%,${TG.blue}44 100%)`, border: `1px solid ${TG.green}55`, textAlign: "center", fontSize: 13, fontWeight: 800, color: TG.green, cursor: "pointer", opacity: creating ? 0.7 : 1 }}>
+          <div onClick={handleCreate} style={{ flex: 2, padding: "11px 0", borderRadius: 14, background: creating ? `${TG.green}25` : `linear-gradient(135deg,${TG.green}55 0%,${TG.blue}44 100%)`, border: `1px solid ${TG.green}55`, textAlign: "center", fontSize: 13, fontWeight: 800, color: TG.green, cursor: "pointer", opacity: (creating || !newName.trim() || !newText.trim()) ? 0.5 : 1 }}>
             {creating ? "Создание…" : "Создать черновик"}
           </div>
         </div>
@@ -642,6 +714,16 @@ function CampaignsTab({ campaigns, loading, onAction }: { campaigns: Campaign[];
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
+                    {c.status === "draft" && (
+                      <div onClick={() => { setActionId(c.id); onAction(`/api/campaigns/${c.id}/action`, "POST", { action: "running" }).then(() => setActionId(null)); }} style={{
+                        width: 30, height: 30, borderRadius: 10, cursor: isActing ? "default" : "pointer", opacity: isActing ? 0.5 : 1,
+                        background: `${TG.green}18`, border: `1px solid ${TG.green}40`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "opacity 0.2s",
+                      }}>
+                        <Play size={13} color={TG.green} />
+                      </div>
+                    )}
                     {(c.status === "running" || c.status === "paused") && (
                       <div onClick={() => handleToggle(c)} style={{
                         width: 30, height: 30, borderRadius: 10, cursor: isActing ? "default" : "pointer", opacity: isActing ? 0.5 : 1,
@@ -924,7 +1006,11 @@ function AccountsTab({ accounts, loading, onAction }: { accounts: Account[]; loa
   const [showAdd, setShowAdd]     = useState(false);
   const [newPhone, setNewPhone]   = useState("");
   const [newLabel, setNewLabel]   = useState("");
+  const [newApiId, setNewApiId]   = useState("");
+  const [newApiHash, setNewApiHash] = useState("");
   const [adding, setAdding]       = useState(false);
+  const [deleteAccConfirm, setDeleteAccConfirm] = useState<Account | null>(null);
+  const [deletingAcc, setDeletingAcc] = useState(false);
 
   const active  = accounts.filter(a => a.is_active && !a.is_banned);
   const sending = accounts.filter(a => a.status === "sending");
@@ -949,8 +1035,22 @@ function AccountsTab({ accounts, loading, onAction }: { accounts: Account[]; loa
   async function handleAdd() {
     if (!newPhone.trim()) return;
     setAdding(true);
-    await onAction("/api/accounts", "POST", { phone: newPhone.trim(), label: newLabel.trim() || newPhone.trim(), status: "idle", is_active: 1, is_banned: 0 });
-    setNewPhone(""); setNewLabel(""); setAdding(false); setShowAdd(false);
+    const body: Record<string, unknown> = {
+      phone: newPhone.trim(), label: newLabel.trim() || newPhone.trim(),
+      status: "idle", is_active: 1, is_banned: 0,
+    };
+    if (newApiId.trim()) body.api_id = parseInt(newApiId.trim());
+    if (newApiHash.trim()) body.api_hash = newApiHash.trim();
+    await onAction("/api/accounts", "POST", body);
+    setNewPhone(""); setNewLabel(""); setNewApiId(""); setNewApiHash("");
+    setAdding(false); setShowAdd(false);
+  }
+
+  async function handleDeleteAcc(acc: Account) {
+    setDeletingAcc(true);
+    await onAction(`/api/accounts/${acc.id}`, "DELETE");
+    setDeletingAcc(false);
+    setDeleteAccConfirm(null);
   }
 
   return (
@@ -958,10 +1058,14 @@ function AccountsTab({ accounts, loading, onAction }: { accounts: Account[]; loa
     {showAdd && (
       <Modal title="Добавить аккаунт" onClose={() => setShowAdd(false)}>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <GlassInput value={newPhone} onChange={setNewPhone} placeholder="+7 900 000 00 00" />
+          <GlassInput value={newPhone} onChange={setNewPhone} placeholder="+7 900 000 00 00 *" />
           <GlassInput value={newLabel} onChange={setNewLabel} placeholder="Метка (необязательно)" />
+          <div style={{ display: "flex", gap: 8 }}>
+            <GlassInput value={newApiId} onChange={setNewApiId} placeholder="API ID (my.telegram.org)" />
+            <GlassInput value={newApiHash} onChange={setNewApiHash} placeholder="API Hash" />
+          </div>
           <div style={{ fontSize: 11, color: TG.muted, lineHeight: 1.5 }}>
-            После добавления запустите авторизацию через бота для привязки сессии.
+            API ID и Hash получите на <span style={{ color: TG.blue }}>my.telegram.org</span>. После добавления авторизуйте аккаунт через бота.
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
@@ -1033,10 +1137,15 @@ function AccountsTab({ accounts, loading, onAction }: { accounts: Account[]; loa
                       <div style={{ fontSize: 10, color: TG.muted }}>{acc.phone}</div>
                     </div>
                   </div>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: sm.color, background: sm.bg, border: `1px solid ${sm.color}40`, borderRadius: 20, padding: "3px 8px" }}>
-                    {st === "sending" && <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", background: sm.color, marginRight: 4, animation: "pulse 1s infinite", verticalAlign: "middle" }} />}
-                    {sm.label}
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: sm.color, background: sm.bg, border: `1px solid ${sm.color}40`, borderRadius: 20, padding: "3px 8px" }}>
+                      {st === "sending" && <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", background: sm.color, marginRight: 4, animation: "pulse 1s infinite", verticalAlign: "middle" }} />}
+                      {sm.label}
+                    </span>
+                    <div onClick={() => setDeleteAccConfirm(acc)} style={{ width: 26, height: 26, borderRadius: 8, cursor: "pointer", background: `${TG.red}12`, border: `1px solid ${TG.red}30`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Trash2 size={12} color={TG.red} />
+                    </div>
+                  </div>
                 </div>
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
@@ -1055,6 +1164,21 @@ function AccountsTab({ accounts, loading, onAction }: { accounts: Account[]; loa
         </div>
       )}
     </div>
+    {deleteAccConfirm && (
+      <Modal title="Удалить аккаунт?" onClose={() => setDeleteAccConfirm(null)}>
+        <div style={{ fontSize: 13, color: TG.muted, marginBottom: 14, lineHeight: 1.5 }}>
+          Аккаунт <span style={{ color: TG.text, fontWeight: 700 }}>{deleteAccConfirm.label || deleteAccConfirm.phone}</span> будет удалён без возможности восстановления.
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <div onClick={() => setDeleteAccConfirm(null)} style={{ flex: 1, padding: "11px 0", borderRadius: 14, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", textAlign: "center", fontSize: 13, fontWeight: 700, color: TG.muted, cursor: "pointer" }}>
+            Отмена
+          </div>
+          <div onClick={() => handleDeleteAcc(deleteAccConfirm)} style={{ flex: 1, padding: "11px 0", borderRadius: 14, background: `${TG.red}18`, border: `1px solid ${TG.red}50`, textAlign: "center", fontSize: 13, fontWeight: 800, color: TG.red, cursor: "pointer", opacity: deletingAcc ? 0.6 : 1 }}>
+            {deletingAcc ? "Удаление…" : "Удалить"}
+          </div>
+        </div>
+      </Modal>
+    )}
     </>
   );
 }
@@ -1292,6 +1416,7 @@ export default function App() {
   const [users, setUsers]         = useState<UserRow[]>([]);
   const [accounts, setAccounts]   = useState<Account[]>([]);
   const [loading, setLoading]     = useState(true);
+  const [openCreate, setOpenCreate] = useState(false);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -1362,8 +1487,8 @@ export default function App() {
       }}>
         <MeshBg />
         <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", paddingTop: 4, scrollbarWidth: "none", position: "relative", zIndex: 5 }}>
-          {activeTab === "home"      && <HomeTab      overview={overview} campaigns={campaigns} loading={loading} onNav={setActiveTab} />}
-          {activeTab === "campaigns" && <CampaignsTab campaigns={campaigns} loading={loading} onAction={onAction} />}
+          {activeTab === "home"      && <HomeTab      overview={overview} campaigns={campaigns} loading={loading} onNav={setActiveTab} onCreateCampaign={() => { setActiveTab("campaigns"); setOpenCreate(true); }} />}
+          {activeTab === "campaigns" && <CampaignsTab campaigns={campaigns} loading={loading} onAction={onAction} accounts={accounts} openCreate={openCreate} onCreateClose={() => setOpenCreate(false)} />}
           {activeTab === "analytics" && <AnalyticsTab overview={overview} trend={trend} loading={loading} />}
           {activeTab === "audience"  && <AudienceTab  users={users} overview={overview} loading={loading} />}
           {activeTab === "accounts"  && <AccountsTab  accounts={accounts} loading={loading} onAction={onAction} />}

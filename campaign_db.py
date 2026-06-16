@@ -113,6 +113,26 @@ async def init_db():
                 await db.commit()
             except Exception:
                 pass
+        # Campaign new columns
+        for col, definition in [
+            ("sender_account_id", "INTEGER"),
+            ("send_delay_seconds", "INTEGER DEFAULT 15"),
+        ]:
+            try:
+                await db.execute(f"ALTER TABLE campaigns ADD COLUMN {col} {definition}")
+                await db.commit()
+            except Exception:
+                pass
+        # sender_accounts: api_id / api_hash
+        for col, definition in [
+            ("api_id",   "INTEGER"),
+            ("api_hash", "TEXT"),
+        ]:
+            try:
+                await db.execute(f"ALTER TABLE sender_accounts ADD COLUMN {col} {definition}")
+                await db.commit()
+            except Exception:
+                pass
         # Uploads table
         await db.execute("""
             CREATE TABLE IF NOT EXISTS uploads (

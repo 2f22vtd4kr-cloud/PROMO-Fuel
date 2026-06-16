@@ -209,7 +209,8 @@ async def send_campaign(bot: Bot, campaign_id: int, notify_chat_id: int, tag: st
             await db.log_send(campaign_id, chat_id, "ok")
             await db.increment_campaign_counts(campaign_id, sent=1)
             await db.mark_user_as_promo_targeted(chat_id)
-            await human_delay(state["sent"])
+            delay = campaign.get("send_delay_seconds") or 15
+            await asyncio.sleep(delay)
 
         except Forbidden:
             state["failed"] += 1

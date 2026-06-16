@@ -1,5 +1,5 @@
 - [Telegram stub conflict](telegram-stub.md) — never add `telegram>=0.0.1` to pyproject.toml; it shadows python-telegram-bot.
-- [SQLite DB schema](sqlite-schema.md) — campaigns.db tables: `campaigns`, `users`, `sends`, `sqlite_sequence`. No bot_users or send_logs.
+- [SQLite DB schema](sqlite-schema.md) — campaigns.db tables: `campaigns` (incl. sender_account_id, send_delay_seconds), `users`, `sends`, `sender_accounts` (incl. api_id, api_hash), `message_templates`, `uploads`.
 - [better-sqlite3 approval](better-sqlite3.md) — must add to `pnpm.onlyBuiltDependencies` in root package.json for native build to succeed.
 - [Orval mixed-params collision](orval-params.md) — endpoints with BOTH path param AND query param generate colliding Params types; avoid by removing query params from such endpoints.
 - [Liquid glass CSS system](liquid-glass-css.md) — 3-layer glass material: `.lg` outer card, `::before` specular edge, `::after` prismatic overlay; `.lg-pill` for rounded buttons; haptics via `lib/haptics.ts`; 5-tab nav in BottomNav.tsx (home/campaigns/analytics/audience/upload); editor is overlay not a tab.

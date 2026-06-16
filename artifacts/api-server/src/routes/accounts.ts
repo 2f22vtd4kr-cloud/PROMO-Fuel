@@ -15,6 +15,8 @@ function ensureTable() {
       phone TEXT UNIQUE NOT NULL,
       telegram_id INTEGER,
       username TEXT,
+      api_id INTEGER,
+      api_hash TEXT,
       session_file TEXT,
       proxy TEXT,
       status TEXT NOT NULL DEFAULT 'idle',
@@ -28,6 +30,9 @@ function ensureTable() {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+  for (const [col, def] of [["api_id", "INTEGER"], ["api_hash", "TEXT"]] as [string, string][]) {
+    try { db.exec(`ALTER TABLE sender_accounts ADD COLUMN ${col} ${def}`); } catch {}
+  }
   db.close();
 }
 
@@ -49,18 +54,20 @@ router.get("/accounts", (_req, res) => {
 router.post("/accounts", (req, res) => {
   try {
     const db = getDb(false);
-    const { phone, label, username, telegram_id, proxy, session_file } = req.body as {
+    const { phone, label, username, telegram_id, proxy, session_file, api_id, api_hash } = req.body as {
       phone: string; label?: string; username?: string;
       telegram_id?: number; proxy?: string; session_file?: string;
+      api_id?: number; api_hash?: string;
     };
     if (!phone) return void res.status(400).json({ error: "phone required" });
     const now = new Date().toISOString();
     const info = db.prepare(
-      `INSERT INTO sender_accounts (phone, label, username, telegram_id, proxy, session_file, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO sender_accounts (phone, label, username, telegram_id, api_id, api_hash, proxy, session_file, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(phone) DO UPDATE SET label=excluded.label, username=excluded.username,
-         telegram_id=excluded.telegram_id, proxy=excluded.proxy, session_file=excluded.session_file`
-    ).run(phone, label ?? "", username ?? null, telegram_id ?? null, proxy ?? null, session_file ?? null, now);
+         telegram_id=excluded.telegram_id, api_id=excluded.api_id, api_hash=excluded.api_hash,
+         proxy=excluded.proxy, session_file=excluded.session_file`
+    ).run(phone, label ?? "", username ?? null, telegram_id ?? null, api_id ?? null, api_hash ?? null, proxy ?? null, session_file ?? null, now);
     const row = db.prepare("SELECT * FROM sender_accounts WHERE id = ?").get(info.lastInsertRowid);
     db.close();
     res.status(201).json(row);
@@ -73,9 +80,9 @@ router.put("/accounts/:id", (req, res) => {
   try {
     const db = getDb(false);
     const id = parseInt(req.params.id);
-    const allowed = ["label", "phone", "username", "telegram_id", "proxy", "session_file",
-                     "status", "is_active", "is_banned", "last_error", "sent_today",
-                     "sent_total", "failed_total", "last_used_at"];
+    const allowed = ["label", "phone", "username", "telegram_id", "api_id", "api_hash",
+                     "proxy", "session_file", "status", "is_active", "is_banned",
+                     "last_error", "sent_today", "sent_total", "failed_total", "last_used_at"];
     const fields: string[] = [];
     const values: unknown[] = [];
     for (const key of allowed) {
