@@ -3,15 +3,15 @@ set -e
 pnpm install --frozen-lockfile
 
 # Fix missing .bin symlinks for vite in workspace packages
-# This is needed because pnpm sometimes doesn't create .bin symlinks in workspace packages
-VITE_BIN=$(find "$(pwd)/node_modules/.pnpm" -maxdepth 3 -name "vite.js" -path "*/vite/bin/vite.js" 2>/dev/null | head -1)
-if [ -n "$VITE_BIN" ]; then
+# pnpm stores vite in node_modules/.pnpm/node_modules/.bin/vite
+VITE_BIN="$(pwd)/node_modules/.pnpm/node_modules/.bin/vite"
+if [ -f "$VITE_BIN" ]; then
   for pkg in artifacts/crm-platform artifacts/telegram-miniapp artifacts/mockup-sandbox; do
-    if [ -d "$pkg/node_modules" ]; then
-      mkdir -p "$pkg/node_modules/.bin"
-      if [ ! -f "$pkg/node_modules/.bin/vite" ]; then
-        ln -sf "$VITE_BIN" "$pkg/node_modules/.bin/vite"
-        chmod +x "$pkg/node_modules/.bin/vite"
+    if [ -d "$(pwd)/$pkg" ]; then
+      mkdir -p "$(pwd)/$pkg/node_modules/.bin"
+      if [ ! -f "$(pwd)/$pkg/node_modules/.bin/vite" ]; then
+        ln -sf "$VITE_BIN" "$(pwd)/$pkg/node_modules/.bin/vite"
+        chmod +x "$(pwd)/$pkg/node_modules/.bin/vite"
         echo "Linked vite for $pkg"
       fi
     fi
@@ -52,4 +52,10 @@ if [ -d "$BSQ" ]; then
   else
     echo "Node headers not found at $NODE_INC, skipping better-sqlite3 rebuild"
   fi
+fi
+
+# Install Python dependencies
+if [ -f "pyproject.toml" ]; then
+  echo "Installing Python dependencies..."
+  uv sync 2>&1 && echo "Python deps installed OK" || echo "Python deps install failed (non-fatal)"
 fi
