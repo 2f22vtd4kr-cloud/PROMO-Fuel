@@ -147,4 +147,78 @@ router.get("/accounts/:id/logs", (req, res) => {
   }
 });
 
+const AUTH_SERVER = "http://127.0.0.1:8082";
+
+async function proxyToAuthServer(path: string, body: unknown): Promise<{ status: number; data: unknown }> {
+  const r = await fetch(`${AUTH_SERVER}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const data = await r.json();
+  return { status: r.status, data };
+}
+
+router.post("/accounts/:id/start-auth", async (req, res) => {
+  try {
+    const db = getDb();
+    const acc = db.prepare("SELECT * FROM sender_accounts WHERE id = ?").get(parseInt(req.params.id)) as Record<string, unknown> | undefined;
+    db.close();
+    if (!acc) return void res.status(404).json({ error: "Account not found" });
+    const { phone, api_id, api_hash } = acc;
+    if (!api_id || !api_hash) return void res.status(400).json({ error: "api_id and api_hash must be set on the account first" });
+    const { status, data } = await proxyToAuthServer("/start-auth", { phone, api_id, api_hash });
+    if (status === 200 && (data as Record<string, unknown>).already_authorized) {
+      const wdb = new Database(DB_PATH);
+      wdb.prepare("UPDATE sender_accounts SET session_file = ?, username = ?, status = 'idle' WHERE id = ?")
+        .run((data as Record<string, unknown>).session_file, (data as Record<string, unknown>).display_name, parseInt(req.params.id));
+      wdb.close();
+    }
+    res.status(status).json(data);
+  } catch (err) {
+    res.status(503).json({ error: `Auth server unavailable: ${String(err)}` });
+  }
+});
+
+router.post("/accounts/:id/confirm-auth", async (req, res) => {
+  try {
+    const db = getDb();
+    const acc = db.prepare("SELECT phone FROM sender_accounts WHERE id = ?").get(parseInt(req.params.id)) as { phone: string } | undefined;
+    db.close();
+    if (!acc) return void res.status(404).json({ error: "Account not found" });
+    const { code, phone_code_hash } = req.body as { code: string; phone_code_hash: string };
+    const { status, data } = await proxyToAuthServer("/confirm-auth", { phone: acc.phone, code, phone_code_hash });
+    if (status === 200 && (data as Record<string, unknown>).ok) {
+      const wdb = new Database(DB_PATH);
+      wdb.prepare("UPDATE sender_accounts SET session_file = ?, username = ?, status = 'idle' WHERE id = ?")
+        .run((data as Record<string, unknown>).session_file, (data as Record<string, unknown>).display_name, parseInt(req.params.id));
+      wdb.close();
+    }
+    res.status(status).json(data);
+  } catch (err) {
+    res.status(503).json({ error: `Auth server unavailable: ${String(err)}` });
+  }
+});
+
+router.post("/accounts/:id/confirm-2fa", async (req, res) => {
+  try {
+    const db = getDb();
+    const acc = db.prepare("SELECT phone FROM sender_accounts WHERE id = ?").get(parseInt(req.params.id)) as { phone: string } | undefined;
+    db.close();
+    if (!acc) return void res.status(404).json({ error: "Account not found" });
+    const { password } = req.body as { password: string };
+    const { status, data } = await proxyToAuthServer("/confirm-2fa", { phone: acc.phone, password });
+    if (status === 200 && (data as Record<string, unknown>).ok) {
+      const wdb = new Database(DB_PATH);
+      wdb.prepare("UPDATE sender_accounts SET session_file = ?, username = ?, status = 'idle' WHERE id = ?")
+        .run((data as Record<string, unknown>).session_file, (data as Record<string, unknown>).display_name, parseInt(req.params.id));
+      wdb.close();
+    }
+    res.status(status).json(data);
+  } catch (err) {
+    res.status(503).json({ error: `Auth server unavailable: ${String(err)}` });
+  }
+});
+
 export default router;

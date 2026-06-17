@@ -6,7 +6,7 @@ import {
   Award, ArrowUpRight,
   Filter, User, Zap, Star,
   AlertTriangle, ShieldCheck, WifiOff, Activity, ShieldOff,
-  FolderUp, CheckCircle2, Trash2,
+  FolderUp, CheckCircle2, Trash2, KeyRound,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, ResponsiveContainer,
@@ -107,6 +107,9 @@ interface Account {
   label: string;
   phone: string;
   username?: string;
+  api_id?: number;
+  api_hash?: string;
+  session_file?: string;
   status: string;
   sent_today: number;
   sent_total: number;
@@ -1012,6 +1015,14 @@ function AccountsTab({ accounts, loading, onAction }: { accounts: Account[]; loa
   const [deleteAccConfirm, setDeleteAccConfirm] = useState<Account | null>(null);
   const [deletingAcc, setDeletingAcc] = useState(false);
 
+  const [authAccId, setAuthAccId]         = useState<number | null>(null);
+  const [authStep, setAuthStep]           = useState<"otp" | "2fa" | null>(null);
+  const [authPhoneCodeHash, setAuthPhoneCodeHash] = useState("");
+  const [authCode, setAuthCode]           = useState("");
+  const [authPassword, setAuthPassword]   = useState("");
+  const [authLoading, setAuthLoading]     = useState(false);
+  const [authError, setAuthError]         = useState("");
+
   const active  = accounts.filter(a => a.is_active && !a.is_banned);
   const sending = accounts.filter(a => a.status === "sending");
   const banned  = accounts.filter(a => a.is_banned);
@@ -1053,6 +1064,61 @@ function AccountsTab({ accounts, loading, onAction }: { accounts: Account[]; loa
     setDeleteAccConfirm(null);
   }
 
+  function resetAuth() {
+    setAuthAccId(null); setAuthStep(null);
+    setAuthCode(""); setAuthPassword(""); setAuthPhoneCodeHash(""); setAuthError("");
+  }
+
+  async function handleStartAuth(acc: Account) {
+    setAuthAccId(acc.id); setAuthLoading(true); setAuthError(""); setAuthStep(null);
+    try {
+      const r = await apiFetch(`${API_BASE}/api/accounts/${acc.id}/start-auth`, { method: "POST" });
+      const d = await r.json() as Record<string, unknown>;
+      if (!r.ok) { setAuthError(String(d.error ?? "Ошибка")); setAuthAccId(null); }
+      else if (d.already_authorized) {
+        await onAction(`/api/accounts/${acc.id}`, "PUT", { session_file: String(d.session_file), username: String(d.display_name) });
+        resetAuth();
+      } else {
+        setAuthPhoneCodeHash(String(d.phone_code_hash));
+        setAuthStep("otp");
+      }
+    } catch { setAuthError("Сервер авторизации недоступен"); setAuthAccId(null); }
+    setAuthLoading(false);
+  }
+
+  async function handleConfirmOtp() {
+    if (!authCode.trim() || authAccId === null) return;
+    setAuthLoading(true); setAuthError("");
+    try {
+      const r = await apiFetch(`${API_BASE}/api/accounts/${authAccId}/confirm-auth`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: authCode.trim(), phone_code_hash: authPhoneCodeHash }),
+      });
+      const d = await r.json() as Record<string, unknown>;
+      if (d.needs_2fa) { setAuthStep("2fa"); setAuthCode(""); }
+      else if (d.ok) { await onAction(`/api/accounts`, "GET"); resetAuth(); }
+      else setAuthError(String(d.error ?? "Неверный код"));
+    } catch { setAuthError("Ошибка подключения"); }
+    setAuthLoading(false);
+  }
+
+  async function handleConfirm2FA() {
+    if (!authPassword.trim() || authAccId === null) return;
+    setAuthLoading(true); setAuthError("");
+    try {
+      const r = await apiFetch(`${API_BASE}/api/accounts/${authAccId}/confirm-2fa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: authPassword.trim() }),
+      });
+      const d = await r.json() as Record<string, unknown>;
+      if (d.ok) { await onAction(`/api/accounts`, "GET"); resetAuth(); }
+      else setAuthError(String(d.error ?? "Неверный пароль"));
+    } catch { setAuthError("Ошибка подключения"); }
+    setAuthLoading(false);
+  }
+
   return (
     <>
     {showAdd && (
@@ -1065,7 +1131,7 @@ function AccountsTab({ accounts, loading, onAction }: { accounts: Account[]; loa
             <GlassInput value={newApiHash} onChange={setNewApiHash} placeholder="API Hash" />
           </div>
           <div style={{ fontSize: 11, color: TG.muted, lineHeight: 1.5 }}>
-            API ID и Hash получите на <span style={{ color: TG.blue }}>my.telegram.org</span>. После добавления авторизуйте аккаунт через бота.
+            API ID и Hash получите на <span style={{ color: TG.blue }}>my.telegram.org</span>. После добавления нажмите «Авторизовать» на карточке аккаунта.
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
@@ -1138,10 +1204,27 @@ function AccountsTab({ accounts, loading, onAction }: { accounts: Account[]; loa
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: sm.color, background: sm.bg, border: `1px solid ${sm.color}40`, borderRadius: 20, padding: "3px 8px" }}>
-                      {st === "sending" && <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", background: sm.color, marginRight: 4, animation: "pulse 1s infinite", verticalAlign: "middle" }} />}
-                      {sm.label}
-                    </span>
+                    {acc.session_file ? (
+                      <span style={{ fontSize: 9, fontWeight: 700, color: TG.green, background: `${TG.green}18`, border: `1px solid ${TG.green}40`, borderRadius: 20, padding: "3px 8px" }}>
+                        ✓ Авторизован
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 9, fontWeight: 700, color: sm.color, background: sm.bg, border: `1px solid ${sm.color}40`, borderRadius: 20, padding: "3px 8px" }}>
+                        {st === "sending" && <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", background: sm.color, marginRight: 4, animation: "pulse 1s infinite", verticalAlign: "middle" }} />}
+                        {sm.label}
+                      </span>
+                    )}
+                    {acc.api_id && !acc.session_file && (
+                      <div
+                        onClick={() => authAccId !== acc.id && handleStartAuth(acc)}
+                        style={{ height: 26, borderRadius: 8, cursor: authLoading && authAccId === acc.id ? "default" : "pointer", background: `${TG.blue}18`, border: `1px solid ${TG.blue}40`, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, padding: "0 8px", opacity: authLoading && authAccId === acc.id ? 0.6 : 1 }}
+                      >
+                        <KeyRound size={11} color={TG.blue} />
+                        <span style={{ fontSize: 9, fontWeight: 700, color: TG.blue }}>
+                          {authLoading && authAccId === acc.id ? "…" : "Авторизовать"}
+                        </span>
+                      </div>
+                    )}
                     <div onClick={() => setDeleteAccConfirm(acc)} style={{ width: 26, height: 26, borderRadius: 8, cursor: "pointer", background: `${TG.red}12`, border: `1px solid ${TG.red}30`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <Trash2 size={12} color={TG.red} />
                     </div>
@@ -1164,6 +1247,40 @@ function AccountsTab({ accounts, loading, onAction }: { accounts: Account[]; loa
         </div>
       )}
     </div>
+    {authStep === "otp" && authAccId !== null && (
+      <Modal title="Введите код из Telegram" onClose={resetAuth}>
+        <div style={{ fontSize: 13, color: TG.muted, marginBottom: 12, lineHeight: 1.5 }}>
+          Telegram отправил вам SMS или сообщение в приложение. Введите код ниже.
+        </div>
+        <GlassInput value={authCode} onChange={setAuthCode} placeholder="12345" />
+        {authError && <div style={{ fontSize: 12, color: TG.red, marginTop: 8 }}>{authError}</div>}
+        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <div onClick={resetAuth} style={{ flex: 1, padding: "11px 0", borderRadius: 14, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", textAlign: "center", fontSize: 13, fontWeight: 700, color: TG.muted, cursor: "pointer" }}>
+            Отмена
+          </div>
+          <div onClick={handleConfirmOtp} style={{ flex: 2, padding: "11px 0", borderRadius: 14, background: authLoading ? `${TG.blue}20` : `linear-gradient(135deg,${TG.blue}55 0%,${TG.purple}44 100%)`, border: `1px solid ${TG.blue}55`, textAlign: "center", fontSize: 13, fontWeight: 800, color: TG.blue, cursor: "pointer", opacity: authLoading || !authCode.trim() ? 0.6 : 1 }}>
+            {authLoading ? "Проверка…" : "Подтвердить"}
+          </div>
+        </div>
+      </Modal>
+    )}
+    {authStep === "2fa" && authAccId !== null && (
+      <Modal title="Двухфакторная аутентификация" onClose={resetAuth}>
+        <div style={{ fontSize: 13, color: TG.muted, marginBottom: 12, lineHeight: 1.5 }}>
+          На этом аккаунте включена облачная защита паролем. Введите пароль 2FA из Telegram.
+        </div>
+        <GlassInput value={authPassword} onChange={setAuthPassword} placeholder="Пароль 2FA" />
+        {authError && <div style={{ fontSize: 12, color: TG.red, marginTop: 8 }}>{authError}</div>}
+        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <div onClick={resetAuth} style={{ flex: 1, padding: "11px 0", borderRadius: 14, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", textAlign: "center", fontSize: 13, fontWeight: 700, color: TG.muted, cursor: "pointer" }}>
+            Отмена
+          </div>
+          <div onClick={handleConfirm2FA} style={{ flex: 2, padding: "11px 0", borderRadius: 14, background: authLoading ? `${TG.green}20` : `linear-gradient(135deg,${TG.green}55 0%,${TG.blue}44 100%)`, border: `1px solid ${TG.green}55`, textAlign: "center", fontSize: 13, fontWeight: 800, color: TG.green, cursor: "pointer", opacity: authLoading || !authPassword.trim() ? 0.6 : 1 }}>
+            {authLoading ? "Проверка…" : "Войти"}
+          </div>
+        </div>
+      </Modal>
+    )}
     {deleteAccConfirm && (
       <Modal title="Удалить аккаунт?" onClose={() => setDeleteAccConfirm(null)}>
         <div style={{ fontSize: 13, color: TG.muted, marginBottom: 14, lineHeight: 1.5 }}>

@@ -18,6 +18,7 @@ from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError, FloodWaitError
 import campaign_db as cdb
 import campaign_sender as cs
+import telethon_auth
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
@@ -1563,6 +1564,7 @@ def main():
 
     app.add_error_handler(error_handler)
 
+    telethon_auth.run_in_thread()
     logger.info("🤖 Бот запускается...")
     app.run_polling(
         allowed_updates=Update.ALL_TYPES,
