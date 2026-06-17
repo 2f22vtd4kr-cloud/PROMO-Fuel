@@ -214,6 +214,29 @@ async def get_untargeted_users_by_tag(tag: str) -> list[dict]:
     return [r for r in rows if tag in json.loads(r.get("tags") or "[]")]
 
 
+async def get_untargeted_users_for_campaign(campaign_id: int, tag: str = None) -> list[dict]:
+    """Cross-account-safe: exclude users already messaged for this campaign.
+
+    Combines global promo_targeted flag with per-campaign sends dedup so
+    switching sender accounts mid-campaign never double-messages anyone.
+    """
+    async with aiosqlite.connect(DB_PATH) as db_conn:
+        db_conn.row_factory = aiosqlite.Row
+        async with db_conn.execute("""
+            SELECT * FROM users
+            WHERE promo_targeted = 0
+              AND chat_id NOT IN (
+                SELECT DISTINCT chat_id FROM sends
+                WHERE campaign_id = ? AND status IN ('ok', 'ok_retry', 'dry_run')
+              )
+            ORDER BY first_seen
+        """, (campaign_id,)) as cur:
+            rows = [dict(r) for r in await cur.fetchall()]
+    if tag:
+        rows = [r for r in rows if tag in json.loads(r.get("tags") or "[]")]
+    return rows
+
+
 async def is_promo_targeted(chat_id: int) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
@@ -305,12 +328,12 @@ async def increment_campaign_counts(campaign_id: int, sent: int = 0, failed: int
         await db.commit()
 
 
-async def log_send(campaign_id: int, chat_id: int, status: str, error: str = None):
+async def log_send(campaign_id: int, chat_id: int, status: str, error: str = None, account_id: int = None):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
-            INSERT INTO sends (campaign_id, chat_id, status, sent_at, error)
-            VALUES (?, ?, ?, ?, ?)
-        """, (campaign_id, chat_id, status, datetime.now().isoformat(), error))
+            INSERT INTO sends (campaign_id, chat_id, status, sent_at, error, account_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (campaign_id, chat_id, status, datetime.now().isoformat(), error, account_id))
         await db.commit()
 
 
@@ -384,6 +407,16 @@ async def get_active_accounts() -> list[dict]:
             "SELECT * FROM sender_accounts WHERE is_active = 1 AND is_banned = 0 ORDER BY sent_today ASC"
         ) as cur:
             return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_account_by_id(account_id: int) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db_conn:
+        db_conn.row_factory = aiosqlite.Row
+        async with db_conn.execute(
+            "SELECT * FROM sender_accounts WHERE id = ?", (account_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    return dict(row) if row else None
 
 
 async def get_account_by_phone(phone: str) -> dict | None:

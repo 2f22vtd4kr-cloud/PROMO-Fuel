@@ -6,7 +6,7 @@ import {
   Award, ArrowUpRight,
   Filter, User, Zap, Star,
   AlertTriangle, ShieldCheck, WifiOff, Activity, ShieldOff,
-  FolderUp, CheckCircle2, Trash2, KeyRound,
+  FolderUp, CheckCircle2, Trash2, KeyRound, Pencil, Copy, Square,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, ResponsiveContainer,
@@ -84,6 +84,9 @@ interface Campaign {
   target_count: number;
   created_at: string;
   started_at?: string;
+  sender_account_id?: number;
+  send_delay_seconds?: number;
+  scheduled_tag?: string;
 }
 
 interface TrendPoint {
@@ -114,6 +117,7 @@ interface Account {
   sent_today: number;
   sent_total: number;
   failed_total: number;
+  last_error?: string;
   is_banned: number;
   is_active: number;
 }
@@ -524,6 +528,155 @@ function HomeTab({ overview, campaigns, loading, onNav, onCreateCampaign }: { ov
 
 type ActionFn = (path: string, method?: string, body?: Record<string, unknown>) => Promise<void>;
 
+interface SendLog {
+  id: number;
+  chat_id: number;
+  username: string | null;
+  first_name: string | null;
+  status: string;
+  sent_at: string;
+  error: string | null;
+  account_id: number | null;
+}
+
+function CampaignEditModal({ campaign, accounts, onAction, onClose }: { campaign: Campaign; accounts: Account[]; onAction: ActionFn; onClose: () => void }) {
+  const [name, setName]         = useState(campaign.name);
+  const [text, setText]         = useState("");
+  const [accountId, setAccountId] = useState(campaign.sender_account_id ? String(campaign.sender_account_id) : "");
+  const [delay, setDelay]       = useState(campaign.send_delay_seconds ?? 15);
+  const [tag, setTag]           = useState(campaign.scheduled_tag ?? "");
+  const [saving, setSaving]     = useState(false);
+  const [textLoaded, setTextLoaded] = useState(false);
+
+  // Load full campaign (including text_template) on mount
+  useEffect(() => {
+    apiFetch(`/api/campaigns/${campaign.id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(c => { if (c) { setText(c.text_template ?? ""); setTag(c.scheduled_tag ?? ""); setTextLoaded(true); } })
+      .catch(() => setTextLoaded(true));
+  }, [campaign.id]);
+
+  async function handleSave() {
+    if (!name.trim() || !text.trim()) return;
+    setSaving(true);
+    const body: Record<string, unknown> = { name: name.trim(), text_template: text.trim(), send_delay_seconds: delay, scheduled_tag: tag.trim() || null };
+    if (accountId) body.sender_account_id = parseInt(accountId);
+    else body.sender_account_id = null;
+    await onAction(`/api/campaigns/${campaign.id}`, "PUT", body);
+    setSaving(false);
+    onClose();
+  }
+
+  return (
+    <Modal title="Редактировать кампанию" onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <GlassInput value={name} onChange={setName} placeholder="Название кампании *" />
+        {textLoaded
+          ? <GlassInput value={text} onChange={setText} placeholder="Текст сообщения… *" multiline />
+          : <div style={{ padding: 12, textAlign: "center", color: TG.muted, fontSize: 12 }}>Загрузка…</div>
+        }
+        {accounts.length > 0 && (
+          <select value={accountId} onChange={e => setAccountId(e.target.value)} style={{ width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.055)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 12, color: accountId ? TG.text : TG.muted, fontSize: 13, fontFamily: "inherit", padding: "10px 12px", outline: "none" }}>
+            <option value="">— Аккаунт-отправитель (опционально) —</option>
+            {accounts.filter(a => a.is_active && !a.is_banned).map(a => (
+              <option key={a.id} value={String(a.id)} style={{ background: "#0d1021" }}>
+                {a.label || a.phone} ({a.phone})
+              </option>
+            ))}
+          </select>
+        )}
+        <GlassInput value={tag} onChange={setTag} placeholder="🎯  Целевая аудитория (тег, напр. vip)" />
+        <div>
+          <div style={{ fontSize: 10, color: TG.muted, marginBottom: 4 }}>Задержка между сообщениями (сек)</div>
+          <input type="number" min={5} max={120} value={delay} onChange={e => setDelay(Math.max(5, parseInt(e.target.value) || 15))} style={{ width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.055)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 12, color: TG.text, fontSize: 13, fontFamily: "inherit", padding: "10px 12px", outline: "none" }} />
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+        <div onClick={onClose} style={{ flex: 1, padding: "11px 0", borderRadius: 14, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", textAlign: "center", fontSize: 13, fontWeight: 700, color: TG.muted, cursor: "pointer" }}>Отмена</div>
+        <div onClick={handleSave} style={{ flex: 2, padding: "11px 0", borderRadius: 14, background: saving ? `${TG.blue}25` : `linear-gradient(135deg,${TG.blue}55 0%,${TG.purple}44 100%)`, border: `1px solid ${TG.blue}55`, textAlign: "center", fontSize: 13, fontWeight: 800, color: TG.blue, cursor: (saving || !name.trim() || !text.trim()) ? "default" : "pointer", opacity: (saving || !name.trim() || !text.trim()) ? 0.5 : 1 }}>
+          {saving ? "Сохранение…" : "Сохранить"}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function CampaignLogsModal({ campaign, accounts, onClose }: { campaign: Campaign; accounts: Account[]; onClose: () => void }) {
+  const [logs, setLogs] = useState<SendLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [liveCamp, setLiveCamp] = useState<Campaign>(campaign);
+
+  const fetchLogs = useCallback(() => {
+    apiFetch(`/api/campaigns/${campaign.id}/logs`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => { setLogs(Array.isArray(data) ? data : []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [campaign.id]);
+
+  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+
+  // Auto-refresh every 4s when the campaign is running
+  useEffect(() => {
+    if (liveCamp.status !== "running") return;
+    const t = setInterval(() => {
+      fetchLogs();
+      apiFetch(`/api/campaigns/${campaign.id}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(c => { if (c) setLiveCamp(c); })
+        .catch(() => {});
+    }, 4000);
+    return () => clearInterval(t);
+  }, [liveCamp.status, campaign.id, fetchLogs]);
+
+  const statusColor: Record<string, string> = {
+    ok: TG.green, ok_retry: TG.green, dry_run: TG.blue,
+    blocked: TG.red, failed: TG.red,
+    skipped_already_targeted: TG.muted,
+  };
+  const countByStatus = logs.reduce((acc, l) => { acc[l.status] = (acc[l.status] ?? 0) + 1; return acc; }, {} as Record<string, number>);
+
+  return (
+    <Modal title={`Лог: ${campaign.name}`} onClose={onClose}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+        {Object.entries(countByStatus).map(([s, n]) => (
+          <span key={s} style={{ fontSize: 9, fontWeight: 700, color: statusColor[s] ?? TG.muted, background: `${statusColor[s] ?? TG.muted}18`, border: `1px solid ${statusColor[s] ?? TG.muted}30`, borderRadius: 20, padding: "3px 8px" }}>
+            {s}: {n}
+          </span>
+        ))}
+      </div>
+      {loading ? (
+        <div style={{ textAlign: "center", color: TG.muted, fontSize: 13, padding: 20 }}>Загрузка…</div>
+      ) : logs.length === 0 ? (
+        <div style={{ textAlign: "center", color: TG.muted, fontSize: 13, padding: 20 }}>Нет записей</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 340, overflowY: "auto" }}>
+          {logs.map(l => {
+            const acc = l.account_id ? accounts.find(a => a.id === l.account_id) : null;
+            const col = statusColor[l.status] ?? TG.muted;
+            return (
+              <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 10, background: "rgba(255,255,255,0.04)", border: `1px solid rgba(255,255,255,0.07)` }}>
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: col, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: TG.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {l.first_name || l.username || `id:${l.chat_id}`}
+                    {l.username && <span style={{ color: TG.blue, marginLeft: 5, fontSize: 10 }}>@{l.username}</span>}
+                  </div>
+                  {l.error && <div style={{ fontSize: 9, color: TG.red, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.error}</div>}
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: col }}>{l.status}</div>
+                  {acc && <div style={{ fontSize: 9, color: TG.muted }}>{acc.username ? `@${acc.username}` : acc.label}</div>}
+                  <div style={{ fontSize: 9, color: TG.muted }}>{l.sent_at?.slice(11, 19)}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function CampaignsTab({ campaigns, loading, onAction, accounts, openCreate, onCreateClose }: {
   campaigns: Campaign[]; loading: boolean; onAction: ActionFn;
   accounts: Account[]; openCreate: boolean; onCreateClose: () => void;
@@ -534,10 +687,13 @@ function CampaignsTab({ campaigns, loading, onAction, accounts, openCreate, onCr
   const [newAccountId, setNewAccountId] = useState<string>("");
   const [newDelay, setNewDelay]     = useState(15);
   const [newScheduled, setNewScheduled] = useState("");
+  const [newTag, setNewTag]         = useState("");
   const [creating, setCreating]     = useState(false);
   const [actionId, setActionId]     = useState<number | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Campaign | null>(null);
   const [deleting, setDeleting]     = useState(false);
+  const [logsModal, setLogsModal]   = useState<Campaign | null>(null);
+  const [editModal, setEditModal]   = useState<Campaign | null>(null);
 
   useEffect(() => {
     if (openCreate) { setShowCreate(true); onCreateClose(); }
@@ -561,8 +717,9 @@ function CampaignsTab({ campaigns, loading, onAction, accounts, openCreate, onCr
     };
     if (newAccountId) body.sender_account_id = parseInt(newAccountId);
     if (newScheduled) body.scheduled_at = newScheduled;
+    if (newTag.trim()) body.scheduled_tag = newTag.trim();
     await onAction("/api/campaigns", "POST", body);
-    setNewName(""); setNewText(""); setNewAccountId(""); setNewDelay(15); setNewScheduled("");
+    setNewName(""); setNewText(""); setNewAccountId(""); setNewDelay(15); setNewScheduled(""); setNewTag("");
     setCreating(false); setShowCreate(false);
   }
 
@@ -598,6 +755,12 @@ function CampaignsTab({ campaigns, loading, onAction, accounts, openCreate, onCr
         </div>
       </Modal>
     )}
+    {logsModal && (
+      <CampaignLogsModal campaign={logsModal} accounts={accounts} onClose={() => setLogsModal(null)} />
+    )}
+    {editModal && (
+      <CampaignEditModal campaign={editModal} accounts={accounts} onAction={onAction} onClose={() => setEditModal(null)} />
+    )}
     {showCreate && (
       <Modal title="Новая кампания" onClose={() => setShowCreate(false)}>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -624,6 +787,7 @@ function CampaignsTab({ campaigns, loading, onAction, accounts, openCreate, onCr
               ))}
             </select>
           )}
+          <GlassInput value={newTag} onChange={setNewTag} placeholder="🎯  Целевая аудитория (тег, напр. vip)" />
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 10, color: TG.muted, marginBottom: 4 }}>Задержка между сообщениями (сек)</div>
@@ -705,8 +869,8 @@ function CampaignsTab({ campaigns, loading, onAction, accounts, openCreate, onCr
               <GlassCard key={c.id} style={{ padding: "14px" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: TG.text, marginBottom: 3 }}>{c.name}</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div onClick={() => setLogsModal(c)} style={{ fontSize: 13, fontWeight: 700, color: TG.text, marginBottom: 3, cursor: "pointer" }}>{c.name} <span style={{ fontSize: 10, color: TG.muted, fontWeight: 400 }}>→</span></div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       <StatusBadge status={c.status} />
                       {c.created_at && (
                         <span style={{ fontSize: 10, color: TG.muted }}>
@@ -714,28 +878,76 @@ function CampaignsTab({ campaigns, loading, onAction, accounts, openCreate, onCr
                           {c.created_at.slice(0, 10)}
                         </span>
                       )}
+                      {c.sender_account_id && (() => {
+                        const acc = accounts.find(a => a.id === c.sender_account_id);
+                        if (!acc) return null;
+                        return (
+                          <span style={{ fontSize: 9, color: TG.blue, background: `${TG.blue}18`, border: `1px solid ${TG.blue}30`, borderRadius: 20, padding: "2px 7px", fontWeight: 700 }}>
+                            {acc.username ? `@${acc.username}` : acc.label || acc.phone}
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
                     {c.status === "draft" && (
-                      <div onClick={() => { setActionId(c.id); onAction(`/api/campaigns/${c.id}/action`, "POST", { action: "running" }).then(() => setActionId(null)); }} style={{
-                        width: 30, height: 30, borderRadius: 10, cursor: isActing ? "default" : "pointer", opacity: isActing ? 0.5 : 1,
-                        background: `${TG.green}18`, border: `1px solid ${TG.green}40`,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        transition: "opacity 0.2s",
-                      }}>
-                        <Play size={13} color={TG.green} />
-                      </div>
+                      <>
+                        <div onClick={() => setEditModal(c)} style={{
+                          width: 30, height: 30, borderRadius: 10, cursor: "pointer",
+                          background: `${TG.muted}12`, border: `1px solid ${TG.muted}30`,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                        }}>
+                          <Pencil size={12} color={TG.muted} />
+                        </div>
+                        <div onClick={() => { setActionId(c.id); onAction(`/api/campaigns/${c.id}/action`, "POST", { action: "running" }).then(() => setActionId(null)); }} style={{
+                          width: 30, height: 30, borderRadius: 10, cursor: isActing ? "default" : "pointer", opacity: isActing ? 0.5 : 1,
+                          background: `${TG.green}18`, border: `1px solid ${TG.green}40`,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          transition: "opacity 0.2s",
+                        }}>
+                          <Play size={13} color={TG.green} />
+                        </div>
+                      </>
                     )}
                     {(c.status === "running" || c.status === "paused") && (
-                      <div onClick={() => handleToggle(c)} style={{
+                      <>
+                        <div onClick={() => handleToggle(c)} style={{
+                          width: 30, height: 30, borderRadius: 10, cursor: isActing ? "default" : "pointer", opacity: isActing ? 0.5 : 1,
+                          background: c.status === "running" ? `${TG.green}18` : `${TG.blue}18`,
+                          border: `1px solid ${c.status === "running" ? TG.green : TG.blue}40`,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          transition: "opacity 0.2s",
+                        }}>
+                          {c.status === "running" ? <Pause size={13} color={TG.green} /> : <Play size={13} color={TG.blue} />}
+                        </div>
+                        <div onClick={() => { setActionId(c.id); onAction(`/api/campaigns/${c.id}/action`, "POST", { action: "cancelled" }).then(() => setActionId(null)); }} style={{
+                          width: 30, height: 30, borderRadius: 10, cursor: isActing ? "default" : "pointer", opacity: isActing ? 0.5 : 1,
+                          background: `${TG.red}12`, border: `1px solid ${TG.red}30`,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          transition: "opacity 0.2s",
+                        }} title="Остановить кампанию">
+                          <Square size={12} color={TG.red} />
+                        </div>
+                      </>
+                    )}
+                    {(c.status === "done" || c.status === "cancelled" || c.status === "draft") && (
+                      <div onClick={() => { setActionId(c.id); onAction(`/api/campaigns/${c.id}/duplicate`, "POST", {}).then(() => setActionId(null)); }} style={{
                         width: 30, height: 30, borderRadius: 10, cursor: isActing ? "default" : "pointer", opacity: isActing ? 0.5 : 1,
-                        background: c.status === "running" ? `${TG.green}18` : `${TG.blue}18`,
-                        border: `1px solid ${c.status === "running" ? TG.green : TG.blue}40`,
+                        background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
                         display: "flex", alignItems: "center", justifyContent: "center",
                         transition: "opacity 0.2s",
-                      }}>
-                        {c.status === "running" ? <Pause size={13} color={TG.green} /> : <Play size={13} color={TG.blue} />}
+                      }} title="Дублировать кампанию">
+                        <Copy size={12} color={TG.muted} />
+                      </div>
+                    )}
+                    {(c.status === "done" || c.status === "cancelled") && (
+                      <div onClick={() => { setActionId(c.id); onAction(`/api/campaigns/${c.id}/reset`, "POST", {}).then(() => setActionId(null)); }} style={{
+                        width: 30, height: 30, borderRadius: 10, cursor: isActing ? "default" : "pointer", opacity: isActing ? 0.5 : 1,
+                        background: `${TG.purple}18`, border: `1px solid ${TG.purple}40`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "opacity 0.2s",
+                      }} title="Сбросить и перезапустить">
+                        <Zap size={13} color={TG.purple} />
                       </div>
                     )}
                     {(c.status === "draft" || c.status === "done" || c.status === "cancelled") && (
@@ -757,6 +969,7 @@ function CampaignsTab({ campaigns, loading, onAction, accounts, openCreate, onCr
                       <span style={{ fontSize: 10, color: TG.muted }}>Отправлено</span>
                       <span style={{ fontSize: 10, color, fontWeight: 700 }}>
                         {c.sent_count.toLocaleString("ru")} / {c.target_count.toLocaleString("ru")} ({pct}%)
+                        {c.failed_count > 0 && <span style={{ color: TG.red, marginLeft: 6 }}>· {c.failed_count} ❌</span>}
                       </span>
                     </div>
                     <div style={{ height: 3, borderRadius: 2, background: "rgba(255,255,255,0.07)" }}>
@@ -764,7 +977,10 @@ function CampaignsTab({ campaigns, loading, onAction, accounts, openCreate, onCr
                     </div>
                   </div>
                 ) : c.sent_count > 0 ? (
-                  <div style={{ fontSize: 11, color: TG.muted }}>Отправлено: <span style={{ color, fontWeight: 700 }}>{c.sent_count.toLocaleString("ru")}</span></div>
+                  <div style={{ fontSize: 11, color: TG.muted }}>
+                    Отправлено: <span style={{ color, fontWeight: 700 }}>{c.sent_count.toLocaleString("ru")}</span>
+                    {c.failed_count > 0 && <span style={{ color: TG.red, marginLeft: 8 }}>Ошибок: {c.failed_count}</span>}
+                  </div>
                 ) : null}
               </GlassCard>
             );
@@ -891,115 +1107,155 @@ function AnalyticsTab({ overview, trend, loading }: { overview: Overview | null;
   );
 }
 
-function AudienceTab({ users, overview, loading }: { users: UserRow[]; overview: Overview | null; loading: boolean }) {
-  const totalUsers = overview?.totalUsers ?? users.length;
-  const allTags = Array.from(new Set(users.flatMap(u => parseTags(u.tags))));
+function AudienceTab({ overview }: { overview: Overview | null }) {
+  const [activeTag, setActiveTag]   = useState("");
+  const [search, setSearch]         = useState("");
+  const [debouncedSearch, setDebSearch] = useState("");
+  const [users, setUsers]           = useState<UserRow[]>([]);
+  const [total, setTotal]           = useState(0);
+  const [allTags, setAllTags]       = useState<string[]>([]);
+  const [fetchLoading, setFetchLoading] = useState(true);
+
   const TAG_COLORS: Record<string, string> = {
     vip: TG.purple, inactive: TG.red, active: TG.green, premium: TG.yellow, new: TG.blue,
   };
-  const SEGMENT_ICONS: Record<string, React.ElementType> = {
-    vip: Award, premium: Award, active: Zap, inactive: Clock, new: Star,
-  };
-
-  const segments = allTags.slice(0, 4).map(tag => ({
-    name: tag,
-    count: users.filter(u => parseTags(u.tags).includes(tag)).length,
-    color: TAG_COLORS[tag] ?? TG.blue,
-    glow: (TAG_COLORS[tag] ?? TG.blue) + "38",
-    icon: SEGMENT_ICONS[tag] ?? Users2,
-  }));
-
-  const topUsers = users.slice(0, 5);
   const USER_COLORS = [TG.purple, TG.green, TG.blue, TG.orange, TG.pink];
 
+  // Load all tags once for filter chips
+  useEffect(() => {
+    apiFetch("/api/audience?limit=200")
+      .then(r => r.ok ? r.json() : { rows: [] })
+      .then(d => {
+        const tags = Array.from(new Set<string>((d.rows as UserRow[]).flatMap((u: UserRow) => parseTags(u.tags))));
+        setAllTags(tags);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Debounce search input
+  useEffect(() => {
+    const t = setTimeout(() => setDebSearch(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Fetch users whenever filter or search changes
+  useEffect(() => {
+    setFetchLoading(true);
+    const p = new URLSearchParams({ limit: "100" });
+    if (activeTag) p.set("tag", activeTag);
+    if (debouncedSearch) p.set("search", debouncedSearch);
+    apiFetch(`/api/audience?${p}`)
+      .then(r => r.ok ? r.json() : { total: 0, rows: [] })
+      .then(d => { setUsers(Array.isArray(d.rows) ? d.rows : []); setTotal(d.total ?? 0); setFetchLoading(false); })
+      .catch(() => setFetchLoading(false));
+  }, [activeTag, debouncedSearch]);
+
   return (
-    <div className="tab-content" style={{ display: "flex", flexDirection: "column", gap: 14, padding: "0 14px", paddingBottom: 8 }}>
+    <div className="tab-content" style={{ display: "flex", flexDirection: "column", gap: 12, padding: "0 14px", paddingBottom: 8 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 4 }}>
         <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>Аудитория</div>
-        <GlassCard style={{ padding: "8px 12px", borderRadius: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <Filter size={13} color={TG.blue} />
-            <span style={{ fontSize: 11, color: TG.blue, fontWeight: 700 }}>Фильтр</span>
-          </div>
-        </GlassCard>
       </div>
 
-      {loading ? (
+      {fetchLoading && users.length === 0 ? (
         <SkeletonCard style={{ height: 72 }} />
       ) : (
         <GlassCard glow={TG.blueGlow + "20"} style={{ padding: "16px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
-              <div style={{ fontSize: 32, fontWeight: 900, color: TG.text, letterSpacing: "-0.04em" }}>{totalUsers.toLocaleString("ru")}</div>
+              <div style={{ fontSize: 32, fontWeight: 900, color: TG.text, letterSpacing: "-0.04em" }}>
+                {(overview?.totalUsers ?? total).toLocaleString("ru")}
+              </div>
               <div style={{ fontSize: 12, color: TG.textSecondary }}>Всего пользователей</div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: TG.green }}>{users.length > 0 ? `${users.length} в базе` : "—"}</div>
-              <div style={{ fontSize: 10, color: TG.muted }}>получателей</div>
+              {activeTag || debouncedSearch ? (
+                <>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: TG.blue }}>{total.toLocaleString("ru")} найдено</div>
+                  <div style={{ fontSize: 10, color: TG.muted }}>по фильтру</div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: TG.green }}>{allTags.length || "—"} тегов</div>
+                  <div style={{ fontSize: 10, color: TG.muted }}>сегментов</div>
+                </>
+              )}
             </div>
           </div>
         </GlassCard>
       )}
 
-      {segments.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          {segments.map(s => {
-            const Icon = s.icon;
+      {/* Search box */}
+      <GlassInput value={search} onChange={setSearch} placeholder="🔍  Поиск по имени, @username, ID…" />
+
+      {/* Tag filter chips */}
+      {allTags.length > 0 && (
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+          {(["", ...allTags] as string[]).map(tag => {
+            const color = tag ? (TAG_COLORS[tag] ?? TG.blue) : TG.blue;
+            const active = activeTag === tag;
             return (
-              <GlassCard key={s.name} glow={s.glow + "25"} style={{ padding: "12px 12px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  <div style={{ width: 26, height: 26, borderRadius: 8, background: `${s.color}20`, border: `1px solid ${s.color}35`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Icon size={12} color={s.color} />
-                  </div>
-                  <span style={{ fontSize: 11, color: TG.textSecondary, fontWeight: 600 }}>{s.name}</span>
-                </div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: TG.text }}>{s.count.toLocaleString("ru")}</div>
-              </GlassCard>
+              <div
+                key={tag || "__all"}
+                onClick={() => setActiveTag(active && tag ? "" : tag)}
+                style={{ height: 28, borderRadius: 20, cursor: "pointer", padding: "0 12px", display: "flex", alignItems: "center", fontSize: 11, fontWeight: 700, background: active ? `${color}28` : "rgba(255,255,255,0.06)", border: `1px solid ${active ? color + "60" : "rgba(255,255,255,0.12)"}`, color: active ? color : TG.muted, transition: "all 0.15s" }}
+              >
+                {tag || "Все"}
+              </div>
             );
           })}
         </div>
       )}
 
-      {topUsers.length > 0 && (
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: TG.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>
-            Последние пользователи
+      {/* User list */}
+      {fetchLoading ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          {[0, 1, 2].map(i => <SkeletonCard key={i} style={{ height: 62 }} />)}
+        </div>
+      ) : users.length === 0 ? (
+        <GlassCard style={{ padding: "32px 14px", textAlign: "center" }}>
+          <Users2 size={32} color={TG.muted} style={{ margin: "0 auto 12px" }} />
+          <div style={{ fontSize: 13, color: TG.muted }}>
+            {activeTag || debouncedSearch ? "Ничего не найдено" : "Нет пользователей в базе"}
           </div>
+        </GlassCard>
+      ) : (
+        <>
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            {topUsers.map((u, i) => {
+            {users.map((u, i) => {
               const tags = parseTags(u.tags);
               const displayName = u.username ? `@${u.username}` : u.first_name || `User ${u.chat_id}`;
               const color = USER_COLORS[i % USER_COLORS.length];
-              const tag = tags[0];
               return (
-                <GlassCard key={u.chat_id} style={{ padding: "12px 14px" }}>
+                <GlassCard key={u.chat_id} style={{ padding: "11px 14px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 12, flexShrink: 0, background: `linear-gradient(145deg,${color}35 0%,${color}15 100%)`, border: `1px solid ${color}40`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: `linear-gradient(145deg,${color}35 0%,${color}15 100%)`, border: `1px solid ${color}40`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color }}>
                       {displayName[0]?.toUpperCase() ?? "?"}
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: TG.text }}>{displayName}</span>
-                        {tag && <span style={{ fontSize: 9, fontWeight: 700, color, background: `${color}18`, border: `1px solid ${color}35`, borderRadius: 20, padding: "1px 6px" }}>{tag}</span>}
+                        {tags.map(tag => {
+                          const tc = TAG_COLORS[tag] ?? TG.blue;
+                          return (
+                            <span key={tag} onClick={() => setActiveTag(tag)} style={{ fontSize: 9, fontWeight: 700, color: tc, background: `${tc}18`, border: `1px solid ${tc}35`, borderRadius: 20, padding: "1px 6px", cursor: "pointer" }}>{tag}</span>
+                          );
+                        })}
                       </div>
-                      <div style={{ fontSize: 10, color: TG.muted, marginTop: 2 }}>
-                        ID: {u.chat_id}{u.first_seen ? ` · с ${u.first_seen.slice(0, 10)}` : ""}
+                      <div style={{ fontSize: 10, color: TG.muted, marginTop: 1 }}>
+                        ID: {u.chat_id}{u.last_seen ? ` · актив. ${u.last_seen.slice(0, 10)}` : u.first_seen ? ` · с ${u.first_seen.slice(0, 10)}` : ""}
                       </div>
                     </div>
-                    <User size={14} color={TG.muted} />
                   </div>
                 </GlassCard>
               );
             })}
           </div>
-        </div>
-      )}
-
-      {!loading && users.length === 0 && (
-        <GlassCard style={{ padding: "32px 14px", textAlign: "center" }}>
-          <Users2 size={32} color={TG.muted} style={{ margin: "0 auto 12px" }} />
-          <div style={{ fontSize: 13, color: TG.muted }}>Нет пользователей в базе</div>
-        </GlassCard>
+          {total > users.length && (
+            <div style={{ textAlign: "center", fontSize: 11, color: TG.muted, padding: "4px 0" }}>
+              Показано {users.length} из {total.toLocaleString("ru")}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -1200,7 +1456,10 @@ function AccountsTab({ accounts, loading, onAction }: { accounts: Account[]; loa
                     </div>
                     <div>
                       <div style={{ fontSize: 12, fontWeight: 700, color: TG.text }}>{acc.label || "Без названия"}</div>
-                      <div style={{ fontSize: 10, color: TG.muted }}>{acc.phone}</div>
+                      <div style={{ fontSize: 10, color: TG.muted }}>
+                        {acc.username ? <span style={{ color: TG.blue }}>{acc.username} · </span> : null}
+                        {acc.phone}
+                      </div>
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -1208,20 +1467,25 @@ function AccountsTab({ accounts, loading, onAction }: { accounts: Account[]; loa
                       <span style={{ fontSize: 9, fontWeight: 700, color: TG.green, background: `${TG.green}18`, border: `1px solid ${TG.green}40`, borderRadius: 20, padding: "3px 8px" }}>
                         ✓ Авторизован
                       </span>
+                    ) : acc.api_id ? (
+                      <span style={{ fontSize: 9, fontWeight: 700, color: TG.yellow, background: `${TG.yellow}18`, border: `1px solid ${TG.yellow}40`, borderRadius: 20, padding: "3px 8px" }}>
+                        ⚠ Не авторизован
+                      </span>
                     ) : (
                       <span style={{ fontSize: 9, fontWeight: 700, color: sm.color, background: sm.bg, border: `1px solid ${sm.color}40`, borderRadius: 20, padding: "3px 8px" }}>
                         {st === "sending" && <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", background: sm.color, marginRight: 4, animation: "pulse 1s infinite", verticalAlign: "middle" }} />}
                         {sm.label}
                       </span>
                     )}
-                    {acc.api_id && !acc.session_file && (
+                    {acc.api_id && (
                       <div
                         onClick={() => authAccId !== acc.id && handleStartAuth(acc)}
-                        style={{ height: 26, borderRadius: 8, cursor: authLoading && authAccId === acc.id ? "default" : "pointer", background: `${TG.blue}18`, border: `1px solid ${TG.blue}40`, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, padding: "0 8px", opacity: authLoading && authAccId === acc.id ? 0.6 : 1 }}
+                        style={{ height: 26, borderRadius: 8, cursor: authLoading && authAccId === acc.id ? "default" : "pointer", background: acc.session_file ? "rgba(255,255,255,0.06)" : `${TG.blue}18`, border: `1px solid ${acc.session_file ? "rgba(255,255,255,0.12)" : TG.blue + "40"}`, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, padding: "0 8px", opacity: authLoading && authAccId === acc.id ? 0.6 : 1 }}
+                        title={acc.session_file ? "Обновить авторизацию" : "Авторизовать аккаунт"}
                       >
-                        <KeyRound size={11} color={TG.blue} />
-                        <span style={{ fontSize: 9, fontWeight: 700, color: TG.blue }}>
-                          {authLoading && authAccId === acc.id ? "…" : "Авторизовать"}
+                        <KeyRound size={11} color={acc.session_file ? TG.muted : TG.blue} />
+                        <span style={{ fontSize: 9, fontWeight: 700, color: acc.session_file ? TG.muted : TG.blue }}>
+                          {authLoading && authAccId === acc.id ? "…" : acc.session_file ? "Обновить" : "Авторизовать"}
                         </span>
                       </div>
                     )}
@@ -1240,6 +1504,18 @@ function AccountsTab({ accounts, loading, onAction }: { accounts: Account[]; loa
                   <div style={{ height: 3, borderRadius: 2, background: "rgba(255,255,255,0.07)" }}>
                     <div style={{ height: "100%", borderRadius: 2, width: `${pct}%`, background: `linear-gradient(90deg,${barColor},${barColor}99)`, boxShadow: `0 0 6px ${barColor}88` }} />
                   </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+                    <span style={{ fontSize: 10, color: TG.muted }}>
+                      Всего: <span style={{ color: TG.green, fontWeight: 700 }}>{(acc.sent_total ?? 0).toLocaleString("ru")}</span> отправлено
+                      {(acc.failed_total ?? 0) > 0 && <span style={{ color: TG.red, marginLeft: 6 }}>· <span style={{ fontWeight: 700 }}>{acc.failed_total.toLocaleString("ru")}</span> ошибок</span>}
+                    </span>
+                  </div>
+                  {acc.last_error && (
+                    <div style={{ marginTop: 5, display: "flex", alignItems: "center", gap: 6, background: `${TG.red}10`, borderRadius: 6, padding: "3px 7px" }}>
+                      <span style={{ fontSize: 9, color: TG.red, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>⚠ {acc.last_error}</span>
+                      <span onClick={() => onAction(`/api/accounts/${acc.id}`, "PUT", { last_error: null, ...(acc.is_banned ? { is_banned: 0, status: "idle" } : {}) })} style={{ fontSize: 9, color: TG.muted, cursor: "pointer", flexShrink: 0 }} title="Очистить ошибку">×</span>
+                    </div>
+                  )}
                 </div>
               </GlassCard>
             );
@@ -1607,7 +1883,7 @@ export default function App() {
           {activeTab === "home"      && <HomeTab      overview={overview} campaigns={campaigns} loading={loading} onNav={setActiveTab} onCreateCampaign={() => { setActiveTab("campaigns"); setOpenCreate(true); }} />}
           {activeTab === "campaigns" && <CampaignsTab campaigns={campaigns} loading={loading} onAction={onAction} accounts={accounts} openCreate={openCreate} onCreateClose={() => setOpenCreate(false)} />}
           {activeTab === "analytics" && <AnalyticsTab overview={overview} trend={trend} loading={loading} />}
-          {activeTab === "audience"  && <AudienceTab  users={users} overview={overview} loading={loading} />}
+          {activeTab === "audience"  && <AudienceTab  overview={overview} />}
           {activeTab === "accounts"  && <AccountsTab  accounts={accounts} loading={loading} onAction={onAction} />}
           {activeTab === "upload"    && <UploadTab />}
           <div style={{ height: 16 }} />

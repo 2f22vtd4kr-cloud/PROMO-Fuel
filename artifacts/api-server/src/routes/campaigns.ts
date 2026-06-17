@@ -29,9 +29,9 @@ router.get("/campaigns", (req, res) => {
 router.post("/campaigns", (req, res) => {
   try {
     const db = new Database(DB_PATH);
-    const { name, text_template, sender_account_id, send_delay_seconds, scheduled_at } = req.body as {
+    const { name, text_template, sender_account_id, send_delay_seconds, scheduled_at, scheduled_tag } = req.body as {
       name: string; text_template: string;
-      sender_account_id?: number; send_delay_seconds?: number; scheduled_at?: string;
+      sender_account_id?: number; send_delay_seconds?: number; scheduled_at?: string; scheduled_tag?: string;
     };
     if (!name || !text_template) return void res.status(400).json({ error: "name and text_template required" });
     const now = new Date().toISOString();
@@ -39,9 +39,9 @@ router.post("/campaigns", (req, res) => {
       try { db.exec(`ALTER TABLE campaigns ADD COLUMN ${col} ${def}`); } catch {}
     }
     const info = db.prepare(
-      `INSERT INTO campaigns (name, text_template, status, created_at, sent_count, failed_count, target_count, dry_run, sender_account_id, send_delay_seconds, scheduled_at)
-       VALUES (?, ?, 'draft', ?, 0, 0, 0, 0, ?, ?, ?)`
-    ).run(name, text_template, now, sender_account_id ?? null, send_delay_seconds ?? 15, scheduled_at ?? null);
+      `INSERT INTO campaigns (name, text_template, status, created_at, sent_count, failed_count, target_count, dry_run, sender_account_id, send_delay_seconds, scheduled_at, scheduled_tag)
+       VALUES (?, ?, 'draft', ?, 0, 0, 0, 0, ?, ?, ?, ?)`
+    ).run(name, text_template, now, sender_account_id ?? null, send_delay_seconds ?? 15, scheduled_at ?? null, scheduled_tag ?? null);
     const row = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(info.lastInsertRowid);
     db.close();
     res.status(201).json(row);
@@ -66,13 +66,19 @@ router.put("/campaigns/:id", (req, res) => {
   try {
     const db = new Database(DB_PATH);
     const id = parseInt(req.params.id);
-    const { name, text_template, status, notes } = req.body as { name?: string; text_template?: string; status?: string; notes?: string };
+    const { name, text_template, status, notes, sender_account_id, send_delay_seconds } = req.body as {
+      name?: string; text_template?: string; status?: string; notes?: string;
+      sender_account_id?: number | null; send_delay_seconds?: number;
+    };
     const fields: string[] = [];
     const values: unknown[] = [];
     if (name !== undefined) { fields.push("name = ?"); values.push(name); }
     if (text_template !== undefined) { fields.push("text_template = ?"); values.push(text_template); }
     if (status !== undefined) { fields.push("status = ?"); values.push(status); }
     if (notes !== undefined) { fields.push("notes = ?"); values.push(notes); }
+    if (sender_account_id !== undefined) { fields.push("sender_account_id = ?"); values.push(sender_account_id ?? null); }
+    if (send_delay_seconds !== undefined) { fields.push("send_delay_seconds = ?"); values.push(send_delay_seconds); }
+    if ((req.body as Record<string, unknown>).scheduled_tag !== undefined) { fields.push("scheduled_tag = ?"); values.push((req.body as Record<string, unknown>).scheduled_tag ?? null); }
     if (fields.length === 0) return void res.status(400).json({ error: "nothing to update" });
     values.push(id);
     db.prepare(`UPDATE campaigns SET ${fields.join(", ")} WHERE id = ?`).run(...values);
@@ -91,6 +97,41 @@ router.delete("/campaigns/:id", (req, res) => {
     db.prepare("DELETE FROM campaigns WHERE id = ?").run(parseInt(req.params.id));
     db.close();
     res.status(204).end();
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.post("/campaigns/:id/duplicate", (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const db = new Database(DB_PATH);
+    const src = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    if (!src) { db.close(); return void res.status(404).json({ error: "Not found" }); }
+    const now = new Date().toISOString();
+    const result = db.prepare(
+      `INSERT INTO campaigns (name, text_template, status, created_at, sent_count, failed_count, target_count, dry_run, sender_account_id, send_delay_seconds)
+       VALUES (?, ?, 'draft', ?, 0, 0, 0, ?, ?, ?)`
+    ).run(`Копия: ${src.name}`, src.text_template, now, src.dry_run ?? 0, src.sender_account_id ?? null, src.send_delay_seconds ?? 15);
+    const row = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(result.lastInsertRowid);
+    db.close();
+    res.status(201).json(row);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.post("/campaigns/:id/reset", (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const db = new Database(DB_PATH);
+    const c = db.prepare("SELECT status FROM campaigns WHERE id = ?").get(id) as { status: string } | undefined;
+    if (!c) { db.close(); return void res.status(404).json({ error: "Campaign not found" }); }
+    if (c.status === "running") { db.close(); return void res.status(400).json({ error: "Cannot reset a running campaign" }); }
+    db.prepare("UPDATE campaigns SET status = 'draft', sent_count = 0, failed_count = 0, target_count = 0 WHERE id = ?").run(id);
+    db.prepare("DELETE FROM sends WHERE campaign_id = ?").run(id);
+    db.close();
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

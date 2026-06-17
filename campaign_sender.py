@@ -6,8 +6,20 @@ import logging
 from datetime import datetime, timezone
 from telegram import Bot
 from telegram.error import TelegramError, Forbidden
+from telethon import TelegramClient
+from telethon.errors import (
+    FloodWaitError as TelFloodWait,
+    UserPrivacyRestrictedError,
+    UserDeactivatedBanError,
+    UserDeactivatedError,
+    PeerFloodError,
+    InputUserDeactivatedError,
+)
 
 import campaign_db as db
+
+# Cache of active Telethon clients: account_id -> TelegramClient
+_telethon_clients: dict = {}
 
 DAILY_SEND_CAP = int(os.getenv("DAILY_SEND_CAP", "500"))
 
@@ -48,11 +60,63 @@ async def human_delay(sent_count: int) -> None:
 
     await asyncio.sleep(base + extra)
 
+
 logger = logging.getLogger(__name__)
 
 # Active campaign state
 _active: dict = {}  # campaign_id -> state dict
 _scheduler_task = None
+
+
+async def get_telethon_client(account: dict) -> TelegramClient | None:
+    """Return a connected, authorized TelegramClient for a sender account, or None."""
+    acc_id = account.get("id")
+    sess = account.get("session_file")
+    api_id = account.get("api_id")
+    api_hash = account.get("api_hash")
+    if not (sess and api_id and api_hash):
+        return None
+    # Reuse cached client if still connected
+    if acc_id in _telethon_clients:
+        client = _telethon_clients[acc_id]
+        try:
+            if client.is_connected() and await client.is_user_authorized():
+                return client
+        except Exception:
+            pass
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+        del _telethon_clients[acc_id]
+    # Telethon adds .session extension automatically
+    sess_path = sess[:-8] if sess.endswith(".session") else sess
+    client = TelegramClient(sess_path, int(api_id), str(api_hash))
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            logger.warning(f"Account {account.get('phone')} session expired/revoked")
+            await client.disconnect()
+            return None
+        _telethon_clients[acc_id] = client
+        return client
+    except Exception as e:
+        logger.error(f"Failed to connect Telethon client for account {account.get('phone')}: {e}")
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+        return None
+
+
+async def release_telethon_client(account_id: int):
+    """Disconnect and remove a cached Telethon client."""
+    if account_id in _telethon_clients:
+        try:
+            await _telethon_clients[account_id].disconnect()
+        except Exception:
+            pass
+        del _telethon_clients[account_id]
 
 
 async def daily_reset_loop():
@@ -148,9 +212,22 @@ async def send_campaign(bot: Bot, campaign_id: int, notify_chat_id: int, tag: st
     if campaign_id in _active and _active[campaign_id]["status"] == "running":
         return
 
-    # One-and-Done: load only users who haven't been promo-targeted yet
-    users = (await db.get_untargeted_users_by_tag(tag) if tag
-             else await db.get_untargeted_users())
+    # Resolve sender account — prefer Telethon user account over bot
+    sender_account_id = campaign.get("sender_account_id") or None
+    account = None
+    telethon_client = None
+    if sender_account_id:
+        account = await db.get_account_by_id(sender_account_id)
+        if account:
+            telethon_client = await get_telethon_client(account)
+            if telethon_client:
+                logger.info(f"📲 Telethon account {account['phone']} ready for campaign {campaign_id}")
+                await db.account_mark_sending(sender_account_id)
+            else:
+                logger.warning(f"⚠️ Telethon unavailable for account {account.get('phone')}, falling back to Bot API")
+
+    # Per-campaign dedup: skip users already messaged for this campaign across any account
+    users = await db.get_untargeted_users_for_campaign(campaign_id, tag)
 
     _active[campaign_id] = {
         "status": "running",
@@ -162,99 +239,155 @@ async def send_campaign(bot: Bot, campaign_id: int, notify_chat_id: int, tag: st
         "started_at": datetime.now().isoformat(),
         "paused": False,
         "cancelled": False,
+        "sender": account["phone"] if account else "bot",
     }
 
     await db.update_campaign_status(campaign_id, "running", target_count=len(users))
 
     dry_run = bool(campaign.get("dry_run"))
     text_template = campaign["text_template"]
+    delay = int(campaign.get("send_delay_seconds") or 15)
 
-    for user in users:
-        state = _active[campaign_id]
+    try:
+        for user in users:
+            state = _active[campaign_id]
 
-        while state["paused"] and not state["cancelled"]:
-            await asyncio.sleep(1)
+            while state["paused"] and not state["cancelled"]:
+                await asyncio.sleep(1)
 
-        if state["cancelled"]:
-            break
+            if state["cancelled"]:
+                break
 
-        chat_id = user["chat_id"]
+            chat_id = user["chat_id"]
 
-        # Double-check one-and-done at send time (race-condition guard)
-        if await db.is_promo_targeted(chat_id):
-            state["skipped_promo"] += 1
-            await db.log_send(campaign_id, chat_id, "skipped_already_targeted")
-            continue
+            # Race-condition guard: double-check global targeted flag
+            if await db.is_promo_targeted(chat_id):
+                state["skipped_promo"] += 1
+                await db.log_send(campaign_id, chat_id, "skipped_already_targeted", account_id=sender_account_id)
+                continue
 
-        # Check daily send cap
-        if state["sent"] >= DAILY_SEND_CAP:
-            logger.warning(f"Campaign {campaign_id}: daily cap {DAILY_SEND_CAP} reached — stopping")
-            state["cancelled"] = True
-            break
+            # Daily send cap check
+            if state["sent"] >= DAILY_SEND_CAP:
+                logger.warning(f"Campaign {campaign_id}: daily cap {DAILY_SEND_CAP} reached — stopping")
+                state["cancelled"] = True
+                break
 
-        name = user.get("first_name") or user.get("username") or "друг"
-        text = text_template.replace("{name}", name).replace("{username}", user.get("username") or name)
-        text = resolve_spintax(text)
+            name = user.get("first_name") or user.get("username") or "друг"
+            text = text_template.replace("{name}", name).replace("{username}", user.get("username") or name)
+            text = resolve_spintax(text)
 
-        if dry_run:
-            state["sent"] += 1
-            await db.log_send(campaign_id, chat_id, "dry_run")
-            await db.increment_campaign_counts(campaign_id, sent=1)
-            await asyncio.sleep(0.05)
-            continue
+            if dry_run:
+                state["sent"] += 1
+                await db.log_send(campaign_id, chat_id, "dry_run", account_id=sender_account_id)
+                await db.increment_campaign_counts(campaign_id, sent=1)
+                await asyncio.sleep(0.05)
+                continue
 
-        try:
-            await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
-            state["sent"] += 1
-            await db.log_send(campaign_id, chat_id, "ok")
-            await db.increment_campaign_counts(campaign_id, sent=1)
-            await db.mark_user_as_promo_targeted(chat_id)
-            delay = campaign.get("send_delay_seconds") or 15
-            await asyncio.sleep(delay)
-
-        except Forbidden:
-            state["failed"] += 1
-            await db.log_send(campaign_id, chat_id, "blocked", "User blocked the bot")
-            await db.increment_campaign_counts(campaign_id, failed=1)
-
-        except TelegramError as e:
-            err_str = str(e)
-            if "Too Many Requests" in err_str:
-                wait = 30
+            # ── Telethon send ───────────────────────────────────────────
+            if telethon_client:
                 try:
-                    wait = int(err_str.split("retry after ")[1])
-                except Exception:
-                    pass
-                logger.warning(f"Rate limited — sleeping {wait}s")
-                await asyncio.sleep(wait + random.randint(5, 15))
+                    await telethon_client.send_message(chat_id, text, parse_mode="md")
+                    state["sent"] += 1
+                    await db.log_send(campaign_id, chat_id, "ok", account_id=sender_account_id)
+                    await db.increment_campaign_counts(campaign_id, sent=1)
+                    await db.mark_user_as_promo_targeted(chat_id)
+                    await db.account_record_send(sender_account_id, success=True)
+                    await asyncio.sleep(delay)
+
+                except TelFloodWait as e:
+                    logger.warning(f"Telethon FloodWait {e.seconds}s for account {account['phone']}")
+                    await db.account_flood_wait(sender_account_id, e.seconds)
+                    await asyncio.sleep(e.seconds + random.randint(5, 15))
+                    state["failed"] += 1
+                    await db.log_send(campaign_id, chat_id, "failed", f"FloodWait {e.seconds}s", account_id=sender_account_id)
+                    await db.increment_campaign_counts(campaign_id, failed=1)
+
+                except PeerFloodError:
+                    logger.error(f"PeerFloodError — account {account['phone']} is being rate-limited by Telegram. Stopping.")
+                    await db.account_flood_wait(sender_account_id, 3600)
+                    state["failed"] += 1
+                    await db.log_send(campaign_id, chat_id, "failed", "PeerFloodError", account_id=sender_account_id)
+                    await db.increment_campaign_counts(campaign_id, failed=1)
+                    state["cancelled"] = True
+                    break
+
+                except (UserPrivacyRestrictedError, UserDeactivatedError,
+                        UserDeactivatedBanError, InputUserDeactivatedError) as e:
+                    state["failed"] += 1
+                    await db.log_send(campaign_id, chat_id, "blocked", str(e)[:100], account_id=sender_account_id)
+                    await db.increment_campaign_counts(campaign_id, failed=1)
+                    await db.account_record_send(sender_account_id, success=False, error=str(e)[:100])
+
+                except Exception as e:
+                    err = str(e)[:200]
+                    logger.error(f"Telethon send error for chat {chat_id}: {err}")
+                    state["failed"] += 1
+                    await db.log_send(campaign_id, chat_id, "failed", err, account_id=sender_account_id)
+                    await db.increment_campaign_counts(campaign_id, failed=1)
+                    await db.account_record_send(sender_account_id, success=False, error=err)
+
+            # ── Bot API send (fallback) ──────────────────────────────────
+            else:
                 try:
                     await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
                     state["sent"] += 1
-                    await db.log_send(campaign_id, chat_id, "ok_retry")
+                    await db.log_send(campaign_id, chat_id, "ok", account_id=sender_account_id)
                     await db.increment_campaign_counts(campaign_id, sent=1)
                     await db.mark_user_as_promo_targeted(chat_id)
-                except Exception as e2:
-                    state["failed"] += 1
-                    await db.log_send(campaign_id, chat_id, "failed", str(e2)[:200])
-                    await db.increment_campaign_counts(campaign_id, failed=1)
-            else:
-                state["failed"] += 1
-                await db.log_send(campaign_id, chat_id, "failed", err_str[:200])
-                await db.increment_campaign_counts(campaign_id, failed=1)
+                    await asyncio.sleep(delay)
 
-        except Exception as e:
-            state["failed"] += 1
-            await db.log_send(campaign_id, chat_id, "failed", str(e)[:200])
-            await db.increment_campaign_counts(campaign_id, failed=1)
+                except Forbidden:
+                    state["failed"] += 1
+                    await db.log_send(campaign_id, chat_id, "blocked", "User blocked the bot", account_id=sender_account_id)
+                    await db.increment_campaign_counts(campaign_id, failed=1)
+
+                except TelegramError as e:
+                    err_str = str(e)
+                    if "Too Many Requests" in err_str:
+                        wait = 30
+                        try:
+                            wait = int(err_str.split("retry after ")[1])
+                        except Exception:
+                            pass
+                        logger.warning(f"Bot API rate limited — sleeping {wait}s")
+                        await asyncio.sleep(wait + random.randint(5, 15))
+                        try:
+                            await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+                            state["sent"] += 1
+                            await db.log_send(campaign_id, chat_id, "ok_retry", account_id=sender_account_id)
+                            await db.increment_campaign_counts(campaign_id, sent=1)
+                            await db.mark_user_as_promo_targeted(chat_id)
+                        except Exception as e2:
+                            state["failed"] += 1
+                            await db.log_send(campaign_id, chat_id, "failed", str(e2)[:200], account_id=sender_account_id)
+                            await db.increment_campaign_counts(campaign_id, failed=1)
+                    else:
+                        state["failed"] += 1
+                        await db.log_send(campaign_id, chat_id, "failed", err_str[:200], account_id=sender_account_id)
+                        await db.increment_campaign_counts(campaign_id, failed=1)
+
+                except Exception as e:
+                    state["failed"] += 1
+                    await db.log_send(campaign_id, chat_id, "failed", str(e)[:200], account_id=sender_account_id)
+                    await db.increment_campaign_counts(campaign_id, failed=1)
+
+    finally:
+        # Always release Telethon client and mark account idle when done
+        if sender_account_id:
+            await db.account_mark_idle(sender_account_id)
+        if telethon_client:
+            await release_telethon_client(sender_account_id)
 
     state = _active[campaign_id]
     final_status = "cancelled" if state["cancelled"] else "done"
     _active[campaign_id]["status"] = final_status
     await db.update_campaign_status(campaign_id, final_status)
 
+    sender_label = f"@{account['username']}" if account and account.get("username") else (account["phone"] if account else "bot")
     summary = (
         f"{'🏁' if final_status == 'done' else '⏹'} *Кампания «{campaign['name']}» завершена*\n\n"
         f"{'🔍 Режим: DRY RUN (не отправлялось)' + chr(10) if dry_run else ''}"
+        f"📲 Отправитель: {sender_label}\n"
         f"👥 Всего получателей: {state['total']}\n"
         f"✅ Отправлено: {state['sent']}\n"
         f"❌ Ошибок: {state['failed']}\n"
