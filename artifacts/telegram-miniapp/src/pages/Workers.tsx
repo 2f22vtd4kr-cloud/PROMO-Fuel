@@ -81,6 +81,31 @@ function SseBadge({ connected }: { connected: boolean }) {
   );
 }
 
+function RestartWorkerButton({ workerId, onRestarted }: { workerId: string; onRestarted: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function restart() {
+    haptic.medium(); setBusy(true);
+    try {
+      await api.spawnWorker(workerId);
+      haptic.success(); setDone(true);
+      setTimeout(() => { setDone(false); onRestarted(); }, 2500);
+    } catch {
+      haptic.error();
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <button
+      onClick={restart} disabled={busy || done}
+      style={{ fontSize: 10, color: done ? "#2de897" : "#ffc946", background: done ? "rgba(45,232,151,0.10)" : "rgba(255,201,70,0.10)", border: `1px solid ${done ? "rgba(45,232,151,0.3)" : "rgba(255,201,70,0.3)"}`, borderRadius: 6, padding: "4px 9px", cursor: busy ? "not-allowed" : "pointer", fontWeight: 700, opacity: busy ? 0.6 : 1, transition: "all 0.2s" }}
+    >
+      {done ? "✓ Запущен" : busy ? "…" : "▶ Restart"}
+    </button>
+  );
+}
+
 function WorkerCard({ worker, index = 0, onDelete }: { worker: BroadcastWorker; index?: number; onDelete: () => void }) {
   const [busy, setBusy] = useState(false);
   const alive   = worker.is_alive ?? false;
@@ -145,7 +170,8 @@ function WorkerCard({ worker, index = 0, onDelete }: { worker: BroadcastWorker; 
         </div>
       )}
       {!alive && (
-        <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
+        <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+          <RestartWorkerButton workerId={worker.worker_id} onRestarted={onDelete} />
           <button
             onClick={() => { navigator.clipboard?.writeText(`python worker.py ${worker.worker_id}`).catch(() => {}); haptic.light(); }}
             style={{ fontSize: 9, color: "#6ba8e5", background: "rgba(107,168,229,0.08)", border: "1px solid rgba(107,168,229,0.2)", borderRadius: 6, padding: "3px 7px", cursor: "pointer", fontFamily: "monospace" }}
@@ -324,7 +350,8 @@ export function WorkersPage() {
   const [taskTab,      setTaskTab]      = useState<"all" | "pending" | "claimed" | "failed">("all");
   const [showAccounts, setShowAccounts] = useState(false);
   const [sseAlive,     setSseAlive]     = useState(false);
-  const sseOkRef = useRef(false);
+  const lastSseRef = useRef(0);   // monotonic ms of last received SSE event
+  const SSE_DEAD_MS = 20_000;     // treat SSE as dead if no event for 20s
 
   // ── Full REST load (initial + fallback) ──────────────────────────────────
   const load = useCallback(async () => {
@@ -354,18 +381,24 @@ export function WorkersPage() {
 
   // ── SSE live updates ──────────────────────────────────────────────────────
   useSse((type, data) => {
-    if (!sseOkRef.current) { sseOkRef.current = true; setSseAlive(true); }
+    const wasDown = Date.now() - lastSseRef.current > SSE_DEAD_MS;
+    lastSseRef.current = Date.now();
+
+    if (wasDown) {
+      // SSE reconnected after an outage — do a full REST reload to resync all state
+      setSseAlive(true);
+      load();
+      return;
+    }
+
+    setSseAlive(true);
 
     if (type === "workers") {
       setWorkers(data as BroadcastWorker[]);
-      // Derive summary from worker list
       const ws = data as BroadcastWorker[];
       setSummary(prev => {
         if (!prev) return prev;
-        return {
-          ...prev,
-          alive_workers: ws.filter(w => w.is_alive).length,
-        };
+        return { ...prev, alive_workers: ws.filter(w => w.is_alive).length };
       });
     }
     if (type === "accounts") setAccounts(data as SenderAccount[]);
@@ -385,11 +418,16 @@ export function WorkersPage() {
     }
   });
 
-  // ── Initial load + 30s polling fallback when SSE connected, 10s without ─
+  // ── Initial load + watchdog: poll when SSE is silent ─────────────────────
   useEffect(() => {
     load();
     const interval = setInterval(() => {
-      if (!sseOkRef.current) load();   // full refresh if SSE dead
+      const age = Date.now() - lastSseRef.current;
+      if (age > SSE_DEAD_MS) {
+        // SSE has been silent — mark badge as disconnected and poll REST
+        setSseAlive(false);
+        load();
+      }
     }, 10_000);
     return () => clearInterval(interval);
   }, [load]);

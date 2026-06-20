@@ -80,8 +80,11 @@ _task_queue: TaskQueue | None      = None
 
 def _handle_signal(sig, frame):
     global _running
-    logger.info("[%s] Signal %s received — shutting down...", WORKER_ID, sig)
+    logger.info("[%s] Signal %s received — releasing locks and shutting down...", WORKER_ID, sig)
     _running = False
+    # Release locks immediately in the signal handler so they are freed even if the
+    # asyncio loop is blocked mid-task. The release at the end of main() is idempotent.
+    _release_worker_resources()
 
 
 # ── Notification helper ───────────────────────────────────────────────────────
@@ -109,13 +112,19 @@ async def _notify_owner(text: str) -> None:
 # ── Release all locked accounts + claimed tasks on shutdown ──────────────────
 
 def _release_worker_resources() -> dict[str, int]:
-    """On SIGTERM or crash: release all accounts + re-queue claimed tasks."""
+    """On SIGTERM or crash: release all accounts + re-queue claimed tasks.
+
+    Preserves 'banned' and 'proxy_failed' account statuses — only resets to
+    'idle' for accounts that were temporarily locked for broadcasting.
+    Safe to call multiple times (idempotent via WHERE locked_by=WORKER_ID).
+    """
     try:
         conn = sqlite3.connect(DB_PATH, timeout=10)
-        # Release account locks
+        # Release account locks — preserve banned/proxy_failed statuses
         acct_cur = conn.execute(
-            "UPDATE sender_accounts SET locked_by=NULL, locked_at=NULL, "
-            "broadcasting=0, status='idle' WHERE locked_by=?",
+            "UPDATE sender_accounts SET locked_by=NULL, locked_at=NULL, broadcasting=0, "
+            "status=CASE WHEN status IN ('banned','proxy_failed') THEN status ELSE 'idle' END "
+            "WHERE locked_by=?",
             (WORKER_ID,),
         )
         # Re-queue claimed tasks (roll back attempt counter so they get retried)

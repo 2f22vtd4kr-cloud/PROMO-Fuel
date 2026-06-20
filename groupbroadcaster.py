@@ -213,6 +213,7 @@ async def _disconnect_account(account_id: int) -> None:
 
 async def _connect_with_proxy(account: dict, proxy: dict | None) -> TelegramClient | None:
     """Create a fresh TelegramClient with the given proxy. Returns None on failure."""
+    import os as _os
     acc_id   = account["id"]
     sess     = account.get("session_file") or ""
     api_id   = account.get("api_id")
@@ -223,6 +224,19 @@ async def _connect_with_proxy(account: dict, proxy: dict | None) -> TelegramClie
         return None
 
     sess_path = sess.removesuffix(".session") if sess.endswith(".session") else sess
+
+    # Verify the .session file actually exists before attempting to connect.
+    # A missing file causes Telethon to create an empty new session (not authorized)
+    # rather than raising a clear error, leading to silent auth failures.
+    session_file = sess_path + ".session"
+    if not _os.path.exists(session_file):
+        logger.error(
+            "[broadcaster] Account %d: session file not found: %s — "
+            "run telethon_auth to authenticate this account first",
+            acc_id, session_file,
+        )
+        return None
+
     tel_proxy = proxy_to_telethon(proxy) if proxy else None
 
     client = TelegramClient(

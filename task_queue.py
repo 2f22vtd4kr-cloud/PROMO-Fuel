@@ -364,18 +364,20 @@ class TaskQueue:
 
     def release_account_sync(self, account_id: int, worker_id: str | None = None) -> bool:
         """Release a sender account's lock, holding the FileLock for atomicity."""
+        _safe_idle = (
+            "locked_by=NULL, locked_at=NULL, broadcasting=0, "
+            "status=CASE WHEN status IN ('banned','proxy_failed') THEN status ELSE 'idle' END"
+        )
         with self._flock:
             conn = _conn(self.db_path)
             if worker_id:
                 cur = conn.execute(
-                    "UPDATE sender_accounts SET locked_by=NULL, locked_at=NULL, "
-                    "broadcasting=0, status='idle' WHERE id=? AND locked_by=?",
+                    f"UPDATE sender_accounts SET {_safe_idle} WHERE id=? AND locked_by=?",
                     (account_id, worker_id),
                 )
             else:
                 cur = conn.execute(
-                    "UPDATE sender_accounts SET locked_by=NULL, locked_at=NULL, "
-                    "broadcasting=0, status='idle' WHERE id=?",
+                    f"UPDATE sender_accounts SET {_safe_idle} WHERE id=?",
                     (account_id,),
                 )
             conn.commit()
@@ -399,12 +401,13 @@ class TaskQueue:
         """
         with self._flock:
             conn = _conn(self.db_path)
-            now  = datetime.now(timezone.utc).isoformat()
+            now  = datetime.now(timezone.utc).isoformat()  # noqa: F841 (kept for future use)
 
-            # Release all account locks held by this worker
+            # Release all account locks held by this worker (preserve banned/proxy_failed)
             acct_cur = conn.execute(
-                "UPDATE sender_accounts SET locked_by=NULL, locked_at=NULL, "
-                "broadcasting=0, status='idle' WHERE locked_by=?",
+                "UPDATE sender_accounts SET locked_by=NULL, locked_at=NULL, broadcasting=0, "
+                "status=CASE WHEN status IN ('banned','proxy_failed') THEN status ELSE 'idle' END "
+                "WHERE locked_by=?",
                 (worker_id,),
             )
 
@@ -435,37 +438,57 @@ class TaskQueue:
         )
 
     def recover_stale_locks_sync(self, timeout_seconds: int = 300) -> int:
-        """Unlock any sender account whose locked_at is older than timeout_seconds.
+        """Unlock any sender account whose locked_at is older than timeout_seconds,
+        OR whose holding worker has a stale heartbeat (dead worker detection).
 
         Also resets stuck tasks (claimed but unfinished) for those accounts.
         Held under FileLock for full atomicity against concurrent claim attempts.
         """
+        _DEAD_WORKER_HB_THRESHOLD = 90  # seconds of missing heartbeat = dead worker
+
         with self._flock:
             conn = _conn(self.db_path)
-            now  = datetime.now(timezone.utc).isoformat()
 
+            # Find stale locks: either too old, OR held by a worker with no recent heartbeat
             stale = conn.execute("""
-                SELECT id, locked_by, phone FROM sender_accounts
-                WHERE locked_by IS NOT NULL
-                  AND locked_at IS NOT NULL
+                SELECT sa.id, sa.locked_by, sa.phone
+                FROM sender_accounts sa
+                WHERE sa.locked_by IS NOT NULL
                   AND (
-                    CAST(strftime('%s','now') AS INTEGER)
-                    - CAST(strftime('%s', locked_at) AS INTEGER)
-                  ) > ?
-            """, (timeout_seconds,)).fetchall()
+                    -- Lock timed out by age
+                    (
+                      sa.locked_at IS NOT NULL
+                      AND (CAST(strftime('%s','now') AS INTEGER)
+                           - CAST(strftime('%s', sa.locked_at) AS INTEGER)) > ?
+                    )
+                    OR
+                    -- Holding worker has a dead/stale heartbeat
+                    EXISTS (
+                      SELECT 1 FROM broadcast_workers bw
+                      WHERE bw.worker_id = sa.locked_by
+                        AND (CAST(strftime('%s','now') AS INTEGER)
+                             - CAST(strftime('%s', bw.last_heartbeat) AS INTEGER)) > ?
+                    )
+                  )
+            """, (timeout_seconds, _DEAD_WORKER_HB_THRESHOLD)).fetchall()
 
             released = 0
             for row in stale:
-                acc_id = row[0]
+                acc_id    = row[0]
+                locked_by = row[1]
                 conn.execute("""
                     UPDATE sender_accounts
-                    SET locked_by=NULL, locked_at=NULL, broadcasting=0, status='idle'
+                    SET locked_by=NULL, locked_at=NULL, broadcasting=0,
+                        status=CASE
+                            WHEN status IN ('banned','proxy_failed') THEN status
+                            ELSE 'idle'
+                        END
                     WHERE id=?
                 """, (acc_id,))
                 released += 1
                 logger.warning(
-                    "Recovered stale account lock: account_id=%d (was locked by %s)",
-                    acc_id, row[1],
+                    "Recovered stale account lock: account_id=%d (was locked by %r)",
+                    acc_id, locked_by,
                 )
 
             # Reset stuck tasks (claimed > timeout_seconds ago)
