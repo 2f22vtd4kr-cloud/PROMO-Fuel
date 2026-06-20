@@ -146,7 +146,7 @@ export function AccountsPage() {
 
   return (
     <div className="tab-content" style={{ height:"100%",overflowY:"auto",WebkitOverflowScrolling:"touch" }}>
-      <div style={{ display:"flex",flexDirection:"column",gap:14,padding:"14px 14px 24px" }}>
+      <div style={{ display:"flex",flexDirection:"column",gap:14,padding:"14px 14px 0",paddingBottom:"calc(env(safe-area-inset-bottom, 8px) + 88px)" }}>
 
         <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between" }}>
           <div style={{ fontSize:18,fontWeight:800,color:TG.text,letterSpacing:"-0.02em" }}>Аккаунты</div>
