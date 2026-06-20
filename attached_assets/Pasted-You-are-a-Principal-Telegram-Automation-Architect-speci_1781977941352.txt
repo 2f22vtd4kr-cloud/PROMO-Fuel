@@ -1,0 +1,69 @@
+You are a Principal Telegram Automation Architect specializing in large-scale Telethon multi-account systems on Replit.
+
+Project: https://github.com/2f22vtd4kr-cloud/PROMO-Fuel
+
+Build a complete, production-grade **Group Broadcasting Module** with the following advanced features:
+
+### Core Requirements
+- SQLite Task Queue for reliable distribution across workers
+- Multi-worker architecture (Main Repl + multiple independent worker processes)
+- Strict account locking to prevent Telethon "database is locked" errors
+- Per-account proxy rotation (JSON array support + failover on flood/timeout)
+- Auto-restart supervisor with heartbeats
+- Full health-check dashboard
+- Rich message support (text + spintax + media + inline buttons)
+- Flexible scheduling via task queue
+- Anti-ban measures (rate limiting, jitter, flood handling)
+
+### STRICT OUTPUT RULES
+- Output **FULL, complete files** only. Never use placeholders, comments like "// ...", or truncated code.
+- Every file must be production-ready with proper imports, logging, error handling, and comments.
+- Use WAL mode + FileLock for all SQLite access.
+- Implement atomic account claiming to avoid race conditions between workers.
+
+### Files to Create / Fully Update
+
+**Backend:**
+
+1. `dbmigrations.py` — Complete schema upgrades (senderaccounts with proxies array + auth_status, tasks table, groupcampaigns, groupcampaignsends, broadcastworkers, accountgroups, all indexes)
+
+2. `utils/proxy.py` — Full proxy parser + rotation logic (support multiple proxies per account)
+
+3. `utils/spintax.py` — Robust iterative nested spintax resolver
+
+4. `utils/ratelimiter.py` — Thread-safe in-memory rate limiter
+
+5. `utils/supervisor.py` — Heartbeat + auto-restart helper
+
+6. `task_queue.py` — Enterprise TaskQueue with FileLock and atomic claim_task (locks accounts as 'broadcasting')
+
+7. `groupbroadcaster.py` — Core sending engine with account locking, proxy rotation, media handling, full error recovery
+
+8. `worker.py` — Standalone worker (python worker.py worker-1) with infinite loop, task claiming, heartbeat
+
+9. `broadcastscheduler.py` — APScheduler that pushes campaigns to TaskQueue
+
+10. `apiserver.py` — Full FastAPI including interactive auth endpoints, worker health, tasks list, enhanced stats
+
+11. `main.py` — Complete main entrypoint (migrations, PTB bot with new Group Broadcasts + Workers menu, API thread, worker spawning, post_init)
+
+12. Update `groupdiscovery.py` and `authserver.py` as needed for consistency
+
+**Mini App (React/TypeScript):**
+
+- Update `miniapp/src/services/api.ts` with all new endpoints
+- Update `App.tsx` and `Layout.tsx` with new routes
+- New/updated pages: `GroupBroadcasts.tsx`, `GroupBroadcastCreate.tsx` (with proxy UI + spintax preview), `Workers.tsx` (health dashboard), enhanced `Dashboard.tsx`, `AccountLogin.tsx`
+
+### Final Deliverables After All Code
+- List of all created/modified files
+- Replit startup instructions:
+  - Main Repl command
+  - How to run multiple Worker Repls
+  - .env example
+  - Mini App build command
+- Any recommended Replit Secrets
+
+Follow existing code style where possible. Make everything robust, well-logged, and ready for hundreds of accounts.
+
+Begin implementation now. Output each file in a clear markdown code block with the filename at the top.

@@ -37,6 +37,8 @@ async function del(path: string): Promise<void> {
   await fetch(`${API_BASE}/api/twa${path}`, { method: "DELETE", headers: twaHeaders() });
 }
 
+// ── Types ────────────────────────────────────────────────────────────────────
+
 export interface Campaign {
   id: number;
   name: string;
@@ -50,11 +52,62 @@ export interface Campaign {
   notes?: string;
 }
 
+export interface GroupCampaign {
+  id: number;
+  name: string;
+  text_template: string;
+  status: string;
+  sender_account_id?: number;
+  selected_groups: string;
+  interval_seconds: number;
+  next_send_at?: string;
+  last_sent_at?: string;
+  sent_count: number;
+  failed_count: number;
+  notes?: string;
+  media_url?: string;
+  media_type?: string;
+  inline_buttons?: string;
+  pin_message?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupCampaignLog {
+  id: number;
+  campaign_id: number;
+  group_id: string;
+  group_title?: string;
+  account_id?: number;
+  task_id?: number;
+  status: string;
+  error?: string;
+  sent_at: string;
+}
+
+export interface AccountGroup {
+  id: number;
+  account_id: number;
+  group_id: string;
+  group_title?: string;
+  group_type?: string;
+  member_count?: number;
+  username?: string;
+  is_active: number;
+  refreshed_at: string;
+}
+
 export interface SenderAccount {
   id: number;
   phone: string;
   label: string;
   username?: string;
+  api_id?: number;
+  api_hash?: string;
+  session_file?: string;
+  proxy?: string;
+  proxies?: string;
+  auth_status?: string;
   status: string;
   is_active: number;
   is_banned: number;
@@ -109,7 +162,53 @@ export interface AccountBreakdown {
   errors: number;
 }
 
+export interface BroadcastWorker {
+  worker_id: string;
+  pid?: number;
+  status: string;
+  current_task?: number;
+  tasks_done: number;
+  tasks_failed: number;
+  started_at: string;
+  last_heartbeat: string;
+  last_error?: string;
+  heartbeat_age_seconds?: number;
+  is_alive?: boolean;
+}
+
+export interface Task {
+  id: number;
+  task_type: string;
+  campaign_id: number;
+  payload: string;
+  status: string;
+  priority: number;
+  worker_id?: string;
+  claimed_at?: string;
+  started_at?: string;
+  finished_at?: string;
+  attempts: number;
+  max_attempts: number;
+  error?: string;
+  created_at: string;
+  scheduled_at?: string;
+}
+
+export interface WorkersSummary {
+  total_workers: number;
+  alive_workers: number;
+  dead_workers: number;
+  tasks_pending: number;
+  tasks_claimed: number;
+  tasks_done: number;
+  tasks_failed: number;
+  tasks_dead: number;
+}
+
+// ── API ───────────────────────────────────────────────────────────────────────
+
 export const api = {
+  // Campaigns
   getCampaigns: (status?: string) => get<Campaign[]>(`/campaigns${status ? `?status=${status}` : ""}`),
   getCampaign:  (id: number) => get<Campaign>(`/campaigns/${id}`),
   createCampaign: (data: { name: string; text_template: string; scheduled_at?: string }) =>
@@ -121,16 +220,47 @@ export const api = {
   getCampaignLogs: (id: number) => get<SendLog[]>(`/campaigns/${id}/logs`),
   getCampaignBreakdown: (id: number) => get<AccountBreakdown[]>(`/campaigns/${id}/account-breakdown`),
 
+  // Group campaigns
+  getGroupCampaigns: () => get<GroupCampaign[]>("/group-campaigns"),
+  getGroupCampaign:  (id: number) => get<GroupCampaign>(`/group-campaigns/${id}`),
+  createGroupCampaign: (data: Partial<GroupCampaign>) => post<GroupCampaign>("/group-campaigns", data),
+  updateGroupCampaign: (id: number, data: Partial<GroupCampaign>) => put<GroupCampaign>(`/group-campaigns/${id}`, data),
+  deleteGroupCampaign: (id: number) => del(`/group-campaigns/${id}`),
+  duplicateGroupCampaign: (id: number) => post<GroupCampaign>(`/group-campaigns/${id}/duplicate`),
+  actionGroupCampaign: (id: number, action: string) => post(`/group-campaigns/${id}/action`, { action }),
+  getGroupCampaignLogs: (id: number) => get<GroupCampaignLog[]>(`/group-campaigns/${id}/logs`),
+
+  // Accounts
   getAccounts: () => get<SenderAccount[]>("/accounts"),
   getAccount:  (id: number) => get<SenderAccount>(`/accounts/${id}`),
   patchAccount: (id: number, data: Partial<SenderAccount>) => put<SenderAccount>(`/accounts/${id}`, data),
-  createAccount: (data: { phone: string; label?: string; username?: string; proxy?: string }) =>
+  createAccount: (data: { phone: string; label?: string; username?: string; proxy?: string; proxies?: string; api_id?: number; api_hash?: string }) =>
     post<SenderAccount>("/accounts", data),
   deleteAccount: (id: number) => del(`/accounts/${id}`),
+  startAuth: (id: number) => post<{ phone_code_hash?: string; already_authorized?: boolean; display_name?: string; session_file?: string; error?: string }>(`/accounts/${id}/start-auth`, {}),
+  confirmAuth: (id: number, code: string, phone_code_hash: string) =>
+    post<{ ok?: boolean; needs_2fa?: boolean; display_name?: string; session_file?: string; error?: string }>(`/accounts/${id}/confirm-auth`, { code, phone_code_hash }),
+  confirm2fa: (id: number, password: string) =>
+    post<{ ok?: boolean; display_name?: string; session_file?: string; error?: string }>(`/accounts/${id}/confirm-2fa`, { password }),
 
+  // Account groups
+  getAccountGroups: (accountId: number) => get<AccountGroup[]>(`/accounts/${accountId}/groups`),
+  refreshAccountGroups: (accountId: number) =>
+    post<{ ok: boolean; count: number; groups: AccountGroup[] }>(`/accounts/${accountId}/groups/refresh`, {}),
+
+  // Workers / task queue
+  getWorkers: () => get<BroadcastWorker[]>("/workers"),
+  getWorkersSummary: () => get<WorkersSummary>("/workers-summary"),
+  deleteWorker: (workerId: string) => del(`/workers/${encodeURIComponent(workerId)}`),
+  getTasks: (status?: string) => get<Task[]>(`/tasks${status ? `?status=${status}` : ""}`),
+  retryTask: (id: number) => post<Task>(`/tasks/${id}/retry`, {}),
+  cancelTask: (id: number) => post<Task>(`/tasks/${id}/cancel`, {}),
+  pushTask: (campaignId: number, payload?: Record<string, unknown>) =>
+    post<Task>("/tasks", { campaign_id: campaignId, payload }),
+
+  // Analytics / users
   getOverview: () => get<AnalyticsOverview>("/analytics/summary"),
   getUsers:    () => get<User[]>("/users"),
-
   importUsers: (users: { chat_id: number; username?: string; first_name?: string; tags?: string }[]) =>
     post<{ ok: boolean; imported: number; skipped: number; total: number }>("/users/import", { users }),
 };

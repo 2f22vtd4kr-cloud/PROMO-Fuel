@@ -9,6 +9,7 @@ import templatesRouter      from "./templates";
 import audienceRouter       from "./audience";
 import uploadRouter         from "./upload";
 import groupCampaignsRouter from "./group-campaigns";
+import workersRouter        from "./workers";
 
 const router: IRouter = Router();
 
@@ -23,6 +24,7 @@ router.use(accountsRouter);
 router.use(templatesRouter);
 router.use(audienceRouter);
 router.use(uploadRouter);
+router.use(workersRouter);
 
 // ── TWA aliases — same handlers, accessible under /twa/* for Mini App ──
 router.use("/twa", campaignsRouter);
@@ -33,5 +35,6 @@ router.use("/twa", accountsRouter);
 router.use("/twa", audienceRouter);
 router.use("/twa", uploadRouter);
 router.use("/twa", sseRouter);
+router.use("/twa", workersRouter);
 
 export default router;

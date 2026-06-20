@@ -1,4 +1,4 @@
-import { LayoutGrid, Megaphone, BarChart2, Users2, FolderUp } from "lucide-react";
+import { LayoutGrid, Megaphone, BarChart2, Users2, FolderUp, Radio, Cpu } from "lucide-react";
 import type { Tab } from "../App";
 import { TG } from "../lib/theme";
 import { haptic } from "../lib/haptics";
@@ -6,16 +6,18 @@ import { haptic } from "../lib/haptics";
 const ITEMS: { id: Tab; icon: React.ElementType; label: string; color: string; glow: string }[] = [
   { id: "home",      icon: LayoutGrid, label: "Главная",   color: "#95c4f5", glow: "rgba(107,168,229,0.55)" },
   { id: "campaigns", icon: Megaphone,  label: "Рассылки",  color: "#2de897", glow: "rgba(45,232,151,0.55)" },
-  { id: "analytics", icon: BarChart2,  label: "Аналитика", color: "#ffc946", glow: "rgba(255,201,70,0.55)" },
-  { id: "audience",  icon: Users2,     label: "Аудитория", color: "#c4aeff", glow: "rgba(196,174,255,0.55)" },
-  { id: "upload",    icon: FolderUp,   label: "Файлы",     color: "#ff9f40", glow: "rgba(255,159,64,0.55)" },
+  { id: "groups",    icon: Radio,      label: "Группы",    color: "#c4aeff", glow: "rgba(196,174,255,0.55)" },
+  { id: "analytics", icon: BarChart2,  label: "Аналитика", color: "#ffc946", glow: "rgba(255,201,70,0.55)"  },
+  { id: "audience",  icon: Users2,     label: "Аудитория", color: "#ff9f40", glow: "rgba(255,159,64,0.55)"  },
+  { id: "upload",    icon: FolderUp,   label: "Файлы",     color: "#ff7eb3", glow: "rgba(255,126,179,0.55)" },
+  { id: "workers",   icon: Cpu,        label: "Воркеры",   color: "#6ba8e5", glow: "rgba(107,168,229,0.55)" },
 ];
 
 export function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => void }) {
   return (
     <div style={{
       paddingBottom: "calc(env(safe-area-inset-bottom, 8px) + 4px)",
-      paddingLeft: 12, paddingRight: 12, paddingTop: 8,
+      paddingLeft: 8, paddingRight: 8, paddingTop: 6,
       position: "relative",
     }}>
       {/* Floating glass pill container */}
@@ -29,7 +31,7 @@ export function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => v
         boxShadow: "0 2px 0 rgba(255,255,255,0.14) inset, 0 -1px 0 rgba(0,0,0,0.15) inset, 0 16px 48px rgba(0,0,0,0.42), 0 4px 12px rgba(0,0,0,0.22)",
         position: "relative",
         overflow: "hidden",
-        padding: "4px 4px",
+        padding: "4px 2px",
       }}>
         {/* Top specular highlight */}
         <div style={{
@@ -57,18 +59,18 @@ export function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => v
               style={{
                 flex: 1, display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center",
-                gap: 3, padding: "9px 2px 8px",
+                gap: 2, padding: "8px 1px 7px",
                 border: "none", background: "none",
                 position: "relative", zIndex: 2,
                 cursor: "pointer",
-                minHeight: 54,
+                minHeight: 50,
               }}
             >
               {/* Active bubble */}
               {isActive && (
                 <div style={{
                   position: "absolute",
-                  inset: "2px 4px",
+                  inset: "2px 2px",
                   borderRadius: 20,
                   background: `linear-gradient(145deg,${color}22 0%,${color}10 100%)`,
                   border: `1px solid ${color}35`,
@@ -82,7 +84,7 @@ export function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => v
               {/* Icon */}
               <div style={{ position: "relative", zIndex: 1 }}>
                 <Icon
-                  size={isActive ? 21 : 19}
+                  size={isActive ? 19 : 17}
                   color={isActive ? color : "rgba(160,190,230,0.72)"}
                   strokeWidth={isActive ? 2.4 : 1.6}
                   style={{
@@ -94,8 +96,8 @@ export function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => v
 
               {/* Label */}
               <span style={{
-                fontSize: 9, fontWeight: isActive ? 800 : 400,
-                letterSpacing: "0.03em",
+                fontSize: 8, fontWeight: isActive ? 800 : 400,
+                letterSpacing: "0.02em",
                 color: isActive ? color : "rgba(160,190,230,0.65)",
                 textTransform: "uppercase",
                 transition: "color 0.22s",
@@ -107,7 +109,7 @@ export function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => v
               {/* Active dot */}
               {isActive && (
                 <div style={{
-                  position: "absolute", bottom: 4, left: "50%",
+                  position: "absolute", bottom: 3, left: "50%",
                   transform: "translateX(-50%)",
                   width: 3, height: 3, borderRadius: "50%",
                   background: color,

@@ -1,15 +1,18 @@
 import { useState } from "react";
-import { HomePage }      from "./pages/Home";
-import { CampaignsPage } from "./pages/Campaigns";
-import { EditorPage }    from "./pages/Editor";
-import { AnalyticsPage } from "./pages/Analytics";
-import { AudiencePage }  from "./pages/Audience";
-import { UploadPage }    from "./pages/Upload";
-import { BottomNav }     from "./components/BottomNav";
-import { ConsumerApp }   from "./ConsumerApp";
-import { getOwnerRole }  from "./lib/twa";
+import { HomePage }              from "./pages/Home";
+import { CampaignsPage }         from "./pages/Campaigns";
+import { EditorPage }            from "./pages/Editor";
+import { AnalyticsPage }         from "./pages/Analytics";
+import { AudiencePage }          from "./pages/Audience";
+import { UploadPage }            from "./pages/Upload";
+import { GroupBroadcastsPage }   from "./pages/GroupBroadcasts";
+import { GroupBroadcastCreatePage } from "./pages/GroupBroadcastCreate";
+import { WorkersPage }           from "./pages/Workers";
+import { BottomNav }             from "./components/BottomNav";
+import { ConsumerApp }           from "./ConsumerApp";
+import { getOwnerRole }          from "./lib/twa";
 
-export type Tab = "home" | "campaigns" | "analytics" | "audience" | "upload";
+export type Tab = "home" | "campaigns" | "analytics" | "audience" | "upload" | "groups" | "workers";
 
 export function App() {
   const role = getOwnerRole();
@@ -18,9 +21,11 @@ export function App() {
 }
 
 function OwnerApp() {
-  const [tab, setTab]               = useState<Tab>("home");
-  const [editCampaignId, setEditId] = useState<number | null>(null);
-  const [showEditor, setShowEditor] = useState(false);
+  const [tab,          setTab]         = useState<Tab>("home");
+  const [editCampaignId, setEditId]    = useState<number | null>(null);
+  const [showEditor,   setShowEditor]  = useState(false);
+  const [editGroupId,  setEditGroupId] = useState<number | null>(null);
+  const [showGroupEditor, setShowGroupEditor] = useState(false);
 
   function openEditor(id?: number) {
     setEditId(id ?? null);
@@ -29,6 +34,15 @@ function OwnerApp() {
   function closeEditor() {
     setShowEditor(false);
     setEditId(null);
+  }
+
+  function openGroupEditor(id?: number) {
+    setEditGroupId(id ?? null);
+    setShowGroupEditor(true);
+  }
+  function closeGroupEditor() {
+    setShowGroupEditor(false);
+    setEditGroupId(null);
   }
 
   return (
@@ -47,11 +61,19 @@ function OwnerApp() {
         {tab === "analytics" && <AnalyticsPage />}
         {tab === "audience"  && <AudiencePage />}
         {tab === "upload"    && <UploadPage />}
+        {tab === "groups"    && <GroupBroadcastsPage onNew={openGroupEditor} onEdit={openGroupEditor} />}
+        {tab === "workers"   && <WorkersPage />}
       </div>
 
       {showEditor && (
         <div style={{ position: "absolute", inset: 0, zIndex: 50 }}>
           <EditorPage campaignId={editCampaignId} onDone={closeEditor} />
+        </div>
+      )}
+
+      {showGroupEditor && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 50 }}>
+          <GroupBroadcastCreatePage campaignId={editGroupId} onDone={closeGroupEditor} />
         </div>
       )}
 
