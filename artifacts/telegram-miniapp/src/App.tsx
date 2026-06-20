@@ -94,9 +94,11 @@ function OwnerApp() {
         </div>
       )}
 
-      <div style={{ position: "relative", zIndex: 2 }}>
-        <BottomNav active={tab} onNav={setTab} />
-      </div>
+      {!showEditor && !showGroupEditor && !showAccounts && (
+        <div style={{ position: "relative", zIndex: 2 }}>
+          <BottomNav active={tab} onNav={setTab} />
+        </div>
+      )}
     </div>
   );
 }

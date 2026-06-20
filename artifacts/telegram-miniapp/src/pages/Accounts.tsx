@@ -531,7 +531,7 @@ export function AccountsPage({ onClose }: { onClose?: () => void }) {
 
   return (
     <div className="tab-content" style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "14px 14px 0", paddingBottom: "calc(env(safe-area-inset-bottom, 8px) + 88px)" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingTop: 14, paddingLeft: 14, paddingRight: 14, paddingBottom: "calc(env(safe-area-inset-bottom, 34px) + 100px)" }}>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
