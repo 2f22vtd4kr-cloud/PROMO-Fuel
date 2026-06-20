@@ -24,7 +24,11 @@ args = "Telegram Bot"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "artifacts/telegram-miniapp: Telegram Mini App"
+args = "API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Telegram Mini App"
 
 [[workflows.workflow]]
 name = "Telegram Bot"
@@ -38,16 +42,28 @@ task = "shell.exec"
 args = "python3 main.py"
 
 [[workflows.workflow]]
-name = "artifacts/telegram-miniapp: Telegram Mini App"
+name = "API Server"
 author = "agent"
 
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash scripts/start-api.sh"
+waitForPort = 8080
+
 [workflows.workflow.metadata]
-outputType = "webview"
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Telegram Mini App"
+author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm --filter @workspace/telegram-miniapp run dev"
 waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -67,15 +83,7 @@ externalPort = 3001
 
 [[ports]]
 localPort = 5000
-externalPort = 5000
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
-
-[[ports]]
-localPort = 8081
-externalPort = 8081
+externalPort = 80
 
 [[ports]]
 localPort = 8083
