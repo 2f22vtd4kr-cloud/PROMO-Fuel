@@ -3,16 +3,7 @@ set -e
 
 echo "=== PROMO-Fuel deployment build ==="
 
-# Step 0: Create Python venv so uv uses it instead of the read-only Nix store
-if [ -f "pyproject.toml" ]; then
-  echo "Setting up Python venv..."
-  python3 -m venv .venv --system-site-packages 2>/dev/null || true
-  export UV_PROJECT_ENVIRONMENT="$(pwd)/.venv"
-  export VIRTUAL_ENV="$(pwd)/.venv"
-  echo "Python venv ready at .venv"
-fi
-
-# Step 1: Install all workspace dependencies
+# Step 1: Install all workspace dependencies (Node.js only — Python not used in production)
 echo "Installing Node.js dependencies..."
 pnpm install --frozen-lockfile --ignore-scripts
 
