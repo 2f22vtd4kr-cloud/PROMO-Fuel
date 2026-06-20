@@ -101,12 +101,19 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
   const [delay, setDelay] = useState("15");
   const [dryRun, setDryRun] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  const [audienceTags, setAudienceTags] = useState<string[]>([]);
-  const [selectedTag, setSelectedTag] = useState<string>("");
+  const [audienceTags, setAudienceTags]     = useState<string[]>([]);
+  const [selectedTag, setSelectedTag]       = useState<string>("");
+  const [audienceCount, setAudienceCount]   = useState<number | null>(null);
 
   useEffect(() => {
     api.getAudienceTags().then(setAudienceTags).catch(() => {});
+    api.getAudienceCount().then(r => setAudienceCount(r.count)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    setAudienceCount(null);
+    api.getAudienceCount(selectedTag || undefined).then(r => setAudienceCount(r.count)).catch(() => {});
+  }, [selectedTag]);
 
   useEffect(() => {
     if (!campaignId) return;
@@ -120,17 +127,25 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
     }).catch(() => setLoading(false));
   }, [campaignId]);
 
-  const spintaxPreview = useMemo(() => {
-    let result = text;
-    const pat = /\{([^{}|]+(?:\|[^{}|]*)+)\}/g;
+  function resolveSpintax(src: string, seed: number): string {
+    let r = src;
     let safety = 0;
-    while (pat.test(result) && ++safety < 20) {
-      result = result.replace(/\{([^{}|]+(?:\|[^{}|]*)+)\}/g, (_, opts) => {
-        const choices = opts.split("|");
-        return choices[Math.floor(Math.random() * choices.length)];
+    const names  = ["Иван", "Алексей", "Мария", "Дмитрий", "Наталья"];
+    const logins = ["ivan_fuel", "alex99", "maria_m", "dmitry_k", "natasha_oil"];
+    const idx = seed % names.length;
+    r = r.replace(/\{first_name\}/g, names[idx]!).replace(/\{username\}/g, logins[idx]!).replace(/\{promo\}/g, "FUEL10");
+    while (/\{([^{}|]+(?:\|[^{}|]*)+)\}/.test(r) && ++safety < 30) {
+      r = r.replace(/\{([^{}|]+(?:\|[^{}|]*)+)\}/g, (_, opts) => {
+        const ch = opts.split("|");
+        return ch[(seed * 13 + safety * 7 + ch.length) % ch.length];
       });
     }
-    return result.replace("{first_name}", "Иван").replace("{username}", "ivan_fuel").replace("{promo}", "FUEL10");
+    return r;
+  }
+
+  const spintaxSamples = useMemo(() => {
+    if (!showPreview) return [];
+    return [0, 1, 2].map(i => resolveSpintax(text, i));
   }, [text, showPreview]);
 
   const isEdit = campaignId !== null;
@@ -269,10 +284,17 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
               <button onClick={() => { haptic.select(); setShowPreview(p => !p); }} className="tap" style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 12, border: "1px solid rgba(107,168,229,0.30)", background: "rgba(107,168,229,0.09)", color: TG.accentLight, fontSize: 11, fontWeight: 700 }}>
                 <Eye size={12} /> {showPreview ? "Скрыть превью" : "Превью сообщения"}
               </button>
-              {showPreview && (
-                <div style={{ marginTop: 8, padding: "12px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 13, fontSize: 13, color: TG.textSecondary, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                  <div style={{ fontSize: 9, color: TG.muted, fontWeight: 800, textTransform: "uppercase", marginBottom: 7, letterSpacing: "0.08em" }}>Пример для «Иван»</div>
-                  {spintaxPreview}
+              {showPreview && spintaxSamples.length > 0 && (
+                <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+                  {spintaxSamples.map((sample, i) => {
+                    const names = ["Иван", "Алексей", "Мария"];
+                    return (
+                      <div key={i} style={{ padding: "11px 13px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 13, fontSize: 13, color: TG.textSecondary, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                        <div style={{ fontSize: 9, color: TG.muted, fontWeight: 800, textTransform: "uppercase", marginBottom: 6, letterSpacing: "0.08em" }}>Вариант {i + 1} · {names[i]}</div>
+                        {sample}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -334,11 +356,19 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
                 }}>#{tag}</button>
               ))}
             </div>
-            {selectedTag && (
-              <div style={{ marginTop: 7, fontSize: 10, color: TG.muted }}>
-                Рассылка будет отправлена только пользователям с тегом <b style={{ color: TG.purple }}>#{selectedTag}</b>
-              </div>
-            )}
+            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 10, color: TG.muted }}>
+                {selectedTag
+                  ? <>Только тег <b style={{ color: TG.purple }}>#{selectedTag}</b>:</>
+                  : "Вся аудитория:"}
+              </span>
+              {audienceCount === null
+                ? <span style={{ fontSize: 10, color: TG.muted, opacity: 0.5 }}>…</span>
+                : <span style={{ fontSize: 10, fontWeight: 800, color: selectedTag ? TG.purple : TG.green }}>
+                    {audienceCount.toLocaleString("ru")} польз.
+                  </span>
+              }
+            </div>
           </div>
         )}
 

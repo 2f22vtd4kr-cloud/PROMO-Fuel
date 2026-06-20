@@ -267,7 +267,8 @@ export const api = {
   deleteAccount: (id: number) => del(`/accounts/${id}`),
   clearFlood: (id: number) => post<SenderAccount>(`/accounts/${id}/clear-flood`, {}),
   resetDailyCounts: () => post<{ ok: boolean }>("/accounts/reset-daily", {}),
-  getAudienceTags: () => get<string[]>("/audience/tags"),
+  getAudienceTags:  () => get<string[]>("/audience/tags"),
+  getAudienceCount: (tag?: string) => get<{ count: number; tag: string | null }>(`/audience/count${tag ? `?tag=${encodeURIComponent(tag)}` : ""}`),
   startAuth: (id: number) => post<{ phone_code_hash?: string; already_authorized?: boolean; display_name?: string; session_file?: string; error?: string }>(`/accounts/${id}/start-auth`, {}),
   confirmAuth: (id: number, code: string, phone_code_hash: string) =>
     post<{ ok?: boolean; needs_2fa?: boolean; display_name?: string; session_file?: string; error?: string }>(`/accounts/${id}/confirm-auth`, { code, phone_code_hash }),

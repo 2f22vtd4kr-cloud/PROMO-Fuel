@@ -45,6 +45,23 @@ router.get("/audience", (req, res) => {
   }
 });
 
+router.get("/audience/count", (req, res) => {
+  try {
+    const db  = getDb();
+    const tag = ((req.query.tag as string) ?? "").trim();
+    let count: number;
+    if (tag) {
+      count = (db.prepare("SELECT COUNT(*) as n FROM users WHERE tags LIKE ?").get(`%${tag}%`) as { n: number }).n;
+    } else {
+      count = (db.prepare("SELECT COUNT(*) as n FROM users").get() as { n: number }).n;
+    }
+    db.close();
+    res.json({ count, tag: tag || null });
+  } catch {
+    res.json({ count: 0, tag: null });
+  }
+});
+
 router.get("/audience/tags", (_req, res) => {
   try {
     const db = getDb();

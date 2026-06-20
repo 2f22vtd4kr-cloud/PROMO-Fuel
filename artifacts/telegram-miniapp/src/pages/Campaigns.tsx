@@ -30,10 +30,12 @@ function logMeta(status: LogStatus): { icon: React.ReactNode; color: string; lab
 }
 
 function LogsPanel({ campaignId, isActive }: { campaignId: number; isActive: boolean }) {
-  const [logs, setLogs]       = useState<SendLog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const bottomRef             = useRef<HTMLDivElement>(null);
-  const prevLen               = useRef(0);
+  const [logs, setLogs]                   = useState<SendLog[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [showBreakdown, setShowBreakdown] = useState(false);
+  const [breakdown, setBreakdown]         = useState<import("../lib/api").AccountBreakdown[]>([]);
+  const bottomRef                         = useRef<HTMLDivElement>(null);
+  const prevLen                           = useRef(0);
 
   const load = useCallback(async () => {
     try {
@@ -48,6 +50,11 @@ function LogsPanel({ campaignId, isActive }: { campaignId: number; isActive: boo
     const iv = setInterval(load, 3000);
     return () => clearInterval(iv);
   }, [load, isActive]);
+
+  useEffect(() => {
+    if (!showBreakdown) return;
+    api.getCampaignBreakdown(campaignId).then(setBreakdown).catch(() => {});
+  }, [showBreakdown, campaignId]);
 
   // Auto-scroll to bottom when new entries arrive (active only)
   useEffect(() => {
@@ -65,9 +72,9 @@ function LogsPanel({ campaignId, isActive }: { campaignId: number; isActive: boo
   return (
     <div style={{ marginTop: 12, borderTop: "1px solid rgba(255,255,255,0.07)", paddingTop: 12 }}>
 
-      {/* Summary chips */}
+      {/* Summary chips + CSV export */}
       {!loading && logs.length > 0 && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10, alignItems: "center" }}>
           {ok > 0 && (
             <span style={{ fontSize: 10, fontWeight: 700, color: TG.green, background: `${TG.green}18`, border: `1px solid ${TG.green}35`, borderRadius: 20, padding: "3px 8px", display: "flex", alignItems: "center", gap: 4 }}>
               <CheckCircle2 size={9} /> {ok} доставлено
@@ -93,6 +100,23 @@ function LogsPanel({ campaignId, isActive }: { campaignId: number; isActive: boo
               <Loader2 size={9} style={{ animation: "spin 1s linear infinite" }} /> в процессе
             </span>
           )}
+          <span
+            onClick={() => {
+              haptic.light();
+              const header = "id,chat_id,username,first_name,status,sent_at,error\n";
+              const rows = logs.map(l =>
+                [l.id, l.chat_id, l.username ?? "", l.first_name ?? "", l.status, l.sent_at ?? "", (l as any).error ?? ""]
+                  .map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")
+              ).join("\n");
+              const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8;" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a"); a.href = url; a.download = `logs_${campaignId}.csv`; a.click();
+              URL.revokeObjectURL(url);
+            }}
+            style={{ marginLeft: "auto", fontSize: 10, fontWeight: 700, color: TG.muted, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 20, padding: "3px 9px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+          >
+            ↓ CSV
+          </span>
         </div>
       )}
 
@@ -192,6 +216,11 @@ function CampaignCard({ campaign, onEdit, onRefresh }: {
                 <Timer size={8} /> {campaign.send_delay_seconds}с
               </span>
             )}
+            {(campaign as any).scheduled_tag && (
+              <span style={{ fontSize: 9, fontWeight: 700, color: "#c4aeff", background: "rgba(196,174,255,0.13)", border: "1px solid rgba(196,174,255,0.30)", borderRadius: 8, padding: "2px 6px" }}>
+                #{(campaign as any).scheduled_tag}
+              </span>
+            )}
             <span style={{ fontSize: 10, color: TG.muted, display: "flex", alignItems: "center", gap: 3 }}>
               <Clock size={9} /> {dateStr}
             </span>
@@ -269,6 +298,14 @@ function CampaignCard({ campaign, onEdit, onRefresh }: {
         );
       })()}
 
+      {/* Notes */}
+      {campaign.notes && (
+        <div style={{ marginTop: 8, padding: "8px 10px", background: "rgba(255,200,50,0.07)", border: "1px solid rgba(255,200,50,0.18)", borderRadius: 9, fontSize: 11, color: TG.muted, lineHeight: 1.45, wordBreak: "break-word", display: "flex", alignItems: "flex-start", gap: 6 }}>
+          <span style={{ fontSize: 12, flexShrink: 0 }}>📝</span>
+          <span>{campaign.notes}</span>
+        </div>
+      )}
+
       {/* Text preview toggle */}
       {campaign.text_template && (
         <div style={{ marginTop: 10 }}>
@@ -310,9 +347,19 @@ function CampaignCard({ campaign, onEdit, onRefresh }: {
   );
 }
 
+const STATUS_TABS = [
+  { key: "all",      label: "Все" },
+  { key: "active",   label: "Активные" },
+  { key: "draft",    label: "Черновики" },
+  { key: "done",     label: "Завершённые" },
+] as const;
+type StatusTab = typeof STATUS_TABS[number]["key"];
+
 export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading]     = useState(true);
+  const [search, setSearch]       = useState("");
+  const [tab, setTab]             = useState<StatusTab>("all");
 
   const load = useCallback(async () => {
     try {
@@ -340,6 +387,13 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
   const scheduled = campaigns.filter(c => c.status === "scheduled").length;
   const paused    = campaigns.filter(c => c.status === "paused").length;
 
+  const tabFiltered = campaigns.filter(c => {
+    if (tab === "active")   return c.status === "running" || c.status === "sending" || c.status === "paused" || c.status === "scheduled";
+    if (tab === "draft")    return c.status === "draft";
+    if (tab === "done")     return c.status === "done" || c.status === "cancelled";
+    return true;
+  });
+
   return (
     <div className="tab-content" style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "14px 14px 24px" }}>
@@ -354,9 +408,47 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
           </GlassCard>
         </div>
 
-        {!loading && (active > 0 || scheduled > 0 || paused > 0) && (
+        {/* Status tabs */}
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
+          {STATUS_TABS.map(t => {
+            const isActive = t.key === tab;
+            const cnt = t.key === "all" ? campaigns.length
+              : t.key === "active" ? campaigns.filter(c => ["running","sending","paused","scheduled"].includes(c.status)).length
+              : t.key === "draft"  ? campaigns.filter(c => c.status === "draft").length
+              : campaigns.filter(c => c.status === "done" || c.status === "cancelled").length;
+            return (
+              <button key={t.key} onClick={() => { haptic.light(); setTab(t.key); setSearch(""); }} style={{
+                flexShrink: 0, padding: "6px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                border: `1px solid ${isActive ? TG.green + "55" : "rgba(255,255,255,0.10)"}`,
+                background: isActive ? `${TG.green}18` : "rgba(255,255,255,0.04)",
+                color: isActive ? TG.green : TG.muted, cursor: "pointer",
+              }}>{t.label}{cnt > 0 ? ` (${cnt})` : ""}</button>
+            );
+          })}
+        </div>
+
+        {campaigns.length > 3 && (
+          <div style={{ position: "relative" }}>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Поиск по названию..."
+              style={{
+                width: "100%", boxSizing: "border-box",
+                padding: "9px 12px 9px 34px",
+                background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)",
+                borderRadius: 12, color: TG.text, fontSize: 12, outline: "none",
+              }}
+            />
+            <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", opacity: 0.4 }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+          </div>
+        )}
+
+        {!loading && active > 0 && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {active > 0    && <span style={{ fontSize: 10, fontWeight: 700, color: TG.green, background: `${TG.green}18`, border: `1px solid ${TG.green}35`, borderRadius: 20, padding: "4px 10px", display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: TG.green, display: "inline-block", boxShadow: `0 0 6px ${TG.green}` }} />{active} активных</span>}
+            <span style={{ fontSize: 10, fontWeight: 700, color: TG.green, background: `${TG.green}18`, border: `1px solid ${TG.green}35`, borderRadius: 20, padding: "4px 10px", display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: TG.green, display: "inline-block", boxShadow: `0 0 6px ${TG.green}`, animation: "pulse 1.5s ease-in-out infinite" }} />{active} активных</span>
             {scheduled > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: TG.yellow, background: `${TG.yellow}18`, border: `1px solid ${TG.yellow}35`, borderRadius: 20, padding: "4px 10px" }}>{scheduled} запланир.</span>}
             {paused > 0    && <span style={{ fontSize: 10, fontWeight: 700, color: "#6ba8e5", background: "rgba(107,168,229,0.18)", border: "1px solid rgba(107,168,229,0.35)", borderRadius: 20, padding: "4px 10px" }}>{paused} на паузе</span>}
           </div>
@@ -371,11 +463,21 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
             <div style={{ fontSize: 14, color: TG.muted, marginBottom: 12 }}>Кампаний пока нет</div>
             <div onClick={() => { haptic.medium(); onEdit(); }} style={{ fontSize: 13, color: TG.green, fontWeight: 700, cursor: "pointer" }}>+ Создать первую кампанию</div>
           </GlassCard>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {campaigns.map(c => <CampaignCard key={c.id} campaign={c} onEdit={onEdit} onRefresh={load} />)}
-          </div>
-        )}
+        ) : (() => {
+          const q = search.trim().toLowerCase();
+          const filtered = q ? tabFiltered.filter(c => c.name.toLowerCase().includes(q)) : tabFiltered;
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {filtered.length === 0 ? (
+                <GlassCard style={{ padding: "24px 16px", textAlign: "center" }}>
+                  <div style={{ fontSize: 13, color: TG.muted }}>
+                    {q ? `Ничего не найдено по «${search}»` : "Нет кампаний в этой категории"}
+                  </div>
+                </GlassCard>
+              ) : filtered.map(c => <CampaignCard key={c.id} campaign={c} onEdit={onEdit} onRefresh={load} />)}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
