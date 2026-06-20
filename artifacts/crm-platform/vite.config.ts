@@ -4,7 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-const rawPort = process.env.CRM_PORT ?? "3001";
+const rawPort = process.env.CRM_PORT ?? "23873";
 const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
