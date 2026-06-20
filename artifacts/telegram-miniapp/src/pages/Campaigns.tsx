@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Pause, Play, MoreHorizontal, Clock, Copy, Trash2, Settings, ChevronDown, CheckCircle2, XCircle, SkipForward, FlaskConical, Loader2 } from "lucide-react";
+import { Plus, Pause, Play, MoreHorizontal, Clock, Copy, Trash2, Settings, ChevronDown, CheckCircle2, XCircle, SkipForward, FlaskConical, Loader2, Timer } from "lucide-react";
 import { api, Campaign, SendLog } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard, StatusBadge } from "../components/GlassCard";
@@ -144,6 +144,7 @@ function CampaignCard({ campaign, onEdit, onRefresh }: {
   const isDone     = campaign.status === "done" || campaign.status === "cancelled";
   const isEditable = campaign.status === "draft" || campaign.status === "scheduled";
   const hasLogs    = isActive || isPaused || isDone;
+  const isDryRun   = Boolean(campaign.dry_run);
   const pct = campaign.target_count > 0
     ? Math.min(100, Math.round(campaign.sent_count / campaign.target_count * 100)) : 0;
   const color = isActive ? TG.green : isPaused ? "#6ba8e5" : "rgba(160,190,230,0.40)";
@@ -179,8 +180,18 @@ function CampaignCard({ campaign, onEdit, onRefresh }: {
           <div style={{ fontSize: 13, fontWeight: 700, color: TG.text, marginBottom: 5, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
             {campaign.name}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             <StatusBadge status={campaign.status} />
+            {isDryRun && (
+              <span style={{ fontSize: 9, fontWeight: 700, color: "#6ba8e5", background: "rgba(107,168,229,0.14)", border: "1px solid rgba(107,168,229,0.30)", borderRadius: 8, padding: "2px 6px", display: "flex", alignItems: "center", gap: 3 }}>
+                <FlaskConical size={8} /> Dry Run
+              </span>
+            )}
+            {campaign.send_delay_seconds && campaign.send_delay_seconds !== 15 && (
+              <span style={{ fontSize: 9, fontWeight: 700, color: TG.muted, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 8, padding: "2px 6px", display: "flex", alignItems: "center", gap: 3 }}>
+                <Timer size={8} /> {campaign.send_delay_seconds}с
+              </span>
+            )}
             <span style={{ fontSize: 10, color: TG.muted, display: "flex", alignItems: "center", gap: 3 }}>
               <Clock size={9} /> {dateStr}
             </span>
@@ -220,20 +231,43 @@ function CampaignCard({ campaign, onEdit, onRefresh }: {
         </div>
       </div>
 
-      {/* Progress bar */}
-      {campaign.target_count > 0 && (
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-            <span style={{ fontSize: 10, color: TG.muted }}>Отправлено</span>
-            <span style={{ fontSize: 10, color, fontWeight: 700 }}>
-              {campaign.sent_count.toLocaleString("ru")} / {campaign.target_count.toLocaleString("ru")} ({pct}%)
-            </span>
+      {/* Progress bar + ETA */}
+      {campaign.target_count > 0 && (() => {
+        let etaStr = "";
+        let rateStr = "";
+        if (isActive && campaign.started_at && campaign.sent_count > 0) {
+          const elapsedSec = (Date.now() - new Date(campaign.started_at).getTime()) / 1000;
+          const rate = campaign.sent_count / elapsedSec;
+          const remaining = campaign.target_count - campaign.sent_count;
+          const etaSec = rate > 0 ? Math.round(remaining / rate) : 0;
+          if (etaSec > 0) {
+            const h = Math.floor(etaSec / 3600);
+            const m = Math.floor((etaSec % 3600) / 60);
+            const s = etaSec % 60;
+            etaStr = h > 0 ? `~${h}ч ${m}м` : m > 0 ? `~${m}м ${s}с` : `~${s}с`;
+          }
+          rateStr = rate >= 1 ? `${rate.toFixed(1)}/с` : `${(rate * 60).toFixed(1)}/мин`;
+        }
+        return (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 10, color: TG.muted }}>Отправлено</span>
+                {rateStr && <span style={{ fontSize: 9, color: color, fontWeight: 700, background: `${color}18`, border: `1px solid ${color}30`, borderRadius: 8, padding: "1px 5px" }}>{rateStr}</span>}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {etaStr && <span style={{ fontSize: 9, color: TG.muted }}>осталось {etaStr}</span>}
+                <span style={{ fontSize: 10, color, fontWeight: 700 }}>
+                  {campaign.sent_count.toLocaleString("ru")} / {campaign.target_count.toLocaleString("ru")} ({pct}%)
+                </span>
+              </div>
+            </div>
+            <div style={{ height: 3, borderRadius: 2, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
+              <div style={{ height: "100%", borderRadius: 2, width: `${pct}%`, background: `linear-gradient(90deg,${color},${color}aa)`, boxShadow: pct > 0 ? `0 0 6px ${color}88` : "none", transition: "width 0.6s ease" }} />
+            </div>
           </div>
-          <div style={{ height: 3, borderRadius: 2, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
-            <div style={{ height: "100%", borderRadius: 2, width: `${pct}%`, background: `linear-gradient(90deg,${color},${color}aa)`, boxShadow: pct > 0 ? `0 0 6px ${color}88` : "none", transition: "width 0.6s ease" }} />
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Text preview toggle */}
       {campaign.text_template && (

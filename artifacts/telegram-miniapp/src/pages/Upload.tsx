@@ -21,7 +21,7 @@ export function UploadPage() {
   const inputRef              = useRef<HTMLInputElement>(null);
   const { show: showToast, node: toastNode } = useToast();
 
-  const apiBase  = (import.meta as Record<string, unknown> & { env: Record<string, string> }).env.VITE_API_URL || "";
+  const apiBase  = import.meta.env.VITE_API_URL || "";
   const initData = (window as unknown as { Telegram?: { WebApp?: { initData: string } } }).Telegram?.WebApp?.initData ?? "";
 
   useEffect(() => {

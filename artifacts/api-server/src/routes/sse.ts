@@ -20,7 +20,7 @@ function pollDb() {
   try {
     const db = new Database(DB_PATH, { readonly: true });
 
-    const campaigns = db.prepare("SELECT id, name, status, sent_count, failed_count, target_count FROM campaigns ORDER BY id").all();
+    const campaigns = db.prepare("SELECT id, name, status, sent_count, failed_count, target_count, started_at FROM campaigns ORDER BY id").all();
     const campSnap = JSON.stringify(campaigns);
     if (campSnap !== lastCampaignSnap) {
       lastCampaignSnap = campSnap;
@@ -28,7 +28,7 @@ function pollDb() {
     }
 
     try {
-      const accounts = db.prepare("SELECT id, label, phone, username, telegram_id, status, sent_today, sent_total, failed_total, is_banned, is_active FROM sender_accounts ORDER BY id").all();
+      const accounts = db.prepare("SELECT id, label, phone, username, telegram_id, status, sent_today, sent_total, failed_total, is_banned, is_active, flood_wait_until, daily_limit FROM sender_accounts ORDER BY id").all();
       const accSnap = JSON.stringify(accounts);
       if (accSnap !== lastAccountSnap) {
         lastAccountSnap = accSnap;

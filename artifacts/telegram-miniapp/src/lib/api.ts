@@ -48,8 +48,13 @@ export interface Campaign {
   failed_count: number;
   target_count: number;
   created_at: string;
+  started_at?: string;
   scheduled_at?: string;
   notes?: string;
+  dry_run?: number;
+  send_delay_seconds?: number;
+  sender_account_id?: number | null;
+  scheduled_tag?: string | null;
 }
 
 export interface GroupCampaign {
@@ -127,6 +132,8 @@ export interface SenderAccount {
   proxies?: string;
   auth_status?: string;
   status: string;
+  flood_wait_until?: string;
+  daily_limit: number;
   is_active: number;
   is_banned: number;
   sent_today: number;
@@ -258,6 +265,9 @@ export const api = {
   createAccount: (data: { phone: string; label?: string; username?: string; proxy?: string; proxies?: string; api_id?: number; api_hash?: string }) =>
     post<SenderAccount>("/accounts", data),
   deleteAccount: (id: number) => del(`/accounts/${id}`),
+  clearFlood: (id: number) => post<SenderAccount>(`/accounts/${id}/clear-flood`, {}),
+  resetDailyCounts: () => post<{ ok: boolean }>("/accounts/reset-daily", {}),
+  getAudienceTags: () => get<string[]>("/audience/tags"),
   startAuth: (id: number) => post<{ phone_code_hash?: string; already_authorized?: boolean; display_name?: string; session_file?: string; error?: string }>(`/accounts/${id}/start-auth`, {}),
   confirmAuth: (id: number, code: string, phone_code_hash: string) =>
     post<{ ok?: boolean; needs_2fa?: boolean; display_name?: string; session_file?: string; error?: string }>(`/accounts/${id}/confirm-auth`, { code, phone_code_hash }),

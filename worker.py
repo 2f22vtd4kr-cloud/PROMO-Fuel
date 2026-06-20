@@ -46,6 +46,7 @@ from dbmigrations import run_migrations
 from task_queue import TaskQueue
 from groupbroadcaster import run_group_campaign_task
 from utils.supervisor import WorkerHeartbeat
+from campaign_db import reset_daily_counts
 
 DB_PATH      = os.getenv("DB_PATH", "campaigns.db")
 POLL_INTERVAL = args.poll
@@ -105,11 +106,21 @@ async def main_loop() -> None:
 
     last_stuck_reset = datetime.now().timestamp()
     consecutive_idle = 0
+    last_reset_date  = datetime.now().date()
 
     logger.info(f"[{WORKER_ID}] Ready — polling every {POLL_INTERVAL}s")
 
     while _running:
         try:
+            today = datetime.now().date()
+            if today != last_reset_date:
+                try:
+                    await reset_daily_counts()
+                    logger.info(f"[{WORKER_ID}] Daily sent_today counters reset for {today}")
+                except Exception as exc:
+                    logger.warning(f"[{WORKER_ID}] Daily reset failed: {exc}")
+                last_reset_date = today
+
             # Periodically reset stuck tasks from other workers that died
             now_ts = datetime.now().timestamp()
             if now_ts - last_stuck_reset > STUCK_RESET_INTERVAL:

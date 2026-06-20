@@ -45,4 +45,23 @@ router.get("/audience", (req, res) => {
   }
 });
 
+router.get("/audience/tags", (_req, res) => {
+  try {
+    const db = getDb();
+    let tags: string[] = [];
+    try {
+      const rows = db.prepare("SELECT DISTINCT tags FROM users WHERE tags IS NOT NULL AND tags != ''").all() as { tags: string }[];
+      const tagSet = new Set<string>();
+      for (const r of rows) {
+        for (const t of r.tags.split(/[,\s]+/).map(s => s.trim()).filter(Boolean)) tagSet.add(t);
+      }
+      tags = Array.from(tagSet).sort();
+    } catch {}
+    db.close();
+    res.json(tags);
+  } catch (err) {
+    res.json([]);
+  }
+});
+
 export default router;

@@ -1,13 +1,51 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Shield, Plus, ChevronDown, ChevronUp, X, RotateCcw, Power,
-  Trash2, Key, CheckCircle, AlertCircle, Loader, Lock,
+  Trash2, Key, CheckCircle, AlertCircle, Loader, Lock, Timer, XCircle,
 } from "lucide-react";
 import { api, SenderAccount } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard, StatusBadge } from "../components/GlassCard";
 import { useSse } from "../lib/useSse";
 import { haptic } from "../lib/haptics";
+
+// ── Flood wait countdown badge ────────────────────────────────────────────────
+
+function FloodCountdown({ until, onClear }: { until: string; onClear: () => void }) {
+  const calcSecs = () => Math.max(0, Math.round((new Date(until).getTime() - Date.now()) / 1000));
+  const [secs, setSecs] = useState(calcSecs);
+  const ref = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    setSecs(calcSecs());
+    ref.current = setInterval(() => {
+      const remaining = calcSecs();
+      setSecs(remaining);
+      if (remaining <= 0) { clearInterval(ref.current!); onClear(); }
+    }, 1000);
+    return () => { if (ref.current) clearInterval(ref.current); };
+  }, [until]);
+
+  const mm = String(Math.floor(secs / 60)).padStart(2, "0");
+  const ss = String(secs % 60).padStart(2, "0");
+  const expired = secs <= 0;
+
+  return (
+    <span style={{
+      display: "flex", alignItems: "center", gap: 4,
+      fontSize: 9, fontWeight: 700,
+      color: expired ? "#2de897" : "#ffc946",
+      background: expired ? "rgba(45,232,151,0.12)" : "rgba(255,201,70,0.14)",
+      border: `1px solid ${expired ? "rgba(45,232,151,0.3)" : "rgba(255,201,70,0.35)"}`,
+      borderRadius: 20, padding: "2px 7px",
+      cursor: "pointer",
+    }} onClick={onClear} title="Нажмите для сброса">
+      <Timer size={9} />
+      {expired ? "ГОТОВО" : `FLOOD ${mm}:${ss}`}
+      <XCircle size={9} style={{ opacity: 0.7 }} />
+    </span>
+  );
+}
 
 // ── Auth status badge ────────────────────────────────────────────────────────
 
@@ -269,16 +307,22 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
 // ── Account card ─────────────────────────────────────────────────────────────
 
 function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => void }) {
-  const [expanded,   setExpanded]   = useState(false);
-  const [showAuth,   setShowAuth]   = useState(false);
-  const [busy,       setBusy]       = useState(false);
+  const [expanded,     setExpanded]     = useState(false);
+  const [showAuth,     setShowAuth]     = useState(false);
+  const [busy,         setBusy]         = useState(false);
+  const [editingLimit, setEditingLimit] = useState(false);
+  const [limitInput,   setLimitInput]   = useState(String(acc.daily_limit ?? 300));
+
+  const isFlooded = acc.status === "flood_wait" && !!acc.flood_wait_until;
 
   const statusColor = {
     idle: "#2de897", sending: "#6ba8e5", banned: "#ff6b7a",
-    offline: "rgba(160,190,230,0.45)", flood: "#ffc946", broadcasting: "#c4aeff",
+    offline: "rgba(160,190,230,0.45)", flood: "#ffc946",
+    flood_wait: "#ffc946", broadcasting: "#c4aeff",
   }[acc.status] ?? "rgba(160,190,230,0.45)";
 
-  const pct = acc.sent_today > 0 ? Math.min(100, Math.round(acc.sent_today / 300 * 100)) : 0;
+  const limit = acc.daily_limit ?? 300;
+  const pct = acc.sent_today > 0 ? Math.min(100, Math.round(acc.sent_today / limit * 100)) : 0;
 
   async function toggleActive() {
     haptic.medium(); setBusy(true);
@@ -295,6 +339,20 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
       await fetch(`${import.meta.env.VITE_API_URL ?? ""}/api/accounts/${acc.id}/reset-daily`, { method: "POST" });
       haptic.success(); onRefresh();
     } catch { haptic.error(); } finally { setBusy(false); }
+  }
+
+  async function clearFlood() {
+    haptic.medium(); setBusy(true);
+    try { await api.clearFlood(acc.id); haptic.success(); onRefresh(); }
+    catch { haptic.error(); } finally { setBusy(false); }
+  }
+
+  async function saveDailyLimit() {
+    const val = parseInt(limitInput);
+    if (isNaN(val) || val < 1 || val > 10000) { setLimitInput(String(limit)); setEditingLimit(false); return; }
+    haptic.medium(); setBusy(true);
+    try { await api.patchAccount(acc.id, { daily_limit: val } as any); haptic.success(); onRefresh(); }
+    catch { haptic.error(); } finally { setBusy(false); setEditingLimit(false); }
   }
 
   async function deleteAcc() {
@@ -324,6 +382,8 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
             <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, color: "#ff6b7a", background: "rgba(255,107,122,0.15)", border: "1px solid rgba(255,107,122,0.35)", borderRadius: 20, padding: "2px 7px" }}>
               🚫 БАН
             </span>
+          ) : isFlooded ? (
+            <FloodCountdown until={acc.flood_wait_until!} onClear={clearFlood} />
           ) : (
             <AuthBadge status={acc.auth_status} sessionFile={acc.session_file} />
           )}
@@ -335,9 +395,30 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
 
       {/* Daily quota bar */}
       <div style={{ marginBottom: expanded ? 12 : 0 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
           <span style={{ fontSize: 10, color: TG.muted }}>Дневной лимит</span>
-          <span style={{ fontSize: 10, color: statusColor, fontWeight: 700 }}>{acc.sent_today.toLocaleString("ru")} / 300</span>
+          {editingLimit ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <input
+                autoFocus
+                type="number"
+                value={limitInput}
+                onChange={e => setLimitInput(e.target.value)}
+                onBlur={saveDailyLimit}
+                onKeyDown={e => { if (e.key === "Enter") saveDailyLimit(); if (e.key === "Escape") { setLimitInput(String(limit)); setEditingLimit(false); } }}
+                style={{ width: 64, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(107,168,229,0.4)", borderRadius: 6, padding: "2px 5px", fontSize: 10, color: TG.text, outline: "none", textAlign: "right" }}
+              />
+              <span style={{ fontSize: 10, color: TG.muted }}>/ день</span>
+            </div>
+          ) : (
+            <span
+              onClick={() => { setLimitInput(String(limit)); setEditingLimit(true); }}
+              style={{ fontSize: 10, color: statusColor, fontWeight: 700, cursor: "pointer", borderBottom: "1px dashed rgba(107,168,229,0.4)", paddingBottom: 1 }}
+              title="Нажмите для изменения лимита"
+            >
+              {acc.sent_today.toLocaleString("ru")} / {limit.toLocaleString("ru")}
+            </span>
+          )}
         </div>
         <div style={{ height: 3, borderRadius: 2, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
           <div style={{ height: "100%", borderRadius: 2, width: `${pct}%`, background: `linear-gradient(90deg,${statusColor},${statusColor}99)`, boxShadow: pct > 0 ? `0 0 6px ${statusColor}66` : "none", transition: "width 0.6s ease" }} />
@@ -380,8 +461,24 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
             </div>
           )}
 
+          {/* Flood-wait warning block */}
+          {isFlooded && (
+            <div style={{ background: "rgba(255,201,70,0.08)", border: "1px solid rgba(255,201,70,0.25)", borderRadius: 10, padding: "9px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <Timer size={12} color="#ffc946" />
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#ffc946" }}>Flood Wait — аккаунт на паузе</div>
+                  <div style={{ fontSize: 9, color: TG.muted, marginTop: 1 }}>Telegram требует подождать перед следующей отправкой</div>
+                </div>
+              </div>
+              <button onClick={clearFlood} disabled={busy} style={{ flexShrink: 0, padding: "5px 10px", borderRadius: 8, background: "rgba(255,201,70,0.15)", border: "1px solid rgba(255,201,70,0.35)", fontSize: 10, fontWeight: 700, color: "#ffc946", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1 }}>
+                Сброс
+              </button>
+            </div>
+          )}
+
           {/* Last error if banned or failed */}
-          {acc.last_error && (
+          {acc.last_error && !isFlooded && (
             <div style={{ fontSize: 10, color: "#ff6b7a", background: "rgba(255,107,122,0.08)", border: "1px solid rgba(255,107,122,0.2)", borderRadius: 8, padding: "6px 9px", lineHeight: 1.4, wordBreak: "break-word" }}>
               ⚠️ {acc.last_error}
             </div>
@@ -445,12 +542,23 @@ export function AccountsPage({ onClose }: { onClose?: () => void }) {
             )}
             <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>Аккаунты</div>
           </div>
-          <GlassCard style={{ padding: "8px 12px", borderRadius: 14, cursor: "pointer" }} onClick={() => { haptic.medium(); setShowForm(s => !s); }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <Plus size={14} color="#ff7eb3" />
-              <span style={{ fontSize: 12, color: "#ff7eb3", fontWeight: 700 }}>Добавить</span>
-            </div>
-          </GlassCard>
+          <div style={{ display: "flex", gap: 6 }}>
+            <GlassCard
+              style={{ padding: "8px 10px", borderRadius: 14, cursor: "pointer" }}
+              onClick={async () => { haptic.medium(); try { await api.resetDailyCounts(); haptic.success(); load(); } catch { haptic.error(); } }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <RotateCcw size={13} color={TG.muted} />
+                <span style={{ fontSize: 11, color: TG.muted, fontWeight: 600 }}>Сброс</span>
+              </div>
+            </GlassCard>
+            <GlassCard style={{ padding: "8px 12px", borderRadius: 14, cursor: "pointer" }} onClick={() => { haptic.medium(); setShowForm(s => !s); }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Plus size={14} color="#ff7eb3" />
+                <span style={{ fontSize: 12, color: "#ff7eb3", fontWeight: 700 }}>Добавить</span>
+              </div>
+            </GlassCard>
+          </div>
         </div>
 
         {/* Summary 4-col */}

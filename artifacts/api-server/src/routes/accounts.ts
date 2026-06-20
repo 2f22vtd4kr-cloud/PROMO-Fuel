@@ -20,6 +20,8 @@ function ensureTable() {
       session_file TEXT,
       proxy TEXT,
       status TEXT NOT NULL DEFAULT 'idle',
+      flood_wait_until TEXT,
+      daily_limit INTEGER NOT NULL DEFAULT 300,
       sent_today INTEGER NOT NULL DEFAULT 0,
       sent_total INTEGER NOT NULL DEFAULT 0,
       failed_total INTEGER NOT NULL DEFAULT 0,
@@ -30,7 +32,12 @@ function ensureTable() {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
-  for (const [col, def] of [["api_id", "INTEGER"], ["api_hash", "TEXT"]] as [string, string][]) {
+  for (const [col, def] of [
+    ["api_id", "INTEGER"],
+    ["api_hash", "TEXT"],
+    ["flood_wait_until", "TEXT"],
+    ["daily_limit", "INTEGER NOT NULL DEFAULT 300"],
+  ] as [string, string][]) {
     try { db.exec(`ALTER TABLE sender_accounts ADD COLUMN ${col} ${def}`); } catch {}
   }
   db.close();
@@ -82,7 +89,8 @@ router.put("/accounts/:id", (req, res) => {
     const id = parseInt(req.params.id);
     const allowed = ["label", "phone", "username", "telegram_id", "api_id", "api_hash",
                      "proxy", "proxies", "session_file", "status", "auth_status", "is_active", "is_banned",
-                     "last_error", "sent_today", "sent_total", "failed_total", "last_used_at"];
+                     "last_error", "sent_today", "sent_total", "failed_total", "last_used_at",
+                     "flood_wait_until", "daily_limit"];
     const fields: string[] = [];
     const values: unknown[] = [];
     for (const key of allowed) {
@@ -122,6 +130,31 @@ router.post("/accounts/:id/reset-daily", (req, res) => {
     const row = db.prepare("SELECT * FROM sender_accounts WHERE id = ?").get(id);
     db.close();
     res.json(row ?? {});
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.post("/accounts/reset-daily", (req, res) => {
+  try {
+    const db = getDb(false);
+    db.prepare("UPDATE sender_accounts SET sent_today = 0").run();
+    db.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.post("/accounts/:id/clear-flood", (req, res) => {
+  try {
+    const db = getDb(false);
+    const id = parseInt(req.params.id);
+    db.prepare(`UPDATE sender_accounts SET status = 'idle', flood_wait_until = NULL, last_error = NULL WHERE id = ? AND status = 'flood_wait'`).run(id);
+    const row = db.prepare("SELECT * FROM sender_accounts WHERE id = ?").get(id);
+    db.close();
+    if (!row) return void res.status(404).json({});
+    res.json(row);
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

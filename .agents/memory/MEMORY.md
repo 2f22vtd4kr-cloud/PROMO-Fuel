@@ -8,3 +8,4 @@
 - [API_SECRET missing](api-secret-missing.md) — API_SECRET is not set as a Replit secret; Bearer middleware (app.ts) only activates when it's set; without it /api/* routes return 200 with no auth.
 - [better-sqlite3 rebuild](better-sqlite3-rebuild.md) — sqlite3.o must be compiled first with gcc before linking the .node addon; headers at `/nix/store/jfar9wnj6kvr0gr6klh1gk7vgckkfr5j-nodejs-20.20.0/include/node`.
 - [V3 security arch](v3-security-arch.md) — Bearer middleware in app.ts (skips /twa /health /auth); TWA HMAC for /api/twa/* (skipped in dev); CRM login stores secret in sessionStorage; Mini App calls /api/twa/* with X-Telegram-Init-Data header.
+- [API Server workflow fix](api-server-workflow.md) — restart_workflow always times out for API Server; use configureWorkflow() WITHOUT waitForPort to keep it "running"; then rebuild dist + background restart works; vite-env.d.ts (/// reference types="vite/client") was missing causing ImportMeta.env TS errors.

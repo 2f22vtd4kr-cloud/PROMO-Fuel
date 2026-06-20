@@ -9,6 +9,8 @@ interface TopCampaign { id: number; name: string; status: string; sent: number; 
 
 interface TrendPoint { d: string; sent: number; conv: number }
 
+interface SendRatePoint { hour: string; total: number; ok: number; errors: number }
+
 const MOCK_TREND: TrendPoint[] = [
   { d:"Пн",sent:820,conv:280 },{ d:"Вт",sent:1140,conv:410 },
   { d:"Ср",sent:960,conv:340 },{ d:"Чт",sent:1380,conv:520 },
@@ -86,6 +88,58 @@ function MiniBarChart({ data, color }: { data: TrendPoint[]; color: string }) {
   );
 }
 
+function HourlySendRateChart({ data }: { data: SendRatePoint[] }) {
+  const maxTotal = Math.max(...data.map(d => d.total), 1);
+  const currentHour = new Date().getHours();
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 60 }}>
+        {data.map((d, i) => {
+          const pct = (d.total / maxTotal) * 100;
+          const isNow = i === currentHour;
+          const hasErrors = d.errors > 0;
+          const barColor = hasErrors
+            ? `linear-gradient(180deg, rgba(255,107,107,0.9), rgba(255,107,107,0.5))`
+            : isNow
+              ? `linear-gradient(180deg, ${TG.green}, ${TG.green}88)`
+              : `linear-gradient(180deg, rgba(107,168,229,0.85), rgba(107,168,229,0.35))`;
+          return (
+            <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end" }}>
+              <div style={{
+                width: "100%", minHeight: d.total > 0 ? 3 : 1, height: `${pct}%`,
+                borderRadius: "2px 2px 0 0",
+                background: barColor,
+                boxShadow: isNow ? `0 0 8px ${TG.green}60` : undefined,
+                opacity: d.total === 0 ? 0.2 : 1,
+              }} />
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5 }}>
+        {[0, 4, 8, 12, 16, 20, 23].map(h => (
+          <span key={h} style={{ fontSize: 7, color: h === currentHour ? TG.green : "rgba(160,190,230,0.45)" }}>{String(h).padStart(2, "0")}:00</span>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#6ba8e5" }} />
+          <span style={{ fontSize: 9, color: TG.muted }}>Отправлено</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "rgba(255,107,107,0.9)" }} />
+          <span style={{ fontSize: 9, color: TG.muted }}>Ошибки</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: TG.green }} />
+          <span style={{ fontSize: 9, color: TG.muted }}>Текущий час</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DonutChart({ data }: { data: typeof FUEL_MIX }) {
   const total = data.reduce((a,d) => a+d.value, 0);
   let cumulative = 0;
@@ -131,10 +185,11 @@ function DonutChart({ data }: { data: typeof FUEL_MIX }) {
 }
 
 export function AnalyticsPage() {
-  const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
-  const [trend, setTrend]       = useState<TrendPoint[]>(MOCK_TREND);
-  const [topCamps, setTopCamps] = useState<TopCampaign[]>([]);
-  const [loading, setLoading]   = useState(true);
+  const [overview, setOverview]   = useState<AnalyticsOverview | null>(null);
+  const [trend, setTrend]         = useState<TrendPoint[]>(MOCK_TREND);
+  const [topCamps, setTopCamps]   = useState<TopCampaign[]>([]);
+  const [sendRate, setSendRate]   = useState<SendRatePoint[]>([]);
+  const [loading, setLoading]     = useState(true);
   const BASE = import.meta.env.VITE_API_URL ?? "";
 
   useEffect(() => {
@@ -142,10 +197,12 @@ export function AnalyticsPage() {
       api.getOverview(),
       fetch(`${BASE}/api/analytics/trend`).then(r => r.ok ? r.json() : MOCK_TREND).catch(() => MOCK_TREND),
       fetch(`${BASE}/api/analytics/top-campaigns?limit=5`).then(r => r.ok ? r.json() : []).catch(() => []),
-    ]).then(([ov, tr, tc]) => {
+      fetch(`${BASE}/api/analytics/send-rate`).then(r => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([ov, tr, tc, sr]) => {
       setOverview(ov);
       if (Array.isArray(tr) && tr.length > 0) setTrend(tr);
       if (Array.isArray(tc)) setTopCamps(tc);
+      if (Array.isArray(sr) && sr.length > 0) setSendRate(sr);
     }).catch(() => {}).finally(() => setLoading(false));
   }, [BASE]);
 
@@ -215,6 +272,17 @@ export function AnalyticsPage() {
           <MiniBarChart data={trend} color="#ff9f40" />
         </GlassCard>
 
+        {/* Hourly send-rate chart */}
+        {sendRate.length > 0 && (
+          <GlassCard style={{ padding:"14px 14px 12px" }}>
+            <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10 }}>
+              <div style={{ fontSize:12,fontWeight:700,color:TG.textSecondary }}>Отправки по часам (сегодня)</div>
+              <span style={{ fontSize:10,color:TG.muted }}>{new Date().toLocaleDateString("ru",{day:"2-digit",month:"short"})}</span>
+            </div>
+            <HourlySendRateChart data={sendRate} />
+          </GlassCard>
+        )}
+
         {/* Top campaigns */}
         {topCamps.length > 0 && (
           <GlassCard style={{ padding:"14px" }}>
@@ -240,7 +308,7 @@ export function AnalyticsPage() {
                       </div>
                     </div>
                     <div style={{ height:2,borderRadius:1,background:"rgba(255,255,255,0.07)" }}>
-                      <div style={{ height:"100%",width:`${pct}%`,borderRadius:1,background:`linear-gradient(90deg,${TG.green},${TG.blue})`,opacity:0.7 }} />
+                      <div style={{ height:"100%",width:`${pct}%`,borderRadius:1,background:`linear-gradient(90deg,${TG.green},#6ba8e5)`,opacity:0.7 }} />
                     </div>
                   </div>
                 );

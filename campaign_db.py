@@ -123,10 +123,12 @@ async def init_db():
                 await db.commit()
             except Exception:
                 pass
-        # sender_accounts: api_id / api_hash
+        # sender_accounts: flood_wait_until + api creds + daily_limit
         for col, definition in [
-            ("api_id",   "INTEGER"),
-            ("api_hash", "TEXT"),
+            ("api_id",           "INTEGER"),
+            ("api_hash",         "TEXT"),
+            ("flood_wait_until", "TEXT"),
+            ("daily_limit",      "INTEGER NOT NULL DEFAULT 300"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE sender_accounts ADD COLUMN {col} {definition}")
@@ -401,11 +403,26 @@ async def get_campaign_sends(campaign_id: int, limit: int = 50) -> list[dict]:
 # ── Sender account helpers ───────────────────────────────────────────────────
 
 async def get_active_accounts() -> list[dict]:
+    now = datetime.now().isoformat()
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT * FROM sender_accounts WHERE is_active = 1 AND is_banned = 0 ORDER BY sent_today ASC"
-        ) as cur:
+        # Auto-clear expired flood_wait status
+        await db.execute("""
+            UPDATE sender_accounts
+            SET status = 'idle', flood_wait_until = NULL
+            WHERE status = 'flood_wait'
+              AND flood_wait_until IS NOT NULL
+              AND flood_wait_until <= ?
+        """, (now,))
+        await db.commit()
+        async with db.execute("""
+            SELECT * FROM sender_accounts
+            WHERE is_active = 1
+              AND is_banned = 0
+              AND (flood_wait_until IS NULL OR flood_wait_until <= ?)
+              AND sent_today < COALESCE(daily_limit, 300)
+            ORDER BY sent_today ASC
+        """, (now,)) as cur:
             return [dict(r) for r in await cur.fetchall()]
 
 
@@ -500,13 +517,16 @@ async def account_flag_banned(account_id: int, error: str = None) -> None:
 
 
 async def account_flood_wait(account_id: int, seconds: int) -> None:
+    from datetime import timedelta
+    until = (datetime.now() + timedelta(seconds=seconds)).isoformat()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             UPDATE sender_accounts
             SET status = 'flood_wait',
+                flood_wait_until = ?,
                 last_error = ?
             WHERE id = ?
-        """, (f"FloodWait {seconds}s", account_id))
+        """, (until, f"FloodWait {seconds}s", account_id))
         await db.commit()
 
 
