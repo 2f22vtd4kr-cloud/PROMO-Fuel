@@ -86,8 +86,16 @@ function WorkerCard({ worker, onDelete }: { worker: BroadcastWorker; onDelete: (
           {worker.last_error}
         </div>
       )}
-      <div style={{ marginTop: 8, fontSize: 10, color: TG.muted }}>
-        Запущен: {worker.started_at ? new Date(worker.started_at).toLocaleString("ru") : "—"}
+      <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ fontSize: 10, color: TG.muted }}>
+          Запущен: {worker.started_at ? new Date(worker.started_at).toLocaleString("ru") : "—"}
+        </div>
+        {!alive && (
+          <button onClick={() => { navigator.clipboard?.writeText(`python worker.py ${worker.worker_id}`).catch(() => {}); haptic.light(); }}
+            style={{ fontSize: 9, color: "#6ba8e5", background: "rgba(107,168,229,0.08)", border: "1px solid rgba(107,168,229,0.2)", borderRadius: 6, padding: "3px 7px", cursor: "pointer", fontFamily: "monospace" }}>
+            📋 python worker.py {worker.worker_id}
+          </button>
+        )}
       </div>
     </GlassCard>
   );
@@ -113,7 +121,12 @@ function TaskRow({ task, onAction }: { task: Task; onAction: () => void }) {
     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", marginBottom: 4 }}>
       <span style={{ fontSize: 10, color, background: `${color}18`, borderRadius: 20, padding: "2px 7px", fontWeight: 700, flexShrink: 0 }}>{task.status}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, color: TG.text }}>#{task.id} — кампания {task.campaign_id}</div>
+        <div style={{ fontSize: 12, color: TG.text }}>#{task.id} — кампания {task.campaign_id}{task.worker_id && task.status === "claimed" ? <span style={{ color: "#ffc946", fontSize: 10, marginLeft: 5 }}>@ {task.worker_id}</span> : null}</div>
+        {task.scheduled_at && task.status === "pending" && (() => {
+          const diff = Math.floor((new Date(task.scheduled_at!).getTime() - Date.now()) / 1000);
+          if (diff > 5) return <div style={{ fontSize: 10, color: "#ffc946" }}>⏰ через {formatCountdown(task.scheduled_at)}</div>;
+          return null;
+        })()}
         {task.error && <div style={{ fontSize: 10, color: "#ff6b7a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.error}</div>}
       </div>
       <div style={{ fontSize: 9, color: TG.muted, flexShrink: 0 }}>{task.attempts}/{task.max_attempts}</div>
@@ -174,7 +187,7 @@ export function WorkersPage() {
   const [summary,   setSummary]   = useState<WorkersSummary | null>(null);
   const [scheduled, setScheduled] = useState<GroupCampaign[]>([]);
   const [loading,   setLoading]   = useState(true);
-  const [taskTab,   setTaskTab]   = useState<"all" | "pending" | "failed">("all");
+  const [taskTab,   setTaskTab]   = useState<"all" | "pending" | "claimed" | "failed">("all");
 
   const load = useCallback(async () => {
     try {
@@ -200,6 +213,7 @@ export function WorkersPage() {
 
   const filteredTasks = taskTab === "all" ? tasks.slice(0, 50)
     : tasks.filter(t => t.status === taskTab).slice(0, 50);
+
 
   const aliveWorkers = workers.filter(w => w.is_alive);
   const deadWorkers  = workers.filter(w => !w.is_alive);
@@ -273,18 +287,47 @@ export function WorkersPage() {
 
             {/* Task queue */}
             <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: TG.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>
                   <ListTodo size={12} style={{ marginRight: 6, verticalAlign: "middle" }} />Очередь задач
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
-                  {(["all", "pending", "failed"] as const).map(s => (
+                  {(["all", "pending", "claimed", "failed"] as const).map(s => (
                     <button key={s} onClick={() => setTaskTab(s)} style={{ fontSize: 10, padding: "3px 8px", borderRadius: 20, border: `1px solid ${taskTab === s ? "#6ba8e5" : "rgba(255,255,255,0.12)"}`, background: taskTab === s ? "rgba(107,168,229,0.15)" : "transparent", color: taskTab === s ? "#6ba8e5" : TG.muted, cursor: "pointer", fontWeight: 600 }}>
-                      {s === "all" ? "Все" : s === "pending" ? "Ожид." : "Ошибки"}
+                      {s === "all" ? "Все" : s === "pending" ? "Ожид." : s === "claimed" ? "В работе" : "Ошибки"}
                     </button>
                   ))}
                 </div>
               </div>
+
+              {/* Bulk task actions */}
+              {tasks.length > 0 && (
+                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                  {tasks.some(t => t.status === "failed" || t.status === "dead") && (
+                    <button onClick={async () => {
+                      haptic.medium();
+                      const r = await api.bulkRetryTasks();
+                      haptic.success();
+                      load();
+                      // brief toast via title attr
+                      alert(`♻️ Перезапущено ${r.updated} задач`);
+                    }} style={{ flex: 1, padding: "7px", background: "rgba(107,168,229,0.10)", border: "1px solid rgba(107,168,229,0.3)", borderRadius: 10, color: "#6ba8e5", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                      ♻️ Повтор всех ошибок
+                    </button>
+                  )}
+                  {tasks.some(t => t.status === "pending" || t.status === "claimed") && (
+                    <button onClick={async () => {
+                      haptic.warning();
+                      const r = await api.bulkCancelTasks();
+                      haptic.success();
+                      load();
+                      alert(`🚫 Отменено ${r.updated} задач`);
+                    }} style={{ flex: 1, padding: "7px", background: "rgba(255,107,122,0.08)", border: "1px solid rgba(255,107,122,0.25)", borderRadius: 10, color: "#ff6b7a", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                      🚫 Отменить все
+                    </button>
+                  )}
+                </div>
+              )}
 
               {filteredTasks.length === 0 ? (
                 <GlassCard style={{ padding: "16px", textAlign: "center" }}>

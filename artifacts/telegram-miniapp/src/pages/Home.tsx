@@ -214,6 +214,24 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
           </div>
         </div>
 
+        {/* Group campaigns quick strip */}
+        {groupCampaigns > 0 && (
+          <div onClick={() => { haptic.light(); onNavigate("groups"); }} style={{ cursor: "pointer" }}>
+            <GlassCard glow="rgba(255,201,70,0.14)" style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 9, background: "rgba(255,201,70,0.14)", border: "1px solid rgba(255,201,70,0.35)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Radio size={14} color="#ffc946" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: TG.text }}>
+                  Групповые рассылки: <span style={{ color: "#ffc946" }}>{groupCampaigns} активных</span>
+                </div>
+                <div style={{ fontSize: 10, color: TG.muted, marginTop: 1 }}>Нажми для управления</div>
+              </div>
+              <ArrowUpRight size={12} color={TG.muted} />
+            </GlassCard>
+          </div>
+        )}
+
         {/* Active campaigns */}
         <div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>

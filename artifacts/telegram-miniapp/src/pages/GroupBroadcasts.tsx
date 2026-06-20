@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, Play, Pause, Square, Copy, Trash2, Radio, ChevronRight, ChevronDown, ChevronUp, Clock, Send, AlertCircle, CheckCircle, BarChart2 } from "lucide-react";
-import { api, GroupCampaign, GroupCampaignLog, GroupSendStat, DailyStat } from "../lib/api";
+import { api, GroupCampaign, GroupCampaignLog, GroupSendStat, DailyStat, AccountGroup } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
 import { haptic } from "../lib/haptics";
@@ -31,6 +31,23 @@ function timeAgo(iso: string): string {
   return `${Math.floor(diff / 86400)}д`;
 }
 
+function NextSendCountdown({ iso }: { iso: string }) {
+  const [diff, setDiff] = useState(() => Math.floor((new Date(iso).getTime() - Date.now()) / 1000));
+  const ref = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    setDiff(Math.floor((new Date(iso).getTime() - Date.now()) / 1000));
+    ref.current = setInterval(() => setDiff(Math.floor((new Date(iso).getTime() - Date.now()) / 1000)), 1000);
+    return () => { if (ref.current) clearInterval(ref.current); };
+  }, [iso]);
+  const fmt = diff <= 0 ? "сейчас" : diff < 60 ? `${diff}с` : diff < 3600 ? `${Math.floor(diff / 60)}м ${diff % 60}с` : `${Math.floor(diff / 3600)}ч ${Math.floor((diff % 3600) / 60)}м`;
+  return (
+    <div style={{ fontSize: 10, color: TG.muted, marginBottom: 10, display: "flex", alignItems: "center", gap: 4 }}>
+      <Clock size={10} color={diff > 0 && diff <= 60 ? "#ffc946" : TG.muted} />
+      <span>Следующая через <span style={{ color: diff <= 0 ? "#2de897" : diff <= 60 ? "#ffc946" : TG.textSecondary, fontWeight: 700 }}>{fmt}</span></span>
+    </div>
+  );
+}
+
 type ExpandTab = "logs" | "stats";
 
 function GroupCampaignCard({
@@ -51,9 +68,22 @@ function GroupCampaignCard({
   const [logsLoaded,   setLogsLoaded]   = useState(false);
   const [statsLoaded,  setStatsLoaded]  = useState(false);
   const [loadingData,  setLoadingData]  = useState(false);
+  const [testGroupId,  setTestGroupId]  = useState<string | null>(null);
+  const [acctGroups,   setAcctGroups]   = useState<AccountGroup[]>([]);
 
   const color  = STATUS_COLOR[campaign.status] ?? "#7c8db0";
-  const groups = (() => { try { return JSON.parse(campaign.selected_groups || "[]"); } catch { return []; } })();
+  const groups: string[] = (() => { try { return JSON.parse(campaign.selected_groups || "[]"); } catch { return []; } })();
+
+  // Load account groups for test-send title lookup (lazy, once)
+  function ensureAcctGroups() {
+    if (acctGroups.length > 0 || !campaign.sender_account_id) return;
+    api.getAccountGroups(campaign.sender_account_id).then(setAcctGroups).catch(() => {});
+  }
+
+  function groupTitle(gid: string): string {
+    const found = acctGroups.find(g => g.group_id === gid);
+    return found?.group_title ?? gid;
+  }
 
   async function action(act: string) {
     haptic.medium(); setBusy(true);
@@ -127,6 +157,7 @@ function GroupCampaignCard({
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: TG.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{campaign.name}</div>
           <div style={{ fontSize: 10, color: TG.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{campaign.text_template}</div>
+          {campaign.notes && <div style={{ fontSize: 9, color: "#c4aeff", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📝 {campaign.notes}</div>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
           <span style={{ fontSize: 9, fontWeight: 700, color, background: `${color}18`, border: `1px solid ${color}35`, borderRadius: 20, padding: "2px 7px" }}>
@@ -153,12 +184,9 @@ function GroupCampaignCard({
         ))}
       </div>
 
-      {/* Next send */}
-      {campaign.next_send_at && campaign.status === "running" && (
-        <div style={{ fontSize: 10, color: TG.muted, marginBottom: 10, display: "flex", alignItems: "center", gap: 4 }}>
-          <Clock size={10} />
-          Следующая: {new Date(campaign.next_send_at).toLocaleString("ru")}
-        </div>
+      {/* Next send live countdown — ticking */}
+      {campaign.next_send_at && (campaign.status === "running" || campaign.status === "paused") && (
+        <NextSendCountdown iso={campaign.next_send_at} />
       )}
 
       {/* Action buttons */}
@@ -177,10 +205,44 @@ function GroupCampaignCard({
           </button>
         )}
 
-        <button onClick={sendNow} disabled={busy} title="Отправить сейчас" style={{ padding: "8px 10px", borderRadius: 10, background: "rgba(107,168,229,0.12)", border: "1px solid rgba(107,168,229,0.3)", cursor: busy ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4, opacity: busy ? 0.5 : 1 }}>
+        <button onClick={sendNow} disabled={busy} title="Отправить во все группы сейчас" style={{ padding: "8px 10px", borderRadius: 10, background: "rgba(107,168,229,0.12)", border: "1px solid rgba(107,168,229,0.3)", cursor: busy ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4, opacity: busy ? 0.5 : 1 }}>
           <Send size={12} color="#6ba8e5" />
           <span style={{ fontSize: 10, color: "#6ba8e5", fontWeight: 700 }}>Сейчас</span>
         </button>
+
+        {/* Test-send picker */}
+        <div style={{ position: "relative" }}>
+          <button
+            disabled={busy}
+            onClick={() => { ensureAcctGroups(); setTestGroupId(p => p === null ? "" : null); }}
+            title="Тест в одну группу"
+            style={{ padding: "8px 10px", borderRadius: 10, background: testGroupId !== null ? "rgba(196,174,255,0.15)" : "rgba(255,255,255,0.05)", border: `1px solid ${testGroupId !== null ? "rgba(196,174,255,0.4)" : "rgba(255,255,255,0.12)"}`, cursor: busy ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+          >
+            <span style={{ fontSize: 10, color: "#c4aeff", fontWeight: 700 }}>Тест</span>
+          </button>
+          {testGroupId !== null && (
+            <div style={{ position: "absolute", right: 0, top: "110%", zIndex: 10, minWidth: 200, background: "#141824", border: "1px solid rgba(196,174,255,0.3)", borderRadius: 12, padding: 10, boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
+              <div style={{ fontSize: 10, color: "#c4aeff", fontWeight: 700, marginBottom: 8 }}>ТЕСТ — выбери группу</div>
+              {groups.length === 0 ? (
+                <div style={{ fontSize: 11, color: TG.muted }}>Группы не выбраны</div>
+              ) : (
+                <div style={{ maxHeight: 160, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+                  {groups.map((gid: string) => (
+                    <button key={gid} onClick={async () => {
+                      setTestGroupId(null);
+                      haptic.heavy(); setBusy(true);
+                      try { await api.testSendGroupCampaign(campaign.id, gid); haptic.success(); }
+                      catch { haptic.error(); } finally { setBusy(false); }
+                    }} style={{ textAlign: "left", padding: "6px 8px", borderRadius: 8, background: "rgba(196,174,255,0.08)", border: "1px solid rgba(196,174,255,0.2)", fontSize: 11, color: TG.textSecondary, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {groupTitle(gid)}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button onClick={() => setTestGroupId(null)} style={{ marginTop: 8, width: "100%", padding: "5px", background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 10, color: TG.muted, cursor: "pointer" }}>Закрыть</button>
+            </div>
+          )}
+        </div>
 
         {campaign.status === "running" && (
           <button onClick={() => action("stop")} disabled={busy} style={{ padding: "8px 10px", borderRadius: 10, background: "rgba(255,107,122,0.10)", border: "1px solid rgba(255,107,122,0.25)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -227,26 +289,53 @@ function GroupCampaignCard({
             logs.length === 0 ? (
               <div style={{ fontSize: 11, color: TG.muted, textAlign: "center", padding: "8px 0" }}>Отправок ещё нет</div>
             ) : (
-              logs.map(l => {
-                const lc = STATUS_COLOR[l.status] ?? "#7c8db0";
-                const Icon = l.status === "ok" || l.status === "sent" ? CheckCircle : AlertCircle;
-                return (
-                  <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 8, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                    <Icon size={11} color={lc} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 11, color: TG.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.group_title || l.group_id}</div>
-                      {l.error && <div style={{ fontSize: 9, color: "#ff6b7a", marginTop: 1 }}>{l.error}</div>}
+              <>
+                <button onClick={() => {
+                  const rows = ["Группа,Статус,Ошибка,Время",
+                    ...logs.map(l => `"${l.group_title || l.group_id}",${l.status},"${l.error ?? ""}","${l.sent_at}"`)
+                  ].join("\n");
+                  const a = document.createElement("a");
+                  a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(rows);
+                  a.download = `campaign_${campaign.id}_logs.csv`;
+                  a.click();
+                }} style={{ padding: "4px 10px", background: "rgba(107,168,229,0.08)", border: "1px solid rgba(107,168,229,0.25)", borderRadius: 8, fontSize: 10, color: "#6ba8e5", fontWeight: 700, cursor: "pointer", alignSelf: "flex-start", marginBottom: 4 }}>
+                  ↓ CSV
+                </button>
+                {logs.map(l => {
+                  const lc = STATUS_COLOR[l.status] ?? "#7c8db0";
+                  const Icon = l.status === "ok" || l.status === "sent" ? CheckCircle : AlertCircle;
+                  return (
+                    <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 8, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                      <Icon size={11} color={lc} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 11, color: TG.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.group_title || l.group_id}</div>
+                        {l.error && <div style={{ fontSize: 9, color: "#ff6b7a", marginTop: 1 }}>{l.error}</div>}
+                      </div>
+                      <div style={{ fontSize: 9, color: TG.muted, flexShrink: 0 }}>{timeAgo(l.sent_at)}</div>
                     </div>
-                    <div style={{ fontSize: 9, color: TG.muted, flexShrink: 0 }}>{timeAgo(l.sent_at)}</div>
-                  </div>
-                );
-              })
+                  );
+                })}
+              </>
             )
           ) : (
             stats.length === 0 && daily.length === 0 ? (
               <div style={{ fontSize: 11, color: TG.muted, textAlign: "center", padding: "8px 0" }}>Статистики пока нет</div>
             ) : (
               <>
+                {/* CSV export */}
+                {stats.length > 0 && (
+                  <button onClick={() => {
+                    const rows = ["Группа,Отправлено,Ошибок,Всего,Последняя отправка",
+                      ...stats.map(s => `"${s.group_title || s.group_id}",${s.sent},${s.failed},${s.total},${s.last_sent_at ?? ""}`)
+                    ].join("\n");
+                    const a = document.createElement("a");
+                    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(rows);
+                    a.download = `campaign_${campaign.id}_stats.csv`;
+                    a.click();
+                  }} style={{ padding: "5px 10px", background: "rgba(45,232,151,0.08)", border: "1px solid rgba(45,232,151,0.25)", borderRadius: 8, fontSize: 10, color: "#2de897", fontWeight: 700, cursor: "pointer", alignSelf: "flex-start" }}>
+                    ↓ CSV
+                  </button>
+                )}
                 {/* Daily sends mini bar chart */}
                 {daily.length > 1 && (() => {
                   const maxVal = Math.max(...daily.map(d => d.sent + d.failed), 1);
@@ -320,6 +409,7 @@ export function GroupBroadcastsPage({
 }) {
   const [campaigns, setCampaigns] = useState<GroupCampaign[]>([]);
   const [loading,   setLoading]   = useState(true);
+  const [search,    setSearch]    = useState("");
 
   const load = useCallback(async () => {
     try { setCampaigns(await api.getGroupCampaigns()); }
@@ -328,8 +418,10 @@ export function GroupBroadcastsPage({
 
   useEffect(() => { load(); const t = setInterval(load, 20_000); return () => clearInterval(t); }, [load]);
 
-  const running = campaigns.filter(c => c.status === "running").length;
-  const paused  = campaigns.filter(c => c.status === "paused").length;
+  const running  = campaigns.filter(c => c.status === "running").length;
+  const paused   = campaigns.filter(c => c.status === "paused").length;
+  const filtered = search.trim() === "" ? campaigns
+    : campaigns.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.text_template.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="tab-content" style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
@@ -344,6 +436,13 @@ export function GroupBroadcastsPage({
             </div>
           </GlassCard>
         </div>
+
+        {campaigns.length > 3 && (
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="🔍 Поиск рассылок…"
+            style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, padding: "10px 14px", fontSize: 13, color: TG.text, outline: "none", boxSizing: "border-box" }}
+          />
+        )}
 
         {!loading && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
@@ -373,9 +472,13 @@ export function GroupBroadcastsPage({
               + Создать первую
             </div>
           </GlassCard>
+        ) : filtered.length === 0 ? (
+          <div style={{ fontSize: 12, color: TG.muted, textAlign: "center", padding: "20px 0" }}>
+            Ничего не найдено по «{search}»
+          </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {campaigns.map(c => (
+            {filtered.map(c => (
               <GroupCampaignCard key={c.id} campaign={c} onRefresh={load} onEdit={onEdit} />
             ))}
           </div>

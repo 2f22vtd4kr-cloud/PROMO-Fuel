@@ -200,6 +200,36 @@ router.post("/tasks", (req, res) => {
   }
 });
 
+// Bulk retry all failed/dead tasks
+router.post("/tasks/bulk-retry", (_req, res) => {
+  try {
+    const db  = new Database(DB_PATH);
+    const now = new Date().toISOString();
+    const info = db.prepare(
+      "UPDATE tasks SET status='pending', worker_id=NULL, claimed_at=NULL, error=NULL, scheduled_at=? WHERE status IN ('failed','dead')"
+    ).run(now);
+    db.close();
+    res.json({ updated: info.changes });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// Bulk cancel all pending/claimed tasks
+router.post("/tasks/bulk-cancel", (_req, res) => {
+  try {
+    const db  = new Database(DB_PATH);
+    const now = new Date().toISOString();
+    const info = db.prepare(
+      "UPDATE tasks SET status='cancelled', finished_at=? WHERE status IN ('pending','claimed')"
+    ).run(now);
+    db.close();
+    res.json({ updated: info.changes });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 // ── Summary stats ──────────────────────────────────────────────────────────
 
 router.get("/workers-summary", (_req, res) => {

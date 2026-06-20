@@ -380,6 +380,13 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
             </div>
           )}
 
+          {/* Last error if banned or failed */}
+          {acc.last_error && (
+            <div style={{ fontSize: 10, color: "#ff6b7a", background: "rgba(255,107,122,0.08)", border: "1px solid rgba(255,107,122,0.2)", borderRadius: 8, padding: "6px 9px", lineHeight: 1.4, wordBreak: "break-word" }}>
+              ⚠️ {acc.last_error}
+            </div>
+          )}
+
           {/* Auth flow */}
           {showAuth ? (
             <TelethonAuthFlow acc={acc} onDone={() => { setShowAuth(false); onRefresh(); }} />

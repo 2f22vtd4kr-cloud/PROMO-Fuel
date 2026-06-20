@@ -276,6 +276,8 @@ export const api = {
   getTasks: (status?: string) => get<Task[]>(`/tasks${status ? `?status=${status}` : ""}`),
   retryTask: (id: number) => post<Task>(`/tasks/${id}/retry`, {}),
   cancelTask: (id: number) => post<Task>(`/tasks/${id}/cancel`, {}),
+  bulkRetryTasks: () => post<{ updated: number }>("/tasks/bulk-retry", {}),
+  bulkCancelTasks: () => post<{ updated: number }>("/tasks/bulk-cancel", {}),
   pushTask: (campaignId: number, payload?: Record<string, unknown>) =>
     post<Task>("/tasks", { campaign_id: campaignId, payload }),
 

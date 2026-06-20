@@ -266,6 +266,18 @@ export function GroupBroadcastCreatePage({
                 Групп не найдено. Нажми «Обновить».
               </div>
             ) : (
+              <>
+                {/* Select all / none */}
+                <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                  <button onClick={() => setGroups(acctGroups.map(g => g.group_id))}
+                    style={{ flex: 1, padding: "5px", background: "rgba(45,232,151,0.08)", border: "1px solid rgba(45,232,151,0.25)", borderRadius: 8, fontSize: 10, color: "#2de897", fontWeight: 700, cursor: "pointer" }}>
+                    Выбрать все ({acctGroups.length})
+                  </button>
+                  <button onClick={() => setGroups([])}
+                    style={{ flex: 1, padding: "5px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 10, color: TG.muted, fontWeight: 700, cursor: "pointer" }}>
+                    Снять выделение
+                  </button>
+                </div>
               <div style={{ maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
                 {acctGroups.map(g => {
                   const sel = groups.includes(g.group_id);
@@ -282,6 +294,7 @@ export function GroupBroadcastCreatePage({
                   );
                 })}
               </div>
+              </>
             )}
           </GlassCard>
         ) : (
