@@ -3,24 +3,18 @@ set -e
 
 echo "=== PROMO-Fuel deployment build ==="
 
-# Step 1: Install all workspace dependencies
-echo "Installing dependencies..."
-pnpm install --frozen-lockfile
-
-# Fix missing .bin symlinks for vite in workspace packages
-VITE_BIN=$(find "$(pwd)/node_modules/.pnpm" -maxdepth 3 -name "vite.js" -path "*/vite/bin/vite.js" 2>/dev/null | head -1)
-if [ -n "$VITE_BIN" ]; then
-  for pkg in artifacts/crm-platform artifacts/telegram-miniapp artifacts/mockup-sandbox; do
-    if [ -d "$pkg/node_modules" ]; then
-      mkdir -p "$pkg/node_modules/.bin"
-      if [ ! -f "$pkg/node_modules/.bin/vite" ]; then
-        ln -sf "$VITE_BIN" "$pkg/node_modules/.bin/vite"
-        chmod +x "$pkg/node_modules/.bin/vite"
-        echo "Linked vite for $pkg"
-      fi
-    fi
-  done
+# Step 0: Create Python venv so uv uses it instead of the read-only Nix store
+if [ -f "pyproject.toml" ]; then
+  echo "Setting up Python venv..."
+  python3 -m venv .venv --system-site-packages 2>/dev/null || true
+  export UV_PROJECT_ENVIRONMENT="$(pwd)/.venv"
+  export VIRTUAL_ENV="$(pwd)/.venv"
+  echo "Python venv ready at .venv"
 fi
+
+# Step 1: Install all workspace dependencies
+echo "Installing Node.js dependencies..."
+pnpm install --frozen-lockfile --ignore-scripts
 
 # Step 2: Rebuild better-sqlite3 native addon
 BSQ="$(pwd)/node_modules/.pnpm/better-sqlite3@12.10.1/node_modules/better-sqlite3"
@@ -58,11 +52,11 @@ else
   echo "WARNING: better-sqlite3 not found at $BSQ"
 fi
 
-# Step 2: Build the API server
+# Step 3: Build the API server
 echo "Building API server..."
 pnpm --filter @workspace/api-server run build
 
-# Step 3: Build the Telegram Mini App
+# Step 4: Build the Telegram Mini App
 echo "Building Telegram Mini App..."
 pnpm --filter @workspace/telegram-miniapp run build
 
