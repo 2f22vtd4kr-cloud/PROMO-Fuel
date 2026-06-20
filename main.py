@@ -1503,7 +1503,8 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     if not TOKEN:
-        raise ValueError("TELEGRAM_TOKEN не задан. Добавь его в Secrets.")
+        logger.warning("⚠️  TELEGRAM_TOKEN не задан. Бот не запущен. Добавь токен в Secrets.")
+        return
 
     app = Application.builder().token(TOKEN).build()
 
