@@ -202,24 +202,46 @@ def run_migrations(db_path: str = DB_PATH) -> None:
     """)
     conn.commit()
 
+    # ── 1b. Additional tables added in later versions ─────────────────────────
+
+    conn.executescript("""
+        -- Dedicated real-time heartbeat table (separate from broadcast_workers lifecycle)
+        CREATE TABLE IF NOT EXISTS worker_heartbeats (
+            worker_id       TEXT PRIMARY KEY,
+            last_seen       TEXT NOT NULL DEFAULT (datetime('now')),
+            status          TEXT NOT NULL DEFAULT 'idle',
+            tasks_completed INTEGER NOT NULL DEFAULT 0,
+            tasks_failed    INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_worker_hb_last_seen
+            ON worker_heartbeats(last_seen);
+    """)
+    conn.commit()
+
     # ── 2. Additive column migrations (safe ALTER TABLE ADD COLUMN) ──────────
 
     # sender_accounts
     for col, defn in [
-        ("proxies",     "TEXT DEFAULT '[]'"),
-        ("auth_status", "TEXT NOT NULL DEFAULT 'pending'"),
-        ("api_id",      "INTEGER"),
-        ("api_hash",    "TEXT"),
-        ("label",       "TEXT NOT NULL DEFAULT ''"),
-        ("proxy",       "TEXT"),
-        ("session_file","TEXT"),
-        ("is_banned",   "INTEGER NOT NULL DEFAULT 0"),
-        ("is_active",   "INTEGER NOT NULL DEFAULT 1"),
-        ("sent_today",  "INTEGER NOT NULL DEFAULT 0"),
-        ("sent_total",  "INTEGER NOT NULL DEFAULT 0"),
-        ("failed_total","INTEGER NOT NULL DEFAULT 0"),
-        ("last_error",  "TEXT"),
-        ("last_used_at","TEXT"),
+        ("proxies",          "TEXT DEFAULT '[]'"),
+        ("auth_status",      "TEXT NOT NULL DEFAULT 'pending'"),
+        ("api_id",           "INTEGER"),
+        ("api_hash",         "TEXT"),
+        ("label",            "TEXT NOT NULL DEFAULT ''"),
+        ("proxy",            "TEXT"),
+        ("session_file",     "TEXT"),
+        ("is_banned",        "INTEGER NOT NULL DEFAULT 0"),
+        ("is_active",        "INTEGER NOT NULL DEFAULT 1"),
+        ("sent_today",       "INTEGER NOT NULL DEFAULT 0"),
+        ("sent_total",       "INTEGER NOT NULL DEFAULT 0"),
+        ("failed_total",     "INTEGER NOT NULL DEFAULT 0"),
+        ("last_error",       "TEXT"),
+        ("last_used_at",     "TEXT"),
+        # ── Worker-hardening additions ──────────────────────────────────────
+        ("locked_by",        "TEXT"),                     # worker_id holding the lock
+        ("locked_at",        "TEXT"),                     # ISO timestamp of lock acquisition
+        ("proxy_index",      "INTEGER DEFAULT 0"),        # persisted rotation index
+        ("broadcasting",     "INTEGER NOT NULL DEFAULT 0"),# 1 while actively sending
+        ("flood_wait_until", "TEXT"),                     # earliest allowed retry time
     ]:
         _add_col(conn, "sender_accounts", col, defn)
 

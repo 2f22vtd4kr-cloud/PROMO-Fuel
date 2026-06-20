@@ -4,13 +4,16 @@ Features:
   - Per-account FileLock to prevent "database is locked" Telethon errors
   - Full proxy rotation: cycles through all proxies on failure, tracks per-proxy
     failure counts and skips persistently failing proxies
+  - proxy_index persisted to DB after every successful switch
+  - If ALL proxies exhausted → account marked status='proxy_failed', lock released
+  - broadcasting=1 flag set in DB at task start, cleared in finally (belt-and-suspenders
+    beyond the task_queue locked_by guard)
   - Reconnect with next proxy on connection or transient send failure
   - Full spintax resolution per message
   - Media attachment support (photo/video/document)
   - Inline button support
   - Anti-ban: jitter, tiered delays, flood-wait handling
   - Full error recovery and structured logging
-  - Rate limiting via utils.ratelimiter
 
 Usage (called by worker.py):
     from groupbroadcaster import run_group_campaign_task
@@ -74,6 +77,76 @@ def _account_lock(account_id: int) -> FileLock:
     return _account_locks[account_id]
 
 
+# ── DB flag helpers ───────────────────────────────────────────────────────────
+
+async def _set_broadcasting(account_id: int, state: bool) -> None:
+    """Set/clear the broadcasting=1 flag on sender_accounts.
+
+    This is a belt-and-suspenders guard on top of locked_by. Even if a race
+    allows two processes to pass the locked_by check, only one will win the
+    broadcasting UPDATE atomically.
+    """
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            if state:
+                await db.execute(
+                    "UPDATE sender_accounts SET broadcasting=1 WHERE id=?",
+                    (account_id,),
+                )
+            else:
+                await db.execute(
+                    "UPDATE sender_accounts SET broadcasting=0 WHERE id=?",
+                    (account_id,),
+                )
+            await db.commit()
+    except Exception as e:
+        logger.debug("[broadcaster] _set_broadcasting(%d, %s) failed: %s", account_id, state, e)
+
+
+async def _persist_proxy_index(account_id: int, index: int) -> None:
+    """Persist the current proxy rotation index to DB for crash recovery.
+
+    Called after every successful proxy switch so a restarted worker picks up
+    where it left off rather than always starting from proxy #0.
+    """
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "UPDATE sender_accounts SET proxy_index=? WHERE id=?",
+                (index, account_id),
+            )
+            await db.commit()
+        logger.debug("[broadcaster] Persisted proxy_index=%d for account %d", index, account_id)
+    except Exception as e:
+        logger.debug("[broadcaster] _persist_proxy_index(%d) failed: %s", account_id, e)
+
+
+async def _mark_proxy_failed(account_id: int) -> None:
+    """Mark an account as proxy_failed when all proxy options are exhausted.
+
+    Also releases locked_by/locked_at and clears broadcasting so other workers
+    don't block on this account indefinitely.
+    """
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("""
+                UPDATE sender_accounts
+                SET status='proxy_failed',
+                    broadcasting=0,
+                    locked_by=NULL,
+                    locked_at=NULL,
+                    last_error='All proxies exhausted'
+                WHERE id=?
+            """, (account_id,))
+            await db.commit()
+        logger.error(
+            "[broadcaster] Account %d marked proxy_failed — all proxies exhausted",
+            account_id,
+        )
+    except Exception as e:
+        logger.debug("[broadcaster] _mark_proxy_failed(%d) failed: %s", account_id, e)
+
+
 # ── Proxy rotation helpers ────────────────────────────────────────────────────
 
 def _record_proxy_fail(label: str) -> None:
@@ -115,7 +188,7 @@ async def _connect_with_proxy(account: dict, proxy: dict | None) -> TelegramClie
     api_hash = account.get("api_hash")
 
     if not (sess and api_id and api_hash):
-        logger.warning(f"[broadcaster] Account {acc_id}: missing session/api_id/api_hash")
+        logger.warning("[broadcaster] Account %d: missing session/api_id/api_hash", acc_id)
         return None
 
     sess_path = sess.removesuffix(".session") if sess.endswith(".session") else sess
@@ -128,13 +201,16 @@ async def _connect_with_proxy(account: dict, proxy: dict | None) -> TelegramClie
     try:
         await client.connect()
         if not await client.is_user_authorized():
-            logger.warning(f"[broadcaster] Account {acc_id}: session expired or revoked")
+            logger.warning("[broadcaster] Account %d: session expired or revoked", acc_id)
             await client.disconnect()
             return None
-        logger.info(f"[broadcaster] Account {acc_id} ✓ connected via {proxy_label(proxy)}")
+        logger.info("[broadcaster] Account %d ✓ connected via %s", acc_id, proxy_label(proxy))
         return client
     except Exception as e:
-        logger.error(f"[broadcaster] Account {acc_id} connect error via {proxy_label(proxy)}: {e}")
+        logger.error(
+            "[broadcaster] Account %d connect error via %s: %s",
+            acc_id, proxy_label(proxy), e,
+        )
         try:
             await client.disconnect()
         except Exception:
@@ -145,7 +221,7 @@ async def _connect_with_proxy(account: dict, proxy: dict | None) -> TelegramClie
 
 async def _get_or_connect(account: dict, proxy: dict | None) -> TelegramClient | None:
     """Return a healthy cached client or connect a new one."""
-    acc_id = account["id"]
+    acc_id   = account["id"]
     existing = _telethon_clients.get(acc_id)
     if existing:
         try:
@@ -165,61 +241,86 @@ async def _rotate_to_next_proxy(
     account: dict,
     proxies: list[dict],
     failed_label: str | None,
-) -> tuple[TelegramClient | None, dict | None]:
+    current_index: int = 0,
+) -> tuple[TelegramClient | None, dict | None, int]:
     """Disconnect current client and try the next proxy in ranked order.
 
-    Returns (new_client, used_proxy) or (None, None) if all proxies are exhausted.
+    Persists proxy_index to DB after each successful switch.
+    If all proxies fail and no-proxy also fails → marks account as proxy_failed.
+
+    Returns (new_client, used_proxy, new_index) or (None, None, -1) if exhausted.
     """
     acc_id = account["id"]
     await _disconnect_account(acc_id)
 
     ranked = _rank_proxies(proxies)
 
-    for proxy in ranked:
+    for idx, proxy in enumerate(ranked):
         label = proxy_label(proxy)
         if label == failed_label:
             continue  # skip the one that just failed
         if _proxy_fail_count(label) >= _PROXY_FAIL_SKIP:
-            logger.debug(f"[broadcaster] Skipping proxy {label!r} ({_proxy_fail_count(label)} failures)")
+            logger.debug(
+                "[broadcaster] Skipping proxy %r (%d failures)",
+                label, _proxy_fail_count(label),
+            )
             continue
         client = await _connect_with_proxy(account, proxy)
         if client:
             _telethon_clients[acc_id] = client
-            return client, proxy
-        # _connect_with_proxy already records failure
+            # Persist the new index so a restarted worker resumes here
+            await _persist_proxy_index(acc_id, idx)
+            return client, proxy, idx
 
     # All proxies exhausted — try no-proxy as last resort
-    logger.warning(f"[broadcaster] Account {acc_id}: all proxies failed, attempting direct connection")
+    logger.warning(
+        "[broadcaster] Account %d: all proxies failed, attempting direct connection",
+        acc_id,
+    )
     client = await _connect_with_proxy(account, None)
     if client:
         _telethon_clients[acc_id] = client
-    return client, None
+        await _persist_proxy_index(acc_id, 0)
+        return client, None, 0
+
+    # Truly exhausted — mark account so no worker tries it again
+    await _mark_proxy_failed(acc_id)
+    return None, None, -1
 
 
 async def _initial_connect(
     account: dict,
     proxies: list[dict],
-) -> tuple[TelegramClient | None, dict | None]:
-    """Connect account, trying proxies in failure-ranked order.
+) -> tuple[TelegramClient | None, dict | None, int]:
+    """Connect account, resuming from the persisted proxy_index, then trying all others.
 
-    Returns (client, used_proxy).
+    Returns (client, used_proxy, index).
     """
     if not proxies:
         client = await _get_or_connect(account, None)
-        return client, None
+        return client, None, 0
 
     ranked = _rank_proxies(proxies)
-    for proxy in ranked:
+    # Resume from persisted index (mod length for safety)
+    start_idx = int(account.get("proxy_index") or 0) % len(ranked)
+
+    # Try from start_idx first, then wrap around
+    order = list(range(start_idx, len(ranked))) + list(range(0, start_idx))
+    for idx in order:
+        proxy = ranked[idx]
         label = proxy_label(proxy)
         if _proxy_fail_count(label) >= _PROXY_FAIL_SKIP:
             continue
         client = await _get_or_connect(account, proxy)
         if client:
-            return client, proxy
+            if idx != start_idx:
+                # We skipped the persisted proxy — update index
+                await _persist_proxy_index(account["id"], idx)
+            return client, proxy, idx
 
     # Last resort — no proxy
     client = await _get_or_connect(account, None)
-    return client, None
+    return client, None, 0
 
 
 # ── Jitter delays ─────────────────────────────────────────────────────────────
@@ -229,10 +330,10 @@ async def _inter_message_delay(sent: int, min_d: float, max_d: float) -> None:
     extra = 0.0
     if sent > 0 and sent % 50 == 0:
         extra = random.uniform(90.0, 200.0)
-        logger.info(f"[broadcaster] Long break after {sent} sends ({extra:.0f}s)")
+        logger.info("[broadcaster] Long break after %d sends (%.0fs)", sent, extra)
     elif sent > 0 and sent % 20 == 0:
         extra = random.uniform(30.0, 75.0)
-        logger.info(f"[broadcaster] Short break after {sent} sends ({extra:.0f}s)")
+        logger.info("[broadcaster] Short break after %d sends (%.0fs)", sent, extra)
     elif sent > 0 and sent % 5 == 0:
         extra = random.uniform(8.0, 20.0)
     await asyncio.sleep(base + extra)
@@ -283,17 +384,18 @@ async def _send_to_group(
             try:
                 await client.pin_message(entity, msg)
             except Exception as e:
-                logger.debug(f"[broadcaster] Pin failed for {group_id}: {e}")
+                logger.debug("[broadcaster] Pin failed for %s: %s", group_id, e)
 
 
 # ── Send result sentinel ──────────────────────────────────────────────────────
 
-SendResult = Literal["sent", "group_error", "abort_task"]
+SendResult = Literal["sent", "group_error", "abort_task", "proxy_failed"]
 
 
 async def _try_send(
     client_ref: list,          # [client] — mutable so rotation can update it
     proxy_ref:  list,          # [proxy]  — mutable
+    index_ref:  list,          # [int]    — mutable proxy index
     account: dict,
     proxies: list[dict],
     group_id: str,
@@ -323,7 +425,10 @@ async def _try_send(
 
         except FloodWaitError as e:
             wait = e.seconds + random.randint(5, 15)
-            logger.warning(f"[broadcaster] FloodWait {e.seconds}s — sleeping {wait}s then retry")
+            logger.warning(
+                "[broadcaster] FloodWait %ds — sleeping %ds then retry",
+                e.seconds, wait,
+            )
             await cdb.account_flood_wait(account["id"], e.seconds)
             await asyncio.sleep(wait)
             continue  # retry same connection (flood is account-level, not proxy)
@@ -348,20 +453,31 @@ async def _try_send(
                 # Rotate to next proxy and retry once
                 failed_label = proxy_label(proxy)
                 _record_proxy_fail(failed_label)
-                logger.warning(f"[broadcaster] Send error ({err}) — rotating proxy from {failed_label!r}")
-                new_client, new_proxy = await _rotate_to_next_proxy(
-                    account, proxies, failed_label
+                logger.warning(
+                    "[broadcaster] Send error (%s) — rotating proxy from %r",
+                    err, failed_label,
+                )
+                new_client, new_proxy, new_idx = await _rotate_to_next_proxy(
+                    account, proxies, failed_label, index_ref[0]
                 )
                 if new_client:
                     client_ref[0] = new_client
                     proxy_ref[0]  = new_proxy
+                    index_ref[0]  = new_idx
                     client = new_client
                     proxy  = new_proxy
-                    logger.info(f"[broadcaster] Rotated to {proxy_label(new_proxy)}, retrying {group_id}")
+                    logger.info(
+                        "[broadcaster] Rotated to %s, retrying %s",
+                        proxy_label(new_proxy), group_id,
+                    )
                     continue  # retry send
                 else:
-                    logger.error(f"[broadcaster] All proxies exhausted for account {account['id']}")
-                    return "group_error", f"proxy exhausted: {err}"
+                    # All proxies exhausted — account already marked proxy_failed
+                    logger.error(
+                        "[broadcaster] All proxies exhausted for account %d",
+                        account["id"],
+                    )
+                    return "proxy_failed", f"proxy exhausted: {err}"
             else:
                 return "group_error", err
 
@@ -373,11 +489,15 @@ async def _try_send(
 async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict:
     """Execute one task — send to all groups for a group campaign.
 
+    Sets broadcasting=1 in DB at start, clears it in finally (belt-and-suspenders
+    on top of the task_queue locked_by mechanism).
+
     Returns {ok, sent, failed, errors}.
     """
     campaign_id = task["campaign_id"]
     task_id     = task["id"]
     results     = {"ok": True, "sent": 0, "failed": 0, "errors": []}
+    account_id: int | None = None
 
     campaign = await _get_campaign(campaign_id)
     if not campaign:
@@ -403,34 +523,48 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
         return {"ok": False, "sent": 0, "failed": 0,
                 "errors": [f"Account {account_id} unavailable"]}
 
+    if account.get("status") == "proxy_failed":
+        return {"ok": False, "sent": 0, "failed": 0,
+                "errors": [f"Account {account_id} has status=proxy_failed"]}
+
     proxies = parse_proxies(account.get("proxies") or account.get("proxy"))
 
-    # Acquire per-account file lock
+    # ── Set broadcasting flag BEFORE acquiring any lock ───────────────────────
+    # This is belt-and-suspenders: if two workers somehow passed the locked_by
+    # DB guard simultaneously, only one will hold the FileLock below.
+    await _set_broadcasting(account_id, True)
+
+    # Acquire per-account file lock (Telethon .session file protection)
     lock = _account_lock(account_id)
     try:
         lock.acquire(timeout=30)
     except Timeout:
+        await _set_broadcasting(account_id, False)
         return {"ok": False, "sent": 0, "failed": 0,
                 "errors": [f"Account {account_id} file-locked by another worker"]}
 
     try:
-        # Connect with proxy rotation
-        client, active_proxy = await _initial_connect(account, proxies)
+        # Connect with proxy rotation — resumes from persisted proxy_index
+        client, active_proxy, proxy_idx = await _initial_connect(account, proxies)
         if not client:
+            await _mark_proxy_failed(account_id)
             return {"ok": False, "sent": 0, "failed": 0,
                     "errors": ["Could not connect Telethon client (all proxies failed)"]}
 
-        logger.info(f"[broadcaster] Task #{task_id} using {proxy_label(active_proxy)} "
-                    f"(worker {worker_id!r})")
+        logger.info(
+            "[broadcaster] Task #%d using %s (worker %r acct %d)",
+            task_id, proxy_label(active_proxy), worker_id, account_id,
+        )
 
-        # Mutable refs so _try_send can update client/proxy in-place on rotation
+        # Mutable refs so _try_send can update client/proxy/index in-place on rotation
         client_ref = [client]
         proxy_ref  = [active_proxy]
+        index_ref  = [proxy_idx]
 
         # Resolve group list
         if is_test and task_payload.get("group_ids"):
             selected_groups = [str(g) for g in task_payload["group_ids"]]
-            logger.info(f"[broadcaster] TEST mode — groups: {selected_groups}")
+            logger.info("[broadcaster] TEST mode — groups: %s", selected_groups)
         else:
             selected_groups = json.loads(campaign.get("selected_groups") or "[]")
 
@@ -451,7 +585,7 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
 
         for group_id in selected_groups:
             if daily_limit > 0 and results["sent"] >= daily_limit:
-                logger.info(f"[broadcaster] Daily limit {daily_limit} reached — stopping")
+                logger.info("[broadcaster] Daily limit %d reached — stopping", daily_limit)
                 break
 
             await _rate_limiter.acquire(account_id)
@@ -460,7 +594,7 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
             text = resolve_spintax(text_template)
 
             outcome, err_msg = await _try_send(
-                client_ref, proxy_ref, account, proxies,
+                client_ref, proxy_ref, index_ref, account, proxies,
                 str(group_id), text, media_url, media_type, inline_buttons, pin,
             )
 
@@ -469,7 +603,7 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
                                 account_id, task_id, "ok")
                 results["sent"] += 1
                 sent_count += 1
-                logger.info(f"[broadcaster] ✓ #{task_id} → {group_title}")
+                logger.info("[broadcaster] ✓ #%d → %s", task_id, group_title)
                 await _inter_message_delay(sent_count, min_delay, max_delay)
 
             elif outcome == "group_error":
@@ -477,13 +611,12 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
                                 account_id, task_id, "failed", err_msg)
                 results["failed"] += 1
                 results["errors"].append(f"{group_id}: {err_msg}")
-                logger.warning(f"[broadcaster] ✗ #{task_id} → {group_title}: {err_msg}")
+                logger.warning("[broadcaster] ✗ #%d → %s: %s", task_id, group_title, err_msg)
                 await _inter_message_delay(sent_count, min_delay, max_delay)
 
-            elif outcome == "abort_task":
+            elif outcome in ("abort_task", "proxy_failed"):
                 results["errors"].append(err_msg or "Task aborted")
-                logger.error(f"[broadcaster] ✗ Task #{task_id} aborted: {err_msg}")
-                # Count remaining groups as failed
+                logger.error("[broadcaster] ✗ Task #%d aborted: %s", task_id, err_msg)
                 remaining = len(selected_groups) - results["sent"] - results["failed"]
                 results["failed"] += remaining
                 break
@@ -492,8 +625,13 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
 
     finally:
         lock.release()
+        # Always clear the broadcasting flag and mark account idle on exit
+        await _set_broadcasting(account_id, False)
         if account_id:
-            await cdb.account_mark_idle(account_id)
+            # Only mark idle if we didn't mark it proxy_failed
+            acct_check = await cdb.get_account_by_id(account_id)
+            if acct_check and acct_check.get("status") != "proxy_failed":
+                await cdb.account_mark_idle(account_id)
 
     results["ok"] = results["sent"] > 0 or results["failed"] == 0
     return results

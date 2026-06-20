@@ -1716,11 +1716,25 @@ def main():
         except Exception as _e:
             logger.warning(f"⚠️  Broadcast scheduler not started: {_e}")
 
+        # ── Recover stale locks from any crashed workers before spawning new ones ──
+        try:
+            from task_queue import TaskQueue as _TQ
+            _tq = _TQ()
+            _released = _tq.recover_stale_locks_sync(timeout_seconds=120)
+            if _released:
+                logger.info(f"🔓 Recovered {_released} stale account lock(s) on startup")
+        except Exception as _e:
+            logger.warning(f"⚠️  Stale-lock recovery failed: {_e}")
+
         worker_count = int(os.getenv("WORKER_COUNT", "0"))
         if worker_count > 0:
             try:
                 from utils.supervisor import WorkerSupervisor
-                _supervisor = WorkerSupervisor(worker_count=worker_count)
+                _supervisor = WorkerSupervisor(
+                    worker_count=worker_count,
+                    max_respawns_per_window=5,
+                    respawn_window_seconds=600,
+                )
                 _supervisor.start()
                 logger.info(f"🔧 Worker supervisor started — {worker_count} worker(s)")
             except Exception as _e:

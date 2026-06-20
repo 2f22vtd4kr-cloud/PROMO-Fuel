@@ -141,6 +141,31 @@ export interface SenderAccount {
   failed_total: number;
   last_used_at?: string;
   last_error?: string;
+  /** Worker currently holding this account's lock (null = free) */
+  locked_by?: string | null;
+  /** ISO-8601 timestamp when the lock was acquired */
+  locked_at?: string | null;
+  /** Persisted proxy rotation index */
+  proxy_index?: number;
+  /** 1 while actively broadcasting */
+  broadcasting?: number;
+}
+
+export interface WorkerHeartbeat {
+  worker_id: string;
+  last_seen: string;
+  status: string;
+  tasks_completed: number;
+  tasks_failed: number;
+  age_seconds?: number;
+  is_alive?: boolean;
+}
+
+export interface RecoverLocksResult {
+  ok: boolean;
+  released_accounts: number;
+  reset_tasks: number;
+  stale: { id: number; phone: string; locked_by: string }[];
 }
 
 export interface AnalyticsOverview {
@@ -283,9 +308,12 @@ export const api = {
   // Workers / task queue
   getWorkers: () => get<BroadcastWorker[]>("/workers"),
   getWorkersSummary: () => get<WorkersSummary>("/workers-summary"),
+  getWorkerHeartbeats: () => get<WorkerHeartbeat[]>("/worker-heartbeats"),
   deleteWorker: (workerId: string) => del(`/workers/${encodeURIComponent(workerId)}`),
   spawnWorker: (workerId?: string) =>
     post<{ ok: boolean; worker_id: string; pid: number | null }>("/workers/spawn", { worker_id: workerId }),
+  recoverLocks: (timeoutSeconds?: number) =>
+    post<RecoverLocksResult>("/workers/recover-locks", { timeout_seconds: timeoutSeconds ?? 300 }),
   getTasks: (status?: string) => get<Task[]>(`/tasks${status ? `?status=${status}` : ""}`),
   retryTask: (id: number) => post<Task>(`/tasks/${id}/retry`, {}),
   cancelTask: (id: number) => post<Task>(`/tasks/${id}/cancel`, {}),

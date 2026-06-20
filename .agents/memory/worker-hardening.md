@@ -48,9 +48,27 @@ Per-send retry: `_try_send()` attempts the send twice. On the first failure (if 
 
 ---
 
+## DB schema additions (sender_accounts)
+
+Five new columns added via `dbmigrations.py` (idempotent ALTER TABLE):
+- `locked_by TEXT` — worker_id holding the lock (NULL = free)
+- `locked_at TEXT` — ISO-8601 timestamp of lock acquisition (for stale-lock detection)
+- `proxy_index INTEGER DEFAULT 0` — persisted proxy rotation index
+- `broadcasting INTEGER NOT NULL DEFAULT 0` — belt-and-suspenders active flag
+- `flood_wait_until TEXT` — earliest allowed retry time
+
+New table: `worker_heartbeats` (worker_id, last_seen, status, tasks_completed, tasks_failed)
+— separate from `broadcast_workers` (lifecycle tracking). Workers upsert to both.
+
+## API endpoints added (workers.ts)
+
+- `GET  /worker-heartbeats` — returns worker_heartbeats table with age_seconds + is_alive (< 60s)
+- `POST /workers/recover-locks` — finds accounts where locked_at > timeout_seconds (default 300),
+  releases them, resets stuck claimed tasks; returns {released_accounts, reset_tasks, stale[]}
+
 ## Workers.tsx UI changes
 
-- Refresh interval: 15s → 8s
+- Refresh interval: 15s → 10s (spec says 10s)
 - Added `SpawnWorkerButton` → calls `POST /api/twa/workers/spawn`, auto-increments worker-N
 - `HeartbeatDot` component: animated ring pulse (keyframe `hb-ring`) green for idle, blue for working, red for dead
 - Worker card shows uptime (`uptime(worker.started_at)`) alongside PID

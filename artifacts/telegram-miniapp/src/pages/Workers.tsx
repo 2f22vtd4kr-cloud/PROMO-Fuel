@@ -1,20 +1,25 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Cpu, RefreshCw, Trash2, AlertTriangle, CheckCircle, Clock, Activity, ListTodo, Calendar, Plus, Zap } from "lucide-react";
-import { api, BroadcastWorker, Task, WorkersSummary, GroupCampaign } from "../lib/api";
+import { Cpu, RefreshCw, Trash2, AlertTriangle, CheckCircle, Clock, Activity, ListTodo, Calendar, Plus, Zap, Shield, Phone } from "lucide-react";
+import { api, BroadcastWorker, Task, WorkersSummary, GroupCampaign, SenderAccount, RecoverLocksResult } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
 import { haptic } from "../lib/haptics";
 
 const STATUS_COLOR: Record<string, string> = {
-  idle:      "#2de897",
-  working:   "#6ba8e5",
-  stopped:   "#7c8db0",
-  dead:      "#ff6b7a",
-  pending:   "#ffc946",
-  claimed:   "#6ba8e5",
-  done:      "#2de897",
-  failed:    "#ff6b7a",
-  cancelled: "#7c8db0",
+  idle:         "#2de897",
+  working:      "#6ba8e5",
+  sending:      "#6ba8e5",
+  broadcasting: "#6ba8e5",
+  stopped:      "#7c8db0",
+  dead:         "#ff6b7a",
+  pending:      "#ffc946",
+  claimed:      "#6ba8e5",
+  done:         "#2de897",
+  failed:       "#ff6b7a",
+  cancelled:    "#7c8db0",
+  banned:       "#ff6b7a",
+  proxy_failed: "#ff6b7a",
+  flood_wait:   "#ffc946",
 };
 
 function statusColor(s: string) {
@@ -23,14 +28,14 @@ function statusColor(s: string) {
 
 function timeAgo(iso: string): string {
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (diff < 60)  return `${diff}с назад`;
+  if (diff < 60)   return `${diff}с назад`;
   if (diff < 3600) return `${Math.floor(diff / 60)}м назад`;
   return `${Math.floor(diff / 3600)}ч назад`;
 }
 
 function uptime(iso: string): string {
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (diff < 60)  return `${diff}с`;
+  if (diff < 60)   return `${diff}с`;
   if (diff < 3600) return `${Math.floor(diff / 60)}м`;
   const h = Math.floor(diff / 3600);
   const m = Math.floor((diff % 3600) / 60);
@@ -73,9 +78,7 @@ function WorkerCard({ worker, onDelete }: { worker: BroadcastWorker; onDelete: (
   return (
     <GlassCard glow={glow} style={{ padding: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-        {/* Pulse dot */}
         <HeartbeatDot alive={alive} working={working} />
-
         <div style={{ width: 32, height: 32, borderRadius: 10, background: `${color}20`, border: `1px solid ${color}40`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
           <Cpu size={14} color={color} />
         </div>
@@ -183,7 +186,7 @@ function formatCountdown(isoStr: string | null | undefined): string {
   if (!isoStr) return "—";
   const diff = Math.floor((new Date(isoStr).getTime() - Date.now()) / 1000);
   if (diff <= 0) return "сейчас";
-  if (diff < 60)  return `${diff}с`;
+  if (diff < 60)   return `${diff}с`;
   if (diff < 3600) return `${Math.floor(diff / 60)}м ${diff % 60}с`;
   const h = Math.floor(diff / 3600);
   const m = Math.floor((diff % 3600) / 60);
@@ -241,23 +244,112 @@ function SpawnWorkerButton({ onSpawned }: { onSpawned: () => void }) {
   }
 
   return (
-    <button
-      onClick={spawn}
-      disabled={busy}
-      style={{
-        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-        padding: "10px 14px", borderRadius: 12,
-        background: busy ? "rgba(45,232,151,0.07)" : "rgba(45,232,151,0.13)",
-        border: "1px solid rgba(45,232,151,0.35)",
-        color: "#2de897", fontSize: 12, fontWeight: 700,
-        cursor: busy ? "not-allowed" : "pointer",
-        opacity: busy ? 0.7 : 1,
-        transition: "opacity 0.2s",
-      }}
-    >
+    <button onClick={spawn} disabled={busy} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 14px", borderRadius: 12, background: busy ? "rgba(45,232,151,0.07)" : "rgba(45,232,151,0.13)", border: "1px solid rgba(45,232,151,0.35)", color: "#2de897", fontSize: 12, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1, transition: "opacity 0.2s" }}>
       {busy ? <Zap size={13} color="#2de897" /> : <Plus size={13} color="#2de897" />}
       {label}
     </button>
+  );
+}
+
+/** Recover Stale Locks button — calls POST /workers/recover-locks */
+function RecoverLocksButton({ onDone }: { onDone: () => void }) {
+  const [busy,   setBusy]   = useState(false);
+  const [result, setResult] = useState<RecoverLocksResult | null>(null);
+
+  async function recover() {
+    haptic.medium();
+    setBusy(true);
+    try {
+      const r = await api.recoverLocks();
+      haptic.success();
+      setResult(r);
+      onDone();
+      setTimeout(() => setResult(null), 5000);
+    } catch {
+      haptic.error();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <button onClick={recover} disabled={busy} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", padding: "10px 14px", borderRadius: 12, background: busy ? "rgba(255,201,70,0.05)" : "rgba(255,201,70,0.10)", border: "1px solid rgba(255,201,70,0.30)", color: "#ffc946", fontSize: 12, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1, transition: "opacity 0.2s" }}>
+        <Shield size={13} color="#ffc946" />
+        {busy ? "Освобождаем блокировки…" : "🔓 Освободить застрявшие блокировки"}
+      </button>
+      {result && (
+        <div style={{ marginTop: 6, fontSize: 11, color: "#ffc946", background: "rgba(255,201,70,0.08)", border: "1px solid rgba(255,201,70,0.20)", borderRadius: 10, padding: "8px 12px" }}>
+          ✓ Освобождено аккаунтов: <b>{result.released_accounts}</b> · Сброшено задач: <b>{result.reset_tasks}</b>
+          {result.stale.length > 0 && (
+            <div style={{ marginTop: 4, color: TG.muted }}>
+              {result.stale.map(s => `${s.phone} (→ ${s.locked_by})`).join(", ")}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Account row — color-coded by status */
+function AccountRow({ account }: { account: SenderAccount }) {
+  const st = account.status;
+  const locked = !!account.locked_by;
+  const color  = st === "idle" && !locked
+    ? "#2de897"       // green — available
+    : locked || st === "broadcasting" || st === "sending"
+    ? "#ffc946"       // yellow — locked
+    : "#ff6b7a";      // red — banned / proxy_failed / etc.
+
+  const rowBg = st === "idle" && !locked
+    ? "rgba(45,232,151,0.04)"
+    : locked || st === "broadcasting"
+    ? "rgba(255,201,70,0.05)"
+    : "rgba(255,107,122,0.06)";
+
+  // Parse first proxy from the proxies field for display
+  let proxyDisplay = "—";
+  try {
+    const p = account.proxy || account.proxies;
+    if (p) {
+      const parsed = typeof p === "string" && p.startsWith("[") ? JSON.parse(p)[0] : p;
+      if (parsed?.host) proxyDisplay = `${parsed.host}:${parsed.port}`;
+      else if (typeof p === "string" && p.includes("://")) proxyDisplay = p.split("@").pop()?.split("://")[1] ?? p;
+    }
+  } catch {}
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderRadius: 10, background: rowBg, border: `1px solid ${color}25`, marginBottom: 4 }}>
+      <div style={{ width: 7, height: 7, borderRadius: "50%", background: color, flexShrink: 0 }} />
+      <Phone size={11} color={color} style={{ flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, color: TG.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {account.phone}
+          {account.label ? <span style={{ marginLeft: 5, fontSize: 10, color: TG.muted }}>({account.label})</span> : null}
+        </div>
+        <div style={{ fontSize: 10, color: TG.muted, marginTop: 1 }}>
+          {locked
+            ? <span style={{ color: "#ffc946" }}>🔒 {account.locked_by}</span>
+            : <span style={{ color: "#2de897" }}>свободен</span>
+          }
+          {proxyDisplay !== "—" && (
+            <span style={{ marginLeft: 8 }}>🌐 {proxyDisplay}
+              {account.proxy_index !== undefined && account.proxy_index > 0
+                ? <span style={{ opacity: 0.6 }}> [#{account.proxy_index}]</span>
+                : null
+              }
+            </span>
+          )}
+          {account.last_used_at && (
+            <span style={{ marginLeft: 8, opacity: 0.7 }}>{timeAgo(account.last_used_at)}</span>
+          )}
+        </div>
+      </div>
+      <span style={{ fontSize: 10, fontWeight: 700, color, background: `${color}15`, border: `1px solid ${color}30`, borderRadius: 20, padding: "2px 7px", flexShrink: 0 }}>
+        {account.broadcasting ? "⚡ live" : st}
+      </span>
+    </div>
   );
 }
 
@@ -266,21 +358,25 @@ export function WorkersPage() {
   const [tasks,     setTasks]     = useState<Task[]>([]);
   const [summary,   setSummary]   = useState<WorkersSummary | null>(null);
   const [scheduled, setScheduled] = useState<GroupCampaign[]>([]);
+  const [accounts,  setAccounts]  = useState<SenderAccount[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [taskTab,   setTaskTab]   = useState<"all" | "pending" | "claimed" | "failed">("all");
+  const [showAccounts, setShowAccounts] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [w, t, s, gc] = await Promise.all([
+      const [w, t, s, gc, accts] = await Promise.all([
         api.getWorkers(),
         api.getTasks(),
         api.getWorkersSummary(),
         api.getGroupCampaigns(),
+        api.getAccounts(),
       ]);
       setWorkers(w);
       setTasks(t);
       setSummary(s);
+      setAccounts(accts);
       setScheduled(gc.filter(c => c.status === "running" || c.status === "paused").sort((a, b) => {
         if (!a.next_send_at) return 1;
         if (!b.next_send_at) return -1;
@@ -292,7 +388,7 @@ export function WorkersPage() {
 
   useEffect(() => {
     load();
-    intervalRef.current = setInterval(load, 8_000);   // 8-second refresh
+    intervalRef.current = setInterval(load, 10_000);  // 10-second refresh per spec
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [load]);
 
@@ -301,6 +397,7 @@ export function WorkersPage() {
 
   const aliveWorkers = workers.filter(w => w.is_alive);
   const deadWorkers  = workers.filter(w => !w.is_alive);
+  const lockedAccounts = accounts.filter(a => a.locked_by);
 
   return (
     <>
@@ -373,8 +470,48 @@ export function WorkersPage() {
                 )}
               </div>
 
-              {/* Spawn button */}
-              <SpawnWorkerButton onSpawned={() => { setTimeout(load, 2000); }} />
+              {/* Spawn + Recover buttons row */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <SpawnWorkerButton onSpawned={() => { setTimeout(load, 2000); }} />
+                <RecoverLocksButton onDone={load} />
+              </div>
+
+              {/* Accounts panel */}
+              <div>
+                <div
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, cursor: "pointer" }}
+                  onClick={() => { haptic.light(); setShowAccounts(v => !v); }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 700, color: TG.muted, letterSpacing: "0.06em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
+                    <Phone size={12} />
+                    Аккаунты ({accounts.length})
+                    {lockedAccounts.length > 0 && (
+                      <span style={{ fontSize: 10, color: "#ffc946", background: "rgba(255,201,70,0.12)", borderRadius: 20, padding: "1px 7px" }}>
+                        🔒 {lockedAccounts.length}
+                      </span>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 11, color: "#6ba8e5" }}>{showAccounts ? "▲" : "▼"}</span>
+                </div>
+
+                {showAccounts && (
+                  <GlassCard style={{ padding: "8px 10px" }}>
+                    {accounts.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: "12px 0", fontSize: 12, color: TG.muted }}>Нет аккаунтов</div>
+                    ) : (
+                      <div>
+                        {/* Legend */}
+                        <div style={{ display: "flex", gap: 12, marginBottom: 8, fontSize: 10, color: TG.muted }}>
+                          <span><span style={{ color: "#2de897" }}>●</span> свободен</span>
+                          <span><span style={{ color: "#ffc946" }}>●</span> заблокирован</span>
+                          <span><span style={{ color: "#ff6b7a" }}>●</span> ошибка</span>
+                        </div>
+                        {accounts.map(a => <AccountRow key={a.id} account={a} />)}
+                      </div>
+                    )}
+                  </GlassCard>
+                )}
+              </div>
 
               {/* Dead/stopped workers */}
               {deadWorkers.length > 0 && (

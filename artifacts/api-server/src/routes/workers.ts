@@ -21,6 +21,14 @@ function ensureTables() {
       last_error     TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS worker_heartbeats (
+      worker_id       TEXT PRIMARY KEY,
+      last_seen       TEXT NOT NULL DEFAULT (datetime('now')),
+      status          TEXT NOT NULL DEFAULT 'idle',
+      tasks_completed INTEGER NOT NULL DEFAULT 0,
+      tasks_failed    INTEGER NOT NULL DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS tasks (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       task_type     TEXT    NOT NULL DEFAULT 'group_broadcast',
@@ -225,6 +233,78 @@ router.post("/tasks/bulk-cancel", (_req, res) => {
     ).run(now);
     db.close();
     res.json({ updated: info.changes });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ── Worker heartbeats (dedicated table) ────────────────────────────────────
+
+router.get("/worker-heartbeats", (_req, res) => {
+  try {
+    const db   = getDb();
+    const rows = db.prepare(
+      "SELECT * FROM worker_heartbeats ORDER BY last_seen DESC"
+    ).all() as Record<string, unknown>[];
+    db.close();
+    const now = Date.now();
+    const annotated = rows.map((r) => {
+      const ls = r.last_seen as string | null;
+      const ageSeconds = ls ? Math.floor((now - new Date(ls).getTime()) / 1000) : 9999;
+      return { ...r, age_seconds: ageSeconds, is_alive: ageSeconds < 60 };
+    });
+    res.json(annotated);
+  } catch {
+    res.json([]);
+  }
+});
+
+// ── Recover stale account locks ─────────────────────────────────────────────
+// Unlocks any sender_accounts row whose locked_at is older than timeout_seconds.
+// Useful for manual recovery without restarting workers.
+
+router.post("/workers/recover-locks", (req, res) => {
+  try {
+    const db = new Database(DB_PATH);
+    const timeoutSeconds = Number((req.body as Record<string, unknown>)?.timeout_seconds ?? 300);
+
+    const stale = db.prepare(`
+      SELECT id, locked_by, phone FROM sender_accounts
+      WHERE locked_by IS NOT NULL
+        AND locked_at IS NOT NULL
+        AND (
+          CAST(strftime('%s','now') AS INTEGER)
+          - CAST(strftime('%s', locked_at) AS INTEGER)
+        ) > ?
+    `).all(timeoutSeconds) as { id: number; locked_by: string; phone: string }[];
+
+    let released = 0;
+    for (const row of stale) {
+      db.prepare(
+        "UPDATE sender_accounts SET locked_by=NULL, locked_at=NULL, broadcasting=0, status='idle' WHERE id=?"
+      ).run(row.id);
+      released++;
+    }
+
+    // Also reset stuck tasks
+    const resetResult = db.prepare(`
+      UPDATE tasks
+      SET status='pending', worker_id=NULL, claimed_at=NULL
+      WHERE status='claimed'
+        AND (
+          CAST(strftime('%s','now') AS INTEGER)
+          - CAST(strftime('%s', claimed_at) AS INTEGER)
+        ) > ?
+        AND attempts < max_attempts
+    `).run(timeoutSeconds);
+
+    db.close();
+    res.json({
+      ok: true,
+      released_accounts: released,
+      reset_tasks: resetResult.changes,
+      stale: stale.map((r) => ({ id: r.id, phone: r.phone, locked_by: r.locked_by })),
+    });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

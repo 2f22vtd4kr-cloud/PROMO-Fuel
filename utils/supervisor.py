@@ -242,11 +242,19 @@ class WorkerSupervisor:
     Uses exponential back-off (5s → 10s → 20s … capped at 5 min).
     Stops restarting a slot after _MAX_RESTARTS consecutive crashes.
 
+    Respawn rate limiting:
+        If a worker is restarted more than `max_respawns_per_window` times within
+        `respawn_window_seconds`, a CRITICAL alert is logged (and optionally a
+        Telegram message is sent). The slot continues to restart but the alert
+        is raised on every subsequent restart until the window clears.
+
     Args:
-        worker_count: Number of worker processes to maintain.
-        db_path:      Path to the SQLite database.
-        worker_ids:   Optional explicit list of worker IDs.
-                      Defaults to ["worker-1", "worker-2", ...].
+        worker_count:            Number of worker processes to maintain.
+        db_path:                 Path to the SQLite database.
+        worker_ids:              Optional explicit list of worker IDs.
+                                 Defaults to ["worker-1", "worker-2", ...].
+        max_respawns_per_window: Max restarts per rolling window before critical alert.
+        respawn_window_seconds:  Rolling window in seconds (default 600 = 10 min).
     """
 
     def __init__(
@@ -254,16 +262,22 @@ class WorkerSupervisor:
         worker_count: int = 2,
         db_path: str = DB_PATH,
         worker_ids: list[str] | None = None,
+        max_respawns_per_window: int = 5,
+        respawn_window_seconds: int = 600,
     ):
         if worker_ids:
             ids = worker_ids
         else:
             ids = [f"worker-{i+1}" for i in range(worker_count)]
 
-        self._slots    = [_WorkerSlot(wid) for wid in ids]
-        self._db_path  = db_path
-        self._stop_evt = threading.Event()
+        self._slots                  = [_WorkerSlot(wid) for wid in ids]
+        self._db_path                = db_path
+        self._stop_evt               = threading.Event()
         self._thread:  threading.Thread | None = None
+        self._max_respawns           = max_respawns_per_window
+        self._respawn_window         = respawn_window_seconds
+        # Per-slot rolling restart history: worker_id → list[monotonic timestamp]
+        self._respawn_history: dict[str, list[float]] = {wid: [] for wid in ids}
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -307,6 +321,39 @@ class WorkerSupervisor:
         return sum(1 for s in self._slots if s.proc and s.proc.poll() is None)
 
     # ── Internal ──────────────────────────────────────────────────────────────
+
+    def _send_critical_alert(self, worker_id: str, count: int) -> None:
+        """Send a Telegram message to the owner when a worker is crash-looping.
+
+        Runs in the background thread — uses requests so no event-loop required.
+        Silently swallows all errors so it never interrupts the monitor loop.
+        """
+        token    = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        chat_ids = [
+            x for x in os.getenv("OWNER_IDS", os.getenv("VITE_OWNER_IDS", "")).split(",")
+            if x.strip().lstrip("-").isdigit()
+        ]
+        if not token or not chat_ids:
+            return
+        try:
+            import urllib.request, urllib.parse
+            text = (
+                f"🚨 CRITICAL — crash loop detected\n"
+                f"Worker: {worker_id}\n"
+                f"Restarted {count}× in {self._respawn_window}s\n"
+                f"Check logs immediately."
+            )
+            data = urllib.parse.urlencode({
+                "chat_id": chat_ids[0],
+                "text":    text,
+            }).encode()
+            req = urllib.request.Request(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                data=data, method="POST",
+            )
+            urllib.request.urlopen(req, timeout=8)
+        except Exception:
+            pass
 
     def _spawn(self, slot: _WorkerSlot) -> None:
         """Launch a worker subprocess for the given slot."""
@@ -365,6 +412,23 @@ class WorkerSupervisor:
 
                     slot.restart_count += 1
                     slot.backoff = min(slot.backoff * 2, _MAX_RESTART_BACKOFF)
+
+                    # ── Rolling respawn rate check ──────────────────────────
+                    now_ts   = time.monotonic()
+                    history  = self._respawn_history.get(slot.worker_id, [])
+                    # Prune entries outside the rolling window
+                    history  = [t for t in history if now_ts - t <= self._respawn_window]
+                    history.append(now_ts)
+                    self._respawn_history[slot.worker_id] = history
+
+                    if len(history) >= self._max_respawns:
+                        logger.critical(
+                            "[supervisor] 🚨 CRITICAL: Worker %r restarted %d times in "
+                            "the last %.0fs — possible runaway crash loop!",
+                            slot.worker_id, len(history), self._respawn_window,
+                        )
+                        self._send_critical_alert(slot.worker_id, len(history))
+
                     self._spawn(slot)
                 else:
                     # Process is alive — reset back-off on sustained health
