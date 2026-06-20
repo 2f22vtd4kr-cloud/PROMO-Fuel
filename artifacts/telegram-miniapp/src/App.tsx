@@ -8,6 +8,7 @@ import { UploadPage }            from "./pages/Upload";
 import { GroupBroadcastsPage }   from "./pages/GroupBroadcasts";
 import { GroupBroadcastCreatePage } from "./pages/GroupBroadcastCreate";
 import { WorkersPage }           from "./pages/Workers";
+import { AccountsPage }          from "./pages/Accounts";
 import { BottomNav }             from "./components/BottomNav";
 import { ConsumerApp }           from "./ConsumerApp";
 import { getOwnerRole }          from "./lib/twa";
@@ -21,11 +22,12 @@ export function App() {
 }
 
 function OwnerApp() {
-  const [tab,          setTab]         = useState<Tab>("home");
-  const [editCampaignId, setEditId]    = useState<number | null>(null);
-  const [showEditor,   setShowEditor]  = useState(false);
-  const [editGroupId,  setEditGroupId] = useState<number | null>(null);
+  const [tab,             setTab]            = useState<Tab>("home");
+  const [editCampaignId,  setEditId]         = useState<number | null>(null);
+  const [showEditor,      setShowEditor]     = useState(false);
+  const [editGroupId,     setEditGroupId]    = useState<number | null>(null);
   const [showGroupEditor, setShowGroupEditor] = useState(false);
+  const [showAccounts,    setShowAccounts]   = useState(false);
 
   function openEditor(id?: number) {
     setEditId(id ?? null);
@@ -45,6 +47,14 @@ function OwnerApp() {
     setEditGroupId(null);
   }
 
+  function handleNavigate(t: string) {
+    if (t === "accounts") {
+      setShowAccounts(true);
+    } else {
+      setTab(t as Tab);
+    }
+  }
+
   return (
     <div style={{
       height: "100dvh",
@@ -56,7 +66,7 @@ function OwnerApp() {
       <MeshBackground />
 
       <div style={{ flex: 1, overflow: "hidden", position: "relative", zIndex: 1 }}>
-        {tab === "home"      && <HomePage      onNewCampaign={() => openEditor()} onViewCampaigns={() => setTab("campaigns")} onNavigate={(t) => setTab(t as Tab)} />}
+        {tab === "home"      && <HomePage      onNewCampaign={() => openEditor()} onViewCampaigns={() => setTab("campaigns")} onNavigate={handleNavigate} />}
         {tab === "campaigns" && <CampaignsPage onEdit={openEditor} />}
         {tab === "analytics" && <AnalyticsPage />}
         {tab === "audience"  && <AudiencePage />}
@@ -65,6 +75,7 @@ function OwnerApp() {
         {tab === "workers"   && <WorkersPage />}
       </div>
 
+      {/* Overlays — highest z-index stack */}
       {showEditor && (
         <div style={{ position: "absolute", inset: 0, zIndex: 50 }}>
           <EditorPage campaignId={editCampaignId} onDone={closeEditor} />
@@ -74,6 +85,12 @@ function OwnerApp() {
       {showGroupEditor && (
         <div style={{ position: "absolute", inset: 0, zIndex: 50 }}>
           <GroupBroadcastCreatePage campaignId={editGroupId} onDone={closeGroupEditor} />
+        </div>
+      )}
+
+      {showAccounts && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 50, background: "#07090f" }}>
+          <AccountsPage onClose={() => setShowAccounts(false)} />
         </div>
       )}
 

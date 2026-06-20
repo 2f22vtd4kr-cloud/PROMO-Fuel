@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { Bell, Megaphone, BarChart2, ArrowUpRight, Gift, Users2, TrendingUp, Shield, Flame, Fuel } from "lucide-react";
-import { api, Campaign, AnalyticsOverview } from "../lib/api";
+import { Bell, Megaphone, BarChart2, ArrowUpRight, Gift, Users2, TrendingUp, Shield, Flame, Fuel, Radio, Cpu } from "lucide-react";
+import { api, Campaign, AnalyticsOverview, WorkersSummary } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
 import { haptic } from "../lib/haptics";
@@ -10,22 +10,28 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
   onViewCampaigns: () => void;
   onNavigate: (tab: string) => void;
 }) {
-  const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [users, setUsers] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [overview,       setOverview]       = useState<AnalyticsOverview | null>(null);
+  const [campaigns,      setCampaigns]      = useState<Campaign[]>([]);
+  const [groupCampaigns, setGroupCampaigns] = useState(0);
+  const [users,          setUsers]          = useState(0);
+  const [loading,        setLoading]        = useState(true);
+  const [workers,        setWorkers]        = useState<WorkersSummary | null>(null);
 
   useEffect(() => {
-    Promise.all([api.getOverview(), api.getCampaigns(), api.getUsers()])
-      .then(([ov, cps, us]) => {
+    Promise.all([api.getOverview(), api.getCampaigns(), api.getUsers(), api.getWorkersSummary(), api.getGroupCampaigns()])
+      .then(([ov, cps, us, ws, gcs]) => {
         setOverview(ov);
         setCampaigns(cps.slice(0, 3));
         setUsers(us.length);
+        setWorkers(ws);
+        setGroupCampaigns(gcs.filter(g => g.status === "running").length);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
     const t = setInterval(() => {
       api.getOverview().then(setOverview).catch(() => {});
+      api.getWorkersSummary().then(setWorkers).catch(() => {});
+      api.getGroupCampaigns().then(gcs => setGroupCampaigns(gcs.filter(g => g.status === "running").length)).catch(() => {});
     }, 30_000);
     return () => clearInterval(t);
   }, []);
@@ -66,10 +72,12 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
   ];
 
   const quickActions = [
-    { label: "Новая рассылка", icon: Megaphone, color: TG.green,          glow: TG.greenGlow,                action: () => { haptic.medium(); onNewCampaign(); } },
-    { label: "Статистика",     icon: BarChart2, color: TG.accent ?? "#6ba8e5", glow: "rgba(107,168,229,0.38)", action: () => { haptic.light(); onNavigate("analytics"); } },
-    { label: "Аудитория",      icon: Users2,    color: "#c4aeff",          glow: "rgba(196,174,255,0.38)",    action: () => { haptic.light(); onNavigate("audience"); } },
-    { label: "Аккаунты",       icon: Shield,    color: "#ff7eb3",          glow: "rgba(255,126,179,0.38)",    action: () => { haptic.light(); onNavigate("accounts"); } },
+    { label: "Новая рассылка", icon: Megaphone, color: TG.green,              glow: TG.greenGlow,                action: () => { haptic.medium(); onNewCampaign(); } },
+    { label: "Группы",         icon: Radio,     color: "#ffc946",             glow: "rgba(255,201,70,0.38)",     action: () => { haptic.light(); onNavigate("groups"); } },
+    { label: "Статистика",     icon: BarChart2, color: TG.accent ?? "#6ba8e5", glow: "rgba(107,168,229,0.38)",   action: () => { haptic.light(); onNavigate("analytics"); } },
+    { label: "Аудитория",      icon: Users2,    color: "#c4aeff",             glow: "rgba(196,174,255,0.38)",    action: () => { haptic.light(); onNavigate("audience"); } },
+    { label: "Аккаунты",       icon: Shield,    color: "#ff7eb3",             glow: "rgba(255,126,179,0.38)",    action: () => { haptic.light(); onNavigate("accounts"); } },
+    { label: "Воркеры",        icon: Cpu,       color: "#a78bfa",             glow: "rgba(167,139,250,0.38)",    action: () => { haptic.light(); onNavigate("workers"); } },
   ];
 
   return (
@@ -148,6 +156,33 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
             );
           })}
         </div>
+
+        {/* Worker health strip */}
+        {workers && (
+          <div onClick={() => { haptic.light(); onNavigate("workers"); }} style={{ cursor: "pointer" }}>
+            <GlassCard
+              glow={workers.alive_workers > 0 ? "rgba(45,232,151,0.18)" : "rgba(255,107,122,0.18)"}
+              style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 12 }}
+            >
+              <div style={{ width: 28, height: 28, borderRadius: 9, background: workers.alive_workers > 0 ? "rgba(45,232,151,0.15)" : "rgba(255,107,122,0.12)", border: `1px solid ${workers.alive_workers > 0 ? "rgba(45,232,151,0.35)" : "rgba(255,107,122,0.35)"}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Cpu size={14} color={workers.alive_workers > 0 ? "#2de897" : "#ff6b7a"} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: TG.text }}>
+                  Воркеры: <span style={{ color: workers.alive_workers > 0 ? "#2de897" : "#ff6b7a" }}>{workers.alive_workers} активных</span>
+                  {workers.dead_workers > 0 && <span style={{ color: "#ff6b7a", marginLeft: 6 }}>· {workers.dead_workers} мёртвых</span>}
+                  {groupCampaigns > 0 && <span style={{ color: "#ffc946", marginLeft: 6 }}>· {groupCampaigns} рассылок</span>}
+                </div>
+                <div style={{ fontSize: 10, color: TG.muted, marginTop: 1 }}>
+                  {workers.tasks_pending > 0
+                    ? `${workers.tasks_pending} задач в очереди · ${workers.tasks_done} выполнено`
+                    : `Очередь пуста · ${workers.tasks_done} выполнено всего`}
+                </div>
+              </div>
+              <ArrowUpRight size={12} color={TG.muted} />
+            </GlassCard>
+          </div>
+        )}
 
         {/* Quick actions */}
         <div>

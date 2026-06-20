@@ -22,6 +22,9 @@ function ensureTables() {
       sent_count        INTEGER DEFAULT 0,
       failed_count      INTEGER DEFAULT 0,
       notes             TEXT DEFAULT '',
+      min_delay_seconds REAL DEFAULT 2.5,
+      max_delay_seconds REAL DEFAULT 6.0,
+      daily_limit       INTEGER DEFAULT 0,
       created_at        TEXT DEFAULT (datetime('now')),
       updated_at        TEXT DEFAULT (datetime('now'))
     );
@@ -116,21 +119,34 @@ router.get("/group-campaigns/:id", (req, res) => {
 router.post("/group-campaigns", (req, res) => {
   try {
     const db = new Database(DB_PATH);
-    const { name, text_template, sender_account_id, selected_groups, interval_seconds, notes } = req.body as {
+    const { name, text_template, sender_account_id, selected_groups, interval_seconds, notes,
+            media_url, media_type, inline_buttons, pin_message,
+            min_delay_seconds, max_delay_seconds, daily_limit } = req.body as {
       name: string; text_template: string;
       sender_account_id?: number; selected_groups?: string;
       interval_seconds?: number; notes?: string;
+      media_url?: string; media_type?: string; inline_buttons?: string; pin_message?: number;
+      min_delay_seconds?: number; max_delay_seconds?: number; daily_limit?: number;
     };
     if (!name || !text_template) return void res.status(400).json({ error: "name and text_template required" });
     const info = db.prepare(`
-      INSERT INTO group_campaigns (name, text_template, status, sender_account_id, selected_groups, interval_seconds, notes)
-      VALUES (?, ?, 'draft', ?, ?, ?, ?)
+      INSERT INTO group_campaigns (name, text_template, status, sender_account_id, selected_groups,
+                                   interval_seconds, notes, media_url, media_type, inline_buttons, pin_message,
+                                   min_delay_seconds, max_delay_seconds, daily_limit)
+      VALUES (?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       name, text_template,
       sender_account_id ?? null,
       selected_groups ?? "[]",
       interval_seconds ?? 86400,
-      notes ?? ""
+      notes ?? "",
+      media_url ?? null,
+      media_type ?? null,
+      inline_buttons ?? "[]",
+      pin_message ?? 0,
+      min_delay_seconds ?? 2.5,
+      max_delay_seconds ?? 6.0,
+      daily_limit ?? 0
     );
     const row = db.prepare("SELECT * FROM group_campaigns WHERE id = ?").get(info.lastInsertRowid);
     db.close();
@@ -145,7 +161,9 @@ router.put("/group-campaigns/:id", (req, res) => {
     const db = new Database(DB_PATH);
     const id = parseInt(req.params.id);
     const body = req.body as Record<string, unknown>;
-    const allowed = ["name", "text_template", "sender_account_id", "selected_groups", "interval_seconds", "notes", "status"];
+    const allowed = ["name", "text_template", "sender_account_id", "selected_groups", "interval_seconds",
+                     "notes", "status", "media_url", "media_type", "inline_buttons", "pin_message",
+                     "next_send_at", "min_delay_seconds", "max_delay_seconds", "daily_limit"];
     const fields: string[] = [];
     const values: unknown[] = [];
     for (const key of allowed) {
@@ -208,12 +226,55 @@ router.post("/group-campaigns/:id/duplicate", (req, res) => {
     const src = db.prepare("SELECT * FROM group_campaigns WHERE id = ?").get(parseInt(req.params.id)) as any;
     if (!src) { db.close(); return void res.status(404).json({ error: "not found" }); }
     const info = db.prepare(`
-      INSERT INTO group_campaigns (name, text_template, status, sender_account_id, selected_groups, interval_seconds, notes)
-      VALUES (?, ?, 'draft', ?, ?, ?, ?)
-    `).run(`${src.name} (копия)`, src.text_template, src.sender_account_id ?? null, src.selected_groups ?? "[]", src.interval_seconds ?? 86400, src.notes ?? "");
+      INSERT INTO group_campaigns (name, text_template, status, sender_account_id, selected_groups,
+                                   interval_seconds, notes, media_url, media_type, inline_buttons, pin_message,
+                                   min_delay_seconds, max_delay_seconds, daily_limit)
+      VALUES (?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      `${src.name} (копия)`, src.text_template,
+      src.sender_account_id ?? null,
+      src.selected_groups ?? "[]",
+      src.interval_seconds ?? 86400,
+      src.notes ?? "",
+      src.media_url ?? null,
+      src.media_type ?? null,
+      src.inline_buttons ?? "[]",
+      src.pin_message ?? 0,
+      src.min_delay_seconds ?? 2.5,
+      src.max_delay_seconds ?? 6.0,
+      src.daily_limit ?? 0
+    );
     const row = db.prepare("SELECT * FROM group_campaigns WHERE id = ?").get(info.lastInsertRowid);
     db.close();
     res.status(201).json(row);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.post("/group-campaigns/:id/send-now", (req, res) => {
+  try {
+    const db = new Database(DB_PATH);
+    const id = parseInt(req.params.id);
+    const camp = db.prepare("SELECT * FROM group_campaigns WHERE id = ?").get(id) as any;
+    if (!camp) { db.close(); return void res.status(404).json({ error: "not found" }); }
+
+    // If draft, start it first
+    if (camp.status === "draft" || camp.status === "cancelled") {
+      const now = new Date().toISOString();
+      db.prepare("UPDATE group_campaigns SET status='running', next_send_at=?, updated_at=? WHERE id=?")
+        .run(now, now, id);
+    }
+
+    // Push a task directly into the queue
+    const info = db.prepare(`
+      INSERT INTO tasks (task_type, campaign_id, payload, status, priority, max_attempts, created_at, scheduled_at)
+      VALUES ('group_broadcast', ?, '{}', 'pending', 1, 3, datetime('now'), datetime('now'))
+    `).run(id);
+
+    const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(info.lastInsertRowid);
+    db.close();
+    res.status(201).json({ ok: true, task });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
@@ -229,6 +290,56 @@ router.get("/group-campaigns/:id/logs", (req, res) => {
     res.json(rows);
   } catch {
     res.json([]);
+  }
+});
+
+router.get("/group-campaigns/:id/stats", (req, res) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id);
+    const byGroup = db.prepare(`
+      SELECT group_id, group_title,
+             COUNT(*) AS total,
+             SUM(CASE WHEN status='ok' OR status='sent' THEN 1 ELSE 0 END) AS sent,
+             SUM(CASE WHEN status='failed' OR status='error' THEN 1 ELSE 0 END) AS failed,
+             MAX(sent_at) AS last_sent_at
+      FROM group_sends WHERE campaign_id = ?
+      GROUP BY group_id ORDER BY sent DESC LIMIT 100
+    `).all(id);
+    const daily = db.prepare(`
+      SELECT substr(sent_at,1,10) AS day,
+             SUM(CASE WHEN status='ok' OR status='sent' THEN 1 ELSE 0 END) AS sent,
+             SUM(CASE WHEN status='failed' OR status='error' THEN 1 ELSE 0 END) AS failed
+      FROM group_sends WHERE campaign_id = ?
+      GROUP BY day ORDER BY day DESC LIMIT 30
+    `).all(id);
+    db.close();
+    res.json({ by_group: byGroup, daily });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.post("/group-campaigns/:id/test-send", (req, res) => {
+  try {
+    const db = new Database(DB_PATH);
+    const id = parseInt(req.params.id);
+    const { group_id } = req.body as { group_id?: string };
+    if (!group_id) { db.close(); return void res.status(400).json({ error: "group_id required" }); }
+
+    const camp = db.prepare("SELECT * FROM group_campaigns WHERE id = ?").get(id) as any;
+    if (!camp) { db.close(); return void res.status(404).json({ error: "not found" }); }
+
+    const info = db.prepare(`
+      INSERT INTO tasks (task_type, campaign_id, payload, status, priority, max_attempts, created_at, scheduled_at)
+      VALUES ('group_broadcast', ?, ?, 'pending', 0, 1, datetime('now'), datetime('now'))
+    `).run(id, JSON.stringify({ test: true, group_ids: [group_id] }));
+
+    const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(info.lastInsertRowid);
+    db.close();
+    res.status(201).json({ ok: true, task });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
   }
 });
 

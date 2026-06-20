@@ -52,6 +52,9 @@ export function GroupBroadcastCreatePage({
   const [buttons,      setButtons]      = useState<{ text: string; url: string }[]>([]);
   const [btnText,      setBtnText]      = useState("");
   const [btnUrl,       setBtnUrl]       = useState("");
+  const [minDelay,     setMinDelay]     = useState(2.5);
+  const [maxDelay,     setMaxDelay]     = useState(6.0);
+  const [dailyLimit,   setDailyLimit]   = useState(0);
   const [proxiesRaw,   setProxiesRaw]   = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showPreview,  setShowPreview]  = useState(false);
@@ -82,6 +85,9 @@ export function GroupBroadcastCreatePage({
       setMediaUrl(c.media_url ?? "");
       setPinMessage(!!c.pin_message);
       setButtons((() => { try { return JSON.parse(c.inline_buttons || "[]").flat(); } catch { return []; } })());
+      if (c.min_delay_seconds != null) setMinDelay(c.min_delay_seconds);
+      if (c.max_delay_seconds != null) setMaxDelay(c.max_delay_seconds);
+      if (c.daily_limit != null) setDailyLimit(c.daily_limit);
     }).catch(() => {});
   }, [campaignId]);
 
@@ -144,6 +150,9 @@ export function GroupBroadcastCreatePage({
       media_url:         mediaUrl.trim() || undefined,
       pin_message:       pinMessage ? 1 : 0,
       inline_buttons:    buttons.length ? JSON.stringify([buttons]) : "[]",
+      min_delay_seconds: minDelay,
+      max_delay_seconds: maxDelay,
+      daily_limit:       dailyLimit,
     };
 
     try {
@@ -292,6 +301,31 @@ export function GroupBroadcastCreatePage({
           {showAdvanced && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
               {inp(mediaUrl, setMediaUrl, "URL медиафайла (необяз.)")}
+
+              {/* Anti-ban delays */}
+              <div style={{ background: "rgba(255,107,122,0.05)", border: "1px solid rgba(255,107,122,0.15)", borderRadius: 12, padding: "10px 12px" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#ff6b7a", marginBottom: 10, letterSpacing: "0.06em" }}>⚡ АНТИ-БАН</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: TG.muted, marginBottom: 4 }}>Мин. задержка (сек)</div>
+                    <input type="number" min="1" max="300" step="0.5" value={minDelay}
+                      onChange={e => setMinDelay(parseFloat(e.target.value) || 1)}
+                      style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 10, padding: "8px 10px", fontSize: 13, color: TG.text, outline: "none", boxSizing: "border-box" }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: TG.muted, marginBottom: 4 }}>Макс. задержка (сек)</div>
+                    <input type="number" min="1" max="600" step="0.5" value={maxDelay}
+                      onChange={e => setMaxDelay(parseFloat(e.target.value) || 2)}
+                      style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 10, padding: "8px 10px", fontSize: 13, color: TG.text, outline: "none", boxSizing: "border-box" }} />
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: TG.muted, marginBottom: 4 }}>Лимит в день (0 = нет лимита)</div>
+                  <input type="number" min="0" max="9999" value={dailyLimit}
+                    onChange={e => setDailyLimit(parseInt(e.target.value) || 0)}
+                    style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 10, padding: "8px 10px", fontSize: 13, color: TG.text, outline: "none", boxSizing: "border-box" }} />
+                </div>
+              </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div onClick={() => setPinMessage(s => !s)} style={{ width: 20, height: 20, borderRadius: 6, border: `1.5px solid ${pinMessage ? "#2de897" : "rgba(255,255,255,0.2)"}`, background: pinMessage ? "#2de897" : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>

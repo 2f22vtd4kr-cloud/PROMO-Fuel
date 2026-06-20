@@ -81,7 +81,7 @@ router.put("/accounts/:id", (req, res) => {
     const db = getDb(false);
     const id = parseInt(req.params.id);
     const allowed = ["label", "phone", "username", "telegram_id", "api_id", "api_hash",
-                     "proxy", "session_file", "status", "is_active", "is_banned",
+                     "proxy", "proxies", "session_file", "status", "auth_status", "is_active", "is_banned",
                      "last_error", "sent_today", "sent_total", "failed_total", "last_used_at"];
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -147,6 +147,7 @@ router.get("/accounts/:id/logs", (req, res) => {
   }
 });
 
+
 const AUTH_SERVER = "http://127.0.0.1:8082";
 
 async function proxyToAuthServer(path: string, body: unknown): Promise<{ status: number; data: unknown }> {
@@ -154,6 +155,16 @@ async function proxyToAuthServer(path: string, body: unknown): Promise<{ status:
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const data = await r.json();
+  return { status: r.status, data };
+}
+
+async function getFromAuthServer(path: string): Promise<{ status: number; data: unknown }> {
+  const r = await fetch(`${AUTH_SERVER}${path}`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
     signal: AbortSignal.timeout(30_000),
   });
   const data = await r.json();
@@ -215,6 +226,26 @@ router.post("/accounts/:id/confirm-2fa", async (req, res) => {
         .run((data as Record<string, unknown>).session_file, (data as Record<string, unknown>).display_name, parseInt(req.params.id));
       wdb.close();
     }
+    res.status(status).json(data);
+  } catch (err) {
+    res.status(503).json({ error: `Auth server unavailable: ${String(err)}` });
+  }
+});
+
+// ── Account groups — proxy to Telethon auth server ───────────────────────────
+
+router.get("/accounts/:id/groups", async (req, res) => {
+  try {
+    const { status, data } = await getFromAuthServer(`/groups/${req.params.id}`);
+    res.status(status).json(data);
+  } catch (err) {
+    res.status(503).json({ error: `Auth server unavailable: ${String(err)}` });
+  }
+});
+
+router.post("/accounts/:id/groups/refresh", async (req, res) => {
+  try {
+    const { status, data } = await proxyToAuthServer(`/groups/${req.params.id}/refresh`, {});
     res.status(status).json(data);
   } catch (err) {
     res.status(503).json({ error: `Auth server unavailable: ${String(err)}` });

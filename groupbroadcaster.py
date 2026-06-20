@@ -130,9 +130,9 @@ async def _release_client(account_id: int) -> None:
 
 # ── Jitter delays ────────────────────────────────────────────────────────────
 
-async def _inter_message_delay(sent_count: int) -> None:
+async def _inter_message_delay(sent_count: int, min_delay: float = 2.5, max_delay: float = 6.0) -> None:
     """Tiered human-like delay between sends."""
-    base = random.uniform(2.5, 6.0)
+    base = random.uniform(min_delay, max(max_delay, min_delay + 0.5))
     extra = 0.0
     if sent_count > 0 and sent_count % 50 == 0:
         extra = random.uniform(90.0, 200.0)
@@ -215,7 +215,14 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
     if not campaign:
         return {"ok": False, "sent": 0, "failed": 0, "errors": ["Campaign not found"]}
 
-    if campaign.get("status") not in ("running", "draft"):
+    task_payload: dict = {}
+    try:
+        task_payload = json.loads(task.get("payload") or "{}")
+    except Exception:
+        pass
+    is_test_task = task_payload.get("test", False)
+
+    if not is_test_task and campaign.get("status") not in ("running", "draft"):
         return {"ok": False, "sent": 0, "failed": 0, "errors": [f"Campaign status: {campaign.get('status')}"]}
 
     # Load sender account
@@ -251,7 +258,20 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
         if not client:
             return {"ok": False, "sent": 0, "failed": 0, "errors": ["Could not connect Telethon client"]}
 
-        selected_groups = json.loads(campaign.get("selected_groups") or "[]")
+        # Test mode: override group list with payload's group_ids
+        payload_data: dict = {}
+        try:
+            payload_data = json.loads(task.get("payload") or "{}")
+        except Exception:
+            pass
+        is_test = payload_data.get("test", False)
+
+        if is_test and payload_data.get("group_ids"):
+            selected_groups = [str(g) for g in payload_data["group_ids"]]
+            logger.info(f"[broadcaster] Task #{task_id} TEST mode — groups: {selected_groups}")
+        else:
+            selected_groups = json.loads(campaign.get("selected_groups") or "[]")
+
         if not selected_groups:
             return {"ok": False, "sent": 0, "failed": 0, "errors": ["No groups selected"]}
 
@@ -260,12 +280,20 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
         media_type      = campaign.get("media_type")
         pin             = bool(campaign.get("pin_message", 0))
         inline_buttons  = json.loads(campaign.get("inline_buttons") or "[]")
+        min_delay       = float(campaign.get("min_delay_seconds") or 2.5)
+        max_delay       = float(campaign.get("max_delay_seconds") or 6.0)
+        daily_limit     = int(campaign.get("daily_limit") or 0)
 
         # Enrich group titles from cache
         group_meta = await _get_group_meta(account_id, selected_groups)
 
         sent_count = 0
         for group_id in selected_groups:
+            # Enforce daily limit
+            if daily_limit > 0 and results["sent"] >= daily_limit:
+                logger.info(f"[broadcaster] Daily limit {daily_limit} reached for campaign {campaign_id}")
+                break
+
             # Apply rate limit
             await _rate_limiter.acquire(account_id)
 
@@ -284,7 +312,7 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
                 results["sent"] += 1
                 sent_count += 1
                 logger.info(f"[broadcaster] ✓ Task #{task_id} → {group_title} ({group_id})")
-                await _inter_message_delay(sent_count)
+                await _inter_message_delay(sent_count, min_delay=min_delay, max_delay=max_delay)
 
             except FloodWaitError as e:
                 wait = e.seconds + random.randint(5, 15)

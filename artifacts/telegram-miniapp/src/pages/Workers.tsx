@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { Cpu, RefreshCw, Trash2, AlertTriangle, CheckCircle, Clock, Activity, ListTodo } from "lucide-react";
-import { api, BroadcastWorker, Task, WorkersSummary } from "../lib/api";
+import { Cpu, RefreshCw, Trash2, AlertTriangle, CheckCircle, Clock, Activity, ListTodo, Calendar } from "lucide-react";
+import { api, BroadcastWorker, Task, WorkersSummary, GroupCampaign } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
 import { haptic } from "../lib/haptics";
@@ -131,23 +131,67 @@ function TaskRow({ task, onAction }: { task: Task; onAction: () => void }) {
   );
 }
 
+function formatCountdown(isoStr: string | null | undefined): string {
+  if (!isoStr) return "—";
+  const diff = Math.floor((new Date(isoStr).getTime() - Date.now()) / 1000);
+  if (diff <= 0) return "сейчас";
+  if (diff < 60)  return `${diff}с`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}м ${diff % 60}с`;
+  const h = Math.floor(diff / 3600);
+  const m = Math.floor((diff % 3600) / 60);
+  return `${h}ч ${m}м`;
+}
+
+function ScheduledCampaignRow({ c }: { c: GroupCampaign }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick(n => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const color = c.status === "running" ? "#2de897" : c.status === "paused" ? "#ffc946" : "#7c8db0";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+      <div style={{ width: 6, height: 6, borderRadius: "50%", background: color, flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, color: "#c8d8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
+        <div style={{ fontSize: 10, color: "#7c8db0", marginTop: 1 }}>
+          {c.sent_count} отправлено · {c.failed_count} ошибок
+        </div>
+      </div>
+      <div style={{ flexShrink: 0, textAlign: "right" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: c.next_send_at ? "#ffc946" : "#7c8db0" }}>
+          {formatCountdown(c.next_send_at)}
+        </div>
+        <div style={{ fontSize: 9, color: "#7c8db0" }}>следующая</div>
+      </div>
+    </div>
+  );
+}
+
 export function WorkersPage() {
-  const [workers,  setWorkers]  = useState<BroadcastWorker[]>([]);
-  const [tasks,    setTasks]    = useState<Task[]>([]);
-  const [summary,  setSummary]  = useState<WorkersSummary | null>(null);
-  const [loading,  setLoading]  = useState(true);
-  const [taskTab,  setTaskTab]  = useState<"all" | "pending" | "failed">("all");
+  const [workers,   setWorkers]   = useState<BroadcastWorker[]>([]);
+  const [tasks,     setTasks]     = useState<Task[]>([]);
+  const [summary,   setSummary]   = useState<WorkersSummary | null>(null);
+  const [scheduled, setScheduled] = useState<GroupCampaign[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [taskTab,   setTaskTab]   = useState<"all" | "pending" | "failed">("all");
 
   const load = useCallback(async () => {
     try {
-      const [w, t, s] = await Promise.all([
+      const [w, t, s, gc] = await Promise.all([
         api.getWorkers(),
         api.getTasks(),
         api.getWorkersSummary(),
+        api.getGroupCampaigns(),
       ]);
       setWorkers(w);
       setTasks(t);
       setSummary(s);
+      setScheduled(gc.filter(c => c.status === "running" || c.status === "paused").sort((a, b) => {
+        if (!a.next_send_at) return 1;
+        if (!b.next_send_at) return -1;
+        return new Date(a.next_send_at).getTime() - new Date(b.next_send_at).getTime();
+      }));
     } catch {}
     finally { setLoading(false); }
   }, []);
@@ -253,6 +297,44 @@ export function WorkersPage() {
                 </div>
               )}
             </div>
+
+            {/* Scheduled campaigns */}
+            {scheduled.length > 0 && (
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                  <Calendar size={12} color={TG.muted} />
+                  <div style={{ fontSize: 12, fontWeight: 700, color: TG.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                    Расписание рассылок ({scheduled.length})
+                  </div>
+                </div>
+                <GlassCard style={{ padding: "8px 10px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {scheduled.slice(0, 10).map(c => <ScheduledCampaignRow key={c.id} c={c} />)}
+                    {scheduled.length > 10 && (
+                      <div style={{ fontSize: 10, color: TG.muted, textAlign: "center", padding: "4px 0" }}>
+                        +{scheduled.length - 10} ещё
+                      </div>
+                    )}
+                  </div>
+                </GlassCard>
+              </div>
+            )}
+
+                {/* Bulk cleanup */}
+            {deadWorkers.length > 0 && (
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={async () => {
+                    haptic.warning();
+                    await Promise.all(deadWorkers.map(w => api.deleteWorker(w.worker_id)));
+                    haptic.success(); load();
+                  }}
+                  style={{ flex: 1, padding: "9px", background: "rgba(255,107,122,0.08)", border: "1px solid rgba(255,107,122,0.25)", borderRadius: 10, color: "#ff6b7a", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                >
+                  🧹 Удалить остановленные ({deadWorkers.length})
+                </button>
+              </div>
+            )}
 
             {/* How to run hint */}
             <GlassCard style={{ padding: "14px", background: "rgba(107,168,229,0.05)" }}>

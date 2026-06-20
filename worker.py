@@ -52,6 +52,26 @@ POLL_INTERVAL = args.poll
 IDLE_SLEEP    = args.idle_sleep
 STUCK_RESET_INTERVAL = 300   # reset stuck tasks every 5 minutes
 
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+OWNER_IDS  = [int(x) for x in os.getenv("OWNER_IDS", os.getenv("VITE_OWNER_IDS", "")).split(",") if x.strip().lstrip("-").isdigit()]
+
+
+async def _notify_owner(text: str) -> None:
+    """Send a notification to all owners via Telegram Bot API (fire-and-forget)."""
+    if not BOT_TOKEN or not OWNER_IDS:
+        return
+    try:
+        import aiohttp
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        async with aiohttp.ClientSession() as session:
+            for uid in OWNER_IDS:
+                try:
+                    await session.post(url, json={"chat_id": uid, "text": text, "parse_mode": "Markdown"}, timeout=aiohttp.ClientTimeout(total=10))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
 # ── Globals ───────────────────────────────────────────────────────────────────
 _running = True
 _heartbeat: WorkerHeartbeat | None = None
@@ -116,18 +136,31 @@ async def main_loop() -> None:
             try:
                 result = await run_group_campaign_task(task, worker_id=WORKER_ID)
 
-                if result.get("ok") or result.get("sent", 0) > 0:
+                sent_n   = result.get("sent", 0)
+                failed_n = result.get("failed", 0)
+
+                if result.get("ok") or sent_n > 0:
                     await _task_queue.complete_task(task_id, campaign_id)
                     _heartbeat.record_done()
                     logger.info(
                         f"[{WORKER_ID}] ✓ Task #{task_id} done — "
-                        f"sent={result.get('sent',0)} failed={result.get('failed',0)}"
+                        f"sent={sent_n} failed={failed_n}"
                     )
+                    asyncio.create_task(_notify_owner(
+                        f"✅ *Рассылка завершена*\n"
+                        f"Кампания #{campaign_id} · Задача #{task_id}\n"
+                        f"📨 Отправлено: {sent_n}  ❌ Ошибок: {failed_n}"
+                    ))
                 else:
                     errors = "; ".join(result.get("errors", []))[:300]
                     await _task_queue.fail_task(task_id, error=errors, campaign_id=campaign_id)
                     _heartbeat.record_failed(errors)
                     logger.warning(f"[{WORKER_ID}] ✗ Task #{task_id} failed: {errors}")
+                    asyncio.create_task(_notify_owner(
+                        f"❌ *Рассылка не выполнена*\n"
+                        f"Кампания #{campaign_id} · Задача #{task_id}\n"
+                        f"Ошибка: {errors[:200]}"
+                    ))
 
             except asyncio.CancelledError:
                 await _task_queue.fail_task(task_id, "Worker cancelled", campaign_id)
@@ -137,6 +170,12 @@ async def main_loop() -> None:
                 logger.error(f"[{WORKER_ID}] ✗ Task #{task_id} unhandled error: {err_str}", exc_info=True)
                 await _task_queue.fail_task(task_id, err_str, campaign_id)
                 _heartbeat.record_failed(err_str)
+                asyncio.create_task(_notify_owner(
+                    f"💥 *Критическая ошибка воркера*\n"
+                    f"Воркер: `{WORKER_ID}`\n"
+                    f"Задача #{task_id} · Кампания #{campaign_id}\n"
+                    f"`{err_str}`"
+                ))
 
             # Brief pause between tasks
             await asyncio.sleep(POLL_INTERVAL)

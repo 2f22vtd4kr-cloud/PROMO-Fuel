@@ -1,46 +1,264 @@
 import { useState, useEffect, useCallback } from "react";
-import { Shield, Plus, ChevronDown, ChevronUp, X, RotateCcw, Power, Trash2 } from "lucide-react";
+import {
+  Shield, Plus, ChevronDown, ChevronUp, X, RotateCcw, Power,
+  Trash2, Key, CheckCircle, AlertCircle, Loader, Lock,
+} from "lucide-react";
 import { api, SenderAccount } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard, StatusBadge } from "../components/GlassCard";
 import { useSse } from "../lib/useSse";
 import { haptic } from "../lib/haptics";
 
+// ── Auth status badge ────────────────────────────────────────────────────────
+
+function AuthBadge({ status, sessionFile }: { status?: string; sessionFile?: string }) {
+  if (sessionFile) {
+    return (
+      <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, color: "#2de897", background: "rgba(45,232,151,0.12)", border: "1px solid rgba(45,232,151,0.3)", borderRadius: 20, padding: "2px 7px" }}>
+        <CheckCircle size={9} />АВТОРИЗОВАН
+      </span>
+    );
+  }
+  return (
+    <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, color: "#ffc946", background: "rgba(255,201,70,0.12)", border: "1px solid rgba(255,201,70,0.3)", borderRadius: 20, padding: "2px 7px" }}>
+      <AlertCircle size={9} />НЕТ СЕССИИ
+    </span>
+  );
+}
+
+// ── Telethon auth flow ────────────────────────────────────────────────────────
+
+type AuthStep = "idle" | "sending" | "waiting_code" | "waiting_2fa" | "done" | "error";
+
+function TelethonAuthFlow({ acc, onDone }: { acc: SenderAccount; onDone: () => void }) {
+  const [step,          setStep]          = useState<AuthStep>("idle");
+  const [codeHash,      setCodeHash]      = useState("");
+  const [code,          setCode]          = useState("");
+  const [password,      setPassword]      = useState("");
+  const [errorMsg,      setErrorMsg]      = useState("");
+  const [displayName,   setDisplayName]   = useState("");
+
+  // If account already has api_id/api_hash set, use them; otherwise prompt
+  const [apiId,         setApiId]         = useState(acc.api_id ? String(acc.api_id) : "");
+  const [apiHash,       setApiHash]       = useState(acc.api_hash ?? "");
+  const needsCreds = !acc.api_id || !acc.api_hash;
+
+  async function saveCredsAndStart() {
+    if (!apiId || !apiHash) { setErrorMsg("Введите api_id и api_hash"); return; }
+    haptic.medium(); setStep("sending"); setErrorMsg("");
+    try {
+      // Save credentials to account first
+      await api.patchAccount(acc.id, { api_id: Number(apiId), api_hash: apiHash.trim() } as any);
+      await startAuth();
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? "Ошибка"); setStep("error");
+    }
+  }
+
+  async function startAuth() {
+    haptic.medium(); setStep("sending"); setErrorMsg("");
+    try {
+      const res = await api.startAuth(acc.id);
+      if (res.already_authorized) {
+        setDisplayName(res.display_name ?? "");
+        setStep("done"); haptic.success();
+        return;
+      }
+      if (res.error) { setErrorMsg(res.error); setStep("error"); haptic.error(); return; }
+      if (res.phone_code_hash) {
+        setCodeHash(res.phone_code_hash);
+        setStep("waiting_code");
+      }
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? "Auth server недоступен"); setStep("error"); haptic.error();
+    }
+  }
+
+  async function confirmCode() {
+    if (!code.trim()) { setErrorMsg("Введите код"); return; }
+    haptic.medium(); setStep("sending"); setErrorMsg("");
+    try {
+      const res = await api.confirmAuth(acc.id, code.trim(), codeHash);
+      if (res.needs_2fa) { setStep("waiting_2fa"); return; }
+      if (res.ok) {
+        setDisplayName(res.display_name ?? "");
+        setStep("done"); haptic.success();
+      } else {
+        setErrorMsg(res.error ?? "Неверный код"); setStep("waiting_code"); haptic.error();
+      }
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? "Ошибка"); setStep("waiting_code"); haptic.error();
+    }
+  }
+
+  async function confirm2fa() {
+    if (!password.trim()) { setErrorMsg("Введите пароль"); return; }
+    haptic.medium(); setStep("sending"); setErrorMsg("");
+    try {
+      const res = await api.confirm2fa(acc.id, password);
+      if (res.ok) {
+        setDisplayName(res.display_name ?? "");
+        setStep("done"); haptic.success();
+      } else {
+        setErrorMsg(res.error ?? "Неверный пароль"); setStep("waiting_2fa"); haptic.error();
+      }
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? "Ошибка"); setStep("waiting_2fa"); haptic.error();
+    }
+  }
+
+  const busy = step === "sending";
+
+  const inp = (
+    value: string, onChange: (v: string) => void,
+    placeholder: string, type = "text"
+  ) => (
+    <input
+      value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} type={type}
+      style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 12, padding: "11px 13px", fontSize: 13, color: TG.text, outline: "none", boxSizing: "border-box" }}
+    />
+  );
+
+  if (step === "done") {
+    return (
+      <div style={{ padding: "14px", borderRadius: 14, background: "rgba(45,232,151,0.08)", border: "1px solid rgba(45,232,151,0.25)", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <CheckCircle size={18} color="#2de897" />
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#2de897" }}>Авторизация успешна!</div>
+        </div>
+        {displayName && <div style={{ fontSize: 12, color: TG.textSecondary }}>Вошли как: {displayName}</div>}
+        <button onClick={() => { onDone(); }} style={{ padding: "9px", borderRadius: 10, background: "#2de897", border: "none", fontSize: 12, fontWeight: 700, color: "#07090f", cursor: "pointer" }}>
+          Готово
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid rgba(255,255,255,0.07)", paddingTop: 12, marginTop: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#6ba8e5", display: "flex", alignItems: "center", gap: 5 }}>
+        <Key size={11} />АВТОРИЗАЦИЯ TELETHON
+      </div>
+
+      {/* Credentials (only when missing) */}
+      {(needsCreds || step === "idle") && !acc.session_file && (
+        <>
+          {needsCreds && (
+            <>
+              {inp(apiId, setApiId, "API ID (число)", "number")}
+              {inp(apiHash, setApiHash, "API Hash (строка hex)")}
+              <div style={{ fontSize: 10, color: TG.muted, lineHeight: 1.5 }}>
+                Получи на <span style={{ color: "#6ba8e5" }}>my.telegram.org</span> → Apps
+              </div>
+            </>
+          )}
+          <button
+            onClick={needsCreds ? saveCredsAndStart : startAuth}
+            disabled={busy}
+            style={{ padding: "10px", borderRadius: 12, background: "rgba(107,168,229,0.15)", border: "1px solid rgba(107,168,229,0.35)", fontSize: 12, fontWeight: 700, color: "#6ba8e5", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+          >
+            {busy ? <Loader size={13} style={{ animation: "spin 0.8s linear infinite" }} /> : <Key size={13} />}
+            {busy ? "Отправляем код…" : "Получить код в Telegram"}
+          </button>
+        </>
+      )}
+
+      {/* Already authorized — re-auth button */}
+      {acc.session_file && step === "idle" && (
+        <button
+          onClick={startAuth}
+          disabled={busy}
+          style={{ padding: "9px", borderRadius: 12, background: "rgba(255,201,70,0.10)", border: "1px solid rgba(255,201,70,0.25)", fontSize: 11, fontWeight: 700, color: "#ffc946", cursor: "pointer" }}
+        >
+          Переавторизоваться
+        </button>
+      )}
+
+      {/* Code input */}
+      {step === "waiting_code" && (
+        <>
+          <div style={{ fontSize: 11, color: TG.textSecondary }}>Введи код из Telegram (5 цифр):</div>
+          {inp(code, setCode, "12345", "number")}
+          <button onClick={confirmCode} disabled={busy} style={{ padding: "10px", borderRadius: 12, background: "#2de897", border: "none", fontSize: 12, fontWeight: 700, color: "#07090f", cursor: busy ? "not-allowed" : "pointer" }}>
+            {busy ? "Проверяем…" : "Подтвердить код"}
+          </button>
+          <button onClick={() => setStep("idle")} style={{ padding: "6px", background: "none", border: "none", fontSize: 11, color: TG.muted, cursor: "pointer" }}>
+            Отмена
+          </button>
+        </>
+      )}
+
+      {/* 2FA input */}
+      {step === "waiting_2fa" && (
+        <>
+          <div style={{ fontSize: 11, color: "#ffc946", display: "flex", alignItems: "center", gap: 5 }}>
+            <Lock size={11} />Требуется двухфакторный пароль
+          </div>
+          {inp(password, setPassword, "Пароль 2FA", "password")}
+          <button onClick={confirm2fa} disabled={busy} style={{ padding: "10px", borderRadius: 12, background: "#ffc946", border: "none", fontSize: 12, fontWeight: 700, color: "#07090f", cursor: busy ? "not-allowed" : "pointer" }}>
+            {busy ? "Проверяем…" : "Войти"}
+          </button>
+        </>
+      )}
+
+      {errorMsg && (
+        <div style={{ fontSize: 11, color: "#ff6b7a", background: "rgba(255,107,122,0.08)", border: "1px solid rgba(255,107,122,0.2)", borderRadius: 8, padding: "7px 10px" }}>
+          {errorMsg}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Add account form ─────────────────────────────────────────────────────────
+
 function AddAccountForm({ onDone }: { onDone: () => void }) {
-  const [phone, setPhone]       = useState("");
-  const [label, setLabel]       = useState("");
-  const [username, setUsername] = useState("");
-  const [proxy, setProxy]       = useState("");
-  const [busy, setBusy]         = useState(false);
-  const [error, setError]       = useState<string|null>(null);
+  const [phone,    setPhone]    = useState("");
+  const [label,    setLabel]    = useState("");
+  const [apiId,    setApiId]    = useState("");
+  const [apiHash,  setApiHash]  = useState("");
+  const [proxies,  setProxies]  = useState("");
+  const [busy,     setBusy]     = useState(false);
+  const [error,    setError]    = useState<string | null>(null);
 
   async function submit() {
     if (!phone.trim()) { setError("Введите номер телефона"); return; }
     haptic.medium(); setBusy(true); setError(null);
     try {
-      await api.createAccount({ phone: phone.trim(), label: label.trim()||undefined, username: username.trim()||undefined, proxy: proxy.trim()||undefined });
+      await api.createAccount({
+        phone:    phone.trim(),
+        label:    label.trim() || undefined,
+        api_id:   apiId ? Number(apiId) : undefined,
+        api_hash: apiHash.trim() || undefined,
+        proxies:  proxies.trim() || undefined,
+      });
       haptic.success(); onDone();
     } catch (e: any) { setError(e?.message ?? "Ошибка"); haptic.error(); }
     setBusy(false);
   }
 
   const inp = (value: string, onChange: (v: string) => void, placeholder: string, type = "text") => (
-    <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} type={type} style={{ width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.14)",borderRadius:14,padding:"12px 14px",fontSize:13,color:TG.text,outline:"none",boxSizing:"border-box" }} />
+    <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} type={type}
+      style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 14, padding: "12px 14px", fontSize: 13, color: TG.text, outline: "none", boxSizing: "border-box" }} />
   );
 
   return (
-    <GlassCard style={{ padding:"16px",marginBottom:8 }}>
-      <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14 }}>
-        <span style={{ fontSize:14,fontWeight:700,color:TG.text }}>Новый аккаунт</span>
-        <div onClick={onDone} style={{ cursor:"pointer",color:TG.muted,padding:4 }}><X size={16} /></div>
+    <GlassCard style={{ padding: "16px", marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: TG.text }}>Новый аккаунт</span>
+        <div onClick={onDone} style={{ cursor: "pointer", color: TG.muted, padding: 4 }}><X size={16} /></div>
       </div>
-      <div style={{ display:"flex",flexDirection:"column",gap:10 }}>
-        {inp(phone, setPhone, "+7 (999) 000-00-00", "tel")}
-        {inp(label, setLabel, "Метка (необяз.)")}
-        {inp(username, setUsername, "@username (необяз.)")}
-        {inp(proxy, setProxy, "proxy (необяз.)")}
-        {error && <div style={{ fontSize:11,color:"#ff6b7a",padding:"6px 0" }}>{error}</div>}
-        <button onClick={submit} disabled={busy} style={{ width:"100%",padding:"12px",borderRadius:14,background:TG.green,border:"none",fontSize:13,fontWeight:700,color:"#07090f",cursor:busy?"not-allowed":"pointer",opacity:busy?0.7:1 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {inp(phone,   setPhone,   "+7 (999) 000-00-00", "tel")}
+        {inp(label,   setLabel,   "Метка (необяз.)")}
+        {inp(apiId,   setApiId,   "API ID (необяз.)", "number")}
+        {inp(apiHash, setApiHash, "API Hash (необяз.)")}
+        {inp(proxies, setProxies, "Прокси: socks5://user:pass@host:port")}
+        <div style={{ fontSize: 10, color: TG.muted, lineHeight: 1.5 }}>
+          API ID и Hash получают на <span style={{ color: "#6ba8e5" }}>my.telegram.org</span>
+        </div>
+        {error && <div style={{ fontSize: 11, color: "#ff6b7a", padding: "6px 0" }}>{error}</div>}
+        <button onClick={submit} disabled={busy} style={{ width: "100%", padding: "12px", borderRadius: 14, background: TG.green, border: "none", fontSize: 13, fontWeight: 700, color: "#07090f", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
           {busy ? "Добавление…" : "Добавить аккаунт"}
         </button>
       </div>
@@ -48,12 +266,16 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
   );
 }
 
+// ── Account card ─────────────────────────────────────────────────────────────
+
 function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => void }) {
-  const [expanded, setExpanded] = useState(false);
-  const [busy, setBusy]         = useState(false);
+  const [expanded,   setExpanded]   = useState(false);
+  const [showAuth,   setShowAuth]   = useState(false);
+  const [busy,       setBusy]       = useState(false);
 
   const statusColor = {
-    idle:"#2de897", sending:"#6ba8e5", banned:"#ff6b7a", offline:"rgba(160,190,230,0.45)", flood:"#ffc946",
+    idle: "#2de897", sending: "#6ba8e5", banned: "#ff6b7a",
+    offline: "rgba(160,190,230,0.45)", flood: "#ffc946", broadcasting: "#c4aeff",
   }[acc.status] ?? "rgba(160,190,230,0.45)";
 
   const pct = acc.sent_today > 0 ? Math.min(100, Math.round(acc.sent_today / 300 * 100)) : 0;
@@ -70,7 +292,7 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
   async function resetDaily() {
     haptic.medium(); setBusy(true);
     try {
-      await fetch(`${import.meta.env.VITE_API_URL ?? ""}/api/accounts/${acc.id}/reset-daily`, { method:"POST" });
+      await fetch(`${import.meta.env.VITE_API_URL ?? ""}/api/accounts/${acc.id}/reset-daily`, { method: "POST" });
       haptic.success(); onRefresh();
     } catch { haptic.error(); } finally { setBusy(false); }
   }
@@ -81,21 +303,31 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
     catch { haptic.error(); setBusy(false); }
   }
 
+  const authorized = !!acc.session_file;
+
   return (
-    <GlassCard style={{ padding:"14px" }}>
-      <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10 }}>
-        <div style={{ display:"flex",alignItems:"center",gap:10 }}>
-          <div style={{ width:36,height:36,borderRadius:12,background:`linear-gradient(145deg,${statusColor}30 0%,${statusColor}12 100%)`,border:`1px solid ${statusColor}40`,display:"flex",alignItems:"center",justifyContent:"center" }}>
+    <GlassCard style={{ padding: "14px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 12, background: `linear-gradient(145deg,${statusColor}30 0%,${statusColor}12 100%)`, border: `1px solid ${statusColor}40`, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
             <Shield size={16} color={statusColor} />
+            {/* Auth indicator dot */}
+            <div style={{ position: "absolute", bottom: -2, right: -2, width: 8, height: 8, borderRadius: "50%", background: authorized ? "#2de897" : "#ff6b7a", border: "1.5px solid #07090f" }} />
           </div>
           <div>
-            <div style={{ fontSize:12,fontWeight:700,color:TG.text }}>{acc.label || `Account ${acc.id}`}</div>
-            <div style={{ fontSize:10,color:TG.muted }}>{acc.phone}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: TG.text }}>{acc.label || `Аккаунт ${acc.id}`}</div>
+            <div style={{ fontSize: 10, color: TG.muted }}>{acc.phone}</div>
           </div>
         </div>
-        <div style={{ display:"flex",alignItems:"center",gap:7 }}>
-          <StatusBadge status={acc.status} />
-          <div onClick={() => { haptic.light(); setExpanded(o=>!o); }} style={{ width:26,height:26,borderRadius:8,background:"rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          {acc.is_banned ? (
+            <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, color: "#ff6b7a", background: "rgba(255,107,122,0.15)", border: "1px solid rgba(255,107,122,0.35)", borderRadius: 20, padding: "2px 7px" }}>
+              🚫 БАН
+            </span>
+          ) : (
+            <AuthBadge status={acc.auth_status} sessionFile={acc.session_file} />
+          )}
+          <div onClick={() => { haptic.light(); setExpanded(o => !o); }} style={{ width: 26, height: 26, borderRadius: 8, background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
             {expanded ? <ChevronUp size={13} color={TG.muted} /> : <ChevronDown size={13} color={TG.muted} />}
           </div>
         </div>
@@ -103,35 +335,83 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
 
       {/* Daily quota bar */}
       <div style={{ marginBottom: expanded ? 12 : 0 }}>
-        <div style={{ display:"flex",justifyContent:"space-between",marginBottom:5 }}>
-          <span style={{ fontSize:10,color:TG.muted }}>Дневной лимит</span>
-          <span style={{ fontSize:10,color:statusColor,fontWeight:700 }}>{acc.sent_today.toLocaleString("ru")} / 300</span>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+          <span style={{ fontSize: 10, color: TG.muted }}>Дневной лимит</span>
+          <span style={{ fontSize: 10, color: statusColor, fontWeight: 700 }}>{acc.sent_today.toLocaleString("ru")} / 300</span>
         </div>
-        <div style={{ height:3,borderRadius:2,background:"rgba(255,255,255,0.07)",overflow:"hidden" }}>
-          <div style={{ height:"100%",borderRadius:2,width:`${pct}%`,background:`linear-gradient(90deg,${statusColor},${statusColor}99)`,boxShadow:pct>0?`0 0 6px ${statusColor}66`:"none",transition:"width 0.6s ease" }} />
+        <div style={{ height: 3, borderRadius: 2, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
+          <div style={{ height: "100%", borderRadius: 2, width: `${pct}%`, background: `linear-gradient(90deg,${statusColor},${statusColor}99)`, boxShadow: pct > 0 ? `0 0 6px ${statusColor}66` : "none", transition: "width 0.6s ease" }} />
         </div>
       </div>
 
       {expanded && (
-        <div style={{ display:"flex",gap:8,borderTop:"1px solid rgba(255,255,255,0.07)",paddingTop:12 }}>
-          <button onClick={toggleActive} disabled={busy} style={{ flex:1,padding:"9px 6px",borderRadius:12,background:acc.is_active?"rgba(255,107,122,0.12)":"rgba(45,232,151,0.12)",border:`1px solid ${acc.is_active?"rgba(255,107,122,0.3)":"rgba(45,232,151,0.3)"}`,fontSize:11,fontWeight:700,color:acc.is_active?"#ff6b7a":TG.green,cursor:busy?"not-allowed":"pointer",opacity:busy?0.5:1,display:"flex",alignItems:"center",justifyContent:"center",gap:5 }}>
-            <Power size={11} />{acc.is_active ? "Откл." : "Вкл."}
-          </button>
-          <button onClick={resetDaily} disabled={busy} style={{ flex:1,padding:"9px 6px",borderRadius:12,background:"rgba(107,168,229,0.12)",border:"1px solid rgba(107,168,229,0.3)",fontSize:11,fontWeight:700,color:"#6ba8e5",cursor:busy?"not-allowed":"pointer",opacity:busy?0.5:1,display:"flex",alignItems:"center",justifyContent:"center",gap:5 }}>
-            <RotateCcw size={11} />Сброс
-          </button>
-          <button onClick={deleteAcc} disabled={busy} style={{ width:36,padding:"9px 6px",borderRadius:12,background:"rgba(255,107,122,0.10)",border:"1px solid rgba(255,107,122,0.25)",cursor:busy?"not-allowed":"pointer",opacity:busy?0.5:1,display:"flex",alignItems:"center",justifyContent:"center" }}>
-            <Trash2 size={12} color="#ff6b7a" />
-          </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid rgba(255,255,255,0.07)", paddingTop: 12 }}>
+          {/* Stats row */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+            {[
+              { label: "Всего",  value: acc.sent_total?.toLocaleString("ru") ?? "0", color: "#6ba8e5" },
+              { label: "Ошибок", value: acc.failed_total?.toLocaleString("ru") ?? "0", color: "#ff6b7a" },
+              { label: "Статус", value: acc.status, color: statusColor },
+            ].map(s => (
+              <div key={s.label} style={{ textAlign: "center", background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "7px 4px" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: s.color }}>{s.value}</div>
+                <div style={{ fontSize: 9, color: TG.muted, marginTop: 1 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* API creds + proxy indicator */}
+          {(acc.api_id || acc.username || acc.proxy || (acc as any).proxies) && (
+            <div style={{ fontSize: 10, color: TG.muted, lineHeight: 1.8, display: "flex", flexWrap: "wrap", gap: "2px 8px" }}>
+              {acc.username && <span style={{ color: "#6ba8e5" }}>@{acc.username}</span>}
+              {acc.api_id   && <span>API ID: {acc.api_id}</span>}
+              {acc.session_file && <span style={{ color: "#2de897" }}>· сессия активна</span>}
+              {(acc.proxy || (acc as any).proxies) && (() => {
+                const rawProxy = (acc as any).proxies ?? acc.proxy ?? "";
+                const proxyCount = typeof rawProxy === "string"
+                  ? rawProxy.split("\n").map((l: string) => l.trim()).filter(Boolean).length
+                  : 0;
+                return proxyCount > 0 ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "#c4aeff", background: "rgba(196,174,255,0.1)", border: "1px solid rgba(196,174,255,0.25)", borderRadius: 6, padding: "1px 6px", fontSize: 9, fontWeight: 700 }}>
+                    🌐 {proxyCount} {proxyCount === 1 ? "прокси" : "прокси"}
+                  </span>
+                ) : null;
+              })()}
+            </div>
+          )}
+
+          {/* Auth flow */}
+          {showAuth ? (
+            <TelethonAuthFlow acc={acc} onDone={() => { setShowAuth(false); onRefresh(); }} />
+          ) : (
+            <button onClick={() => setShowAuth(true)} style={{ padding: "9px 6px", borderRadius: 12, background: "rgba(107,168,229,0.10)", border: "1px solid rgba(107,168,229,0.25)", fontSize: 11, fontWeight: 700, color: "#6ba8e5", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+              <Key size={11} />{authorized ? "Сменить сессию" : "Авторизоваться"}
+            </button>
+          )}
+
+          {/* Action buttons row */}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={toggleActive} disabled={busy} style={{ flex: 1, padding: "9px 6px", borderRadius: 12, background: acc.is_active ? "rgba(255,107,122,0.12)" : "rgba(45,232,151,0.12)", border: `1px solid ${acc.is_active ? "rgba(255,107,122,0.3)" : "rgba(45,232,151,0.3)"}`, fontSize: 11, fontWeight: 700, color: acc.is_active ? "#ff6b7a" : TG.green, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+              <Power size={11} />{acc.is_active ? "Откл." : "Вкл."}
+            </button>
+            <button onClick={resetDaily} disabled={busy} style={{ flex: 1, padding: "9px 6px", borderRadius: 12, background: "rgba(107,168,229,0.12)", border: "1px solid rgba(107,168,229,0.3)", fontSize: 11, fontWeight: 700, color: "#6ba8e5", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+              <RotateCcw size={11} />Сброс
+            </button>
+            <button onClick={deleteAcc} disabled={busy} style={{ width: 36, padding: "9px 6px", borderRadius: 12, background: "rgba(255,107,122,0.10)", border: "1px solid rgba(255,107,122,0.25)", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Trash2 size={12} color="#ff6b7a" />
+            </button>
+          </div>
         </div>
       )}
     </GlassCard>
   );
 }
 
-export function AccountsPage() {
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+export function AccountsPage({ onClose }: { onClose?: () => void }) {
   const [accounts, setAccounts] = useState<SenderAccount[]>([]);
-  const [loading, setLoading]   = useState(true);
+  const [loading,  setLoading]  = useState(true);
   const [showForm, setShowForm] = useState(false);
 
   const load = useCallback(async () => {
@@ -141,34 +421,43 @@ export function AccountsPage() {
   useEffect(() => { load(); }, [load]);
   useSse(() => { load(); });
 
-  const active  = accounts.filter(a => a.is_active && a.status !== "banned").length;
+  const active    = accounts.filter(a => a.is_active && a.status !== "banned").length;
+  const authed    = accounts.filter(a => !!a.session_file).length;
   const totalSent = accounts.reduce((s, a) => s + (a.sent_today ?? 0), 0);
 
   return (
-    <div className="tab-content" style={{ height:"100%",overflowY:"auto",WebkitOverflowScrolling:"touch" }}>
-      <div style={{ display:"flex",flexDirection:"column",gap:14,padding:"14px 14px 0",paddingBottom:"calc(env(safe-area-inset-bottom, 8px) + 88px)" }}>
+    <div className="tab-content" style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "14px 14px 0", paddingBottom: "calc(env(safe-area-inset-bottom, 8px) + 88px)" }}>
 
-        <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between" }}>
-          <div style={{ fontSize:18,fontWeight:800,color:TG.text,letterSpacing:"-0.02em" }}>Аккаунты</div>
-          <GlassCard style={{ padding:"8px 12px",borderRadius:14,cursor:"pointer" }} onClick={() => { haptic.medium(); setShowForm(s=>!s); }}>
-            <div style={{ display:"flex",alignItems:"center",gap:6 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {onClose && (
+              <div onClick={() => { haptic.light(); onClose(); }} style={{ cursor: "pointer", color: TG.muted, padding: 4 }}>
+                <X size={18} />
+              </div>
+            )}
+            <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>Аккаунты</div>
+          </div>
+          <GlassCard style={{ padding: "8px 12px", borderRadius: 14, cursor: "pointer" }} onClick={() => { haptic.medium(); setShowForm(s => !s); }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <Plus size={14} color="#ff7eb3" />
-              <span style={{ fontSize:12,color:"#ff7eb3",fontWeight:700 }}>Добавить</span>
+              <span style={{ fontSize: 12, color: "#ff7eb3", fontWeight: 700 }}>Добавить</span>
             </div>
           </GlassCard>
         </div>
 
-        {/* Summary 3-col */}
+        {/* Summary 4-col */}
         {!loading && (
-          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
             {[
-              { label:"Всего",    value:String(accounts.length), color:TG.text },
-              { label:"Активных", value:String(active),          color:TG.green },
-              { label:"Сегодня",  value:totalSent.toLocaleString("ru"), color:"#6ba8e5" },
+              { label: "Всего",      value: String(accounts.length),  color: TG.text },
+              { label: "Активных",   value: String(active),           color: "#2de897" },
+              { label: "Авт-х",      value: String(authed),           color: "#6ba8e5" },
+              { label: "Сегодня",    value: totalSent.toLocaleString("ru"), color: "#ffc946" },
             ].map(s => (
-              <GlassCard key={s.label} style={{ padding:"12px 10px",textAlign:"center" }}>
-                <div style={{ fontSize:16,fontWeight:800,color:s.color }}>{s.value}</div>
-                <div style={{ fontSize:9,color:TG.muted,marginTop:2 }}>{s.label}</div>
+              <GlassCard key={s.label} style={{ padding: "10px 6px", textAlign: "center" }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: s.color }}>{s.value}</div>
+                <div style={{ fontSize: 8, color: TG.muted, marginTop: 2 }}>{s.label}</div>
               </GlassCard>
             ))}
           </div>
@@ -177,16 +466,18 @@ export function AccountsPage() {
         {showForm && <AddAccountForm onDone={() => { setShowForm(false); load(); }} />}
 
         {loading ? (
-          <div style={{ textAlign:"center",padding:"40px 0" }}>
-            <div style={{ width:28,height:28,borderRadius:"50%",border:`2px solid ${TG.green}40`,borderTopColor:TG.green,animation:"spin 0.8s linear infinite",display:"inline-block" }} />
+          <div style={{ textAlign: "center", padding: "40px 0" }}>
+            <div style={{ width: 28, height: 28, borderRadius: "50%", border: `2px solid ${TG.green}40`, borderTopColor: TG.green, animation: "spin 0.8s linear infinite", display: "inline-block" }} />
           </div>
         ) : accounts.length === 0 ? (
-          <GlassCard style={{ padding:"32px 16px",textAlign:"center" }}>
-            <div style={{ fontSize:14,color:TG.muted,marginBottom:12 }}>Аккаунтов нет</div>
-            <div onClick={() => { haptic.medium(); setShowForm(true); }} style={{ fontSize:13,color:"#ff7eb3",fontWeight:700,cursor:"pointer" }}>+ Добавить первый аккаунт</div>
+          <GlassCard style={{ padding: "32px 16px", textAlign: "center" }}>
+            <div style={{ fontSize: 14, color: TG.muted, marginBottom: 12 }}>Аккаунтов нет</div>
+            <div onClick={() => { haptic.medium(); setShowForm(true); }} style={{ fontSize: 13, color: "#ff7eb3", fontWeight: 700, cursor: "pointer" }}>
+              + Добавить первый аккаунт
+            </div>
           </GlassCard>
         ) : (
-          <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {accounts.map(a => <AccountCard key={a.id} acc={a} onRefresh={load} />)}
           </div>
         )}

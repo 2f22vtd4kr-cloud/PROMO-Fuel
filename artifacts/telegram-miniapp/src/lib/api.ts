@@ -69,6 +69,9 @@ export interface GroupCampaign {
   media_type?: string;
   inline_buttons?: string;
   pin_message?: number;
+  min_delay_seconds?: number;
+  max_delay_seconds?: number;
+  daily_limit?: number;
   created_at: string;
   updated_at: string;
 }
@@ -95,6 +98,21 @@ export interface AccountGroup {
   username?: string;
   is_active: number;
   refreshed_at: string;
+}
+
+export interface GroupSendStat {
+  group_id: string;
+  group_title?: string;
+  total: number;
+  sent: number;
+  failed: number;
+  last_sent_at?: string;
+}
+
+export interface DailyStat {
+  day: string;
+  sent: number;
+  failed: number;
 }
 
 export interface SenderAccount {
@@ -229,6 +247,9 @@ export const api = {
   duplicateGroupCampaign: (id: number) => post<GroupCampaign>(`/group-campaigns/${id}/duplicate`),
   actionGroupCampaign: (id: number, action: string) => post(`/group-campaigns/${id}/action`, { action }),
   getGroupCampaignLogs: (id: number) => get<GroupCampaignLog[]>(`/group-campaigns/${id}/logs`),
+  sendNowGroupCampaign: (id: number) => post<{ ok: boolean; task: unknown }>(`/group-campaigns/${id}/send-now`, {}),
+  testSendGroupCampaign: (id: number, groupId: string) => post<{ ok: boolean; task: unknown }>(`/group-campaigns/${id}/test-send`, { group_id: groupId }),
+  getGroupCampaignStats: (id: number) => get<{ by_group: GroupSendStat[]; daily: DailyStat[] }>(`/group-campaigns/${id}/stats`),
 
   // Accounts
   getAccounts: () => get<SenderAccount[]>("/accounts"),

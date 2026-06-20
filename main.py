@@ -206,7 +206,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/getdata `ключ` — просмотр записи\n"
         "/deldata `ключ` — удаление записи\n\n"
         "🚀 *Продвижение:*\n"
-        "/fuel — о проекте fuel-tickets-ru"
+        "/fuel — о проекте fuel-tickets-ru\n\n"
+        "📡 *Групповые рассылки:*\n"
+        "/broadcasts — список групповых рассылок\n"
+        "/workers — статус воркеров и очередь задач\n"
+        "/group\\_send `id` — запустить рассылку прямо сейчас\n"
+        "/broadcast `текст` — ручная рассылка всем пользователям"
     )
     await update.message.reply_text(help_text, parse_mode="Markdown")
 
@@ -248,6 +253,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.args = []
         fake_update = update
         await _fetch_currency(query.message)
+    elif query.data.startswith("gc_send:"):
+        camp_id = int(query.data.split(":")[1])
+        try:
+            import aiosqlite
+            db_path = os.environ.get("DB_PATH", "campaigns.db")
+            async with aiosqlite.connect(db_path) as db:
+                db.row_factory = aiosqlite.Row
+                cur = await db.execute("SELECT name FROM group_campaigns WHERE id = ?", (camp_id,))
+                camp = await cur.fetchone()
+                if camp:
+                    await db.execute(
+                        "INSERT INTO tasks (task_type, campaign_id, payload, status, priority, max_attempts, created_at, scheduled_at) "
+                        "VALUES ('group_broadcast', ?, '{}', 'pending', 1, 3, datetime('now'), datetime('now'))",
+                        (camp_id,)
+                    )
+                    await db.commit()
+                    await query.message.reply_text(f"✅ Рассылка *{camp['name']}* #{camp_id} запущена!", parse_mode="Markdown")
+                else:
+                    await query.message.reply_text(f"❌ Кампания #{camp_id} не найдена.")
+        except Exception as e:
+            await query.message.reply_text(f"❌ Ошибка: {e}")
 
 
 @admin_only
@@ -891,6 +917,140 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def workers_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show broadcast workers health summary."""
+    try:
+        import aiosqlite
+        db_path = os.environ.get("DB_PATH", "campaigns.db")
+        async with aiosqlite.connect(db_path) as db:
+            db.row_factory = aiosqlite.Row
+            # Workers
+            cur = await db.execute("SELECT worker_id, status, tasks_done, tasks_failed, last_heartbeat FROM broadcast_workers ORDER BY last_heartbeat DESC")
+            wrows = await cur.fetchall()
+            # Task queue counts
+            cur2 = await db.execute(
+                "SELECT status, COUNT(*) as cnt FROM tasks GROUP BY status"
+            )
+            tcounts = {r["status"]: r["cnt"] async for r in cur2}
+
+        import datetime as _dt
+        now = _dt.datetime.utcnow()
+        lines = ["📡 *Статус воркеров*\n"]
+        if not wrows:
+            lines.append("Нет зарегистрированных воркеров.")
+            lines.append("\n▶️ Запусти: `python worker.py worker-1`")
+        else:
+            for w in wrows:
+                ts = _dt.datetime.fromisoformat(w["last_heartbeat"].replace("Z", ""))
+                age = (now - ts).total_seconds()
+                alive = age < 120
+                icon = "🟢" if alive else "🔴"
+                lines.append(f"{icon} *{w['worker_id']}* — {w['status']}")
+                lines.append(f"   ✅ {w['tasks_done']} выполнено / ❌ {w['tasks_failed']} ошибок")
+                lines.append(f"   Пульс: {int(age)}с назад")
+
+        lines.append("\n📋 *Очередь задач*")
+        for status, cnt in tcounts.items():
+            emoji = {"pending": "⏳", "claimed": "⚙️", "done": "✅", "failed": "❌", "cancelled": "🚫", "dead": "💀"}.get(status, "•")
+            lines.append(f"  {emoji} {status}: {cnt}")
+
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+
+async def broadcasts_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show group broadcast campaigns status."""
+    try:
+        import aiosqlite
+        import datetime as _dt
+        db_path = os.environ.get("DB_PATH", "campaigns.db")
+        async with aiosqlite.connect(db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                "SELECT id, name, status, sent_count, failed_count, interval_seconds, next_send_at "
+                "FROM group_campaigns ORDER BY updated_at DESC LIMIT 10"
+            )
+            rows = await cur.fetchall()
+
+        if not rows:
+            await update.message.reply_text("📭 Нет групповых рассылок.\n\nСоздай их в Mini App → вкладка Группы.")
+            return
+
+        lines = ["📡 *Групповые рассылки*\n"]
+        status_icon = {"running": "🟢", "paused": "🟡", "draft": "⚪", "cancelled": "⛔", "error": "🔴"}
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        keyboard_rows = []
+        for c in rows:
+            icon = status_icon.get(c["status"], "•")
+            interval_h = round(c["interval_seconds"] / 3600, 1)
+            next_send = ""
+            if c["next_send_at"]:
+                try:
+                    ns = _dt.datetime.fromisoformat(c["next_send_at"].replace("Z", ""))
+                    delta = (ns - _dt.datetime.utcnow()).total_seconds()
+                    if delta > 0:
+                        hh, mm = divmod(int(delta) // 60, 60)
+                        next_send = f" · след. через {hh}ч {mm}м" if hh else f" · след. через {mm}м"
+                except Exception:
+                    pass
+            lines.append(f"{icon} *{c['name']}* (#{c['id']})")
+            lines.append(f"   ✅ {c['sent_count']} / ❌ {c['failed_count']} · каждые {interval_h}ч{next_send}")
+            # Add quick-send button for running/paused campaigns
+            if c["status"] in ("running", "paused", "draft"):
+                keyboard_rows.append([
+                    InlineKeyboardButton(f"▶ Отправить #{c['id']}", callback_data=f"gc_send:{c['id']}")
+                ])
+
+        reply_markup = InlineKeyboardMarkup(keyboard_rows) if keyboard_rows else None
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown", reply_markup=reply_markup)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+
+@admin_only
+async def group_send_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Immediately push a group campaign task. Usage: /group_send <id>"""
+    args = context.args or []
+    if not args or not args[0].isdigit():
+        await update.message.reply_text(
+            "Использование: `/group_send <id>`\n\nСписок кампаний: /broadcasts",
+            parse_mode="Markdown"
+        )
+        return
+    camp_id = int(args[0])
+    try:
+        import aiosqlite
+        db_path = os.environ.get("DB_PATH", "campaigns.db")
+        async with aiosqlite.connect(db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute("SELECT id, name, status FROM group_campaigns WHERE id = ?", (camp_id,))
+            camp = await cur.fetchone()
+        if not camp:
+            await update.message.reply_text(f"❌ Кампания #{camp_id} не найдена.")
+            return
+
+        # Insert task
+        async with aiosqlite.connect(db_path) as db:
+            cur = await db.execute(
+                "INSERT INTO tasks (task_type, campaign_id, payload, status, priority, max_attempts, created_at, scheduled_at) "
+                "VALUES ('group_broadcast', ?, '{}', 'pending', 1, 3, datetime('now'), datetime('now'))",
+                (camp_id,)
+            )
+            await db.commit()
+            task_id = cur.lastrowid
+
+        await update.message.reply_text(
+            f"✅ Задача #{task_id} поставлена в очередь\n"
+            f"Кампания: *{camp['name']}* (#{camp_id})\n"
+            f"Статус кампании: {camp['status']}\n\n"
+            f"Воркеры подхватят задачу в течение 5–10 секунд.",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+
 _enrich_task = None
 _enrich_running = False
 _pending_auth = False
@@ -1525,9 +1685,12 @@ def main():
     app.add_handler(CommandHandler("deldata", delete_data))
     app.add_handler(CommandHandler("search", search_data))
     app.add_handler(CommandHandler("export", export_data))
-    app.add_handler(CommandHandler("broadcast", broadcast))
-    app.add_handler(CommandHandler("enrich", enrich))
-    app.add_handler(CommandHandler("campaign", campaign))
+    app.add_handler(CommandHandler("broadcast",  broadcast))
+    app.add_handler(CommandHandler("workers",     workers_status))
+    app.add_handler(CommandHandler("broadcasts",  broadcasts_status))
+    app.add_handler(CommandHandler("group_send",  group_send_now))
+    app.add_handler(CommandHandler("enrich",      enrich))
+    app.add_handler(CommandHandler("campaign",   campaign))
 
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
@@ -1546,6 +1709,12 @@ def main():
 
     async def post_init(application):
         cs.start_scheduler(application.bot)
+        try:
+            from broadcastscheduler import start_broadcast_scheduler
+            start_broadcast_scheduler()
+            logger.info("📡 Broadcast scheduler started")
+        except Exception as _e:
+            logger.warning(f"⚠️  Broadcast scheduler not started: {_e}")
 
     app.post_init = post_init
 
