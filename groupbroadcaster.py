@@ -2,12 +2,12 @@
 
 Features:
   - Per-account FileLock to prevent "database is locked" Telethon errors
+  - Double-verification of account ownership after file lock acquisition
   - Full proxy rotation: cycles through all proxies on failure, tracks per-proxy
     failure counts and skips persistently failing proxies
   - proxy_index persisted to DB after every successful switch
   - If ALL proxies exhausted → account marked status='proxy_failed', lock released
-  - broadcasting=1 flag set in DB at task start, cleared in finally (belt-and-suspenders
-    beyond the task_queue locked_by guard)
+  - broadcasting=1 flag set ONLY while locked_by = this worker (belt-and-suspenders)
   - Reconnect with next proxy on connection or transient send failure
   - Full spintax resolution per message
   - Media attachment support (photo/video/document)
@@ -79,20 +79,27 @@ def _account_lock(account_id: int) -> FileLock:
 
 # ── DB flag helpers ───────────────────────────────────────────────────────────
 
-async def _set_broadcasting(account_id: int, state: bool) -> None:
+async def _set_broadcasting(account_id: int, state: bool, worker_id: str | None = None) -> None:
     """Set/clear the broadcasting=1 flag on sender_accounts.
 
-    This is a belt-and-suspenders guard on top of locked_by. Even if a race
-    allows two processes to pass the locked_by check, only one will win the
-    broadcasting UPDATE atomically.
+    When state=True and worker_id is given, only sets the flag if locked_by
+    matches this worker — prevents overwriting another worker's ownership.
+    When state=False, clears unconditionally (cleanup path always runs).
     """
     try:
         async with aiosqlite.connect(DB_PATH) as db:
             if state:
-                await db.execute(
-                    "UPDATE sender_accounts SET broadcasting=1 WHERE id=?",
-                    (account_id,),
-                )
+                if worker_id:
+                    await db.execute(
+                        "UPDATE sender_accounts SET broadcasting=1 "
+                        "WHERE id=? AND locked_by=?",
+                        (account_id, worker_id),
+                    )
+                else:
+                    await db.execute(
+                        "UPDATE sender_accounts SET broadcasting=1 WHERE id=?",
+                        (account_id,),
+                    )
             else:
                 await db.execute(
                     "UPDATE sender_accounts SET broadcasting=0 WHERE id=?",
@@ -103,12 +110,27 @@ async def _set_broadcasting(account_id: int, state: bool) -> None:
         logger.debug("[broadcaster] _set_broadcasting(%d, %s) failed: %s", account_id, state, e)
 
 
-async def _persist_proxy_index(account_id: int, index: int) -> None:
-    """Persist the current proxy rotation index to DB for crash recovery.
+async def _verify_account_ownership(account_id: int, worker_id: str) -> bool:
+    """Return True only if locked_by = worker_id in the DB right now.
 
-    Called after every successful proxy switch so a restarted worker picks up
-    where it left off rather than always starting from proxy #0.
+    Called after acquiring the per-account FileLock to confirm no other process
+    raced in between the task claim and the lock acquisition.
     """
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT locked_by FROM sender_accounts WHERE id=?", (account_id,)
+            ) as cur:
+                row = await cur.fetchone()
+        return row is not None and row["locked_by"] == worker_id
+    except Exception as e:
+        logger.debug("[broadcaster] _verify_account_ownership(%d) failed: %s", account_id, e)
+        return False
+
+
+async def _persist_proxy_index(account_id: int, index: int) -> None:
+    """Persist the current proxy rotation index to DB for crash recovery."""
     try:
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute(
@@ -121,12 +143,21 @@ async def _persist_proxy_index(account_id: int, index: int) -> None:
         logger.debug("[broadcaster] _persist_proxy_index(%d) failed: %s", account_id, e)
 
 
-async def _mark_proxy_failed(account_id: int) -> None:
-    """Mark an account as proxy_failed when all proxy options are exhausted.
+async def _persist_last_error(account_id: int, error: str) -> None:
+    """Write the most recent error to sender_accounts.last_error."""
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "UPDATE sender_accounts SET last_error=? WHERE id=?",
+                (error[:300], account_id),
+            )
+            await db.commit()
+    except Exception:
+        pass
 
-    Also releases locked_by/locked_at and clears broadcasting so other workers
-    don't block on this account indefinitely.
-    """
+
+async def _mark_proxy_failed(account_id: int) -> None:
+    """Mark an account as proxy_failed when all proxy options are exhausted."""
     try:
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("""
@@ -258,7 +289,7 @@ async def _rotate_to_next_proxy(
     for idx, proxy in enumerate(ranked):
         label = proxy_label(proxy)
         if label == failed_label:
-            continue  # skip the one that just failed
+            continue
         if _proxy_fail_count(label) >= _PROXY_FAIL_SKIP:
             logger.debug(
                 "[broadcaster] Skipping proxy %r (%d failures)",
@@ -268,8 +299,11 @@ async def _rotate_to_next_proxy(
         client = await _connect_with_proxy(account, proxy)
         if client:
             _telethon_clients[acc_id] = client
-            # Persist the new index so a restarted worker resumes here
             await _persist_proxy_index(acc_id, idx)
+            logger.info(
+                "[broadcaster] Account %d rotated to proxy %s (slot %d)",
+                acc_id, label, idx,
+            )
             return client, proxy, idx
 
     # All proxies exhausted — try no-proxy as last resort
@@ -283,7 +317,7 @@ async def _rotate_to_next_proxy(
         await _persist_proxy_index(acc_id, 0)
         return client, None, 0
 
-    # Truly exhausted — mark account so no worker tries it again
+    # Truly exhausted
     await _mark_proxy_failed(acc_id)
     return None, None, -1
 
@@ -292,19 +326,14 @@ async def _initial_connect(
     account: dict,
     proxies: list[dict],
 ) -> tuple[TelegramClient | None, dict | None, int]:
-    """Connect account, resuming from the persisted proxy_index, then trying all others.
-
-    Returns (client, used_proxy, index).
-    """
+    """Connect account, resuming from the persisted proxy_index, then trying all others."""
     if not proxies:
         client = await _get_or_connect(account, None)
         return client, None, 0
 
     ranked = _rank_proxies(proxies)
-    # Resume from persisted index (mod length for safety)
-    start_idx = int(account.get("proxy_index") or 0) % len(ranked)
+    start_idx = int(account.get("proxy_index") or 0) % max(len(ranked), 1)
 
-    # Try from start_idx first, then wrap around
     order = list(range(start_idx, len(ranked))) + list(range(0, start_idx))
     for idx in order:
         proxy = ranked[idx]
@@ -314,7 +343,6 @@ async def _initial_connect(
         client = await _get_or_connect(account, proxy)
         if client:
             if idx != start_idx:
-                # We skipped the persisted proxy — update index
                 await _persist_proxy_index(account["id"], idx)
             return client, proxy, idx
 
@@ -393,9 +421,9 @@ SendResult = Literal["sent", "group_error", "abort_task", "proxy_failed"]
 
 
 async def _try_send(
-    client_ref: list,          # [client] — mutable so rotation can update it
-    proxy_ref:  list,          # [proxy]  — mutable
-    index_ref:  list,          # [int]    — mutable proxy index
+    client_ref: list,
+    proxy_ref:  list,
+    index_ref:  list,
     account: dict,
     proxies: list[dict],
     group_id: str,
@@ -404,8 +432,13 @@ async def _try_send(
     media_type: str | None,
     inline_buttons: list | None,
     pin: bool,
+    consecutive_errors: list,   # mutable [int] — reset on success, abort when high
 ) -> tuple[SendResult, str | None]:
     """Attempt to send to one group with automatic proxy rotation on failure.
+
+    consecutive_errors is a mutable [int] counter — incremented on transient
+    failures and reset to 0 on success. If it exceeds 5 the task is aborted
+    to prevent hammering a failing proxy.
 
     Returns (result, error_string | None).
     """
@@ -421,6 +454,7 @@ async def _try_send(
                 inline_buttons=inline_buttons,
                 pin=pin,
             )
+            consecutive_errors[0] = 0   # reset on success
             return "sent", None
 
         except FloodWaitError as e:
@@ -431,7 +465,7 @@ async def _try_send(
             )
             await cdb.account_flood_wait(account["id"], e.seconds)
             await asyncio.sleep(wait)
-            continue  # retry same connection (flood is account-level, not proxy)
+            continue
 
         except PeerFloodError:
             await cdb.account_flood_wait(account["id"], 3600)
@@ -449,13 +483,18 @@ async def _try_send(
 
         except Exception as e:
             err = str(e)[:200]
+            consecutive_errors[0] += 1
+
+            # Abort early if we are seeing many consecutive errors
+            if consecutive_errors[0] >= 5:
+                return "abort_task", f"Too many consecutive errors: {err}"
+
             if attempt == 0 and proxies:
-                # Rotate to next proxy and retry once
                 failed_label = proxy_label(proxy)
                 _record_proxy_fail(failed_label)
                 logger.warning(
-                    "[broadcaster] Send error (%s) — rotating proxy from %r",
-                    err, failed_label,
+                    "[broadcaster] Send error (%s) — rotating proxy from %r (consecutive=%d)",
+                    err, failed_label, consecutive_errors[0],
                 )
                 new_client, new_proxy, new_idx = await _rotate_to_next_proxy(
                     account, proxies, failed_label, index_ref[0]
@@ -470,13 +509,8 @@ async def _try_send(
                         "[broadcaster] Rotated to %s, retrying %s",
                         proxy_label(new_proxy), group_id,
                     )
-                    continue  # retry send
+                    continue
                 else:
-                    # All proxies exhausted — account already marked proxy_failed
-                    logger.error(
-                        "[broadcaster] All proxies exhausted for account %d",
-                        account["id"],
-                    )
                     return "proxy_failed", f"proxy exhausted: {err}"
             else:
                 return "group_error", err
@@ -489,8 +523,13 @@ async def _try_send(
 async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict:
     """Execute one task — send to all groups for a group campaign.
 
-    Sets broadcasting=1 in DB at start, clears it in finally (belt-and-suspenders
-    on top of the task_queue locked_by mechanism).
+    Ownership verification flow:
+      1. task_queue.claim_task_sync already locked the account with locked_by=worker_id
+      2. We set broadcasting=1 only if locked_by still matches (belt-and-suspenders)
+      3. We acquire the per-account FileLock (Telethon .session file safety)
+      4. After acquiring the FileLock we re-verify locked_by == worker_id in DB
+         (catches any race between the claim and lock acquisition)
+      5. Only then do we connect Telethon and start sending
 
     Returns {ok, sent, failed, errors}.
     """
@@ -529,12 +568,10 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
 
     proxies = parse_proxies(account.get("proxies") or account.get("proxy"))
 
-    # ── Set broadcasting flag BEFORE acquiring any lock ───────────────────────
-    # This is belt-and-suspenders: if two workers somehow passed the locked_by
-    # DB guard simultaneously, only one will hold the FileLock below.
-    await _set_broadcasting(account_id, True)
+    # ── Belt-and-suspenders: set broadcasting=1 only if WE own the lock ───────
+    await _set_broadcasting(account_id, True, worker_id=worker_id)
 
-    # Acquire per-account file lock (Telethon .session file protection)
+    # ── Acquire per-account file lock (Telethon .session file protection) ─────
     lock = _account_lock(account_id)
     try:
         lock.acquire(timeout=30)
@@ -544,7 +581,18 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
                 "errors": [f"Account {account_id} file-locked by another worker"]}
 
     try:
-        # Connect with proxy rotation — resumes from persisted proxy_index
+        # ── Post-lock ownership re-verification ────────────────────────────────
+        # Between task claim and FileLock acquisition, another process could have
+        # taken ownership. If locked_by no longer matches, abort cleanly.
+        if not await _verify_account_ownership(account_id, worker_id):
+            logger.warning(
+                "[broadcaster] Worker %r lost account %d ownership after FileLock — aborting",
+                worker_id, account_id,
+            )
+            return {"ok": False, "sent": 0, "failed": 0,
+                    "errors": [f"Account {account_id} ownership lost to another worker"]}
+
+        # ── Connect with proxy rotation ────────────────────────────────────────
         client, active_proxy, proxy_idx = await _initial_connect(account, proxies)
         if not client:
             await _mark_proxy_failed(account_id)
@@ -560,8 +608,9 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
         client_ref = [client]
         proxy_ref  = [active_proxy]
         index_ref  = [proxy_idx]
+        consec_err = [0]   # consecutive transient-error counter
 
-        # Resolve group list
+        # ── Resolve group list ─────────────────────────────────────────────────
         if is_test and task_payload.get("group_ids"):
             selected_groups = [str(g) for g in task_payload["group_ids"]]
             logger.info("[broadcaster] TEST mode — groups: %s", selected_groups)
@@ -596,6 +645,7 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
             outcome, err_msg = await _try_send(
                 client_ref, proxy_ref, index_ref, account, proxies,
                 str(group_id), text, media_url, media_type, inline_buttons, pin,
+                consec_err,
             )
 
             if outcome == "sent":
@@ -617,6 +667,9 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
             elif outcome in ("abort_task", "proxy_failed"):
                 results["errors"].append(err_msg or "Task aborted")
                 logger.error("[broadcaster] ✗ Task #%d aborted: %s", task_id, err_msg)
+                # Persist last error for visibility in the UI
+                if err_msg:
+                    await _persist_last_error(account_id, err_msg)
                 remaining = len(selected_groups) - results["sent"] - results["failed"]
                 results["failed"] += remaining
                 break
@@ -625,10 +678,8 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
 
     finally:
         lock.release()
-        # Always clear the broadcasting flag and mark account idle on exit
         await _set_broadcasting(account_id, False)
         if account_id:
-            # Only mark idle if we didn't mark it proxy_failed
             acct_check = await cdb.get_account_by_id(account_id)
             if acct_check and acct_check.get("status") != "proxy_failed":
                 await cdb.account_mark_idle(account_id)
@@ -665,29 +716,36 @@ async def _get_group_meta(account_id: int, group_ids: list) -> dict[str, str]:
 
 
 async def _log_send(
-    campaign_id: int, group_id: str, group_title: str,
-    account_id: int, task_id: int, status: str, error: str | None = None,
+    campaign_id: int,
+    group_id: str,
+    group_title: str,
+    account_id: int,
+    task_id: int,
+    status: str,
+    error: str | None = None,
 ) -> None:
-    async with aiosqlite.connect(DB_PATH) as conn:
-        await conn.execute(
-            """INSERT INTO group_campaign_sends
-               (campaign_id, group_id, group_title, account_id, task_id, status, error, sent_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (campaign_id, group_id, group_title, account_id, task_id,
-             status, error, datetime.now().isoformat()),
-        )
-        await conn.commit()
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("""
+                INSERT INTO group_send_logs
+                    (campaign_id, group_id, group_title, account_id, task_id, status, error, sent_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            """, (campaign_id, group_id, group_title, account_id, task_id, status, error))
+            await db.commit()
+    except Exception as e:
+        logger.debug("[broadcaster] _log_send failed: %s", e)
 
 
 async def _update_campaign_counts(campaign_id: int, sent: int, failed: int) -> None:
-    async with aiosqlite.connect(DB_PATH) as conn:
-        await conn.execute(
-            """UPDATE group_campaigns
-               SET sent_count   = sent_count + ?,
-                   failed_count = failed_count + ?,
-                   last_sent_at = ?,
-                   updated_at   = ?
-               WHERE id=?""",
-            (sent, failed, datetime.now().isoformat(), datetime.now().isoformat(), campaign_id),
-        )
-        await conn.commit()
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("""
+                UPDATE group_campaigns
+                SET sent_count   = sent_count   + ?,
+                    failed_count = failed_count + ?,
+                    last_sent_at = datetime('now')
+                WHERE id=?
+            """, (sent, failed, campaign_id))
+            await db.commit()
+    except Exception as e:
+        logger.debug("[broadcaster] _update_campaign_counts failed: %s", e)

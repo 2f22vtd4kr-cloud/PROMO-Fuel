@@ -35,7 +35,8 @@ logger = logging.getLogger(__name__)
 DB_PATH              = os.getenv("DB_PATH", "campaigns.db")
 HEARTBEAT_INTERVAL   = int(os.getenv("HEARTBEAT_INTERVAL",   "20"))   # seconds
 WORKER_DEAD_TIMEOUT  = int(os.getenv("WORKER_DEAD_TIMEOUT",  "90"))   # seconds
-SUPERVISOR_POLL      = int(os.getenv("SUPERVISOR_POLL",       "15"))   # seconds
+SUPERVISOR_POLL      = int(os.getenv("SUPERVISOR_POLL",       "10"))   # seconds
+SIGKILL_TIMEOUT      = int(os.getenv("SIGKILL_TIMEOUT",       "15"))   # secs after SIGTERM
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -88,8 +89,6 @@ class WorkerHeartbeat:
         self._tasks_done    = 0
         self._tasks_failed  = 0
 
-    # ── Public API ────────────────────────────────────────────────────────────
-
     def start(self) -> None:
         ensure_worker_table(self.db_path)
         self._register()
@@ -121,8 +120,6 @@ class WorkerHeartbeat:
         self._status        = "idle"
         self._current_task  = None
         self._beat(last_error=error)
-
-    # ── Internal ──────────────────────────────────────────────────────────────
 
     def _register(self) -> None:
         conn = _get_conn(self.db_path)
@@ -226,35 +223,35 @@ _MAX_RESTARTS        = 20    # give up after this many restarts per worker slot
 
 class _WorkerSlot:
     """Tracks one logical worker slot (name + subprocess handle)."""
-    __slots__ = ("worker_id", "proc", "restart_count", "last_restart_ts", "backoff")
+    __slots__ = (
+        "worker_id", "proc", "restart_count", "last_restart_ts",
+        "backoff", "sigterm_sent_at",
+    )
 
     def __init__(self, worker_id: str):
-        self.worker_id       = worker_id
-        self.proc:           subprocess.Popen | None = None
-        self.restart_count   = 0
-        self.last_restart_ts = 0.0
-        self.backoff         = 5.0  # seconds, doubles on each restart
+        self.worker_id         = worker_id
+        self.proc:             subprocess.Popen | None = None
+        self.restart_count     = 0
+        self.last_restart_ts   = 0.0
+        self.backoff           = 5.0   # seconds, doubles on each restart
+        self.sigterm_sent_at   = 0.0   # monotonic time when last SIGTERM was sent
 
 
 class WorkerSupervisor:
     """Spawns N worker subprocesses and restarts them if they crash.
 
-    Uses exponential back-off (5s → 10s → 20s … capped at 5 min).
-    Stops restarting a slot after _MAX_RESTARTS consecutive crashes.
+    Crash handling:
+      - Exponential back-off (5s → 10s → 20s … capped at 5 min)
+      - SIGKILL fallback: if a worker doesn't exit within SIGKILL_TIMEOUT
+        seconds after SIGTERM, it is force-killed
+      - Heartbeat zombie detection: if a worker process is "alive" (poll()
+        returns None) but its DB heartbeat is stale for >2×WORKER_DEAD_TIMEOUT,
+        it is treated as a zombie and SIGKILL'd
 
     Respawn rate limiting:
-        If a worker is restarted more than `max_respawns_per_window` times within
-        `respawn_window_seconds`, a CRITICAL alert is logged (and optionally a
-        Telegram message is sent). The slot continues to restart but the alert
-        is raised on every subsequent restart until the window clears.
-
-    Args:
-        worker_count:            Number of worker processes to maintain.
-        db_path:                 Path to the SQLite database.
-        worker_ids:              Optional explicit list of worker IDs.
-                                 Defaults to ["worker-1", "worker-2", ...].
-        max_respawns_per_window: Max restarts per rolling window before critical alert.
-        respawn_window_seconds:  Rolling window in seconds (default 600 = 10 min).
+      - If a worker restarts more than `max_respawns_per_window` times within
+        `respawn_window_seconds`, a CRITICAL alert is logged and a Telegram
+        notification is sent.
     """
 
     def __init__(
@@ -276,13 +273,11 @@ class WorkerSupervisor:
         self._thread:  threading.Thread | None = None
         self._max_respawns           = max_respawns_per_window
         self._respawn_window         = respawn_window_seconds
-        # Per-slot rolling restart history: worker_id → list[monotonic timestamp]
         self._respawn_history: dict[str, list[float]] = {wid: [] for wid in ids}
 
     # ── Public API ────────────────────────────────────────────────────────────
 
     def start(self) -> None:
-        """Start all workers and begin monitoring in a daemon thread."""
         logger.info(f"[supervisor] Starting {len(self._slots)} worker(s)")
         for slot in self._slots:
             self._spawn(slot)
@@ -291,28 +286,39 @@ class WorkerSupervisor:
         )
         self._thread.start()
 
-    def stop(self, timeout: float = 10.0) -> None:
-        """Signal all workers to stop and wait for them."""
+    def stop(self, timeout: float = 15.0) -> None:
+        """Signal all workers to stop; SIGKILL any that don't respond in time."""
         logger.info("[supervisor] Stopping all workers...")
         self._stop_evt.set()
+
+        # Send SIGTERM to all running workers
         for slot in self._slots:
             if slot.proc and slot.proc.poll() is None:
                 try:
                     slot.proc.send_signal(signal.SIGTERM)
+                    slot.sigterm_sent_at = time.monotonic()
                 except Exception:
                     pass
-        # Wait for processes to exit
+
+        # Wait up to timeout, then SIGKILL stragglers
         deadline = time.monotonic() + timeout
         for slot in self._slots:
-            if slot.proc:
-                remaining = max(0.0, deadline - time.monotonic())
+            if not slot.proc:
+                continue
+            remaining = max(0.1, deadline - time.monotonic())
+            try:
+                slot.proc.wait(timeout=remaining)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "[supervisor] %r did not exit in %.0fs — sending SIGKILL",
+                    slot.worker_id, timeout,
+                )
                 try:
-                    slot.proc.wait(timeout=remaining)
-                except subprocess.TimeoutExpired:
-                    try:
-                        slot.proc.kill()
-                    except Exception:
-                        pass
+                    slot.proc.kill()
+                    slot.proc.wait(timeout=5)
+                except Exception:
+                    pass
+
         if self._thread:
             self._thread.join(timeout=5)
         logger.info("[supervisor] All workers stopped")
@@ -323,12 +329,7 @@ class WorkerSupervisor:
     # ── Internal ──────────────────────────────────────────────────────────────
 
     def _send_critical_alert(self, worker_id: str, count: int) -> None:
-        """Send a Telegram message to the owner when a worker is crash-looping.
-
-        Runs in the background thread — uses requests so no event-loop required.
-        Silently swallows all errors so it never interrupts the monitor loop.
-        """
-        token    = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        token    = os.getenv("TELEGRAM_TOKEN", os.getenv("TELEGRAM_BOT_TOKEN", ""))
         chat_ids = [
             x for x in os.getenv("OWNER_IDS", os.getenv("VITE_OWNER_IDS", "")).split(",")
             if x.strip().lstrip("-").isdigit()
@@ -356,7 +357,6 @@ class WorkerSupervisor:
             pass
 
     def _spawn(self, slot: _WorkerSlot) -> None:
-        """Launch a worker subprocess for the given slot."""
         try:
             cmd = [
                 sys.executable, "worker.py", slot.worker_id,
@@ -364,18 +364,72 @@ class WorkerSupervisor:
             ]
             proc = subprocess.Popen(
                 cmd,
-                stdout=None,   # inherit — worker logs to stdout
+                stdout=None,
                 stderr=None,
                 cwd=os.getcwd(),
                 env=os.environ.copy(),
             )
             slot.proc            = proc
             slot.last_restart_ts = time.monotonic()
-            logger.info(f"[supervisor] Spawned {slot.worker_id!r} (pid={proc.pid}, "
-                        f"restart #{slot.restart_count})")
+            slot.sigterm_sent_at = 0.0
+            logger.info(
+                "[supervisor] Spawned %r (pid=%d, restart #%d)",
+                slot.worker_id, proc.pid, slot.restart_count,
+            )
         except Exception as e:
-            logger.error(f"[supervisor] Failed to spawn {slot.worker_id!r}: {e}")
+            logger.error("[supervisor] Failed to spawn %r: %s", slot.worker_id, e)
             slot.proc = None
+
+    def _check_zombie(self, slot: _WorkerSlot) -> bool:
+        """Return True if process is "alive" but heartbeat is stale — zombie check."""
+        if not slot.proc or slot.proc.poll() is not None:
+            return False
+        try:
+            conn = _get_conn(self._db_path)
+            row  = conn.execute("""
+                SELECT CAST(strftime('%s','now') AS INTEGER)
+                     - CAST(strftime('%s', last_heartbeat) AS INTEGER) AS age
+                FROM broadcast_workers
+                WHERE worker_id=?
+            """, (slot.worker_id,)).fetchone()
+            conn.close()
+            if row and row["age"] is not None and row["age"] > (WORKER_DEAD_TIMEOUT * 2):
+                logger.warning(
+                    "[supervisor] %r looks zombie (proc alive but hb stale %ds)",
+                    slot.worker_id, row["age"],
+                )
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _kill_slot(self, slot: _WorkerSlot) -> None:
+        """Send SIGTERM, then SIGKILL after SIGKILL_TIMEOUT if still alive."""
+        if not slot.proc or slot.proc.poll() is not None:
+            return
+        try:
+            slot.proc.send_signal(signal.SIGTERM)
+            slot.sigterm_sent_at = time.monotonic()
+        except Exception:
+            pass
+
+    def _maybe_sigkill(self, slot: _WorkerSlot) -> None:
+        """If SIGTERM was sent long ago and process is still alive, SIGKILL."""
+        if (
+            slot.sigterm_sent_at > 0
+            and slot.proc
+            and slot.proc.poll() is None
+            and time.monotonic() - slot.sigterm_sent_at > SIGKILL_TIMEOUT
+        ):
+            logger.warning(
+                "[supervisor] %r did not exit %ds after SIGTERM — sending SIGKILL",
+                slot.worker_id, SIGKILL_TIMEOUT,
+            )
+            try:
+                slot.proc.kill()
+            except Exception:
+                pass
+            slot.sigterm_sent_at = 0.0
 
     def _monitor_loop(self) -> None:
         while not self._stop_evt.wait(SUPERVISOR_POLL):
@@ -383,47 +437,57 @@ class WorkerSupervisor:
                 if self._stop_evt.is_set():
                     break
 
+                # Escalate SIGTERM → SIGKILL if needed
+                self._maybe_sigkill(slot)
+
+                # Zombie check — kill and let the next iteration respawn
+                if self._check_zombie(slot):
+                    self._kill_slot(slot)
+                    continue
+
                 proc = slot.proc
                 if proc is None or proc.poll() is not None:
-                    # Process exited or never started
                     exit_code = proc.returncode if proc else None
                     if exit_code is not None:
                         logger.warning(
-                            f"[supervisor] {slot.worker_id!r} exited (code={exit_code})"
+                            "[supervisor] %r exited (code=%s)",
+                            slot.worker_id, exit_code,
                         )
 
                     if slot.restart_count >= _MAX_RESTARTS:
                         logger.error(
-                            f"[supervisor] {slot.worker_id!r} exceeded max restarts "
-                            f"({_MAX_RESTARTS}), giving up"
+                            "[supervisor] %r exceeded max restarts (%d), giving up",
+                            slot.worker_id, _MAX_RESTARTS,
                         )
                         continue
 
-                    # Exponential back-off
+                    # Exponential back-off — use event.wait() so SIGTERM is
+                    # handled promptly instead of blocking with time.sleep()
                     now    = time.monotonic()
                     waited = now - slot.last_restart_ts
                     if waited < slot.backoff:
                         remaining = slot.backoff - waited
                         logger.info(
-                            f"[supervisor] {slot.worker_id!r} back-off {remaining:.0f}s "
-                            f"before restart"
+                            "[supervisor] %r back-off %.0fs before restart",
+                            slot.worker_id, remaining,
                         )
-                        time.sleep(remaining)
+                        self._stop_evt.wait(remaining)
+                        if self._stop_evt.is_set():
+                            break
 
                     slot.restart_count += 1
                     slot.backoff = min(slot.backoff * 2, _MAX_RESTART_BACKOFF)
 
-                    # ── Rolling respawn rate check ──────────────────────────
-                    now_ts   = time.monotonic()
-                    history  = self._respawn_history.get(slot.worker_id, [])
-                    # Prune entries outside the rolling window
-                    history  = [t for t in history if now_ts - t <= self._respawn_window]
+                    # Rolling respawn rate check
+                    now_ts  = time.monotonic()
+                    history = self._respawn_history.get(slot.worker_id, [])
+                    history = [t for t in history if now_ts - t <= self._respawn_window]
                     history.append(now_ts)
                     self._respawn_history[slot.worker_id] = history
 
                     if len(history) >= self._max_respawns:
                         logger.critical(
-                            "[supervisor] 🚨 CRITICAL: Worker %r restarted %d times in "
+                            "[supervisor] 🚨 CRITICAL: Worker %r restarted %d× in "
                             "the last %.0fs — possible runaway crash loop!",
                             slot.worker_id, len(history), self._respawn_window,
                         )
@@ -433,6 +497,6 @@ class WorkerSupervisor:
                 else:
                     # Process is alive — reset back-off on sustained health
                     uptime = time.monotonic() - slot.last_restart_ts
-                    if uptime > 120:   # running for 2+ min → considered healthy
+                    if uptime > 120:
                         slot.restart_count = max(0, slot.restart_count - 1)
                         slot.backoff       = max(5.0, slot.backoff / 2)

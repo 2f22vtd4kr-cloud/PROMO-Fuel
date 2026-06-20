@@ -19,6 +19,7 @@ Public API:
     await tq.fail_task(task["id"], "flood wait", campaign_id=task["campaign_id"])
     released = await tq.recover_stale_locks(300)
     stats    = await tq.get_queue_stats()
+    await tq.force_release_worker("worker-1")   # on crash/restart
 """
 from __future__ import annotations
 
@@ -40,12 +41,10 @@ LOCK_TIMEOUT = int(os.getenv("TASK_LOCK_TIMEOUT", "15"))
 logger = logging.getLogger(__name__)
 
 # ── Layer 1: intra-process asyncio locks per account_id ──────────────────────
-# Must be created inside an event loop, so we create lazily.
 _process_locks: dict[int, asyncio.Lock] = {}
 
 
 def _get_process_lock(account_id: int) -> asyncio.Lock:
-    """Return (creating if necessary) an asyncio.Lock for a specific account."""
     if account_id not in _process_locks:
         _process_locks[account_id] = asyncio.Lock()
     return _process_locks[account_id]
@@ -54,8 +53,7 @@ def _get_process_lock(account_id: int) -> asyncio.Lock:
 # ── SQLite connection factory ─────────────────────────────────────────────────
 
 def _conn(db_path: str = DB_PATH, readonly: bool = False) -> sqlite3.Connection:
-    flags = sqlite3.SQLITE_OPEN_READONLY if readonly else 0
-    conn  = sqlite3.connect(db_path, check_same_thread=False, timeout=30)
+    conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
@@ -102,7 +100,6 @@ def _ensure_tables(db_path: str = DB_PATH) -> None:
             last_error     TEXT
         );
 
-        -- Dedicated heartbeat table (separate from lifecycle tracking in broadcast_workers)
         CREATE TABLE IF NOT EXISTS worker_heartbeats (
             worker_id       TEXT PRIMARY KEY,
             last_seen       TEXT NOT NULL DEFAULT (datetime('now')),
@@ -113,13 +110,13 @@ def _ensure_tables(db_path: str = DB_PATH) -> None:
         CREATE INDEX IF NOT EXISTS idx_worker_hb_last_seen ON worker_heartbeats(last_seen);
     """)
 
-    # Additive columns on sender_accounts (safe to run multiple times)
     _safe_add_cols(conn, "sender_accounts", [
-        ("locked_by",   "TEXT"),                      # worker_id holding the lock
-        ("locked_at",   "TEXT"),                      # ISO-8601 timestamp of lock acquisition
-        ("proxy_index", "INTEGER DEFAULT 0"),         # persisted rotation index
-        ("broadcasting","INTEGER NOT NULL DEFAULT 0"),# 1 while actively sending
-        ("flood_wait_until", "TEXT"),                 # earliest allowed retry
+        ("locked_by",        "TEXT"),
+        ("locked_at",        "TEXT"),
+        ("proxy_index",      "INTEGER DEFAULT 0"),
+        ("broadcasting",     "INTEGER NOT NULL DEFAULT 0"),
+        ("flood_wait_until", "TEXT"),
+        ("last_error",       "TEXT"),
     ])
 
     conn.commit()
@@ -135,7 +132,7 @@ def _safe_add_cols(
         try:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {defn}")
         except sqlite3.OperationalError:
-            pass  # column already exists
+            pass
 
 
 # ── Helper: resolve sender_account_id for a task ─────────────────────────────
@@ -162,16 +159,7 @@ def _resolve_account_id(conn: sqlite3.Connection, task: dict) -> int | None:
 # ── Main class ────────────────────────────────────────────────────────────────
 
 class TaskQueue:
-    """Multi-process, multi-coroutine safe SQLite task queue.
-
-    Thread-safety model:
-      - Sync methods run in a thread executor to avoid blocking the event loop.
-      - Each async wrapper acquires the per-account asyncio.Lock before dispatching
-        to the executor (intra-process layer).
-      - The sync methods additionally hold a FileLock for the tasks table update
-        (inter-process layer).
-      - The account lock UPDATE uses "WHERE locked_by IS NULL" (DB atomic layer).
-    """
+    """Multi-process, multi-coroutine safe SQLite task queue."""
 
     def __init__(self, db_path: str = DB_PATH, lock_path: str | None = None):
         self.db_path   = db_path
@@ -235,7 +223,6 @@ class TaskQueue:
                 conn = _conn(self.db_path)
                 now  = datetime.now(timezone.utc).isoformat()
 
-                # Find the best available task whose account is free
                 row = conn.execute("""
                     SELECT t.*
                     FROM tasks t
@@ -243,7 +230,6 @@ class TaskQueue:
                       AND t.attempts < t.max_attempts
                       AND (t.scheduled_at IS NULL OR t.scheduled_at <= ?)
                       AND NOT EXISTS (
-                          -- Skip if the campaign's account is locked by any worker
                           SELECT 1
                           FROM group_campaigns gc
                           JOIN sender_accounts sa ON sa.id = gc.sender_account_id
@@ -271,9 +257,9 @@ class TaskQueue:
 
                 if claimed == 0:
                     conn.close()
-                    return None  # another worker won
+                    return None
 
-                # (c) Lock the sender account atomically
+                # (c) Lock the sender account atomically — WHERE locked_by IS NULL
                 acc_id = _resolve_account_id(conn, task)
                 if acc_id:
                     locked = conn.execute("""
@@ -286,10 +272,11 @@ class TaskQueue:
                           AND is_banned = 0
                           AND is_active = 1
                           AND locked_by IS NULL
+                          AND broadcasting = 0
                     """, (worker_id, now, acc_id)).rowcount
 
                     if locked == 0:
-                        # Account snatched by a concurrent process — roll back claim
+                        # Account snatched — roll back task claim
                         conn.execute("""
                             UPDATE tasks
                             SET status='pending', worker_id=NULL, claimed_at=NULL,
@@ -319,11 +306,7 @@ class TaskQueue:
             return None
 
     async def claim_task(self, worker_id: str) -> dict | None:
-        """Claim a task, holding the per-account asyncio.Lock for intra-process safety."""
         loop = asyncio.get_event_loop()
-
-        # We don't know the account_id yet — do a quick pre-check to find it
-        # then re-check under the account lock. If nothing available → return None.
         task = await loop.run_in_executor(None, lambda: self.claim_task_sync(worker_id))
         return task
 
@@ -380,36 +363,24 @@ class TaskQueue:
     # ── Account lock management ───────────────────────────────────────────────
 
     def release_account_sync(self, account_id: int, worker_id: str | None = None) -> bool:
-        """Release a sender account's lock. Optionally check that worker_id matches
-        (avoids a worker accidentally releasing another worker's lock).
-
-        Returns True if a row was updated.
-        """
-        conn  = _conn(self.db_path)
-        where = "id = ?" + (" AND locked_by = ?" if worker_id else "")
-        params: list[Any] = ([worker_id, account_id] if worker_id else [account_id])
-        # params order must match WHERE order
-        if worker_id:
-            params = [account_id, worker_id]
-        else:
-            params = [account_id]
-
-        # Rebuild: WHERE id=? [AND locked_by=?]
-        if worker_id:
-            cur = conn.execute(
-                "UPDATE sender_accounts SET locked_by=NULL, locked_at=NULL, "
-                "broadcasting=0, status='idle' WHERE id=? AND locked_by=?",
-                (account_id, worker_id),
-            )
-        else:
-            cur = conn.execute(
-                "UPDATE sender_accounts SET locked_by=NULL, locked_at=NULL, "
-                "broadcasting=0, status='idle' WHERE id=?",
-                (account_id,),
-            )
-        conn.commit()
-        changed = cur.rowcount > 0
-        conn.close()
+        """Release a sender account's lock, holding the FileLock for atomicity."""
+        with self._flock:
+            conn = _conn(self.db_path)
+            if worker_id:
+                cur = conn.execute(
+                    "UPDATE sender_accounts SET locked_by=NULL, locked_at=NULL, "
+                    "broadcasting=0, status='idle' WHERE id=? AND locked_by=?",
+                    (account_id, worker_id),
+                )
+            else:
+                cur = conn.execute(
+                    "UPDATE sender_accounts SET locked_by=NULL, locked_at=NULL, "
+                    "broadcasting=0, status='idle' WHERE id=?",
+                    (account_id,),
+                )
+            conn.commit()
+            changed = cur.rowcount > 0
+            conn.close()
         if changed:
             logger.info("Released account lock on account_id=%d", account_id)
         return changed
@@ -420,55 +391,97 @@ class TaskQueue:
             None, lambda: self.release_account_sync(account_id, worker_id)
         )
 
+    def force_release_worker_sync(self, worker_id: str) -> dict[str, int]:
+        """Release ALL account locks and reset ALL claimed tasks for a given worker.
+
+        Call this on worker startup (to clean up any crash residue) and on SIGTERM.
+        Returns {"accounts": N, "tasks": N}.
+        """
+        with self._flock:
+            conn = _conn(self.db_path)
+            now  = datetime.now(timezone.utc).isoformat()
+
+            # Release all account locks held by this worker
+            acct_cur = conn.execute(
+                "UPDATE sender_accounts SET locked_by=NULL, locked_at=NULL, "
+                "broadcasting=0, status='idle' WHERE locked_by=?",
+                (worker_id,),
+            )
+
+            # Re-queue all tasks claimed (but not finished) by this worker
+            task_cur = conn.execute("""
+                UPDATE tasks
+                SET status='pending', worker_id=NULL, claimed_at=NULL,
+                    attempts=MAX(0, attempts-1)
+                WHERE worker_id=? AND status='claimed'
+            """, (worker_id,))
+
+            conn.commit()
+            accounts_released = acct_cur.rowcount
+            tasks_reset       = task_cur.rowcount
+            conn.close()
+
+        if accounts_released or tasks_reset:
+            logger.info(
+                "force_release_worker(%r): released=%d accounts, reset=%d tasks",
+                worker_id, accounts_released, tasks_reset,
+            )
+        return {"accounts": accounts_released, "tasks": tasks_reset}
+
+    async def force_release_worker(self, worker_id: str) -> dict[str, int]:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, lambda: self.force_release_worker_sync(worker_id)
+        )
+
     def recover_stale_locks_sync(self, timeout_seconds: int = 300) -> int:
         """Unlock any sender account whose locked_at is older than timeout_seconds.
 
         Also resets stuck tasks (claimed but unfinished) for those accounts.
-        Safe to call from multiple workers simultaneously — each UPDATE is atomic.
+        Held under FileLock for full atomicity against concurrent claim attempts.
         """
-        conn = _conn(self.db_path)
-        now  = datetime.now(timezone.utc).isoformat()
+        with self._flock:
+            conn = _conn(self.db_path)
+            now  = datetime.now(timezone.utc).isoformat()
 
-        # Find stale-locked accounts
-        stale = conn.execute("""
-            SELECT id, locked_by, phone FROM sender_accounts
-            WHERE locked_by IS NOT NULL
-              AND locked_at IS NOT NULL
-              AND (
-                CAST(strftime('%s','now') AS INTEGER)
-                - CAST(strftime('%s', locked_at) AS INTEGER)
-              ) > ?
-        """, (timeout_seconds,)).fetchall()
+            stale = conn.execute("""
+                SELECT id, locked_by, phone FROM sender_accounts
+                WHERE locked_by IS NOT NULL
+                  AND locked_at IS NOT NULL
+                  AND (
+                    CAST(strftime('%s','now') AS INTEGER)
+                    - CAST(strftime('%s', locked_at) AS INTEGER)
+                  ) > ?
+            """, (timeout_seconds,)).fetchall()
 
-        released = 0
-        for row in stale:
-            acc_id = row[0]
-            # Release the account lock
-            conn.execute("""
-                UPDATE sender_accounts
-                SET locked_by=NULL, locked_at=NULL, broadcasting=0, status='idle'
-                WHERE id=?
-            """, (acc_id,))
-            released += 1
-            logger.warning(
-                "Recovered stale account lock: account_id=%d (was locked by %s)",
-                acc_id, row[1],
-            )
+            released = 0
+            for row in stale:
+                acc_id = row[0]
+                conn.execute("""
+                    UPDATE sender_accounts
+                    SET locked_by=NULL, locked_at=NULL, broadcasting=0, status='idle'
+                    WHERE id=?
+                """, (acc_id,))
+                released += 1
+                logger.warning(
+                    "Recovered stale account lock: account_id=%d (was locked by %s)",
+                    acc_id, row[1],
+                )
 
-        # Also reset stuck tasks (claimed > timeout_seconds ago)
-        reset = conn.execute("""
-            UPDATE tasks
-            SET status='pending', worker_id=NULL, claimed_at=NULL
-            WHERE status='claimed'
-              AND (
-                CAST(strftime('%s','now') AS INTEGER)
-                - CAST(strftime('%s', claimed_at) AS INTEGER)
-              ) > ?
-              AND attempts < max_attempts
-        """, (timeout_seconds,)).rowcount
+            # Reset stuck tasks (claimed > timeout_seconds ago)
+            reset = conn.execute("""
+                UPDATE tasks
+                SET status='pending', worker_id=NULL, claimed_at=NULL
+                WHERE status='claimed'
+                  AND (
+                    CAST(strftime('%s','now') AS INTEGER)
+                    - CAST(strftime('%s', claimed_at) AS INTEGER)
+                  ) > ?
+                  AND attempts < max_attempts
+            """, (timeout_seconds,)).rowcount
 
-        conn.commit()
-        conn.close()
+            conn.commit()
+            conn.close()
 
         if released or reset:
             logger.info(
@@ -486,7 +499,6 @@ class TaskQueue:
     # ── Queue statistics ──────────────────────────────────────────────────────
 
     def get_queue_stats_sync(self) -> dict[str, int]:
-        """Return counts of tasks by status + number of currently locked accounts."""
         conn  = _conn(self.db_path, readonly=True)
         stats_row = conn.execute("""
             SELECT
@@ -504,12 +516,12 @@ class TaskQueue:
         conn.close()
 
         return {
-            "pending":   int(stats_row["pending"]   or 0),
-            "active":    int(stats_row["active"]    or 0),
-            "done":      int(stats_row["done"]      or 0),
-            "failed":    int(stats_row["failed"]    or 0),
-            "dead":      int(stats_row["dead"]      or 0),
-            "cancelled": int(stats_row["cancelled"] or 0),
+            "pending":         int(stats_row["pending"]   or 0),
+            "active":          int(stats_row["active"]    or 0),
+            "done":            int(stats_row["done"]      or 0),
+            "failed":          int(stats_row["failed"]    or 0),
+            "dead":            int(stats_row["dead"]      or 0),
+            "cancelled":       int(stats_row["cancelled"] or 0),
             "locked_accounts": int(locked_row[0] if locked_row else 0),
         }
 
@@ -520,10 +532,6 @@ class TaskQueue:
     # ── Reset stuck tasks ─────────────────────────────────────────────────────
 
     def reset_stuck_sync(self, older_than_seconds: int = 300) -> int:
-        """Re-queue tasks that were claimed but never completed (crashed workers).
-        Also releases their account locks. Delegates to recover_stale_locks_sync
-        for the account portion, and does the task portion separately.
-        """
         self.recover_stale_locks_sync(older_than_seconds)
         conn = _conn(self.db_path)
         cur  = conn.execute("""
@@ -586,7 +594,11 @@ class TaskQueue:
 
     @staticmethod
     def _release_account_lock(conn: sqlite3.Connection, campaign_id: int) -> None:
-        """Release the account lock for a campaign's sender account."""
+        """Release the account lock for a campaign's sender account.
+
+        Only clears status when it is 'broadcasting' or 'sending' — never
+        overwrites 'proxy_failed' or 'banned' statuses set by the broadcaster.
+        """
         try:
             row = conn.execute(
                 "SELECT sender_account_id FROM group_campaigns WHERE id=?",
@@ -595,8 +607,12 @@ class TaskQueue:
             if row and row[0]:
                 conn.execute("""
                     UPDATE sender_accounts
-                    SET locked_by=NULL, locked_at=NULL, broadcasting=0, status='idle'
-                    WHERE id=? AND status IN ('broadcasting','idle','sending')
+                    SET locked_by=NULL, locked_at=NULL, broadcasting=0,
+                        status=CASE
+                            WHEN status IN ('broadcasting','sending') THEN 'idle'
+                            ELSE status
+                        END
+                    WHERE id=? AND status NOT IN ('banned','proxy_failed')
                 """, (row[0],))
         except Exception as e:
             logger.debug("Account unlock skipped for campaign %d: %s", campaign_id, e)

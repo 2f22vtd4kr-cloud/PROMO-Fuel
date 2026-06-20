@@ -209,7 +209,7 @@ function ScheduledCampaignRow({ c }: { c: GroupCampaign }) {
   );
 }
 
-function SpawnWorkerButton({ onSpawned }: { onSpawned: () => void }) {
+function SpawnWorkerButton({ onSpawned, prominent = false }: { onSpawned: () => void; prominent?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [label, setLabel] = useState("Запустить воркер");
 
@@ -227,9 +227,13 @@ function SpawnWorkerButton({ onSpawned }: { onSpawned: () => void }) {
     } finally { setBusy(false); }
   }
 
+  const bg     = busy ? "rgba(45,232,151,0.06)" : prominent ? "rgba(45,232,151,0.20)" : "rgba(45,232,151,0.12)";
+  const border = prominent ? "1px solid rgba(45,232,151,0.55)" : "1px solid rgba(45,232,151,0.30)";
+  const shadow = prominent && !busy ? "0 0 18px rgba(45,232,151,0.25)" : "none";
+
   return (
-    <button onClick={spawn} disabled={busy} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 14px", borderRadius: 12, background: busy ? "rgba(45,232,151,0.06)" : "rgba(45,232,151,0.12)", border: "1px solid rgba(45,232,151,0.30)", color: "#2de897", fontSize: 12, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1, transition: "opacity 0.2s, background 0.2s", width: "100%" }}>
-      {busy ? <Zap size={13} color="#2de897" /> : <Plus size={13} color="#2de897" />}
+    <button onClick={spawn} disabled={busy} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: prominent ? "13px 14px" : "10px 14px", borderRadius: 12, background: bg, border, boxShadow: shadow, color: "#2de897", fontSize: prominent ? 13 : 12, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1, transition: "opacity 0.2s, background 0.2s", width: "100%" }}>
+      {busy ? <Zap size={13} color="#2de897" /> : <Plus size={prominent ? 15 : 13} color="#2de897" />}
       {label}
     </button>
   );
@@ -430,16 +434,17 @@ export function WorkersPage() {
 
           {/* ── Summary tiles ───────────────────────────────────────── */}
           {summary && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 5 }}>
               {[
-                { label: "Живых",   value: summary.alive_workers,                      color: "#2de897" },
-                { label: "Очередь", value: summary.tasks_pending,                      color: "#ffc946" },
-                { label: "Готово",  value: summary.tasks_done,                         color: "#6ba8e5" },
-                { label: "Ошибок",  value: summary.tasks_failed + summary.tasks_dead,  color: "#ff6b7a" },
+                { label: "Живых",    value: summary.alive_workers,                      color: "#2de897" },
+                { label: "Активных", value: tasks.filter(t => t.status === "claimed").length, color: "#6ba8e5" },
+                { label: "Очередь",  value: summary.tasks_pending,                      color: "#ffc946" },
+                { label: "Готово",   value: summary.tasks_done,                         color: "#2de897" },
+                { label: "Ошибок",   value: summary.tasks_failed + summary.tasks_dead,  color: "#ff6b7a" },
               ].map(s => (
-                <GlassCard key={s.label} style={{ padding: "10px 6px", textAlign: "center" }}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</div>
-                  <div style={{ fontSize: 9, color: TG.muted, marginTop: 2 }}>{s.label}</div>
+                <GlassCard key={s.label} style={{ padding: "9px 4px", textAlign: "center" }}>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: s.color }}>{s.value}</div>
+                  <div style={{ fontSize: 8, color: TG.muted, marginTop: 2 }}>{s.label}</div>
                 </GlassCard>
               ))}
             </div>
@@ -478,7 +483,12 @@ export function WorkersPage() {
 
               {/* ── Action buttons ──────────────────────────────────── */}
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <SpawnWorkerButton onSpawned={() => setTimeout(load, 2000)} />
+                {aliveWorkers.length === 0 && (
+                  <div style={{ padding: "10px 14px", borderRadius: 12, background: "rgba(255,201,70,0.07)", border: "1px solid rgba(255,201,70,0.25)", fontSize: 11, color: "#ffc946", textAlign: "center", fontWeight: 700 }}>
+                    ⚠️ Нет активных воркеров — рассылки не выполняются
+                  </div>
+                )}
+                <SpawnWorkerButton onSpawned={() => setTimeout(load, 2000)} prominent={aliveWorkers.length === 0} />
                 <RecoverLocksButton onDone={load} />
               </div>
 
@@ -506,10 +516,13 @@ export function WorkersPage() {
                       <div style={{ textAlign: "center", padding: "12px 0", fontSize: 12, color: TG.muted }}>Нет аккаунтов</div>
                     ) : (
                       <>
-                        <div style={{ display: "flex", gap: 12, marginBottom: 8, fontSize: 10, color: TG.muted }}>
+                        <div style={{ display: "flex", gap: 10, marginBottom: 8, fontSize: 10, color: TG.muted, flexWrap: "wrap" }}>
                           <span><span style={{ color: "#2de897" }}>●</span> свободен</span>
                           <span><span style={{ color: "#ffc946" }}>●</span> занят</span>
-                          <span><span style={{ color: "#ff6b7a" }}>●</span> ошибка</span>
+                          <span><span style={{ color: "#ff6b7a" }}>●</span> ошибка/бан</span>
+                          {accounts.some(a => a.status === "proxy_failed") && (
+                            <span style={{ color: "#ff6b7a", fontWeight: 700 }}>⚠️ proxy_failed: {accounts.filter(a => a.status === "proxy_failed").length}</span>
+                          )}
                         </div>
                         {accounts.map(a => <AccountRow key={a.id} account={a} />)}
                       </>

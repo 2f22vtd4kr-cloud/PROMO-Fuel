@@ -111,15 +111,15 @@ function GroupCampaignCard({
     catch { haptic.error(); setBusy(false); }
   }
 
-  async function loadLogs() {
-    if (logsLoaded) return;
+  async function loadLogs(force = false) {
+    if (logsLoaded && !force) return;
     setLoadingData(true);
-    try { setLogs((await api.getGroupCampaignLogs(campaign.id)).slice(0, 12)); setLogsLoaded(true); }
+    try { setLogs((await api.getGroupCampaignLogs(campaign.id)).slice(0, 20)); setLogsLoaded(true); }
     catch {} finally { setLoadingData(false); }
   }
 
-  async function loadStats() {
-    if (statsLoaded) return;
+  async function loadStats(force = false) {
+    if (statsLoaded && !force) return;
     setLoadingData(true);
     try {
       const s = await api.getGroupCampaignStats(campaign.id);
@@ -132,18 +132,21 @@ function GroupCampaignCard({
 
   async function openTab(tab: ExpandTab) {
     haptic.light();
+    const wasExpanded = expanded && expandTab === tab;
     setExpandTab(tab);
     if (!expanded) setExpanded(true);
-    if (tab === "logs") await loadLogs();
-    if (tab === "stats") await loadStats();
+    // Force-reload when switching tabs or re-opening same tab
+    if (tab === "logs") await loadLogs(wasExpanded);
+    if (tab === "stats") await loadStats(wasExpanded);
   }
 
   async function toggleExpand() {
     haptic.light();
     if (!expanded) {
       setExpanded(true);
-      if (expandTab === "logs") await loadLogs();
-      else await loadStats();
+      // Force-reload on every re-open so data is fresh
+      if (expandTab === "logs") await loadLogs(true);
+      else await loadStats(true);
     } else {
       setExpanded(false);
     }

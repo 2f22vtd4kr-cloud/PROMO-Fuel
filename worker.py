@@ -6,17 +6,19 @@ Usage:
     python worker.py worker-3 --poll 3 --idle-sleep 8
 
 Main loop:
-  1. Reset stuck tasks / recover stale locks on startup
-  2. Claim next pending task from the task queue
-  3. Execute via groupbroadcaster.run_group_campaign_task()
-  4. Report done / failed + update heartbeat
-  5. Repeat — self-restart up to MAX_CRASHES times on unhandled exceptions
+  1. Force-release any account locks / claimed tasks left by a previous crash
+  2. Reset stuck tasks / recover stale locks on startup
+  3. Claim next pending task from the task queue
+  4. Execute via groupbroadcaster.run_group_campaign_task()
+  5. Report done / failed + update heartbeat
+  6. Repeat — self-restart up to MAX_CRASHES times on unhandled exceptions
 
 Self-restart:  On crash, the worker sleeps (exponential back-off) then re-runs
                main_loop(). After MAX_CRASHES consecutive crashes it marks itself
                dead in worker_heartbeats and exits.
 
-SIGTERM:       Releases all locked accounts held by this worker before exiting.
+SIGTERM:       Force-releases all locked accounts + claimed tasks held by this
+               worker before exiting (ensures no orphaned locks on graceful stop).
 """
 from __future__ import annotations
 
@@ -39,13 +41,13 @@ logging.basicConfig(
 logger = logging.getLogger("worker")
 
 parser = argparse.ArgumentParser(description="PROMO-Fuel Group Broadcast Worker")
-parser.add_argument("worker_id",   nargs="?", default=None)
-parser.add_argument("--db",        default=None, help="SQLite DB path")
-parser.add_argument("--poll",      type=float, default=5.0)
-parser.add_argument("--idle-sleep",type=float, default=10.0)
+parser.add_argument("worker_id",    nargs="?", default=None)
+parser.add_argument("--db",         default=None, help="SQLite DB path")
+parser.add_argument("--poll",       type=float, default=5.0)
+parser.add_argument("--idle-sleep", type=float, default=10.0)
 args, _ = parser.parse_known_args()
 
-WORKER_ID    = args.worker_id or os.getenv("WORKER_ID", f"worker-{os.getpid()}")
+WORKER_ID = args.worker_id or os.getenv("WORKER_ID", f"worker-{os.getpid()}")
 if args.db:
     os.environ["DB_PATH"] = args.db
 
@@ -58,9 +60,9 @@ from campaign_db  import reset_daily_counts
 DB_PATH              = os.getenv("DB_PATH", "campaigns.db")
 POLL_INTERVAL        = args.poll
 IDLE_SLEEP           = args.idle_sleep
-STUCK_RESET_INTERVAL = 300      # seconds between periodic stuck-task sweeps
-MAX_CRASHES          = 3        # self-restart limit before marking dead
-BOT_TOKEN            = os.getenv("TELEGRAM_BOT_TOKEN", "")
+STUCK_RESET_INTERVAL = 300       # seconds between periodic stuck-task sweeps
+MAX_CRASHES          = 5         # self-restart limit before marking dead
+BOT_TOKEN            = os.getenv("TELEGRAM_TOKEN", os.getenv("TELEGRAM_BOT_TOKEN", ""))
 OWNER_IDS            = [
     int(x) for x in
     os.getenv("OWNER_IDS", os.getenv("VITE_OWNER_IDS", "")).split(",")
@@ -68,8 +70,8 @@ OWNER_IDS            = [
 ]
 
 # ── Global state ──────────────────────────────────────────────────────────────
-_running    = True           # set False by SIGTERM/SIGINT
-_should_die = False          # set True after MAX_CRASHES
+_running    = True
+_should_die = False
 _heartbeat: WorkerHeartbeat | None = None
 _task_queue: TaskQueue | None      = None
 
@@ -104,26 +106,38 @@ async def _notify_owner(text: str) -> None:
         pass
 
 
-# ── Release all locked accounts on shutdown ───────────────────────────────────
+# ── Release all locked accounts + claimed tasks on shutdown ──────────────────
 
-def _release_worker_accounts() -> int:
-    """On SIGTERM or crash: release all sender_accounts locked by this worker."""
+def _release_worker_resources() -> dict[str, int]:
+    """On SIGTERM or crash: release all accounts + re-queue claimed tasks."""
     try:
         conn = sqlite3.connect(DB_PATH, timeout=10)
-        cur  = conn.execute(
+        # Release account locks
+        acct_cur = conn.execute(
             "UPDATE sender_accounts SET locked_by=NULL, locked_at=NULL, "
             "broadcasting=0, status='idle' WHERE locked_by=?",
             (WORKER_ID,),
         )
+        # Re-queue claimed tasks (roll back attempt counter so they get retried)
+        task_cur = conn.execute("""
+            UPDATE tasks
+            SET status='pending', worker_id=NULL, claimed_at=NULL,
+                attempts=MAX(0, attempts-1)
+            WHERE worker_id=? AND status='claimed'
+        """, (WORKER_ID,))
         conn.commit()
-        released = cur.rowcount
+        accounts = acct_cur.rowcount
+        tasks    = task_cur.rowcount
         conn.close()
-        if released:
-            logger.info("[%s] Released %d account lock(s) on exit", WORKER_ID, released)
-        return released
+        if accounts or tasks:
+            logger.info(
+                "[%s] Released %d account lock(s), reset %d task(s) on exit",
+                WORKER_ID, accounts, tasks,
+            )
+        return {"accounts": accounts, "tasks": tasks}
     except Exception as e:
-        logger.warning("[%s] Could not release account locks on exit: %s", WORKER_ID, e)
-        return 0
+        logger.warning("[%s] Could not release resources on exit: %s", WORKER_ID, e)
+        return {"accounts": 0, "tasks": 0}
 
 
 # ── Write heartbeat to worker_heartbeats table ────────────────────────────────
@@ -133,7 +147,6 @@ def _update_heartbeat_table(
     tasks_completed: int = 0,
     tasks_failed: int = 0,
 ) -> None:
-    """Write / upsert into worker_heartbeats (separate from broadcast_workers)."""
     try:
         conn = sqlite3.connect(DB_PATH, timeout=10)
         now  = datetime.now(timezone.utc).isoformat()
@@ -153,7 +166,6 @@ def _update_heartbeat_table(
 
 
 def _mark_self_dead() -> None:
-    """Mark this worker dead in worker_heartbeats after exceeding MAX_CRASHES."""
     _update_heartbeat_table(status="dead")
     try:
         conn = sqlite3.connect(DB_PATH, timeout=10)
@@ -176,8 +188,7 @@ async def main_loop(
 ) -> tuple[int, int]:
     """One run of the worker loop.
 
-    Returns (tasks_completed, tasks_failed) so they can accumulate across
-    self-restart cycles.
+    Returns (tasks_completed, tasks_failed) so they accumulate across restarts.
     """
     global _heartbeat, _task_queue
 
@@ -188,10 +199,18 @@ async def main_loop(
     _heartbeat  = WorkerHeartbeat(WORKER_ID, db_path=DB_PATH)
     _heartbeat.start()
 
-    # Recover any stale locks left by crashed workers (including ourselves)
+    # ── Startup cleanup: force-release any residue from our previous crash ────
+    cleanup = _task_queue.force_release_worker_sync(WORKER_ID)
+    if cleanup["accounts"] or cleanup["tasks"]:
+        logger.info(
+            "[%s] Startup cleanup: released %d account(s), re-queued %d task(s)",
+            WORKER_ID, cleanup["accounts"], cleanup["tasks"],
+        )
+
+    # ── Also recover any globally stale locks (from other crashed workers) ────
     recovered = _task_queue.recover_stale_locks_sync(timeout_seconds=120)
     if recovered:
-        logger.info("[%s] Recovered %d stale account lock(s) on startup", WORKER_ID, recovered)
+        logger.info("[%s] Recovered %d stale account lock(s)", WORKER_ID, recovered)
 
     last_stuck_reset = time.monotonic()
     last_reset_date  = datetime.now().date()
@@ -310,16 +329,16 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT,  _handle_signal)
 
-    crash_count      = 0
-    backoff          = 5.0          # initial back-off seconds
-    tasks_completed  = 0
-    tasks_failed     = 0
+    crash_count     = 0
+    backoff         = 5.0
+    tasks_completed = 0
+    tasks_failed    = 0
 
     while crash_count < MAX_CRASHES:
         try:
             completed, failed = asyncio.run(main_loop(tasks_completed, tasks_failed))
-            tasks_completed  = completed
-            tasks_failed     = failed
+            tasks_completed   = completed
+            tasks_failed      = failed
             # Clean exit (SIGTERM / _running = False) → don't restart
             break
 
@@ -339,10 +358,12 @@ def main() -> None:
                 time.sleep(sleep_for)
             else:
                 _mark_self_dead()
+                # Release resources one final time before hard exit
+                _release_worker_resources()
                 sys.exit(1)
 
-    # Always release account locks on any exit path
-    _release_worker_accounts()
+    # Always release account locks + re-queue tasks on any exit path
+    _release_worker_resources()
 
 
 if __name__ == "__main__":
