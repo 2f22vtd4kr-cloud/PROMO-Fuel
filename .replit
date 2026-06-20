@@ -43,7 +43,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = ".pythonlibs/bin/python3 main.py"
+args = "python3 main.py"
 
 [[workflows.workflow]]
 name = "artifacts/telegram-miniapp: Telegram Mini App"
@@ -66,7 +66,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm rebuild better-sqlite3 && pnpm --filter @workspace/api-server run dev"
+args = "bash scripts/start-api.sh"
 waitForPort = 8080
 
 [[workflows.workflow]]
@@ -104,15 +104,6 @@ externalPort = 5000
 [[ports]]
 localPort = 8080
 externalPort = 8080
-
-[[ports]]
-localPort = 8081
-externalPort = 8081
-
-[[ports]]
-localPort = 8082
-externalPort = 3000
-exposeLocalhost = true
 
 [[ports]]
 localPort = 23873
