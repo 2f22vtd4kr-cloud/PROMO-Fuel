@@ -13,26 +13,87 @@ function broadcastEvent(event: string, data: unknown) {
   }
 }
 
-let lastCampaignSnap = "";
-let lastAccountSnap = "";
+let lastCampaignSnap      = "";
+let lastAccountSnap       = "";
+let lastWorkerSnap        = "";
+let lastHeartbeatSnap     = "";
+let lastTaskSnap          = "";
 
 function pollDb() {
   try {
     const db = new Database(DB_PATH, { readonly: true });
 
-    const campaigns = db.prepare("SELECT id, name, status, sent_count, failed_count, target_count, started_at FROM campaigns ORDER BY id").all();
+    // ── Campaigns ────────────────────────────────────────────────────────────
+    const campaigns = db.prepare(
+      "SELECT id, name, status, sent_count, failed_count, target_count, started_at FROM campaigns ORDER BY id"
+    ).all();
     const campSnap = JSON.stringify(campaigns);
     if (campSnap !== lastCampaignSnap) {
       lastCampaignSnap = campSnap;
       broadcastEvent("campaigns", campaigns);
     }
 
+    // ── Sender accounts (includes lock columns) ───────────────────────────────
     try {
-      const accounts = db.prepare("SELECT id, label, phone, username, telegram_id, status, sent_today, sent_total, failed_total, is_banned, is_active, flood_wait_until, daily_limit FROM sender_accounts ORDER BY id").all();
+      const accounts = db.prepare(
+        `SELECT id, label, phone, username, telegram_id, status,
+                sent_today, sent_total, failed_total, is_banned, is_active,
+                flood_wait_until, daily_limit,
+                locked_by, locked_at, proxy_index, broadcasting
+         FROM sender_accounts ORDER BY id`
+      ).all();
       const accSnap = JSON.stringify(accounts);
       if (accSnap !== lastAccountSnap) {
         lastAccountSnap = accSnap;
         broadcastEvent("accounts", accounts);
+      }
+    } catch {}
+
+    // ── Broadcast workers (process-level registry) ────────────────────────────
+    try {
+      const now = Date.now();
+      const workers = (db.prepare(
+        "SELECT * FROM broadcast_workers ORDER BY started_at DESC"
+      ).all() as Record<string, unknown>[]).map(w => {
+        const lh = w["last_heartbeat"] as string | null;
+        const age = lh ? Math.floor((now - new Date(lh).getTime()) / 1000) : 9999;
+        return { ...w, age_seconds: age, is_alive: age < 60 };
+      });
+      const wSnap = JSON.stringify(workers);
+      if (wSnap !== lastWorkerSnap) {
+        lastWorkerSnap = wSnap;
+        broadcastEvent("workers", workers);
+      }
+    } catch {}
+
+    // ── Worker heartbeats (dedicated table, lighter) ──────────────────────────
+    try {
+      const now = Date.now();
+      const heartbeats = (db.prepare(
+        "SELECT * FROM worker_heartbeats ORDER BY last_seen DESC"
+      ).all() as Record<string, unknown>[]).map(h => {
+        const ls = h["last_seen"] as string | null;
+        const age = ls ? Math.floor((now - new Date(ls).getTime()) / 1000) : 9999;
+        return { ...h, age_seconds: age, is_alive: age < 60 };
+      });
+      const hbSnap = JSON.stringify(heartbeats);
+      if (hbSnap !== lastHeartbeatSnap) {
+        lastHeartbeatSnap = hbSnap;
+        broadcastEvent("worker_heartbeats", heartbeats);
+      }
+    } catch {}
+
+    // ── Task queue ────────────────────────────────────────────────────────────
+    try {
+      const tasks = db.prepare(
+        `SELECT id, campaign_id, status, worker_id, attempts, max_attempts,
+                scheduled_at, claimed_at, error
+         FROM tasks ORDER BY id DESC LIMIT 100`
+      ).all();
+      const tSnap = JSON.stringify(tasks);
+      if (tSnap !== lastTaskSnap) {
+        lastTaskSnap = tSnap;
+        broadcastEvent("tasks", tasks);
       }
     } catch {}
 

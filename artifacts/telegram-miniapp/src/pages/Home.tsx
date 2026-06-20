@@ -80,39 +80,73 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
     { label: "Воркеры",        icon: Cpu,       color: "#a78bfa",             glow: "rgba(167,139,250,0.38)",    action: () => { haptic.light(); onNavigate("workers"); } },
   ];
 
+  const sparklineHeights = [4, 8, 6, 12, 8, 10, 16];
+
   return (
-    <div className="tab-content" style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "14px 14px 24px" }}>
+    <>
+      <style>{`
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(16px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+      <div className="tab-content" style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch", backgroundImage: 'radial-gradient(ellipse 100% 50% at 50% 0%, rgba(26,34,53,0.8) 0%, transparent 60%)' }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingBottom: "24px" }}>
 
-        {/* Welcome header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>
-              Добро пожаловать 👋
+          {/* Welcome header */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", position: 'sticky', top: 0, zIndex: 50, background: 'linear-gradient(to bottom, rgba(6,8,16,0.95) 0%, transparent 100%)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', padding: "14px 14px 10px" }}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>
+                Добро пожаловать 👋
+              </div>
+              <div style={{ fontSize: 12, color: TG.textSecondary, marginTop: 2 }}>
+                PROMO-Fuel • Личный кабинет
+              </div>
             </div>
-            <div style={{ fontSize: 12, color: TG.textSecondary, marginTop: 2 }}>
-              PROMO-Fuel • Личный кабинет
+            <div style={{ position: "relative" }}>
+              <GlassCard style={{ padding: "8px 10px", borderRadius: 14 }}>
+                <Bell size={17} color={TG.accent ?? "#6ba8e5"} style={{ display: "block" }} />
+              </GlassCard>
+              {!loading && (overview?.activeCampaigns ?? 0) > 0 && (
+                <div style={{
+                  position: "absolute", top: -3, right: -3,
+                  width: 8, height: 8, borderRadius: "50%",
+                  background: TG.green,
+                  boxShadow: `0 0 6px 2px ${TG.greenGlow}`,
+                  border: "1.5px solid #07090f",
+                }} />
+              )}
             </div>
           </div>
-          <div style={{ position: "relative" }}>
-            <GlassCard style={{ padding: "8px 10px", borderRadius: 14 }}>
-              <Bell size={17} color={TG.accent ?? "#6ba8e5"} style={{ display: "block" }} />
-            </GlassCard>
-            {!loading && (overview?.activeCampaigns ?? 0) > 0 && (
-              <div style={{
-                position: "absolute", top: -3, right: -3,
-                width: 8, height: 8, borderRadius: "50%",
-                background: TG.green,
-                boxShadow: `0 0 6px 2px ${TG.greenGlow}`,
-                border: "1.5px solid #07090f",
-              }} />
-            )}
-          </div>
-        </div>
 
-        {/* Fuel gauge / conversion ring — shown only when campaigns are active */}
-        {!loading && overview && overview.activeCampaigns > 0 && (
-          <div className="glass-card-v2" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          {/* Worker dots strip */}
+          {workers && (
+            <div style={{ display: "flex", gap: 6, margin: "0 14px", alignItems: "center", animation: "slideUp 0.4s ease-out" }}>
+              {Array.from({ length: workers.alive_workers + workers.dead_workers }).map((_, i) => {
+                const isAlive = i < workers.alive_workers;
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      backgroundColor: isAlive ? "#2de897" : "#ff6b7a",
+                      boxShadow: isAlive ? "0 0 8px rgba(45,232,151,0.6)" : "none",
+                    }}
+                  />
+                );
+              })}
+              <div style={{ fontSize: 10, color: TG.muted, marginLeft: 4, fontWeight: 600 }}>
+                {workers.alive_workers + workers.dead_workers > 0 ? "Воркеры" : "Нет воркеров"}
+              </div>
+            </div>
+          )}
+
+          <div style={{ padding: "0 14px", display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Fuel gauge / conversion ring — shown only when campaigns are active */}
+            {!loading && overview && overview.activeCampaigns > 0 && (
+              <div className="glass-card-v2" style={{ display: 'flex', alignItems: 'center', gap: '1rem', animation: "slideUp 0.4s ease-out 0.1s both" }}>
             <div className="conversion-ring">
               <span className="rate">{overview.avgOpenRate.toFixed(0)}%</span>
               <span className="rate-label">conv.</span>
@@ -131,10 +165,11 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
 
         {/* Stats 2×2 grid */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          {stats.map((s) => {
+          {stats.map((s, i) => {
             const Icon = s.icon;
             return (
-              <GlassCard key={s.label} glow={`${s.glow}30`} style={{ padding: "14px 14px 12px" }}>
+              <GlassCard key={s.label} glow={`${s.glow}30`} style={{ padding: "14px 14px 12px", position: "relative", animation: `slideUp 0.4s ease-out ${i * 0.1 + 0.2}s both` }}>
+                <div style={{ position: "absolute", top: 0, left: "10%", right: "10%", height: 1, background: `linear-gradient(90deg, transparent, ${s.color}, transparent)`, opacity: 0.8 }} />
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                   <div style={{
                     width: 30, height: 30, borderRadius: 10,
@@ -147,11 +182,27 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                   </div>
                   <ArrowUpRight size={12} color={s.color} style={{ opacity: 0.7 }} />
                 </div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: TG.text, letterSpacing: "-0.03em", lineHeight: 1 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: TG.text, letterSpacing: "-0.03em", lineHeight: 1 }}>
                   {loading ? <span style={{ opacity: 0.3 }}>—</span> : s.value}
                 </div>
                 <div style={{ fontSize: 10, color: TG.muted, marginTop: 3, fontWeight: 500 }}>{s.label}</div>
-                <div style={{ fontSize: 10, color: s.color, marginTop: 2, fontWeight: 600 }}>{s.sub}</div>
+                <div style={{ fontSize: 10, color: s.color, marginTop: 2, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span>{s.sub}</span>
+                  <svg width="27" height="16" viewBox="0 0 27 16">
+                    {sparklineHeights.map((h, idx) => (
+                      <rect
+                        key={idx}
+                        x={idx * 4}
+                        y={16 - h}
+                        width="3"
+                        height={h}
+                        fill={s.color}
+                        opacity={idx === sparklineHeights.length - 1 ? 1 : 0.4}
+                        rx="1"
+                      />
+                    ))}
+                  </svg>
+                </div>
               </GlassCard>
             );
           })}
@@ -311,7 +362,9 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
             </div>
           )}
         </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

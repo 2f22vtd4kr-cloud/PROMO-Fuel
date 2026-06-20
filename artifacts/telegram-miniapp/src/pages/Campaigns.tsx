@@ -155,8 +155,8 @@ function LogsPanel({ campaignId, isActive }: { campaignId: number; isActive: boo
   );
 }
 
-function CampaignCard({ campaign, onEdit, onRefresh }: {
-  campaign: Campaign; onEdit: (id: number) => void; onRefresh: () => void;
+function CampaignCard({ campaign, index, onEdit, onRefresh }: {
+  campaign: Campaign; index: number; onEdit: (id: number) => void; onRefresh: () => void;
 }) {
   const [busy, setBusy]         = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -172,6 +172,12 @@ function CampaignCard({ campaign, onEdit, onRefresh }: {
   const pct = campaign.target_count > 0
     ? Math.min(100, Math.round(campaign.sent_count / campaign.target_count * 100)) : 0;
   const color = isActive ? TG.green : isPaused ? "#6ba8e5" : "rgba(160,190,230,0.40)";
+
+  let glow;
+  if (isActive) glow = "rgba(45,232,151,0.20)";
+  else if (campaign.status === "scheduled") glow = "rgba(255,201,70,0.15)";
+  else if (isPaused) glow = "rgba(107,168,229,0.15)";
+  else if (isDone) glow = "rgba(160,190,230,0.08)";
 
   async function togglePause() {
     haptic.medium(); setBusy(true);
@@ -198,12 +204,17 @@ function CampaignCard({ campaign, onEdit, onRefresh }: {
     : d.toLocaleDateString("ru");
 
   return (
-    <GlassCard style={{ padding: "14px" }}>
+    <GlassCard style={{ padding: "14px", animation: `slideUp 0.4s ease-out calc(${index} * 0.08s) both` }} glow={glow}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: TG.text, marginBottom: 5, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
             {campaign.name}
           </div>
+          {isActive && (
+            <div style={{ width: "100%", height: 3, borderRadius: 2, background: "rgba(255,255,255,0.08)", marginBottom: 8, overflow: "hidden" }}>
+              <div style={{ height: "100%", borderRadius: 2, width: `${pct}%`, background: "linear-gradient(90deg, #2de897, #6ba8e5)", animation: "shimmer 2s ease-in-out infinite" }} />
+            </div>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             <StatusBadge status={campaign.status} />
             {isDryRun && (
@@ -343,6 +354,12 @@ function CampaignCard({ campaign, onEdit, onRefresh }: {
           {showLogs && <LogsPanel campaignId={campaign.id} isActive={isActive} />}
         </div>
       )}
+
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)", fontSize: 10, color: TG.muted }}>
+        <div>Отправлено: <span style={{ color: TG.text }}>{campaign.sent_count.toLocaleString("ru")}</span></div>
+        <div>Цель: <span style={{ color: TG.text }}>{campaign.target_count.toLocaleString("ru")}</span></div>
+        <div>Ошибок: <span style={{ color: "#ff6b7a" }}>{(campaign.failed_count || 0).toLocaleString("ru")}</span></div>
+      </div>
     </GlassCard>
   );
 }
@@ -396,6 +413,10 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
 
   return (
     <div className="tab-content" style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+      <style>{`
+        @keyframes slideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes shimmer { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+      `}</style>
       <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "14px 14px 24px" }}>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -474,7 +495,7 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
                     {q ? `Ничего не найдено по «${search}»` : "Нет кампаний в этой категории"}
                   </div>
                 </GlassCard>
-              ) : filtered.map(c => <CampaignCard key={c.id} campaign={c} onEdit={onEdit} onRefresh={load} />)}
+              ) : filtered.map((c, index) => <CampaignCard key={c.id} campaign={c} index={index} onEdit={onEdit} onRefresh={load} />)}
             </div>
           );
         })()}

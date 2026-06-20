@@ -79,7 +79,7 @@ function MiniBarChart({ data, color }: { data: TrendPoint[]; color: string }) {
         const pct = (d.sent / maxVal) * 100;
         return (
           <div key={i} style={{ flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4 }}>
-            <div style={{ width:"100%",height:`${pct}%`,minHeight:3,borderRadius:"3px 3px 0 0",background:`linear-gradient(180deg,${color},${color}66)`,boxShadow:`0 0 8px ${color}50` }} />
+            <div style={{ width:"100%",height:`${pct}%`,minHeight:3,borderRadius:"3px 3px 0 0",background:`linear-gradient(180deg,${color},${color}66)`,boxShadow:`0 0 8px ${color}50`,transformOrigin:"bottom",animation:`growBar 0.5s ease-out ${i*0.05}s both` }} />
             <span style={{ fontSize:7,color:"rgba(160,190,230,0.45)",whiteSpace:"nowrap" }}>{d.d}</span>
           </div>
         );
@@ -112,6 +112,8 @@ function HourlySendRateChart({ data }: { data: SendRatePoint[] }) {
                 background: barColor,
                 boxShadow: isNow ? `0 0 8px ${TG.green}60` : undefined,
                 opacity: d.total === 0 ? 0.2 : 1,
+                transformOrigin: "bottom",
+                animation: `growBar 0.4s ease-out ${i * 0.02}s both`
               }} />
             </div>
           );
@@ -208,24 +210,36 @@ export function AnalyticsPage() {
 
   const ov = overview;
   const kpis = [
-    { label:"Охват",     value: loading?"—":`${((ov?.totalSent ?? 0) / 1000).toFixed(1)}K`,   delta: ov ? (ov.sentDelta >= 0 ? `+${ov.sentDelta}%` : `${ov.sentDelta}%`) : "—",  color:"#6ba8e5",  icon:Users2 },
-    { label:"Open Rate", value: loading?"—":`${(ov?.avgOpenRate ?? 0).toFixed(1)}%`,           delta: ov ? (ov.openDelta >= 0 ? `+${ov.openDelta}%` : `${ov.openDelta}%`) : "—", color:TG.green,   icon:Target },
-    { label:"CTR",       value: loading?"—":`${(ov?.avgCtr ?? 0).toFixed(1)}%`,                delta: ov ? (ov.ctrDelta >= 0  ? `+${ov.ctrDelta}%`  : `${ov.ctrDelta}%`)  : "—", color:TG.purple,  icon:TrendingUp },
-    { label:"Кампании",  value: loading?"—":String(ov?.totalCampaigns ?? 0),                   delta:"всего",                                                                    color:TG.yellow,  icon:Zap },
+    { label:"Охват",     value: loading?"—":`${((ov?.totalSent ?? 0) / 1000).toFixed(1)}K`,   delta: ov ? (ov.sentDelta >= 0 ? `+${ov.sentDelta}%` : `${ov.sentDelta}%`) : "—",  color:"#6ba8e5",  icon:Users2, progress: 78 },
+    { label:"Open Rate", value: loading?"—":`${(ov?.avgOpenRate ?? 0).toFixed(1)}%`,           delta: ov ? (ov.openDelta >= 0 ? `+${ov.openDelta}%` : `${ov.openDelta}%`) : "—", color:TG.green,   icon:Target, progress: (ov?.avgOpenRate ?? 0) },
+    { label:"CTR",       value: loading?"—":`${(ov?.avgCtr ?? 0).toFixed(1)}%`,                delta: ov ? (ov.ctrDelta >= 0  ? `+${ov.ctrDelta}%`  : `${ov.ctrDelta}%`)  : "—", color:TG.purple,  icon:TrendingUp, progress: Math.min(((ov?.avgCtr ?? 0) * 5), 100) },
+    { label:"Кампании",  value: loading?"—":String(ov?.totalCampaigns ?? 0),                   delta:"всего",                                                                    color:TG.yellow,  icon:Zap, progress: 100 },
   ];
 
   return (
     <div className="tab-content" style={{ height:"100%",overflowY:"auto",WebkitOverflowScrolling:"touch" }}>
+      <style>{`
+        @keyframes slideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes shimmer { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        @keyframes growBar { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+      `}</style>
       <div style={{ display:"flex",flexDirection:"column",gap:14,padding:"14px 14px 24px" }}>
 
-        <div style={{ fontSize:18,fontWeight:800,color:TG.text,letterSpacing:"-0.02em" }}>Аналитика</div>
+        <div style={{
+          position: "sticky", top: 0, zIndex: 50,
+          margin: "-14px -14px 0 -14px", padding: "14px 14px 14px",
+          background: "linear-gradient(to bottom, rgba(6,8,16,0.95) 40%, transparent)",
+          backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+          fontSize:18,fontWeight:800,color:TG.text,letterSpacing:"-0.02em"
+        }}>Аналитика</div>
 
         {/* KPI 2×2 */}
         <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8 }}>
-          {kpis.map(k => {
+          {kpis.map((k, idx) => {
             const Icon = k.icon;
             return (
-              <GlassCard key={k.label} style={{ padding:"12px 14px" }}>
+              <GlassCard key={k.label} style={{ padding:"12px 14px", animation: `slideUp 0.4s ease-out ${idx * 0.08}s both` }}>
+                <div style={{ position: "absolute", top: 0, left: "10%", right: "10%", height: 1, background: `linear-gradient(90deg, transparent, ${k.color}, transparent)` }} />
                 <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6 }}>
                   <div style={{ width:26,height:26,borderRadius:8,background:`${k.color}18`,border:`1px solid ${k.color}30`,display:"flex",alignItems:"center",justifyContent:"center" }}>
                     <Icon size={12} color={k.color} />
@@ -237,6 +251,9 @@ export function AnalyticsPage() {
                   <span style={{ fontSize:10,color:k.color,fontWeight:700 }}>{k.delta}</span>
                 </div>
                 <div style={{ fontSize:10,color:TG.muted,marginTop:2 }}>{k.label}</div>
+                <div style={{ marginTop: 8, height: 3, borderRadius: 1.5, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${k.progress}%`, background: k.color, borderRadius: 1.5, opacity: 0.8 }} />
+                </div>
               </GlassCard>
             );
           })}
