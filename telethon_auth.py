@@ -180,11 +180,57 @@ async def handle_confirm_2fa(request: web.Request) -> web.Response:
         return web.json_response({"error": str(e)}, status=400)
 
 
+async def handle_get_groups(request: web.Request) -> web.Response:
+    """GET /groups/{account_id} — return cached groups for the account."""
+    try:
+        account_id = int(request.match_info["account_id"])
+    except (KeyError, ValueError):
+        return web.json_response({"error": "invalid account_id"}, status=400)
+    try:
+        import group_discovery as gd
+        groups = await gd.get_cached_groups(account_id)
+        return web.json_response(groups)
+    except Exception as e:
+        logger.error(f"get_groups error: {e}")
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def handle_refresh_groups(request: web.Request) -> web.Response:
+    """POST /groups/{account_id}/refresh — fetch fresh groups from Telegram and cache."""
+    try:
+        account_id = int(request.match_info["account_id"])
+    except (KeyError, ValueError):
+        return web.json_response({"error": "invalid account_id"}, status=400)
+    try:
+        import campaign_db as cdb
+        import group_discovery as gd
+        import campaign_sender as cs
+
+        account = await cdb.get_account_by_id(account_id)
+        if not account:
+            return web.json_response({"error": "Account not found"}, status=404)
+
+        client = await cs.get_telethon_client(account)
+        if not client:
+            return web.json_response(
+                {"error": "Could not connect — make sure the account is authorized"},
+                status=503
+            )
+
+        groups = await gd.fetch_and_cache_groups(account_id, client)
+        return web.json_response({"ok": True, "count": len(groups), "groups": groups})
+    except Exception as e:
+        logger.error(f"refresh_groups error: {e}")
+        return web.json_response({"error": str(e)}, status=500)
+
+
 async def _run_server():
     app = web.Application()
     app.router.add_post("/start-auth", handle_start_auth)
     app.router.add_post("/confirm-auth", handle_confirm_auth)
     app.router.add_post("/confirm-2fa", handle_confirm_2fa)
+    app.router.add_get("/groups/{account_id}", handle_get_groups)
+    app.router.add_post("/groups/{account_id}/refresh", handle_refresh_groups)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "127.0.0.1", 8082)
