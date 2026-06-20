@@ -4,7 +4,9 @@ Design:
   - WAL mode for concurrency
   - filelock.FileLock for exclusive write operations (claim/complete/fail)
   - Atomic claim_task: UPDATE ... WHERE id=(SELECT id ... LIMIT 1) to avoid races
-  - account locking: sender_accounts.status set to 'broadcasting' while a task is active
+  - Account locking: sender_accounts.status set to 'broadcasting' while a task is active
+  - Double-booking guard: a single account cannot be claimed by two tasks simultaneously
+  - reset_stuck also releases orphaned account locks
 
 Usage:
     from task_queue import TaskQueue
@@ -83,6 +85,26 @@ def _ensure_tables(db_path: str = DB_PATH) -> None:
     conn.close()
 
 
+def _get_sender_account_id(conn: sqlite3.Connection, task: dict) -> int | None:
+    """Resolve sender_account_id for a task from payload or group_campaigns table."""
+    try:
+        payload = task.get("payload") or {}
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        acc_id = payload.get("sender_account_id")
+        if acc_id:
+            return int(acc_id)
+        camp = conn.execute(
+            "SELECT sender_account_id FROM group_campaigns WHERE id=?",
+            (task["campaign_id"],)
+        ).fetchone()
+        if camp and camp[0]:
+            return int(camp[0])
+    except Exception:
+        pass
+    return None
+
+
 class TaskQueue:
     """Multi-process-safe SQLite task queue.
 
@@ -155,6 +177,12 @@ class TaskQueue:
     def claim_task_sync(self, worker_id: str) -> dict | None:
         """Atomically claim the highest-priority pending task.
 
+        Guards against:
+          1. Two workers claiming the same task (FileLock + conditional UPDATE)
+          2. Two workers claiming tasks that share the same sender account
+             (double-booking guard — checks sender_accounts.status='broadcasting')
+          3. Tasks that are already claimed by a live worker
+
         Also locks the campaign's sender account (status → 'broadcasting').
         Returns the task row as a dict, or None if nothing is available.
         """
@@ -163,13 +191,24 @@ class TaskQueue:
                 conn = _conn(self.db_path)
                 now  = datetime.now().isoformat()
 
-                # Find the best available task: pending (or failed with retries left),
-                # scheduled_at is either null or in the past
+                # Find the best available task: pending (or retryable failed),
+                # scheduled_at is either null or in the past.
+                # Exclude tasks whose campaign account is already 'broadcasting'.
                 row = conn.execute("""
-                    SELECT t.* FROM tasks t
+                    SELECT t.*
+                    FROM tasks t
                     WHERE t.status IN ('pending', 'failed')
                       AND t.attempts < t.max_attempts
                       AND (t.scheduled_at IS NULL OR t.scheduled_at <= ?)
+                      AND NOT EXISTS (
+                        -- Double-booking guard: skip if the same account is already
+                        -- locked by another running task
+                        SELECT 1
+                        FROM group_campaigns gc
+                        JOIN sender_accounts sa ON sa.id = gc.sender_account_id
+                        WHERE gc.id = t.campaign_id
+                          AND sa.status = 'broadcasting'
+                      )
                     ORDER BY t.priority ASC, t.created_at ASC
                     LIMIT 1
                 """, (now,)).fetchone()
@@ -191,30 +230,33 @@ class TaskQueue:
                     conn.close()
                     return None  # another worker won the race
 
-                # Lock the sender account if the campaign has one
-                try:
-                    payload = json.loads(task.get("payload") or "{}")
-                    acc_id  = payload.get("sender_account_id")
-                    if not acc_id:
-                        camp = conn.execute(
-                            "SELECT sender_account_id FROM group_campaigns WHERE id=?",
-                            (task["campaign_id"],)
-                        ).fetchone()
-                        if camp:
-                            acc_id = camp[0]
-                    if acc_id:
+                # Lock the sender account to prevent double-booking
+                acc_id = _get_sender_account_id(conn, task)
+                if acc_id:
+                    locked = conn.execute(
+                        """UPDATE sender_accounts
+                           SET status='broadcasting'
+                           WHERE id=? AND is_banned=0 AND is_active=1
+                             AND status != 'broadcasting'""",
+                        (acc_id,)
+                    ).rowcount
+                    if locked == 0:
+                        # Account just became busy between our guard check and lock attempt
+                        # Roll back the claim and let another worker pick this up later
                         conn.execute(
-                            "UPDATE sender_accounts SET status='broadcasting' WHERE id=? AND is_banned=0 AND is_active=1",
-                            (acc_id,)
+                            "UPDATE tasks SET status='pending', worker_id=NULL, claimed_at=NULL, attempts=attempts-1 WHERE id=?",
+                            (task["id"],)
                         )
-                except Exception as e:
-                    logger.debug(f"[queue] Account lock skipped: {e}")
+                        conn.commit()
+                        conn.close()
+                        logger.debug(f"[queue] Account {acc_id} became busy — rolling back task #{task['id']} claim")
+                        return None
 
                 conn.commit()
                 conn.close()
 
                 task["payload"] = json.loads(task.get("payload") or "{}")
-                logger.info(f"[queue] Worker {worker_id!r} claimed task #{task['id']} (campaign {task['campaign_id']})")
+                logger.info(f"[queue] Worker {worker_id!r} claimed task #{task['id']} (campaign {task['campaign_id']}, account {acc_id})")
                 return task
 
         except Timeout:
@@ -279,10 +321,34 @@ class TaskQueue:
     # ── Reset stuck tasks ────────────────────────────────────────────────────
 
     def reset_stuck_sync(self, older_than_seconds: int = 300) -> int:
-        """Re-queue tasks that were claimed but never completed (crashed workers)."""
+        """Re-queue tasks claimed but never completed (crashed workers).
+
+        Also releases orphaned sender_account locks for those tasks.
+        """
         with self._flock:
             conn = _conn(self.db_path)
-            cur  = conn.execute("""
+
+            # Find stuck tasks before resetting so we can release their account locks
+            stuck_rows = conn.execute("""
+                SELECT t.id, t.campaign_id
+                FROM tasks t
+                WHERE t.status = 'claimed'
+                  AND (
+                    CAST(strftime('%s','now') AS INTEGER)
+                    - CAST(strftime('%s', claimed_at) AS INTEGER)
+                  ) > ?
+                  AND t.attempts < t.max_attempts
+            """, (older_than_seconds,)).fetchall()
+
+            # Release account locks for all stuck tasks
+            for row in stuck_rows:
+                try:
+                    self._release_account_lock(conn, row[1])
+                except Exception as e:
+                    logger.debug(f"[queue] Account unlock skipped for campaign {row[1]}: {e}")
+
+            # Reset the stuck tasks
+            cur = conn.execute("""
                 UPDATE tasks
                 SET status='pending', worker_id=NULL, claimed_at=NULL
                 WHERE status='claimed'
@@ -295,8 +361,9 @@ class TaskQueue:
             count = cur.rowcount
             conn.commit()
             conn.close()
+
         if count:
-            logger.info(f"[queue] Reset {count} stuck task(s) to pending")
+            logger.info(f"[queue] Reset {count} stuck task(s) to pending, released account locks")
         return count
 
     async def reset_stuck(self, older_than_seconds: int = 300) -> int:

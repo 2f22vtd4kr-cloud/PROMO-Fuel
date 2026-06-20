@@ -1716,6 +1716,16 @@ def main():
         except Exception as _e:
             logger.warning(f"⚠️  Broadcast scheduler not started: {_e}")
 
+        worker_count = int(os.getenv("WORKER_COUNT", "0"))
+        if worker_count > 0:
+            try:
+                from utils.supervisor import WorkerSupervisor
+                _supervisor = WorkerSupervisor(worker_count=worker_count)
+                _supervisor.start()
+                logger.info(f"🔧 Worker supervisor started — {worker_count} worker(s)")
+            except Exception as _e:
+                logger.warning(f"⚠️  Worker supervisor not started: {_e}")
+
     app.post_init = post_init
 
     async def error_handler(update: object, context) -> None:

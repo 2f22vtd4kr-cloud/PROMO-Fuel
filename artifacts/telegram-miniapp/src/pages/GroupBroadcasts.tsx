@@ -54,10 +54,12 @@ function GroupCampaignCard({
   campaign,
   onRefresh,
   onEdit,
+  isActive,
 }: {
   campaign: GroupCampaign;
   onRefresh: () => void;
   onEdit: (id: number) => void;
+  isActive?: boolean;
 }) {
   const [busy,         setBusy]         = useState(false);
   const [expanded,     setExpanded]     = useState(false);
@@ -151,11 +153,19 @@ function GroupCampaignCard({
     <GlassCard glow={`${color}20`} style={{ padding: 14 }}>
       {/* Header row */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 12, background: `${color}20`, border: `1px solid ${color}40`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          <Radio size={16} color={color} />
+        <div style={{ position: "relative", width: 36, height: 36, flexShrink: 0 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 12, background: `${color}20`, border: `1px solid ${color}40`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Radio size={16} color={color} />
+          </div>
+          {isActive && (
+            <div style={{ position: "absolute", top: -3, right: -3, width: 10, height: 10, borderRadius: "50%", background: "#6ba8e5", border: "2px solid #0d1117", animation: "hb-ring 1.8s ease-out infinite" }} />
+          )}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: TG.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{campaign.name}</div>
+          {isActive && (
+            <div style={{ fontSize: 9, color: "#6ba8e5", fontWeight: 700, marginBottom: 1 }}>● В работе у воркера</div>
+          )}
           <div style={{ fontSize: 10, color: TG.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{campaign.text_template}</div>
           {campaign.notes && <div style={{ fontSize: 9, color: "#c4aeff", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📝 {campaign.notes}</div>}
         </div>
@@ -407,16 +417,25 @@ export function GroupBroadcastsPage({
   onNew: () => void;
   onEdit: (id: number) => void;
 }) {
-  const [campaigns, setCampaigns] = useState<GroupCampaign[]>([]);
-  const [loading,   setLoading]   = useState(true);
-  const [search,    setSearch]    = useState("");
+  const [campaigns,     setCampaigns]     = useState<GroupCampaign[]>([]);
+  const [activeCampaignIds, setActiveCampaignIds] = useState<Set<number>>(new Set());
+  const [loading,       setLoading]       = useState(true);
+  const [search,        setSearch]        = useState("");
 
   const load = useCallback(async () => {
-    try { setCampaigns(await api.getGroupCampaigns()); }
+    try {
+      const [camps, tasks] = await Promise.all([
+        api.getGroupCampaigns(),
+        api.getTasks("claimed"),
+      ]);
+      setCampaigns(camps);
+      // Build a set of campaign IDs that have an active (claimed) task
+      setActiveCampaignIds(new Set(tasks.map(t => t.campaign_id)));
+    }
     catch {} finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); const t = setInterval(load, 20_000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { load(); const t = setInterval(load, 12_000); return () => clearInterval(t); }, [load]);
 
   const running  = campaigns.filter(c => c.status === "running").length;
   const paused   = campaigns.filter(c => c.status === "paused").length;
@@ -424,6 +443,8 @@ export function GroupBroadcastsPage({
     : campaigns.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.text_template.toLowerCase().includes(search.toLowerCase()));
 
   return (
+    <>
+    <style>{`@keyframes hb-ring { 0% { opacity:.8; transform:scale(1); } 100% { opacity:0; transform:scale(2.4); } }`}</style>
     <div className="tab-content" style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "14px 14px 100px" }}>
 
@@ -479,11 +500,12 @@ export function GroupBroadcastsPage({
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {filtered.map(c => (
-              <GroupCampaignCard key={c.id} campaign={c} onRefresh={load} onEdit={onEdit} />
+              <GroupCampaignCard key={c.id} campaign={c} onRefresh={load} onEdit={onEdit} isActive={activeCampaignIds.has(c.id)} />
             ))}
           </div>
         )}
       </div>
     </div>
+    </>
   );
 }

@@ -284,6 +284,8 @@ export const api = {
   getWorkers: () => get<BroadcastWorker[]>("/workers"),
   getWorkersSummary: () => get<WorkersSummary>("/workers-summary"),
   deleteWorker: (workerId: string) => del(`/workers/${encodeURIComponent(workerId)}`),
+  spawnWorker: (workerId?: string) =>
+    post<{ ok: boolean; worker_id: string; pid: number | null }>("/workers/spawn", { worker_id: workerId }),
   getTasks: (status?: string) => get<Task[]>(`/tasks${status ? `?status=${status}` : ""}`),
   retryTask: (id: number) => post<Task>(`/tasks/${id}/retry`, {}),
   cancelTask: (id: number) => post<Task>(`/tasks/${id}/cancel`, {}),

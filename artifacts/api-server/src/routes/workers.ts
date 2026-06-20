@@ -230,6 +230,51 @@ router.post("/tasks/bulk-cancel", (_req, res) => {
   }
 });
 
+// ── Spawn a new worker subprocess ──────────────────────────────────────────
+
+router.post("/workers/spawn", (req, res) => {
+  try {
+    const db = getDb();
+    // Find highest existing worker number to auto-increment
+    const rows = db.prepare(
+      "SELECT worker_id FROM broadcast_workers ORDER BY started_at DESC"
+    ).all() as { worker_id: string }[];
+    db.close();
+
+    const body = req.body as { worker_id?: string };
+    let workerId = body.worker_id?.trim();
+
+    if (!workerId) {
+      // Auto-generate: find max worker-N number
+      const nums = rows
+        .map((r) => {
+          const m = r.worker_id.match(/^worker-(\d+)$/);
+          return m ? parseInt(m[1]) : 0;
+        })
+        .filter(Boolean);
+      const next = nums.length ? Math.max(...nums) + 1 : 1;
+      workerId = `worker-${next}`;
+    }
+
+    const { spawn } = require("child_process") as typeof import("child_process");
+    const proc = spawn("python", ["worker.py", workerId], {
+      detached: true,
+      stdio:    "inherit",
+      env:      process.env,
+      cwd:      process.cwd(),
+    });
+    proc.unref();
+
+    res.status(201).json({
+      ok:        true,
+      worker_id: workerId,
+      pid:       proc.pid ?? null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 // ── Summary stats ──────────────────────────────────────────────────────────
 
 router.get("/workers-summary", (_req, res) => {
