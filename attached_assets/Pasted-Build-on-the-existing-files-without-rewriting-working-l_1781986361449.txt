@@ -1,0 +1,31 @@
+Build on the existing files without rewriting working logic.
+1. task_queue.py — Atomic account locking
+Replace any plain SELECT + UPDATE account-claim flow with a single atomic operation. Use UPDATE accounts SET locked_by = ?, locked_at = ? WHERE id = ? AND locked_by IS NULL (SQLite) or equivalent, then verify rowcount == 1 before proceeding. Never claim an account with two separate queries.
+Add a release_account(account_id) function that clears locked_by and locked_at.
+Add a recover_stale_locks(timeout_seconds=300) function — on worker startup and on a recurring timer, unlock any account where locked_at is older than the timeout (handles crashed workers that never released their lock).
+Expose get_queue_stats() returning counts of pending, active, locked, and failed tasks for the dashboard.
+2. groupbroadcaster.py — Per-account proxy rotation
+Each account should carry an ordered list of proxy configs (from the database or config). On any ConnectionError, ProxyError, or Telethon/Pyrogram network exception, automatically advance to the next proxy in that account's rotation list.
+Track proxy_index per account in the database. Persist it after each successful switch.
+If all proxies for an account are exhausted, mark the account as status = 'proxy_failed' and release its lock — do not retry indefinitely.
+Add broadcasting flag: set broadcasting = 1 in the DB when a worker begins broadcasting with that account, clear it in a finally block. This prevents a second worker from using the account even if the lock check is race-prone.
+3. worker.py — Health monitoring + auto-restart
+Each worker must write a heartbeat timestamp to the DB (table: worker_heartbeats, columns: worker_id, last_seen, status, tasks_completed, tasks_failed) every 15 seconds using asyncio.create_task.
+Workers should catch all top-level exceptions, log them with the worker ID and traceback, then attempt a graceful restart of their own main loop (up to 3 consecutive crashes before self-marking as dead).
+On clean shutdown (SIGTERM), release all locked accounts held by this worker before exiting.
+4. main.py — Supervisor with worker respawning
+Spawn N workers (configurable via WORKER_COUNT env var, default 3) as asyncio tasks or subprocesses.
+Run a supervisor loop every 30 seconds: read worker_heartbeats; if any worker's last_seen is older than 60 seconds, log a warning and respawn it (cancel the old task if it still exists, create a new one with the same worker ID).
+Limit total respawns per worker to 5 within a rolling 10-minute window before raising a critical alert (log + optional Telegram message to admin).
+On startup, call recover_stale_locks() from task_queue.py before spawning workers.
+5. Mini App (templates/mini_app.html) — Dashboard polish
+Workers panel: Live table showing each worker's ID, status (🟢 active / 🟡 idle / 🔴 dead), last heartbeat age, tasks completed, tasks failed. Poll /api/workers every 10 seconds.
+Campaign panel: Per-campaign progress bar (groups messaged / total groups), current account in use, proxy status, ETA. Pull from /api/campaigns.
+Accounts panel: Table of accounts with columns: phone, status, locked_by, proxy (current), last_used. Color-code rows: green=available, yellow=locked, red=banned/proxy_failed.
+Add a "Recover Stale Locks" button that calls POST /api/admin/recover-locks — useful for manual recovery without a restart.
+All API endpoints should return JSON; the Mini App fetches and renders client-side.
+6. Cross-cutting
+All DB writes that touch account state must go through a single asyncio.Lock() per process to prevent intra-process races (in addition to the DB-level atomic lock for inter-process safety).
+Add structured logging: every log line should include worker_id, account_id (when applicable), task_id, and a UTC timestamp. Use Python's logging with a JSON formatter.
+Add a requirements.txt update if any new packages are introduced (e.g., aiosqlite, python-json-logger).
+Output the full updated content of: task_queue.py, groupbroadcaster.py, worker.py, main.py, and templates/mini_app.html. Add inline comments explaining every non-obvious decision.
