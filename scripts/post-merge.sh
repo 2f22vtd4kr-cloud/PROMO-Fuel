@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Install Python dependencies
+pip install -r requirements.txt --quiet 2>&1 || true
+
 # Install Node.js dependencies
 # Note: preinstall hook in package.json creates .venv for Python
 pnpm install --frozen-lockfile
