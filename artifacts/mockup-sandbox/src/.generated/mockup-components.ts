@@ -40,5 +40,12 @@ export const modules: ModuleMap = {
   "./components/mockups/telegram-miniapp/SessionsScreen.tsx": () => import("../components/mockups/telegram-miniapp/SessionsScreen.tsx"),
   "./components/mockups/telegram-miniapp/WorkersScreen.tsx": () => import("../components/mockups/telegram-miniapp/WorkersScreen.tsx"),
   "./components/mockups/telegram-miniapp/WorkersV2.tsx": () => import("../components/mockups/telegram-miniapp/WorkersV2.tsx"),
-  "./components/mockups/telegram-miniapp/WorkersV3.tsx": () => import("../components/mockups/telegram-miniapp/WorkersV3.tsx")
+  "./components/mockups/telegram-miniapp/WorkersV3.tsx": () => import("../components/mockups/telegram-miniapp/WorkersV3.tsx"),
+  "./components/mockups/video/VideoTemplate.tsx": () => import("../components/mockups/video/VideoTemplate.tsx"),
+  "./components/mockups/video/video_scenes/Scene1.tsx": () => import("../components/mockups/video/video_scenes/Scene1.tsx"),
+  "./components/mockups/video/video_scenes/Scene2.tsx": () => import("../components/mockups/video/video_scenes/Scene2.tsx"),
+  "./components/mockups/video/video_scenes/Scene3.tsx": () => import("../components/mockups/video/video_scenes/Scene3.tsx"),
+  "./components/mockups/video/video_scenes/Scene4.tsx": () => import("../components/mockups/video/video_scenes/Scene4.tsx"),
+  "./components/mockups/video/video_scenes/Scene5.tsx": () => import("../components/mockups/video/video_scenes/Scene5.tsx"),
+  "./components/mockups/video/video_scenes/Scene6.tsx": () => import("../components/mockups/video/video_scenes/Scene6.tsx")
 };
