@@ -85,6 +85,9 @@ if (API_SECRET) {
 
 app.use("/api", router);
 
+// ── Background watchdog: campaign completion + worker crash notifications ──
+startWatchdog();
+
 // ── Serve telegram-miniapp SPA in production ──
 const FRONTEND_DIST = join(process.cwd(), "artifacts", "telegram-miniapp", "dist");
 if (existsSync(FRONTEND_DIST)) {
