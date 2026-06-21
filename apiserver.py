@@ -45,8 +45,9 @@ from typing import Any
 import sqlite3
 
 import aiosqlite
-from fastapi import APIRouter, FastAPI, HTTPException, Query
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Security
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from telethon import TelegramClient
 from telethon.errors import (
@@ -63,6 +64,33 @@ from utils.proxy import parse_proxies, proxy_label, proxy_to_telethon
 from utils.supervisor import get_worker_statuses, reap_dead_workers
 
 logger = logging.getLogger(__name__)
+
+# ── Bearer token auth dependency ───────────────────────────────────────────────
+# Mirrors the Express middleware in app.ts: enforced when API_SECRET is set,
+# open (no auth) in dev mode when the secret is absent.
+
+_http_bearer = HTTPBearer(auto_error=False)
+
+
+def _require_bearer(
+    creds: HTTPAuthorizationCredentials | None = Security(_http_bearer),
+) -> None:
+    """FastAPI dependency — require a valid Bearer token on protected routers.
+
+    Raises HTTP 401 when API_SECRET is set and the supplied token does not match.
+    When API_SECRET is not configured the check is a no-op (development mode),
+    matching the behaviour of the Express Bearer middleware in app.ts.
+    """
+    secret = os.getenv("API_SECRET", "")
+    if not secret:
+        return  # dev mode — open access
+    if creds is None or creds.credentials != secret:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized — valid Bearer token required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
 
 # ── Rotating file handler — prevents apiserver.log from exhausting disk space ─
 os.makedirs("logs", exist_ok=True)
@@ -601,7 +629,11 @@ async def list_auth_sessions() -> dict:
 # Router: /api/metrics  — worker health, queue sizes, account status
 # ═════════════════════════════════════════════════════════════════════════════
 
-metrics_router = APIRouter(prefix="/api/metrics", tags=["metrics"])
+metrics_router = APIRouter(
+    prefix="/api/metrics",
+    tags=["metrics"],
+    dependencies=[Depends(_require_bearer)],
+)
 
 
 @metrics_router.get("/workers")
@@ -698,7 +730,11 @@ async def reap_workers_endpoint(timeout: int = Query(90)) -> dict:
 # Router: /api/campaigns  — manual broadcast triggers
 # ═════════════════════════════════════════════════════════════════════════════
 
-campaigns_router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
+campaigns_router = APIRouter(
+    prefix="/api/campaigns",
+    tags=["campaigns"],
+    dependencies=[Depends(_require_bearer)],
+)
 
 
 class TriggerRequest(BaseModel):
@@ -795,7 +831,11 @@ async def get_campaign_tasks(
 # Router: /api/admin  — maintenance operations
 # ═════════════════════════════════════════════════════════════════════════════
 
-admin_router = APIRouter(prefix="/api/admin", tags=["admin"])
+admin_router = APIRouter(
+    prefix="/api/admin",
+    tags=["admin"],
+    dependencies=[Depends(_require_bearer)],
+)
 
 
 @admin_router.post("/recover-stale-locks")

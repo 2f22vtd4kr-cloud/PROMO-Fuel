@@ -1645,6 +1645,13 @@ def main():
         except Exception as _e:
             logger.warning(f"⚠️  Broadcast scheduler not started: {_e}")
 
+        try:
+            from backup import start_backup_scheduler
+            start_backup_scheduler()
+            logger.info("🗄 Daily backup scheduler started")
+        except Exception as _e:
+            logger.warning(f"⚠️  Backup scheduler not started: {_e}")
+
         # ── Recover stale locks from any crashed workers before spawning new ones ──
         try:
             from task_queue import TaskQueue as _TQ
