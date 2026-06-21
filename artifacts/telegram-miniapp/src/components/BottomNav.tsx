@@ -1,37 +1,50 @@
-import { LayoutGrid, Megaphone, BarChart2, Users2, FolderUp, Radio, Cpu } from "lucide-react";
+import { LayoutGrid, Megaphone, BarChart2, Users2, Radio, Cpu, LayoutDashboard, Key } from "lucide-react";
 import type { Tab } from "../App";
 import { TG } from "../lib/theme";
 import { haptic } from "../lib/haptics";
 
-const ITEMS: { id: Tab; icon: React.ElementType; label: string; color: string; glow: string }[] = [
-  { id: "home",      icon: LayoutGrid, label: "Главная",   color: "#95c4f5", glow: "rgba(107,168,229,0.55)" },
-  { id: "campaigns", icon: Megaphone,  label: "Рассылки",  color: "#2de897", glow: "rgba(45,232,151,0.55)" },
-  { id: "groups",    icon: Radio,      label: "Группы",    color: "#c4aeff", glow: "rgba(196,174,255,0.55)" },
-  { id: "analytics", icon: BarChart2,  label: "Аналитика", color: "#ffc946", glow: "rgba(255,201,70,0.55)"  },
-  { id: "audience",  icon: Users2,     label: "Аудитория", color: "#ff9f40", glow: "rgba(255,159,64,0.55)"  },
-  { id: "upload",    icon: FolderUp,   label: "Файлы",     color: "#ff7eb3", glow: "rgba(255,126,179,0.55)" },
-  { id: "workers",   icon: Cpu,        label: "Воркеры",   color: "#6ba8e5", glow: "rgba(107,168,229,0.55)" },
+type NavItem =
+  | { id: Tab;          kind: "tab";    icon: React.ElementType; label: string; color: string; glow: string }
+  | { id: string;       kind: "action"; icon: React.ElementType; label: string; color: string; glow: string };
+
+const ITEMS: NavItem[] = [
+  { id: "dashboard", kind: "tab",    icon: LayoutDashboard, label: "Дашборд",  color: "#22d3ee", glow: "rgba(34,211,238,0.55)"  },
+  { id: "home",      kind: "tab",    icon: LayoutGrid,      label: "Главная",  color: "#95c4f5", glow: "rgba(107,168,229,0.55)" },
+  { id: "campaigns", kind: "tab",    icon: Megaphone,       label: "Рассылки", color: "#2de897", glow: "rgba(45,232,151,0.55)"  },
+  { id: "groups",    kind: "tab",    icon: Radio,           label: "Группы",   color: "#c4aeff", glow: "rgba(196,174,255,0.55)" },
+  { id: "analytics", kind: "tab",    icon: BarChart2,       label: "Стат.",    color: "#ffc946", glow: "rgba(255,201,70,0.55)"  },
+  { id: "audience",  kind: "tab",    icon: Users2,          label: "Аудитория",color: "#ff9f40", glow: "rgba(255,159,64,0.55)"  },
+  { id: "workers",   kind: "tab",    icon: Cpu,             label: "Воркеры",  color: "#6ba8e5", glow: "rgba(107,168,229,0.55)" },
+  { id: "account-login", kind: "action", icon: Key,         label: "Auth",     color: "#ff7eb3", glow: "rgba(255,126,179,0.55)" },
 ];
 
-export function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => void }) {
+export function BottomNav({
+  active,
+  onNav,
+  onNavigate,
+}: {
+  active: Tab;
+  onNav: (t: Tab) => void;
+  onNavigate?: (t: string) => void;
+}) {
   return (
     <div style={{
       paddingBottom: "calc(env(safe-area-inset-bottom, 8px) + 4px)",
-      paddingLeft: 8, paddingRight: 8, paddingTop: 6,
+      paddingLeft: 6, paddingRight: 6, paddingTop: 5,
       position: "relative",
     }}>
-      {/* Floating glass pill container */}
+      {/* Floating glass pill */}
       <div style={{
         display: "flex",
         background: "linear-gradient(145deg,rgba(255,255,255,0.10) 0%,rgba(255,255,255,0.04) 60%,rgba(255,255,255,0.08) 100%)",
         backdropFilter: "blur(48px) saturate(190%)",
         WebkitBackdropFilter: "blur(48px) saturate(190%)",
-        borderRadius: 28,
+        borderRadius: 26,
         border: "1px solid rgba(255,255,255,0.17)",
         boxShadow: "0 2px 0 rgba(255,255,255,0.14) inset, 0 -1px 0 rgba(0,0,0,0.15) inset, 0 16px 48px rgba(0,0,0,0.42), 0 4px 12px rgba(0,0,0,0.22)",
         position: "relative",
         overflow: "hidden",
-        padding: "4px 2px",
+        padding: "3px 2px",
       }}>
         {/* Top specular highlight */}
         <div style={{
@@ -46,24 +59,32 @@ export function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => v
           pointerEvents: "none", zIndex: 1,
         }} />
 
-        {ITEMS.map(({ id, icon: Icon, label, color, glow }) => {
-          const isActive = active === id;
+        {ITEMS.map(({ id, kind, icon: Icon, label, color, glow }) => {
+          const isActive = kind === "tab" && active === (id as Tab);
+
+          function handleClick() {
+            if (kind === "action") {
+              haptic.medium();
+              onNavigate?.(id);
+            } else {
+              if (!isActive) haptic.select();
+              else haptic.light();
+              onNav(id as Tab);
+            }
+          }
+
           return (
             <button
               key={id}
-              onClick={() => {
-                if (!isActive) haptic.select();
-                else haptic.light();
-                onNav(id);
-              }}
+              onClick={handleClick}
               style={{
                 flex: 1, display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center",
-                gap: 2, padding: "8px 1px 7px",
+                gap: 1, padding: "7px 1px 6px",
                 border: "none", background: "none",
                 position: "relative", zIndex: 2,
                 cursor: "pointer",
-                minHeight: 50,
+                minHeight: 48,
               }}
             >
               {/* Active bubble */}
@@ -71,7 +92,7 @@ export function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => v
                 <div style={{
                   position: "absolute",
                   inset: "2px 2px",
-                  borderRadius: 20,
+                  borderRadius: 18,
                   background: `linear-gradient(145deg,${color}22 0%,${color}10 100%)`,
                   border: `1px solid ${color}35`,
                   backdropFilter: "blur(12px)",
@@ -81,24 +102,34 @@ export function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => v
                 }} />
               )}
 
+              {/* Action pulse ring for auth button */}
+              {kind === "action" && (
+                <div style={{
+                  position: "absolute", inset: "2px 2px",
+                  borderRadius: 18,
+                  border: `1px solid ${color}20`,
+                  animation: "authPulse 3s ease-in-out infinite",
+                }} />
+              )}
+
               {/* Icon */}
               <div style={{ position: "relative", zIndex: 1 }}>
                 <Icon
-                  size={isActive ? 19 : 17}
-                  color={isActive ? color : "rgba(160,190,230,0.72)"}
-                  strokeWidth={isActive ? 2.4 : 1.6}
+                  size={isActive ? 17 : 15}
+                  color={isActive ? color : kind === "action" ? `${color}90` : "rgba(160,190,230,0.72)"}
+                  strokeWidth={isActive ? 2.4 : kind === "action" ? 2.0 : 1.6}
                   style={{
                     transition: "color 0.22s, stroke-width 0.22s, filter 0.22s",
-                    filter: isActive ? `drop-shadow(0 0 8px ${glow})` : "none",
+                    filter: isActive ? `drop-shadow(0 0 8px ${glow})` : kind === "action" ? `drop-shadow(0 0 4px ${color}60)` : "none",
                   }}
                 />
               </div>
 
               {/* Label */}
               <span style={{
-                fontSize: 8, fontWeight: isActive ? 800 : 400,
+                fontSize: 7, fontWeight: isActive ? 800 : kind === "action" ? 600 : 400,
                 letterSpacing: "0.02em",
-                color: isActive ? color : "rgba(160,190,230,0.65)",
+                color: isActive ? color : kind === "action" ? `${color}90` : "rgba(160,190,230,0.65)",
                 textTransform: "uppercase",
                 transition: "color 0.22s",
                 position: "relative", zIndex: 1,
@@ -109,7 +140,7 @@ export function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => v
               {/* Active dot */}
               {isActive && (
                 <div style={{
-                  position: "absolute", bottom: 3, left: "50%",
+                  position: "absolute", bottom: 2, left: "50%",
                   transform: "translateX(-50%)",
                   width: 3, height: 3, borderRadius: "50%",
                   background: color,
@@ -120,6 +151,17 @@ export function BottomNav({ active, onNav }: { active: Tab; onNav: (t: Tab) => v
           );
         })}
       </div>
+
+      <style>{`
+        @keyframes navPop {
+          from { opacity: 0; transform: scale(0.85); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+        @keyframes authPulse {
+          0%, 100% { opacity: 0.3; transform: scale(1); }
+          50%       { opacity: 0.7; transform: scale(1.04); }
+        }
+      `}</style>
     </div>
   );
 }

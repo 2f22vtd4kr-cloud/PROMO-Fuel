@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_URL ?? "";
+const API_BASE     = import.meta.env.VITE_API_URL      ?? "";
+const CONTROL_BASE = import.meta.env.VITE_CONTROL_API_URL ?? "";
 
 function twaHeaders(): Record<string, string> {
   const initData = (window as unknown as { Telegram?: { WebApp?: { initData?: string } } }).Telegram?.WebApp?.initData ?? "";
@@ -15,8 +16,7 @@ async function get<T>(path: string): Promise<T> {
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
   const r = await fetch(`${API_BASE}/api/twa${path}`, {
-    method: "POST",
-    headers: twaHeaders(),
+    method: "POST", headers: twaHeaders(),
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -25,8 +25,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 
 async function put<T>(path: string, body?: unknown): Promise<T> {
   const r = await fetch(`${API_BASE}/api/twa${path}`, {
-    method: "PUT",
-    headers: twaHeaders(),
+    method: "PUT", headers: twaHeaders(),
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -37,7 +36,32 @@ async function del(path: string): Promise<void> {
   await fetch(`${API_BASE}/api/twa${path}`, { method: "DELETE", headers: twaHeaders() });
 }
 
-// ── Types ────────────────────────────────────────────────────────────────────
+async function controlGet<T>(path: string): Promise<T> {
+  const r = await fetch(`${CONTROL_BASE}${path}`, { headers: { "Content-Type": "application/json" } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+async function controlPost<T>(path: string, body?: unknown): Promise<T> {
+  const r = await fetch(`${CONTROL_BASE}${path}`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!r.ok) {
+    let msg = `HTTP ${r.status}`;
+    try { const j = await r.json(); msg = j.detail ?? j.error ?? msg; } catch {}
+    throw new Error(msg);
+  }
+  return r.json();
+}
+
+async function controlDelete<T>(path: string): Promise<T> {
+  const r = await fetch(`${CONTROL_BASE}${path}`, { method: "DELETE", headers: { "Content-Type": "application/json" } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+// ── Domain types ──────────────────────────────────────────────────────────────
 
 export interface Campaign {
   id: number;
@@ -159,13 +183,9 @@ export interface SenderAccount {
   failed_total: number;
   last_used_at?: string;
   last_error?: string;
-  /** Worker currently holding this account's lock (null = free) */
   locked_by?: string | null;
-  /** ISO-8601 timestamp when the lock was acquired */
   locked_at?: string | null;
-  /** Persisted proxy rotation index */
   proxy_index?: number;
-  /** 1 while actively broadcasting */
   broadcasting?: number;
 }
 
@@ -274,87 +294,200 @@ export interface WorkersSummary {
   tasks_dead: number;
 }
 
-// ── API ───────────────────────────────────────────────────────────────────────
+// ── Control-plane types (apiserver.py / FastAPI) ───────────────────────────────
+
+export interface AuthSession {
+  phone: string;
+  account_id: number;
+  step: string;
+  awaiting_2fa: boolean;
+  started_at: string;
+  expires_in: number;
+}
+
+export interface QueueStats {
+  pending: number;
+  active: number;
+  done: number;
+  failed: number;
+  dead: number;
+  cancelled: number;
+  locked_accounts: number;
+  broadcasting_accounts: number;
+}
+
+export interface SystemSnapshot {
+  queue: QueueStats;
+  workers: BroadcastWorker[];
+  accounts: SenderAccount[];
+  active_auth_sessions: AuthSession[];
+  worker_count: number;
+  timestamp: string;
+}
+
+export interface TriggerResult {
+  ok: boolean;
+  task_id: number;
+  campaign_id: number;
+  campaign_name: string;
+}
+
+export interface AdminReleaseResult {
+  ok: boolean;
+  worker_id: string;
+  accounts: number;
+  tasks: number;
+}
+
+export interface StaleLocksResult {
+  released: number;
+  timeout_seconds: number;
+}
+
+export interface SendCodeResult {
+  phone_code_hash: string;
+  phone: string;
+  session_started: boolean;
+}
+
+export interface SignInResult {
+  ok: boolean;
+  needs_2fa?: boolean;
+  display_name?: string;
+  session_file?: string;
+  error?: string;
+}
+
+// ── Express TWA API ───────────────────────────────────────────────────────────
 
 export const api = {
-  // Campaigns
   getCampaigns: (status?: string) => get<Campaign[]>(`/campaigns${status ? `?status=${status}` : ""}`),
   getCampaign:  (id: number) => get<Campaign>(`/campaigns/${id}`),
   createCampaign: (data: { name: string; text_template: string; scheduled_at?: string }) =>
     post<Campaign>("/campaigns", data),
-  updateCampaign: (id: number, data: Partial<Campaign>) => put<Campaign>(`/campaigns/${id}`, data),
-  deleteCampaign: (id: number) => del(`/campaigns/${id}`),
-  duplicateCampaign: (id: number) => post<Campaign>(`/campaigns/${id}/duplicate`),
-  actionCampaign: (id: number, action: string) => post(`/campaigns/${id}/action`, { action }),
-  getCampaignLogs: (id: number) => get<SendLog[]>(`/campaigns/${id}/logs`),
+  updateCampaign:   (id: number, data: Partial<Campaign>) => put<Campaign>(`/campaigns/${id}`, data),
+  deleteCampaign:   (id: number) => del(`/campaigns/${id}`),
+  duplicateCampaign:(id: number) => post<Campaign>(`/campaigns/${id}/duplicate`),
+  actionCampaign:   (id: number, action: string) => post(`/campaigns/${id}/action`, { action }),
+  getCampaignLogs:  (id: number) => get<SendLog[]>(`/campaigns/${id}/logs`),
   getCampaignBreakdown: (id: number) => get<AccountBreakdown[]>(`/campaigns/${id}/account-breakdown`),
 
-  // Group campaigns
-  getGroupCampaigns: () => get<GroupCampaign[]>("/group-campaigns"),
-  getGroupCampaign:  (id: number) => get<GroupCampaign>(`/group-campaigns/${id}`),
-  createGroupCampaign: (data: Partial<GroupCampaign>) => post<GroupCampaign>("/group-campaigns", data),
-  updateGroupCampaign: (id: number, data: Partial<GroupCampaign>) => put<GroupCampaign>(`/group-campaigns/${id}`, data),
-  deleteGroupCampaign: (id: number) => del(`/group-campaigns/${id}`),
-  duplicateGroupCampaign: (id: number) => post<GroupCampaign>(`/group-campaigns/${id}/duplicate`),
-  actionGroupCampaign: (id: number, action: string) => post(`/group-campaigns/${id}/action`, { action }),
+  getGroupCampaigns:    () => get<GroupCampaign[]>("/group-campaigns"),
+  getGroupCampaign:     (id: number) => get<GroupCampaign>(`/group-campaigns/${id}`),
+  createGroupCampaign:  (data: Partial<GroupCampaign>) => post<GroupCampaign>("/group-campaigns", data),
+  updateGroupCampaign:  (id: number, data: Partial<GroupCampaign>) => put<GroupCampaign>(`/group-campaigns/${id}`, data),
+  deleteGroupCampaign:  (id: number) => del(`/group-campaigns/${id}`),
+  duplicateGroupCampaign:(id: number) => post<GroupCampaign>(`/group-campaigns/${id}/duplicate`),
+  actionGroupCampaign:  (id: number, action: string) => post(`/group-campaigns/${id}/action`, { action }),
   getGroupCampaignLogs: (id: number) => get<GroupCampaignLog[]>(`/group-campaigns/${id}/logs`),
   sendNowGroupCampaign: (id: number) => post<{ ok: boolean; task: unknown }>(`/group-campaigns/${id}/send-now`, {}),
-  testSendGroupCampaign: (id: number, groupId: string) => post<{ ok: boolean; task: unknown }>(`/group-campaigns/${id}/test-send`, { group_id: groupId }),
-  getGroupCampaignStats: (id: number) => get<{ by_group: GroupSendStat[]; daily: DailyStat[] }>(`/group-campaigns/${id}/stats`),
-  retryFailedSends: (windowHours?: number) =>
+  testSendGroupCampaign:(id: number, groupId: string) => post<{ ok: boolean; task: unknown }>(`/group-campaigns/${id}/test-send`, { group_id: groupId }),
+  getGroupCampaignStats:(id: number) => get<{ by_group: GroupSendStat[]; daily: DailyStat[] }>(`/group-campaigns/${id}/stats`),
+  retryFailedSends:     (windowHours?: number) =>
     post<{ ok: boolean; tasks_created: number; campaigns: number }>("/group-campaigns/retry-failed-sends", { window_hours: windowHours ?? 24 }),
   bulkGroupCampaignAction: (action: "pause" | "resume" | "stop", ids?: number[]) =>
     post<{ ok: boolean; updated: number; campaigns: GroupCampaign[] }>("/group-campaigns/bulk-action", { action, ids }),
 
-  // Accounts
-  getAccounts: () => get<SenderAccount[]>("/accounts"),
-  getAccount:  (id: number) => get<SenderAccount>(`/accounts/${id}`),
-  patchAccount: (id: number, data: Partial<SenderAccount>) => put<SenderAccount>(`/accounts/${id}`, data),
-  createAccount: (data: { phone: string; label?: string; username?: string; proxy?: string; proxies?: string; api_id?: number; api_hash?: string }) =>
+  getAccounts:    () => get<SenderAccount[]>("/accounts"),
+  getAccount:     (id: number) => get<SenderAccount>(`/accounts/${id}`),
+  patchAccount:   (id: number, data: Partial<SenderAccount>) => put<SenderAccount>(`/accounts/${id}`, data),
+  createAccount:  (data: { phone: string; label?: string; username?: string; proxy?: string; proxies?: string; api_id?: number; api_hash?: string }) =>
     post<SenderAccount>("/accounts", data),
-  deleteAccount: (id: number) => del(`/accounts/${id}`),
-  clearFlood: (id: number) => post<SenderAccount>(`/accounts/${id}/clear-flood`, {}),
+  deleteAccount:  (id: number) => del(`/accounts/${id}`),
+  clearFlood:     (id: number) => post<SenderAccount>(`/accounts/${id}/clear-flood`, {}),
   resetDailyCounts: () => post<{ ok: boolean }>("/accounts/reset-daily", {}),
   getAudienceTags:  () => get<string[]>("/audience/tags"),
   getAudienceCount: (tag?: string) => get<{ count: number; tag: string | null }>(`/audience/count${tag ? `?tag=${encodeURIComponent(tag)}` : ""}`),
-  startAuth: (id: number) => post<{ phone_code_hash?: string; already_authorized?: boolean; display_name?: string; session_file?: string; error?: string }>(`/accounts/${id}/start-auth`, {}),
-  confirmAuth: (id: number, code: string, phone_code_hash: string) =>
+  startAuth:    (id: number) => post<{ phone_code_hash?: string; already_authorized?: boolean; display_name?: string; session_file?: string; error?: string }>(`/accounts/${id}/start-auth`, {}),
+  confirmAuth:  (id: number, code: string, phone_code_hash: string) =>
     post<{ ok?: boolean; needs_2fa?: boolean; display_name?: string; session_file?: string; error?: string }>(`/accounts/${id}/confirm-auth`, { code, phone_code_hash }),
-  confirm2fa: (id: number, password: string) =>
+  confirm2fa:   (id: number, password: string) =>
     post<{ ok?: boolean; display_name?: string; session_file?: string; error?: string }>(`/accounts/${id}/confirm-2fa`, { password }),
 
-  // Account groups
-  getAccountGroups: (accountId: number) => get<AccountGroup[]>(`/accounts/${accountId}/groups`),
+  getAccountGroups:     (accountId: number) => get<AccountGroup[]>(`/accounts/${accountId}/groups`),
   refreshAccountGroups: (accountId: number) =>
     post<{ ok: boolean; count: number; groups: AccountGroup[] }>(`/accounts/${accountId}/groups/refresh`, {}),
   getBannedGroups: (accountId: number) => get<BannedGroup[]>(`/accounts/${accountId}/banned-groups`),
-  liftGroupBan: (accountId: number, groupId: string) =>
+  liftGroupBan:    (accountId: number, groupId: string) =>
     del(`/accounts/${accountId}/banned-groups/${encodeURIComponent(groupId)}`),
 
-  // Workers / task queue
-  getWorkers: () => get<BroadcastWorker[]>("/workers"),
-  getWorkersSummary: () => get<WorkersSummary>("/workers-summary"),
-  getWorkerHeartbeats: () => get<WorkerHeartbeat[]>("/worker-heartbeats"),
-  getWorkerCrashHistory: () => get<WorkerCrashEvent[]>("/workers/crash-history"),
-  deleteWorker: (workerId: string) => del(`/workers/${encodeURIComponent(workerId)}`),
-  spawnWorker: (workerId?: string) =>
+  getWorkers:           () => get<BroadcastWorker[]>("/workers"),
+  getWorkersSummary:    () => get<WorkersSummary>("/workers-summary"),
+  getWorkerHeartbeats:  () => get<WorkerHeartbeat[]>("/worker-heartbeats"),
+  getWorkerCrashHistory:() => get<WorkerCrashEvent[]>("/workers/crash-history"),
+  deleteWorker:         (workerId: string) => del(`/workers/${encodeURIComponent(workerId)}`),
+  spawnWorker:          (workerId?: string) =>
     post<{ ok: boolean; worker_id: string; pid: number | null }>("/workers/spawn", { worker_id: workerId }),
-  recoverLocks: (timeoutSeconds?: number) =>
+  recoverLocks:         (timeoutSeconds?: number) =>
     post<RecoverLocksResult>("/workers/recover-locks", { timeout_seconds: timeoutSeconds ?? 300 }),
-  getTasks: (status?: string) => get<Task[]>(`/tasks${status ? `?status=${status}` : ""}`),
-  retryTask: (id: number) => post<Task>(`/tasks/${id}/retry`, {}),
-  cancelTask: (id: number) => post<Task>(`/tasks/${id}/cancel`, {}),
+  getTasks:       (status?: string) => get<Task[]>(`/tasks${status ? `?status=${status}` : ""}`),
+  retryTask:      (id: number) => post<Task>(`/tasks/${id}/retry`, {}),
+  cancelTask:     (id: number) => post<Task>(`/tasks/${id}/cancel`, {}),
   bulkRetryTasks: () => post<{ updated: number }>("/tasks/bulk-retry", {}),
-  bulkCancelTasks: () => post<{ updated: number }>("/tasks/bulk-cancel", {}),
-  pushTask: (campaignId: number, payload?: Record<string, unknown>) =>
+  bulkCancelTasks:() => post<{ updated: number }>("/tasks/bulk-cancel", {}),
+  pushTask:       (campaignId: number, payload?: Record<string, unknown>) =>
     post<Task>("/tasks", { campaign_id: campaignId, payload }),
 
-  getCampaignSparklines: () => get<Record<number, number[]>>("/stats/campaign-sparklines"),
-  getAccountSendsToday: () => get<{ account_id: string; ok: number; failed: number }[]>("/accounts/sends-today"),
+  getCampaignSparklines:  () => get<Record<number, number[]>>("/stats/campaign-sparklines"),
+  getAccountSendsToday:   () => get<{ account_id: string; ok: number; failed: number }[]>("/accounts/sends-today"),
 
-  // Analytics / users
   getOverview: () => get<AnalyticsOverview>("/analytics/summary"),
   getUsers:    () => get<User[]>("/users"),
   importUsers: (users: { chat_id: number; username?: string; first_name?: string; tags?: string }[]) =>
     post<{ ok: boolean; imported: number; skipped: number; total: number }>("/users/import", { users }),
+};
+
+// ── FastAPI Control-Plane API (apiserver.py) ───────────────────────────────────
+
+export const controlApi = {
+  // Auth — interactive Telethon login pipeline
+  sendCode: (account_id: number) =>
+    controlPost<SendCodeResult>("/api/auth/send-code", { account_id }),
+  signIn: (phone: string, code: string, phone_code_hash: string) =>
+    controlPost<SignInResult>("/api/auth/sign-in", { phone, code, phone_code_hash }),
+  signIn2fa: (phone: string, password: string) =>
+    controlPost<SignInResult>("/api/auth/sign-in-2fa", { phone, password }),
+  cancelAuth: (phone: string) =>
+    controlDelete<{ ok: boolean; phone: string }>(`/api/auth/${encodeURIComponent(phone)}`),
+  listAuthSessions: () =>
+    controlGet<{ sessions: AuthSession[] }>("/api/auth/sessions"),
+
+  // Metrics
+  getControlWorkers: () =>
+    controlGet<{ workers: BroadcastWorker[]; count: number }>("/api/metrics/workers"),
+  getQueueStats: () =>
+    controlGet<{ queue: QueueStats }>("/api/metrics/queue"),
+  getControlAccounts: () =>
+    controlGet<{ accounts: SenderAccount[]; count: number }>("/api/metrics/accounts"),
+  getControlTasks: (params?: { status?: string; campaign_id?: number; worker_id?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.status)      qs.set("status",      params.status);
+    if (params?.campaign_id) qs.set("campaign_id", String(params.campaign_id));
+    if (params?.worker_id)   qs.set("worker_id",   params.worker_id);
+    const q = qs.toString();
+    return controlGet<{ tasks: Task[]; count: number }>(`/api/metrics/tasks${q ? `?${q}` : ""}`);
+  },
+  reapWorkers: () =>
+    controlPost<{ reaped_workers: number; released_stale_locks: number }>("/api/metrics/reap", {}),
+
+  // Campaign triggers
+  triggerCampaign: (campaignId: number, opts?: { priority?: number; scheduled_at?: string }) =>
+    controlPost<TriggerResult>(`/api/campaigns/${campaignId}/trigger`, opts ?? {}),
+  cancelCampaignTasks: (campaignId: number) =>
+    controlPost<{ ok: boolean; cancelled: number; campaign_id: number }>(`/api/campaigns/${campaignId}/cancel-tasks`, {}),
+  getCampaignControlTasks: (campaignId: number) =>
+    controlGet<{ tasks: Task[]; count: number; campaign_id: number }>(`/api/campaigns/${campaignId}/tasks`),
+
+  // Admin
+  recoverStaleLocks: (timeoutSeconds?: number) =>
+    controlPost<StaleLocksResult>("/api/admin/recover-stale-locks",
+      timeoutSeconds !== undefined ? { timeout_seconds: timeoutSeconds } : {}),
+  releaseWorker: (workerId: string) =>
+    controlPost<AdminReleaseResult>(`/api/admin/release-worker/${encodeURIComponent(workerId)}`, {}),
+  cancelControlTask: (taskId: number) =>
+    controlPost<{ ok: boolean; task_id: number }>(`/api/admin/tasks/${taskId}/cancel`, {}),
+  getSnapshot: () =>
+    controlGet<SystemSnapshot>("/api/admin/snapshot"),
+  healthCheck: () =>
+    controlGet<{ ok: boolean; uptime_seconds: number; db: string }>("/health"),
 };

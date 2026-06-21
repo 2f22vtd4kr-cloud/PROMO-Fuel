@@ -1,19 +1,21 @@
 import { useState } from "react";
-import { HomePage }              from "./pages/Home";
-import { CampaignsPage }         from "./pages/Campaigns";
-import { EditorPage }            from "./pages/Editor";
-import { AnalyticsPage }         from "./pages/Analytics";
-import { AudiencePage }          from "./pages/Audience";
-import { UploadPage }            from "./pages/Upload";
-import { GroupBroadcastsPage }   from "./pages/GroupBroadcasts";
+import { HomePage }                 from "./pages/Home";
+import { CampaignsPage }            from "./pages/Campaigns";
+import { EditorPage }               from "./pages/Editor";
+import { AnalyticsPage }            from "./pages/Analytics";
+import { AudiencePage }             from "./pages/Audience";
+import { UploadPage }               from "./pages/Upload";
+import { GroupBroadcastsPage }      from "./pages/GroupBroadcasts";
 import { GroupBroadcastCreatePage } from "./pages/GroupBroadcastCreate";
-import { WorkersPage }           from "./pages/Workers";
-import { AccountsPage }          from "./pages/Accounts";
-import { BottomNav }             from "./components/BottomNav";
-import { ConsumerApp }           from "./ConsumerApp";
-import { getOwnerRole }          from "./lib/twa";
+import { WorkersPage }              from "./pages/Workers";
+import { AccountsPage }             from "./pages/Accounts";
+import { DashboardPage }            from "./pages/Dashboard";
+import { AccountLoginPage }         from "./pages/AccountLogin";
+import { BottomNav }                from "./components/BottomNav";
+import { ConsumerApp }              from "./ConsumerApp";
+import { getOwnerRole }             from "./lib/twa";
 
-export type Tab = "home" | "campaigns" | "analytics" | "audience" | "upload" | "groups" | "workers";
+export type Tab = "home" | "campaigns" | "analytics" | "audience" | "upload" | "groups" | "workers" | "dashboard";
 
 export function App() {
   const role = getOwnerRole();
@@ -22,12 +24,13 @@ export function App() {
 }
 
 function OwnerApp() {
-  const [tab,             setTab]            = useState<Tab>("home");
-  const [editCampaignId,  setEditId]         = useState<number | null>(null);
-  const [showEditor,      setShowEditor]     = useState(false);
-  const [editGroupId,     setEditGroupId]    = useState<number | null>(null);
-  const [showGroupEditor, setShowGroupEditor] = useState(false);
-  const [showAccounts,    setShowAccounts]   = useState(false);
+  const [tab,              setTab]             = useState<Tab>("home");
+  const [editCampaignId,   setEditId]          = useState<number | null>(null);
+  const [showEditor,       setShowEditor]      = useState(false);
+  const [editGroupId,      setEditGroupId]     = useState<number | null>(null);
+  const [showGroupEditor,  setShowGroupEditor] = useState(false);
+  const [showAccounts,     setShowAccounts]    = useState(false);
+  const [showAccountLogin, setShowAccountLogin]= useState(false);
 
   function openEditor(id?: number) {
     setEditId(id ?? null);
@@ -48,12 +51,12 @@ function OwnerApp() {
   }
 
   function handleNavigate(t: string) {
-    if (t === "accounts") {
-      setShowAccounts(true);
-    } else {
-      setTab(t as Tab);
-    }
+    if (t === "accounts")     { setShowAccounts(true);     return; }
+    if (t === "account-login"){ setShowAccountLogin(true); return; }
+    setTab(t as Tab);
   }
+
+  const anyOverlay = showEditor || showGroupEditor || showAccounts || showAccountLogin;
 
   return (
     <div style={{
@@ -66,16 +69,18 @@ function OwnerApp() {
       <MeshBackground />
 
       <div style={{ flex: 1, overflow: "hidden", position: "relative", zIndex: 1 }}>
-        {tab === "home"      && <HomePage      onNewCampaign={() => openEditor()} onViewCampaigns={() => setTab("campaigns")} onNavigate={handleNavigate} />}
+        {tab === "home"      && <HomePage onNewCampaign={() => openEditor()} onViewCampaigns={() => setTab("campaigns")} onNavigate={handleNavigate} />}
         {tab === "campaigns" && <CampaignsPage onEdit={openEditor} />}
         {tab === "analytics" && <AnalyticsPage />}
         {tab === "audience"  && <AudiencePage />}
         {tab === "upload"    && <UploadPage />}
         {tab === "groups"    && <GroupBroadcastsPage onNew={openGroupEditor} onEdit={openGroupEditor} />}
         {tab === "workers"   && <WorkersPage />}
+        {tab === "dashboard" && <DashboardPage />}
       </div>
 
-      {/* Overlays — highest z-index stack */}
+      {/* ── Overlays — highest z-index stack ──────────────────────── */}
+
       {showEditor && (
         <div style={{ position: "absolute", inset: 0, zIndex: 50 }}>
           <EditorPage campaignId={editCampaignId} onDone={closeEditor} />
@@ -94,9 +99,16 @@ function OwnerApp() {
         </div>
       )}
 
-      {!showEditor && !showGroupEditor && !showAccounts && (
+      {showAccountLogin && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 50, background: "#07090f" }}>
+          <AccountLoginPage onClose={() => setShowAccountLogin(false)} />
+        </div>
+      )}
+
+      {/* ── Bottom nav — hidden when overlay is open ──────────────── */}
+      {!anyOverlay && (
         <div style={{ position: "relative", zIndex: 2 }}>
-          <BottomNav active={tab} onNav={setTab} />
+          <BottomNav active={tab} onNav={setTab} onNavigate={handleNavigate} />
         </div>
       )}
     </div>
