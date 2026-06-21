@@ -64,6 +64,7 @@ function OwnerApp() {
   const [showAccounts,     setShowAccounts]    = useState(false);
   const [showAccountLogin, setShowAccountLogin]= useState(false);
   const [showManual,       setShowManual]      = useState(false);
+  const [showVideo,        setShowVideo]       = useState(false);
 
   function openEditor(id?: number) {
     setEditId(id ?? null);
@@ -90,7 +91,7 @@ function OwnerApp() {
     setTab(t as Tab);
   }
 
-  const anyOverlay = showEditor || showGroupEditor || showAccounts || showAccountLogin || showManual;
+  const anyOverlay = showEditor || showGroupEditor || showAccounts || showAccountLogin || showManual || showVideo;
 
   return (
     <div style={{
@@ -103,7 +104,7 @@ function OwnerApp() {
       <MeshBackground />
 
       <div style={{ flex: 1, overflow: "hidden", position: "relative", zIndex: 1 }}>
-        {tab === "home"      && <HomePage onNewCampaign={() => openEditor()} onViewCampaigns={() => setTab("campaigns")} onNavigate={handleNavigate} />}
+        {tab === "home"      && <HomePage onNewCampaign={() => openEditor()} onViewCampaigns={() => setTab("campaigns")} onNavigate={handleNavigate} onWatchPitch={() => setShowVideo(true)} />}
         {tab === "campaigns" && <CampaignsPage onEdit={openEditor} />}
         {tab === "analytics" && <AnalyticsPage />}
         {tab === "audience"  && <AudiencePage />}
@@ -141,6 +142,24 @@ function OwnerApp() {
 
       {showManual && (
         <ManualPage onClose={() => setShowManual(false)} />
+      )}
+
+      {showVideo && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 60, background: "#000" }}>
+          <button
+            onClick={() => setShowVideo(false)}
+            style={{
+              position: "absolute", top: 16, right: 16, zIndex: 61,
+              width: 36, height: 36, borderRadius: "50%",
+              background: "rgba(255,255,255,0.15)",
+              border: "1px solid rgba(255,255,255,0.25)",
+              color: "#fff", fontSize: 18, lineHeight: 1,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", backdropFilter: "blur(8px)",
+            }}
+          >×</button>
+          <VideoPlayer />
+        </div>
       )}
 
       {/* ── Top-right controls: lang switcher + help ───────────────── */}
