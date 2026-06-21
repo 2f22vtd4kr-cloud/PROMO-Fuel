@@ -966,6 +966,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@admin_only
 async def workers_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show broadcast workers health summary."""
     try:
@@ -1008,6 +1009,7 @@ async def workers_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text(f"❌ Ошибка: {e}")
 
 
+@admin_only
 async def summary_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send daily stats digest on demand via /summary."""
     import aiosqlite
@@ -1103,6 +1105,7 @@ async def summary_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text(f"❌ Ошибка: {exc}")
 
 
+@admin_only
 async def weekly_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a day-by-day breakdown of the last 7 days via /weeklyreport."""
     import aiosqlite
@@ -1149,6 +1152,7 @@ async def weekly_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text(f"❌ Ошибка: {exc}")
 
 
+@admin_only
 async def bot_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show all available bot commands."""
     text = (
@@ -1258,6 +1262,7 @@ async def top_campaigns(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text(f"❌ Ошибка: {e}")
 
 
+@admin_only
 async def accounts_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show sender accounts health summary via /accounts."""
     import aiosqlite
