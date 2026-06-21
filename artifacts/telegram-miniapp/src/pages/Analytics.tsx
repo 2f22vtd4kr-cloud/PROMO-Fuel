@@ -277,12 +277,6 @@ export function AnalyticsPage() {
           <MiniAreaChart data={trend} color1="#6ba8e5" color2={TG.green} />
         </GlassCard>
 
-        {/* Fuel mix pie */}
-        <GlassCard style={{ padding:"14px" }}>
-          <div style={{ fontSize:12,fontWeight:700,color:TG.textSecondary,marginBottom:12 }}>Топливный микс</div>
-          <DonutChart data={FUEL_MIX} />
-        </GlassCard>
-
         {/* Bar chart */}
         <GlassCard style={{ padding:"14px 14px 10px" }}>
           <div style={{ fontSize:12,fontWeight:700,color:TG.textSecondary,marginBottom:8 }}>Отправки по дням</div>

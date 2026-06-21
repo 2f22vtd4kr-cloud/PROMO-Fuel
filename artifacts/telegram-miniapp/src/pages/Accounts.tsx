@@ -530,8 +530,18 @@ export function AccountsPage({ onClose }: { onClose?: () => void }) {
   const totalSent = accounts.reduce((s, a) => s + (a.sent_today ?? 0), 0);
 
   return (
+    <div style={{ height: "100%", position: "relative" }}>
+      {/* Full-screen form overlay — sits above the list, never clipped by bottom nav */}
+      {showForm && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 200, background: "#07090f", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+          <div style={{ padding: "24px 16px", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 60px)" }}>
+            <AddAccountForm onDone={() => { setShowForm(false); load(); }} />
+          </div>
+        </div>
+      )}
+
     <div className="tab-content" style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingTop: 14, paddingLeft: 14, paddingRight: 14, paddingBottom: "calc(env(safe-area-inset-bottom, 34px) + 100px)" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingTop: 14, paddingLeft: 14, paddingRight: 14, paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 140px)" }}>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -578,8 +588,6 @@ export function AccountsPage({ onClose }: { onClose?: () => void }) {
           </div>
         )}
 
-        {showForm && <AddAccountForm onDone={() => { setShowForm(false); load(); }} />}
-
         {loading ? (
           <div style={{ textAlign: "center", padding: "40px 0" }}>
             <div style={{ width: 28, height: 28, borderRadius: "50%", border: `2px solid ${TG.green}40`, borderTopColor: TG.green, animation: "spin 0.8s linear infinite", display: "inline-block" }} />
@@ -597,6 +605,7 @@ export function AccountsPage({ onClose }: { onClose?: () => void }) {
           </div>
         )}
       </div>
+    </div>
     </div>
   );
 }

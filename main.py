@@ -117,73 +117,23 @@ def increment_user_lookups(user_id):
     current = db_get(key, 0)
     db_set(key, current + 1)
 
-PROMO_TEXT = (
-    "🔥 Нравится бот? Попробуй мой проект *fuel-tickets-ru* — "
-    "удобный инструмент для экономии на топливе и билетах.\n\n"
-    "GitHub: https://github.com/2f22vtd4kr-cloud/fuel-tickets-ru\n"
-    "Поставь ⭐ если полезно!"
-)
-
-async def send_promo(update: Update):
-    target = update.message or (update.callback_query and update.callback_query.message)
-    if target:
-        await target.reply_text(PROMO_TEXT, parse_mode="Markdown")
-
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Silent launcher: sets up the CRM Mini App button for admin, ignores everyone else."""
     u = update.effective_user
-    user_id = u.id
-    # Always track user in audience DB
-    await cdb.upsert_user(user_id, username=u.username, first_name=u.first_name)
+    if not u:
+        return
+    await cdb.upsert_user(u.id, username=u.username, first_name=u.first_name)
 
-    if user_id == ADMIN_ID:
-        # Set CRM Mini App button for admin
+    if u.id == ADMIN_ID:
         miniapp_url = os.getenv("MINIAPP_URL", "")
         if miniapp_url:
             try:
                 await context.bot.set_chat_menu_button(
-                    chat_id=user_id,
+                    chat_id=u.id,
                     menu_button=MenuButtonWebApp(text="CRM", web_app=WebAppInfo(url=miniapp_url))
                 )
             except Exception:
                 pass
-
-        welcome = (
-            "👋 Привет, Администратор!\n\n"
-            "📋 *Команды управления:*\n"
-            "/campaigns — список кампаний\n"
-            "/stats — статистика отправок\n"
-            "/audience — аудитория бота\n"
-            "/broadcast — ручная рассылка\n"
-            "/help — все команды\n\n"
-            "📱 Открой CRM-панель через кнопку меню внизу."
-        )
-        await update.message.reply_text(welcome, parse_mode="Markdown")
-    else:
-        # Remove CRM menu button for regular users
-        try:
-            await context.bot.set_chat_menu_button(
-                chat_id=user_id,
-                menu_button=MenuButtonDefault()
-            )
-        except Exception:
-            pass
-
-        # Handle referral tracking
-        args = context.args
-        if args and args[0].startswith("ref"):
-            try:
-                referrer = int(args[0][3:])
-                ref_key = f"ref_{referrer}_count"
-                db_set(ref_key, db_get(ref_key, 0) + 1)
-            except ValueError:
-                pass
-
-        await update.message.reply_text(
-            "⛽ Привет! Подпишитесь на наши акции и получайте выгодные предложения на топливо.",
-            parse_mode="Markdown"
-        )
-        await send_promo(update)
 
 
 @admin_only
@@ -241,19 +191,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if query.data == "fuel_promo":
-        await send_promo(update)
-    elif query.data == "inn_help":
-        await query.message.reply_text("Отправь: /inn 7707083893")
-    elif query.data == "weather_help":
-        await query.message.reply_text("Отправь: /weather Москва")
-    elif query.data == "ip_help":
-        await query.message.reply_text("Отправь: /ip 8.8.8.8")
-    elif query.data == "currency_now":
-        context.args = []
-        fake_update = update
-        await _fetch_currency(query.message)
-    elif query.data.startswith("gc_send:"):
+    if query.data.startswith("gc_send:"):
         camp_id = int(query.data.split(":")[1])
         try:
             import aiosqlite
@@ -1669,32 +1607,7 @@ def main():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("fuel", fuel_command))
-    app.add_handler(CommandHandler("menu", menu))
-    app.add_handler(CommandHandler("inn", inn_lookup))
-    app.add_handler(CommandHandler("ogrn", inn_lookup))
-    app.add_handler(CommandHandler("weather", weather))
-    app.add_handler(CommandHandler("currency", currency))
-    app.add_handler(CommandHandler("ip", ip_lookup))
-    app.add_handler(CommandHandler("checko", checko_hint))
-    app.add_handler(CommandHandler("ref", referral))
-    app.add_handler(CommandHandler("stats", stats))
-    app.add_handler(CommandHandler("getdata", get_data))
-    app.add_handler(CommandHandler("listdata", list_data))
-    app.add_handler(CommandHandler("deldata", delete_data))
-    app.add_handler(CommandHandler("search", search_data))
-    app.add_handler(CommandHandler("export", export_data))
-    app.add_handler(CommandHandler("broadcast",  broadcast))
-    app.add_handler(CommandHandler("workers",     workers_status))
-    app.add_handler(CommandHandler("broadcasts",  broadcasts_status))
-    app.add_handler(CommandHandler("group_send",  group_send_now))
-    app.add_handler(CommandHandler("enrich",      enrich))
-    app.add_handler(CommandHandler("campaign",   campaign))
-
     app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     asyncio.get_event_loop().run_until_complete(cdb.init_db())
 

@@ -250,7 +250,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", paddingTop: 18, paddingLeft: 15, paddingRight: 15, paddingBottom: "calc(env(safe-area-inset-bottom, 34px) + 100px)", WebkitOverflowScrolling: "touch" }}>
+      <div style={{ flex: 1, overflowY: "auto", paddingTop: 18, paddingLeft: 15, paddingRight: 15, paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 220px)", WebkitOverflowScrolling: "touch" }}>
         {/* Name */}
         <div style={{ marginBottom: 18 }}>
           <FieldLabel>Название</FieldLabel>

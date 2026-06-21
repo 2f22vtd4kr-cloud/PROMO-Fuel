@@ -181,7 +181,7 @@ export function GroupBroadcastCreatePage({
 
   return (
     <div style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch", background: "#07090f" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 14, paddingLeft: 14, paddingRight: 14, paddingBottom: "calc(env(safe-area-inset-bottom, 34px) + 100px)" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 14, paddingLeft: 14, paddingRight: 14, paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 220px)" }}>
 
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
