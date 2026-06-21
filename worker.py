@@ -119,7 +119,10 @@ def _release_worker_resources() -> dict[str, int]:
     Safe to call multiple times (idempotent via WHERE locked_by=WORKER_ID).
     """
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=10)
+        conn = sqlite3.connect(DB_PATH, timeout=30)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=30000")
         # Release account locks — preserve banned/proxy_failed statuses
         acct_cur = conn.execute(
             "UPDATE sender_accounts SET locked_by=NULL, locked_at=NULL, broadcasting=0, "
@@ -157,7 +160,10 @@ def _update_heartbeat_table(
     tasks_failed: int = 0,
 ) -> None:
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=10)
+        conn = sqlite3.connect(DB_PATH, timeout=30)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=30000")
         now  = datetime.now(timezone.utc).isoformat()
         conn.execute("""
             INSERT INTO worker_heartbeats (worker_id, last_seen, status, tasks_completed, tasks_failed)
@@ -177,7 +183,10 @@ def _update_heartbeat_table(
 def _mark_self_dead() -> None:
     _update_heartbeat_table(status="dead")
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=10)
+        conn = sqlite3.connect(DB_PATH, timeout=30)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=30000")
         conn.execute(
             "UPDATE broadcast_workers SET status='dead' WHERE worker_id=?",
             (WORKER_ID,),

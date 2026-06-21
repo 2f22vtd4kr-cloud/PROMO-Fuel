@@ -44,10 +44,12 @@ SIGKILL_TIMEOUT      = int(os.getenv("SIGKILL_TIMEOUT",       "15"))   # secs af
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _get_conn(path: str = DB_PATH) -> sqlite3.Connection:
-    conn = sqlite3.connect(path, check_same_thread=False, timeout=15)
+    conn = sqlite3.connect(path, check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 

@@ -1,8 +1,29 @@
 import aiosqlite
 import json
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 DB_PATH = "campaigns.db"
+
+
+@asynccontextmanager
+async def _db(path: str = DB_PATH):
+    """Async context manager that opens an aiosqlite connection with the three
+    mandatory concurrency pragmas applied before yielding.
+
+    Pragma rationale
+    ----------------
+    journal_mode=WAL      Multiple readers never block a writer and vice-versa.
+    synchronous=NORMAL    Safe for WAL mode; avoids per-commit fsync overhead.
+    busy_timeout=30000    Retry on SQLITE_BUSY for up to 30 s instead of
+                          immediately raising — critical under multi-worker load.
+    """
+    async with aiosqlite.connect(path) as conn:
+        await conn.execute("PRAGMA journal_mode=WAL")
+        await conn.execute("PRAGMA synchronous=NORMAL")
+        await conn.execute("PRAGMA busy_timeout=30000")
+        await conn.execute("PRAGMA foreign_keys=ON")
+        yield conn
 
 CREATE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -67,7 +88,7 @@ CREATE TABLE IF NOT EXISTS sender_accounts (
 
 
 async def init_db():
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with _db(DB_PATH) as db:
         for stmt in CREATE_SCHEMA.strip().split(";"):
             stmt = stmt.strip()
             if stmt:

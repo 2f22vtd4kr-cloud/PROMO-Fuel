@@ -26,10 +26,23 @@ DB_PATH = os.getenv("DB_PATH", "campaigns.db")
 _scheduler_task: asyncio.Task | None = None
 
 
+async def _aio_conn(path: str = DB_PATH) -> aiosqlite.Connection:
+    """Open an aiosqlite connection with all three mandatory concurrency pragmas."""
+    conn = await aiosqlite.connect(path)
+    await conn.execute("PRAGMA journal_mode=WAL")
+    await conn.execute("PRAGMA synchronous=NORMAL")
+    await conn.execute("PRAGMA busy_timeout=30000")
+    await conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
+
 async def _get_due_group_campaigns() -> list[dict]:
     """Return running group campaigns whose next_send_at is due."""
     now = datetime.now().isoformat()
     async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute("PRAGMA journal_mode=WAL")
+        await conn.execute("PRAGMA synchronous=NORMAL")
+        await conn.execute("PRAGMA busy_timeout=30000")
         conn.row_factory = aiosqlite.Row
         async with conn.execute("""
             SELECT * FROM group_campaigns
@@ -44,6 +57,9 @@ async def _advance_next_send(campaign_id: int, interval_seconds: int) -> None:
     next_send = (datetime.now() + timedelta(seconds=interval_seconds)).isoformat()
     now       = datetime.now().isoformat()
     async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute("PRAGMA journal_mode=WAL")
+        await conn.execute("PRAGMA synchronous=NORMAL")
+        await conn.execute("PRAGMA busy_timeout=30000")
         await conn.execute("""
             UPDATE group_campaigns
             SET next_send_at = ?, updated_at = ?
