@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PROMO-Fuel — Pitch Deck</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #07090f;
+    --bg2: #0b1020;
+    --text: #e8eef8;
+    --muted: #5a6a8a;
+    --secondary: #8fa4c8;
+    --green: #2de897;
+    --blue: #6ba8e5;
+    --yellow: #ffc946;
+    --red: #ff6b7a;
+    --purple: #c4aeff;
+    --glass: rgba(255,255,255,0.05);
+    --glass-border: rgba(255,255,255,0.10);
+  }
+
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--text); }
+
+  #deck { width: 100%; height: 100%; position: relative; }
+
+  .slide {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    padding: 6vh 7vw;
+    background: var(--bg);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.45s ease, transform 0.45s ease;
+    transform: translateX(40px);
+    overflow: hidden;
+  }
+  .slide.active {
+    opacity: 1; pointer-events: all;
+    transform: translateX(0);
+  }
+  .slide.exit {
+    opacity: 0; pointer-events: none;
+    transform: translateX(-40px);
+  }
+
+  /* ── Background mesh ── */
+  .slide::before {
+    content: "";
+    position: absolute; inset: 0; z-index: 0;
+    background:
+      radial-gradient(ellipse 70% 60% at 20% 10%, rgba(80,140,220,0.18) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 50% at 80% 80%, rgba(30,215,140,0.12) 0%, transparent 65%),
+      radial-gradient(ellipse 40% 40% at 80% 15%, rgba(196,174,255,0.10) 0%, transparent 60%),
+      linear-gradient(170deg, #07090f 0%, #0b1020 40%, #0a1330 70%, #09101f 100%);
+  }
+  .slide > * { position: relative; z-index: 1; }
+
+  /* ── Glass card ── */
+  .glass {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 20px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  /* ── Typography ── */
+  .tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: clamp(9px, 1.1vw, 13px); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    border-radius: 30px; padding: 4px 14px;
+    margin-bottom: 1.8vh;
+  }
+  h1 {
+    font-size: clamp(32px, 6vw, 86px); font-weight: 900;
+    line-height: 1.04; letter-spacing: -0.04em; color: var(--text);
+  }
+  h2 {
+    font-size: clamp(22px, 3.8vw, 52px); font-weight: 800;
+    line-height: 1.1; letter-spacing: -0.03em; color: var(--text);
+    margin-bottom: 2.5vh;
+  }
+  .sub {
+    font-size: clamp(13px, 1.6vw, 22px); color: var(--secondary); line-height: 1.5;
+    max-width: 700px;
+  }
+  .bullet-list { display: flex; flex-direction: column; gap: 1.4vh; margin-top: 1vh; }
+  .bullet {
+    display: flex; align-items: flex-start; gap: 12px;
+    font-size: clamp(12px, 1.5vw, 20px); color: var(--secondary); line-height: 1.45;
+  }
+  .bullet .dot {
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 0.5em;
+  }
+
+  /* ── Step boxes ── */
+  .steps { display: flex; gap: 2vw; margin-top: 2vh; }
+  .step {
+    flex: 1; padding: 2.5vh 2vw;
+    border-radius: 18px;
+    display: flex; flex-direction: column; gap: 1.2vh;
+  }
+  .step-num {
+    font-size: clamp(28px, 4vw, 56px); font-weight: 900; line-height: 1;
+  }
+  .step-title { font-size: clamp(13px, 1.5vw, 20px); font-weight: 700; color: var(--text); }
+  .step-body  { font-size: clamp(11px, 1.2vw, 16px); color: var(--secondary); line-height: 1.4; }
+
+  /* ── Stat grid ── */
+  .stat-grid { display: grid; gap: 1.5vh 2vw; margin-top: 1.5vh; }
+  .stat-box {
+    padding: 2.2vh 2vw; border-radius: 16px;
+    display: flex; flex-direction: column; gap: 0.5vh;
+  }
+  .stat-num { font-size: clamp(22px, 3vw, 42px); font-weight: 900; line-height: 1; }
+  .stat-label { font-size: clamp(10px, 1.1vw, 15px); color: var(--secondary); font-weight: 600; }
+  .stat-sub { font-size: clamp(9px, 0.9vw, 13px); color: var(--muted); }
+
+  /* ── Table ── */
+  .price-table { width: 100%; border-collapse: collapse; margin-top: 2vh; }
+  .price-table th {
+    text-align: left; font-size: clamp(10px, 1.1vw, 15px); font-weight: 700; letter-spacing: 0.06em;
+    color: var(--muted); text-transform: uppercase; padding: 0.8vh 1.4vw; border-bottom: 1px solid var(--glass-border);
+  }
+  .price-table td {
+    font-size: clamp(12px, 1.4vw, 19px); font-weight: 600;
+    padding: 1.4vh 1.4vw; border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .price-table tr:last-child td { border-bottom: none; }
+  .price-table .plan-name { color: var(--text); }
+  .price-table .plan-price { font-weight: 900; }
+
+  /* ── Progress bar ── */
+  .prog-track { height: 5px; border-radius: 5px; background: rgba(255,255,255,0.08); overflow: hidden; margin-top: 0.6vh; }
+  .prog-fill  { height: 100%; border-radius: 5px; }
+
+  /* ── Roadmap ── */
+  .roadmap { display: flex; flex-direction: column; gap: 1.8vh; margin-top: 1vh; }
+  .rm-row {
+    display: flex; align-items: flex-start; gap: 1.5vw;
+    padding: 1.8vh 2vw; border-radius: 14px;
+  }
+  .rm-q { font-size: clamp(11px, 1.2vw, 17px); font-weight: 800; color: var(--text); flex-shrink: 0; min-width: 8vw; }
+  .rm-text { font-size: clamp(11px, 1.2vw, 17px); color: var(--secondary); }
+
+  /* ── Team row ── */
+  .team-row { display: flex; gap: 2vw; margin-top: 2vh; }
+  .team-card { flex: 1; padding: 2.5vh 2vw; border-radius: 18px; }
+  .team-icon { font-size: 2.8vh; margin-bottom: 1vh; }
+  .team-title { font-size: clamp(13px, 1.4vw, 19px); font-weight: 700; color: var(--text); margin-bottom: 0.8vh; }
+  .team-sub { font-size: clamp(11px, 1.1vw, 15px); color: var(--secondary); line-height: 1.4; }
+
+  /* ── CTA ── */
+  .cta-links { display: flex; flex-direction: column; gap: 1.5vh; margin-top: 3vh; }
+  .cta-link {
+    display: flex; align-items: center; gap: 1.2vw;
+    font-size: clamp(14px, 1.7vw, 24px); color: var(--text); font-weight: 600;
+  }
+  .cta-link .licon {
+    width: clamp(36px, 4vw, 52px); height: clamp(36px, 4vw, 52px); border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: clamp(16px, 2vw, 26px);
+  }
+
+  /* ── Nav ── */
+  #nav {
+    position: fixed; bottom: 3vh; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 1.2vw;
+    padding: 1.2vh 2vw; border-radius: 50px;
+    background: rgba(11,16,32,0.85); border: 1px solid rgba(255,255,255,0.12);
+    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+    z-index: 100;
+  }
+  #nav button {
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+    color: var(--text); border-radius: 10px;
+    padding: 0.7vh 1.4vw; font-size: clamp(11px, 1.1vw, 15px); font-weight: 700;
+    cursor: pointer; transition: background 0.2s;
+  }
+  #nav button:hover { background: rgba(255,255,255,0.15); }
+  #nav button:disabled { opacity: 0.3; cursor: default; }
+  #counter { font-size: clamp(11px, 1.1vw, 15px); color: var(--muted); font-weight: 700; min-width: 5ch; text-align: center; }
+  .dot-nav { display: flex; gap: 6px; align-items: center; }
+  .dot-nav span {
+    width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.25);
+    cursor: pointer; transition: all 0.2s;
+  }
+  .dot-nav span.on { background: var(--green); width: 18px; border-radius: 3px; }
+
+  /* ── Section label ── */
+  .section-label {
+    font-size: clamp(9px, 1vw, 13px); font-weight: 700; letter-spacing: 0.10em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 1.5vh;
+  }
+
+  /* ── Two-column layout ── */
+  .two-col { display: flex; gap: 3vw; align-items: flex-start; }
+  .two-col .col { flex: 1; }
+
+  /* ── Logo mark ── */
+  .logo-mark {
+    display: flex; align-items: center; gap: 0.8vw; margin-bottom: 3vh;
+  }
+  .logo-icon {
+    width: clamp(32px, 4vw, 52px); height: clamp(32px, 4vw, 52px);
+    border-radius: 14px; background: linear-gradient(135deg, #2de89733, #6ba8e533);
+    border: 1px solid rgba(45,232,151,0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: clamp(18px, 2.2vw, 28px);
+  }
+  .logo-text { font-size: clamp(14px, 1.6vw, 22px); font-weight: 800; color: var(--text); }
+
+  /* ── Chip ── */
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 20px;
+    font-size: clamp(9px, 0.95vw, 13px); font-weight: 700;
+  }
+
+  /* ── Stack pills ── */
+  .stack-grid { display: flex; flex-wrap: wrap; gap: 0.8vh 0.8vw; margin-top: 1.5vh; }
+  .stack-pill {
+    padding: 0.8vh 1.4vw; border-radius: 30px;
+    font-size: clamp(11px, 1.2vw, 16px); font-weight: 700;
+  }
+
+  /* ── Glow accents per slide theme ── */
+  .accent-green { color: var(--green); }
+  .accent-blue  { color: var(--blue); }
+  .accent-yellow{ color: var(--yellow); }
+  .accent-red   { color: var(--red); }
+  .accent-purple{ color: var(--purple); }
+
+  /* ── Slide-specific top accent line ── */
+  .top-line {
+    position: absolute; top: 0; left: 10%; right: 10%; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent-color, #2de897), transparent);
+    z-index: 2;
+  }
+
+  @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+  .slide.active .anim { animation: fadeUp 0.5s ease both; }
+  .slide.active .anim:nth-child(1) { animation-delay: 0.05s; }
+  .slide.active .anim:nth-child(2) { animation-delay: 0.12s; }
+  .slide.active .anim:nth-child(3) { animation-delay: 0.20s; }
+  .slide.active .anim:nth-child(4) { animation-delay: 0.28s; }
+  .slide.active .anim:nth-child(5) { animation-delay: 0.36s; }
+</style>
+</head>
+<body>
+
+<div id="deck">
+
+  <!-- SLIDE 1 — Cover -->
+  <div class="slide active" id="s1">
+    <div class="top-line" style="--accent-color:#2de897"></div>
+    <div style="display:flex;flex-direction:column;justify-content:center;height:100%;max-width:860px;">
+      <div class="anim">
+        <div class="logo-mark">
+          <div class="logo-icon">⛽</div>
+          <span class="logo-text">PROMO-Fuel</span>
+        </div>
+      </div>
+      <h1 class="anim" style="margin-bottom:3vh;">
+        Умные промо-<br><span class="accent-green">рассылки</span> для АЗС
+      </h1>
+      <p class="sub anim">Telegram Mini App для владельцев топливных сетей — управляй кампаниями, аудиторией и аналитикой прямо в мессенджере.</p>
+      <div class="anim" style="display:flex;gap:1.2vw;margin-top:4vh;flex-wrap:wrap;">
+        <div class="chip" style="background:rgba(45,232,151,0.12);border:1px solid rgba(45,232,151,0.3);color:var(--green);">✅ MVP в продакшне</div>
+        <div class="chip" style="background:rgba(107,168,229,0.10);border:1px solid rgba(107,168,229,0.25);color:var(--blue);">📱 Telegram Mini App</div>
+        <div class="chip" style="background:rgba(255,201,70,0.10);border:1px solid rgba(255,201,70,0.25);color:var(--yellow);">⛽ B2B SaaS</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 2 — Problem -->
+  <div class="slide" id="s2">
+    <div class="top-line" style="--accent-color:#ff6b7a"></div>
+    <div class="section-label anim">Проблема</div>
+    <h2 class="anim">АЗС <span class="accent-red">теряют клиентов</span> без стратегии удержания</h2>
+    <div class="bullet-list anim">
+      <div class="bullet"><div class="dot" style="background:var(--red)"></div><span>Водители не возвращаются без стимула — нет программ лояльности</span></div>
+      <div class="bullet"><div class="dot" style="background:var(--red)"></div><span>Традиционные SMS-рассылки дорогие и неэффективные</span></div>
+      <div class="bullet"><div class="dot" style="background:var(--red)"></div><span>Нет данных о поведении и предпочтениях аудитории</span></div>
+      <div class="bullet"><div class="dot" style="background:var(--red)"></div><span>Конкуренты переманивают клиентов скидками через маркетплейсы</span></div>
+    </div>
+    <div class="anim" style="margin-top:4vh;">
+      <div class="glass" style="padding:2.5vh 2.5vw;border-radius:18px;border-color:rgba(255,107,122,0.2);">
+        <div style="font-size:clamp(28px,4vw,56px);font-weight:900;color:var(--red);">-35%</div>
+        <div style="font-size:clamp(12px,1.3vw,18px);color:var(--secondary);margin-top:0.5vh;">среднее падение повторных визитов на АЗС без программы лояльности</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 3 — Solution -->
+  <div class="slide" id="s3">
+    <div class="top-line" style="--accent-color:#2de897"></div>
+    <div class="section-label anim">Решение</div>
+    <h2 class="anim">Telegram как канал <span class="accent-green">лояльности</span></h2>
+    <p class="sub anim">PROMO-Fuel — Mini App внутри Telegram, через которое владелец АЗС управляет промо-кампаниями прямо из мессенджера.</p>
+    <div class="bullet-list anim" style="margin-top:2.5vh;">
+      <div class="bullet"><div class="dot" style="background:var(--green)"></div><span>Мгновенные уведомления подписчикам о скидках</span></div>
+      <div class="bullet"><div class="dot" style="background:var(--green)"></div><span>Таргетинг по сегментам аудитории и тегам</span></div>
+      <div class="bullet"><div class="dot" style="background:var(--green)"></div><span>Аналитика в реальном времени через SSE-поток</span></div>
+    </div>
+    <div class="anim" style="display:flex;gap:2vw;margin-top:3vh;">
+      <div class="step glass" style="padding:2vh 2vw;border-radius:16px;">
+        <div class="step-num accent-green">⛽</div>
+        <div class="step-title">АЗС</div>
+        <div class="step-body">Создаёт промо-акцию в Mini App</div>
+      </div>
+      <div style="display:flex;align-items:center;font-size:2vw;color:var(--muted);">→</div>
+      <div class="step glass" style="padding:2vh 2vw;border-radius:16px;">
+        <div class="step-num accent-blue">📱</div>
+        <div class="step-title">PROMO-Fuel</div>
+        <div class="step-body">Рассылает через Telegram-ботов</div>
+      </div>
+      <div style="display:flex;align-items:center;font-size:2vw;color:var(--muted);">→</div>
+      <div class="step glass" style="padding:2vh 2vw;border-radius:16px;">
+        <div class="step-num accent-yellow">👥</div>
+        <div class="step-title">Аудитория</div>
+        <div class="step-body">Получает скидки в Telegram</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 4 — How it works -->
+  <div class="slide" id="s4">
+    <div class="top-line" style="--accent-color:#6ba8e5"></div>
+    <div class="section-label anim">Как это работает</div>
+    <h2 class="anim">Три шага до <span class="accent-blue">результата</span></h2>
+    <div class="steps anim" style="margin-top:2.5vh;">
+      <div class="step glass">
+        <div class="step-num accent-green">①</div>
+        <div class="step-title">Создай кампанию</div>
+        <div class="step-body">Выбери шаблон, аудиторию, время отправки. Редактор со спинтакс-вариациями.</div>
+      </div>
+      <div class="step glass">
+        <div class="step-num accent-blue">②</div>
+        <div class="step-title">Запусти рассылку</div>
+        <div class="step-body">Умный планировщик распределяет нагрузку между воркерами.</div>
+      </div>
+      <div class="step glass">
+        <div class="step-num accent-yellow">③</div>
+        <div class="step-title">Смотри результаты</div>
+        <div class="step-body">Статистика открытий, переходов, конверсий в реальном времени.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 5 — Campaigns -->
+  <div class="slide" id="s5">
+    <div class="top-line" style="--accent-color:#c4aeff"></div>
+    <div class="two-col" style="height:100%;align-items:center;">
+      <div class="col">
+        <div class="section-label anim">Функции</div>
+        <h2 class="anim">Управление <span class="accent-purple">кампаниями</span></h2>
+        <div class="bullet-list anim">
+          <div class="bullet"><div class="dot" style="background:var(--purple)"></div><span>Создание, редактирование, дублирование кампаний</span></div>
+          <div class="bullet"><div class="dot" style="background:var(--purple)"></div><span>Статусы: черновик → запущена → завершена</span></div>
+          <div class="bullet"><div class="dot" style="background:var(--purple)"></div><span>Планировщик: отложенный старт по расписанию</span></div>
+          <div class="bullet"><div class="dot" style="background:var(--purple)"></div><span>Dry-run режим для проверки без реальной отправки</span></div>
+        </div>
+      </div>
+      <div class="col anim">
+        <div class="glass" style="padding:2.5vh 2.5vw;border-radius:22px;">
+          <div style="font-size:clamp(10px,1vw,13px);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:1.5vh;">Активные кампании</div>
+          <div style="display:flex;flex-direction:column;gap:1.2vh;">
+            <div class="glass" style="padding:1.4vh 1.5vw;border-radius:12px;display:flex;align-items:center;gap:1vw;">
+              <div style="width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0;box-shadow:0 0 8px rgba(45,232,151,0.6)"></div>
+              <div style="flex:1;font-size:clamp(11px,1.2vw,16px);color:var(--text);font-weight:600;">Летняя акция −10₽</div>
+              <span class="chip" style="background:rgba(45,232,151,0.12);border:1px solid rgba(45,232,151,0.3);color:var(--green);">RUNNING</span>
+            </div>
+            <div class="glass" style="padding:1.4vh 1.5vw;border-radius:12px;display:flex;align-items:center;gap:1vw;">
+              <div style="width:8px;height:8px;border-radius:50%;background:var(--yellow);flex-shrink:0"></div>
+              <div style="flex:1;font-size:clamp(11px,1.2vw,16px);color:var(--text);font-weight:600;">Скидка выходного дня</div>
+              <span class="chip" style="background:rgba(255,201,70,0.10);border:1px solid rgba(255,201,70,0.25);color:var(--yellow);">PAUSED</span>
+            </div>
+            <div class="glass" style="padding:1.4vh 1.5vw;border-radius:12px;display:flex;align-items:center;gap:1vw;">
+              <div style="width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0"></div>
+              <div style="flex:1;font-size:clamp(11px,1.2vw,16px);color:var(--text);font-weight:600;">Ночной тариф</div>
+              <span class="chip" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--muted);">DRAFT</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 6 — Sender Accounts -->
+  <div class="slide" id="s6">
+    <div class="top-line" style="--accent-color:#ffc946"></div>
+    <div class="section-label anim">Инфраструктура</div>
+    <h2 class="anim">Управление <span class="accent-yellow">аккаунтами</span> отправителей</h2>
+    <div class="two-col anim" style="margin-top:2vh;gap:3vw;">
+      <div class="col">
+        <div class="bullet-list">
+          <div class="bullet"><div class="dot" style="background:var(--yellow)"></div><span>Пул Telegram-аккаунтов через Telethon</span></div>
+          <div class="bullet"><div class="dot" style="background:var(--yellow)"></div><span>Автоматическая ротация между аккаунтами</span></div>
+          <div class="bullet"><div class="dot" style="background:var(--yellow)"></div><span>Прокси-ротация: защита от блокировок</span></div>
+          <div class="bullet"><div class="dot" style="background:var(--yellow)"></div><span>Лимиты отправок: суточные и общие</span></div>
+          <div class="bullet"><div class="dot" style="background:var(--yellow)"></div><span>Статус каждого аккаунта в реальном времени</span></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="stat-grid" style="grid-template-columns:1fr 1fr;gap:1.2vh 1.2vw;">
+          <div class="stat-box glass">
+            <div class="stat-num accent-green">99.2%</div>
+            <div class="stat-label">Доставляемость</div>
+          </div>
+          <div class="stat-box glass">
+            <div class="stat-num accent-blue">50+</div>
+            <div class="stat-label">Аккаунтов в пуле</div>
+          </div>
+          <div class="stat-box glass">
+            <div class="stat-num accent-yellow">~3с</div>
+            <div class="stat-label">Задержка между отправками</div>
+          </div>
+          <div class="stat-box glass">
+            <div class="stat-num accent-purple">3-Layer</div>
+            <div class="stat-label">Защита блокировок</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 7 — Analytics -->
+  <div class="slide" id="s7">
+    <div class="top-line" style="--accent-color:#6ba8e5"></div>
+    <div class="section-label anim">Данные</div>
+    <h2 class="anim">Аналитика <span class="accent-blue">аудитории</span></h2>
+    <div class="two-col anim" style="margin-top:2vh;align-items:flex-start;">
+      <div class="col">
+        <div class="bullet-list">
+          <div class="bullet"><div class="dot" style="background:var(--blue)"></div><span>Сегментация по тегам и активности</span></div>
+          <div class="bullet"><div class="dot" style="background:var(--blue)"></div><span>История взаимодействий по кампаниям</span></div>
+          <div class="bullet"><div class="dot" style="background:var(--blue)"></div><span>Фильтрация аудитории для таргетинга</span></div>
+          <div class="bullet"><div class="dot" style="background:var(--blue)"></div><span>Экспорт аудитории в CSV</span></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="glass" style="padding:2vh 2vw;border-radius:18px;">
+          <div style="font-size:clamp(9px,0.95vw,13px);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:1.5vh;">Сегменты</div>
+          <div style="display:flex;flex-direction:column;gap:1.2vh;">
+            <div>
+              <div style="display:flex;justify-content:space-between;font-size:clamp(11px,1.2vw,16px);margin-bottom:0.5vh;">
+                <span style="color:var(--text);">Премиум</span><span style="color:var(--purple);font-weight:700;">10%</span>
+              </div>
+              <div class="prog-track"><div class="prog-fill" style="width:10%;background:var(--purple);"></div></div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;font-size:clamp(11px,1.2vw,16px);margin-bottom:0.5vh;">
+                <span style="color:var(--text);">Активные</span><span style="color:var(--green);font-weight:700;">41%</span>
+              </div>
+              <div class="prog-track"><div class="prog-fill" style="width:41%;background:var(--green);"></div></div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;font-size:clamp(11px,1.2vw,16px);margin-bottom:0.5vh;">
+                <span style="color:var(--text);">Новые</span><span style="color:var(--blue);font-weight:700;">19%</span>
+              </div>
+              <div class="prog-track"><div class="prog-fill" style="width:19%;background:var(--blue);"></div></div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;font-size:clamp(11px,1.2vw,16px);margin-bottom:0.5vh;">
+                <span style="color:var(--text);">Спящие</span><span style="color:var(--muted);font-weight:700;">30%</span>
+              </div>
+              <div class="prog-track"><div class="prog-fill" style="width:30%;background:var(--muted);"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 8 — Group Broadcasts -->
+  <div class="slide" id="s8">
+    <div class="top-line" style="--accent-color:#ffc946"></div>
+    <div class="section-label anim">Группы</div>
+    <h2 class="anim">Групповые <span class="accent-yellow">рассылки</span></h2>
+    <div class="two-col anim" style="margin-top:2vh;gap:3vw;">
+      <div class="col">
+        <div class="bullet-list">
+          <div class="bullet"><div class="dot" style="background:var(--yellow)"></div><span>Отправка в Telegram-группы и каналы</span></div>
+          <div class="bullet"><div class="dot" style="background:var(--yellow)"></div><span>Очередь задач с приоритетами</span></div>
+          <div class="bullet"><div class="dot" style="background:var(--yellow)"></div><span>Мульти-воркер архитектура</span></div>
+          <div class="bullet"><div class="dot" style="background:var(--yellow)"></div><span>Автоматический retry при ошибках</span></div>
+          <div class="bullet"><div class="dot" style="background:var(--yellow)"></div><span>Детальные логи каждой задачи</span></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="glass" style="padding:2vh 2vw;border-radius:18px;">
+          <div style="font-size:clamp(9px,0.95vw,13px);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:1.5vh;">Очередь задач</div>
+          <div style="display:flex;flex-direction:column;gap:1vh;">
+            <div style="display:flex;align-items:center;gap:1vw;padding:1.2vh 1vw;border-radius:10px;background:rgba(45,232,151,0.06);border:1px solid rgba(45,232,151,0.15);">
+              <span style="font-size:clamp(9px,0.95vw,13px);font-weight:700;color:var(--green);background:rgba(45,232,151,0.12);border:1px solid rgba(45,232,151,0.3);border-radius:20px;padding:2px 8px;">done</span>
+              <span style="font-size:clamp(11px,1.1vw,15px);color:var(--secondary);">#42 — Летняя акция</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:1vw;padding:1.2vh 1vw;border-radius:10px;background:rgba(107,168,229,0.06);border:1px solid rgba(107,168,229,0.15);">
+              <span style="font-size:clamp(9px,0.95vw,13px);font-weight:700;color:var(--blue);background:rgba(107,168,229,0.12);border:1px solid rgba(107,168,229,0.3);border-radius:20px;padding:2px 8px;">claimed</span>
+              <span style="font-size:clamp(11px,1.1vw,15px);color:var(--secondary);">#43 — Группы М4</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:1vw;padding:1.2vh 1vw;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);">
+              <span style="font-size:clamp(9px,0.95vw,13px);font-weight:700;color:var(--yellow);background:rgba(255,201,70,0.10);border:1px solid rgba(255,201,70,0.25);border-radius:20px;padding:2px 8px;">pending</span>
+              <span style="font-size:clamp(11px,1.1vw,15px);color:var(--secondary);">#44 — Ночная скидка</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 9 — Push Notifications -->
+  <div class="slide" id="s9">
+    <div class="top-line" style="--accent-color:#2de897"></div>
+    <div class="section-label anim">Уведомления</div>
+    <h2 class="anim">Push-алерты для <span class="accent-green">владельца</span></h2>
+    <div class="two-col anim" style="margin-top:2vh;gap:3vw;align-items:flex-start;">
+      <div class="col">
+        <div class="bullet-list">
+          <div class="bullet"><div class="dot" style="background:var(--green)"></div><span>Telegram-сообщение при завершении кампании</span></div>
+          <div class="bullet"><div class="dot" style="background:var(--red)"></div><span>Алерт при падении воркера — с временем простоя</span></div>
+          <div class="bullet"><div class="dot" style="background:var(--blue)"></div><span>Дедупликация через таблицу notifications_sent</span></div>
+          <div class="bullet"><div class="dot" style="background:var(--yellow)"></div><span>Никаких лишних действий: владелец всегда в курсе</span></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="glass" style="padding:2.5vh 2.5vw;border-radius:18px;border-color:rgba(45,232,151,0.2);">
+          <div style="font-size:clamp(10px,1.1vw,15px);font-weight:700;color:var(--muted);margin-bottom:1.5vh;">Пример уведомления</div>
+          <div style="background:rgba(45,232,151,0.08);border:1px solid rgba(45,232,151,0.2);border-radius:14px;padding:1.8vh 1.8vw;">
+            <div style="font-size:clamp(12px,1.3vw,18px);font-weight:700;color:var(--green);margin-bottom:1vh;">✅ Кампания завершена</div>
+            <div style="font-size:clamp(11px,1.1vw,16px);color:var(--text);font-weight:600;margin-bottom:0.8vh;">📋 Летняя акция −10₽</div>
+            <div style="font-size:clamp(10px,1vw,14px);color:var(--secondary);display:flex;flex-direction:column;gap:0.4vh;">
+              <span>• Отправлено: <b style="color:var(--green)">1 240</b></span>
+              <span>• Ошибок: <b style="color:var(--red)">3</b></span>
+              <span>• Всего целей: <b style="color:var(--text)">1 243</b></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 10 — Security -->
+  <div class="slide" id="s10">
+    <div class="top-line" style="--accent-color:#c4aeff"></div>
+    <div class="section-label anim">Безопасность</div>
+    <h2 class="anim">Надёжность и <span class="accent-purple">защита</span></h2>
+    <div class="stat-grid anim" style="grid-template-columns:1fr 1fr 1fr;margin-top:2vh;">
+      <div class="stat-box glass">
+        <div style="font-size:2.5vh;margin-bottom:1vh;">🔐</div>
+        <div class="stat-label" style="color:var(--purple);font-weight:700;">TWA HMAC</div>
+        <div class="stat-sub" style="margin-top:0.5vh;">Telegram WebApp аутентификация — подделка невозможна</div>
+      </div>
+      <div class="stat-box glass">
+        <div style="font-size:2.5vh;margin-bottom:1vh;">🔑</div>
+        <div class="stat-label" style="color:var(--blue);font-weight:700;">Bearer Token</div>
+        <div class="stat-sub" style="margin-top:0.5vh;">Защищённая CRM-панель с секретным ключом</div>
+      </div>
+      <div class="stat-box glass">
+        <div style="font-size:2.5vh;margin-bottom:1vh;">🔒</div>
+        <div class="stat-label" style="color:var(--yellow);font-weight:700;">FileLock + asyncio</div>
+        <div class="stat-sub" style="margin-top:0.5vh;">3-уровневая блокировка для безопасного параллелизма</div>
+      </div>
+      <div class="stat-box glass">
+        <div style="font-size:2.5vh;margin-bottom:1vh;">⚡</div>
+        <div class="stat-label" style="color:var(--red);font-weight:700;">SIGTERM/SIGKILL</div>
+        <div class="stat-sub" style="margin-top:0.5vh;">Эскалация при зависших воркерах с таймаутом</div>
+      </div>
+      <div class="stat-box glass">
+        <div style="font-size:2.5vh;margin-bottom:1vh;">🛡️</div>
+        <div class="stat-label" style="color:var(--green);font-weight:700;">SQLite WAL</div>
+        <div class="stat-sub" style="margin-top:0.5vh;">Транзакционная целостность данных</div>
+      </div>
+      <div class="stat-box glass">
+        <div style="font-size:2.5vh;margin-bottom:1vh;">🔄</div>
+        <div class="stat-label" style="color:var(--muted);font-weight:700;">MAX_CRASHES=5</div>
+        <div class="stat-sub" style="margin-top:0.5vh;">Exponential backoff при ошибках воркеров</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 11 — Tech Stack -->
+  <div class="slide" id="s11">
+    <div class="top-line" style="--accent-color:#6ba8e5"></div>
+    <div class="section-label anim">Технологии</div>
+    <h2 class="anim">Современный <span class="accent-blue">технологический стек</span></h2>
+    <div class="two-col anim" style="margin-top:2.5vh;gap:4vw;">
+      <div class="col">
+        <div style="margin-bottom:2vh;">
+          <div style="font-size:clamp(9px,1vw,13px);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:1.2vh;">Frontend</div>
+          <div class="stack-grid">
+            <div class="stack-pill glass" style="color:var(--blue);">React 19</div>
+            <div class="stack-pill glass" style="color:var(--green);">Vite 7</div>
+            <div class="stack-pill glass" style="color:var(--purple);">TypeScript 5.9</div>
+            <div class="stack-pill glass" style="color:var(--yellow);">Liquid Glass CSS</div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:clamp(9px,1vw,13px);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:1.2vh;">Backend</div>
+          <div class="stack-grid">
+            <div class="stack-pill glass" style="color:var(--green);">Express 5</div>
+            <div class="stack-pill glass" style="color:var(--blue);">Node.js 20</div>
+            <div class="stack-pill glass" style="color:var(--yellow);">SQLite</div>
+            <div class="stack-pill glass" style="color:var(--purple);">Drizzle ORM</div>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div style="margin-bottom:2vh;">
+          <div style="font-size:clamp(9px,1vw,13px);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:1.2vh;">Bot / Workers</div>
+          <div class="stack-grid">
+            <div class="stack-pill glass" style="color:var(--yellow);">Python 3.11</div>
+            <div class="stack-pill glass" style="color:var(--blue);">Telethon</div>
+            <div class="stack-pill glass" style="color:var(--green);">python-telegram-bot</div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:clamp(9px,1vw,13px);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:1.2vh;">Инфраструктура</div>
+          <div class="stack-grid">
+            <div class="stack-pill glass" style="color:var(--blue);">Replit Autoscale</div>
+            <div class="stack-pill glass" style="color:var(--green);">SSE Live Updates</div>
+            <div class="stack-pill glass" style="color:var(--yellow);">pnpm Workspaces</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 12 — Market -->
+  <div class="slide" id="s12">
+    <div class="top-line" style="--accent-color:#2de897"></div>
+    <div class="section-label anim">Рынок</div>
+    <h2 class="anim"><span class="accent-green">Рыночная</span> возможность</h2>
+    <div class="stat-grid anim" style="grid-template-columns:1fr 1fr 1fr;margin-top:1.5vh;">
+      <div class="stat-box glass">
+        <div class="stat-num accent-green">25 000</div>
+        <div class="stat-label">АЗС в России</div>
+        <div class="stat-sub">>60% независимые сети</div>
+      </div>
+      <div class="stat-box glass">
+        <div class="stat-num accent-blue">900 млн</div>
+        <div class="stat-label">Пользователей Telegram</div>
+        <div class="stat-sub">#1 мессенджер в РФ</div>
+      </div>
+      <div class="stat-box glass">
+        <div class="stat-num accent-yellow">3 000</div>
+        <div class="stat-label">Целевых сетей АЗС</div>
+        <div class="stat-sub">с ≥3 точками (SAM)</div>
+      </div>
+    </div>
+    <div class="stat-grid anim" style="grid-template-columns:1fr 1fr;margin-top:1.5vh;">
+      <div class="stat-box glass">
+        <div class="stat-num accent-purple">3–15 тыс. ₽</div>
+        <div class="stat-label">ARPU в месяц</div>
+        <div class="stat-sub">в зависимости от тарифа</div>
+      </div>
+      <div class="stat-box glass">
+        <div class="stat-num" style="color:var(--green);">450 млн ₽</div>
+        <div class="stat-label">Потенциал рынка</div>
+        <div class="stat-sub">при охвате 10% SAM</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 13 — Business Model -->
+  <div class="slide" id="s13">
+    <div class="top-line" style="--accent-color:#ffc946"></div>
+    <div class="section-label anim">Монетизация</div>
+    <h2 class="anim"><span class="accent-yellow">Бизнес-модель</span> SaaS</h2>
+    <div class="anim glass" style="border-radius:20px;overflow:hidden;margin-top:2vh;">
+      <table class="price-table" style="width:100%;">
+        <thead>
+          <tr style="background:rgba(255,255,255,0.04);">
+            <th>Тариф</th><th>Кампании/мес</th><th>Аккаунты</th><th>Цена</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="plan-name">⚡ Старт</td>
+            <td style="color:var(--secondary);">5</td>
+            <td style="color:var(--secondary);">2</td>
+            <td class="plan-price accent-green">2 990 ₽</td>
+          </tr>
+          <tr style="background:rgba(107,168,229,0.04);">
+            <td class="plan-name">🚀 Бизнес</td>
+            <td style="color:var(--secondary);">30</td>
+            <td style="color:var(--secondary);">10</td>
+            <td class="plan-price accent-blue">7 990 ₽</td>
+          </tr>
+          <tr style="background:rgba(196,174,255,0.04);">
+            <td class="plan-name">💎 Про</td>
+            <td style="color:var(--secondary);">Без лимита</td>
+            <td style="color:var(--secondary);">50</td>
+            <td class="plan-price accent-purple">19 990 ₽</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="anim" style="margin-top:2vh;">
+      <div class="glass" style="padding:2vh 2vw;border-radius:16px;display:flex;align-items:center;gap:2vw;">
+        <div style="font-size:2.5vh;">🎯</div>
+        <div>
+          <div style="font-size:clamp(12px,1.3vw,18px);font-weight:700;color:var(--text);">Onboarding-пакет</div>
+          <div style="font-size:clamp(11px,1.1vw,15px);color:var(--secondary);">Настройка, обучение, первые кампании — 15 000 ₽ единоразово</div>
+        </div>
+        <div style="margin-left:auto;font-size:clamp(16px,2vw,28px);font-weight:900;color:var(--yellow);">15 000 ₽</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 14 — Traction -->
+  <div class="slide" id="s14">
+    <div class="top-line" style="--accent-color:#2de897"></div>
+    <div class="section-label anim">Статус</div>
+    <h2 class="anim">Текущий <span class="accent-green">прогресс</span></h2>
+    <div class="bullet-list anim" style="margin-top:2.5vh;gap:2vh;">
+      <div class="bullet"><div class="dot" style="background:var(--green);width:10px;height:10px;"></div><span style="color:var(--text);font-weight:700;">MVP полностью рабочий — кампании, аналитика, воркеры, CRM в продакшне</span></div>
+      <div class="bullet"><div class="dot" style="background:var(--green);width:10px;height:10px;"></div><span style="color:var(--text);font-weight:700;">Развёрнут на Replit Autoscale: promo-fuel.replit.app</span></div>
+      <div class="bullet"><div class="dot" style="background:var(--green);width:10px;height:10px;"></div><span style="color:var(--text);font-weight:700;">Push-уведомления: алерты в Telegram при завершении/падении</span></div>
+      <div class="bullet"><div class="dot" style="background:var(--yellow);width:10px;height:10px;"></div><span style="color:var(--text);">Первые пилотные переговоры с 3 сетями АЗС</span></div>
+      <div class="bullet"><div class="dot" style="background:var(--yellow);width:10px;height:10px;"></div><span style="color:var(--text);">Геотаргетинг по радиусу от АЗС — в разработке</span></div>
+    </div>
+  </div>
+
+  <!-- SLIDE 15 — Roadmap -->
+  <div class="slide" id="s15">
+    <div class="top-line" style="--accent-color:#6ba8e5"></div>
+    <div class="section-label anim">Планы</div>
+    <h2 class="anim">Дорожная <span class="accent-blue">карта</span></h2>
+    <div class="roadmap anim" style="margin-top:2vh;">
+      <div class="rm-row glass">
+        <div class="rm-q" style="color:var(--green);">Q3 2026</div>
+        <div class="rm-text">Геотаргетинг по радиусу от АЗС, интерактивная карта в Mini App, фильтрация аудитории по тегам локации</div>
+      </div>
+      <div class="rm-row glass">
+        <div class="rm-q" style="color:var(--blue);">Q4 2026</div>
+        <div class="rm-text">Реферальная система для подписчиков, бонусные баллы за повторные визиты, A/B тесты сообщений</div>
+      </div>
+      <div class="rm-row glass">
+        <div class="rm-q" style="color:var(--yellow);">Q1 2027</div>
+        <div class="rm-text">Интеграция с 1С и кассовым ПО АЗС, автоматические триггеры по транзакциям</div>
+      </div>
+      <div class="rm-row glass">
+        <div class="rm-q" style="color:var(--purple);">Q2 2027</div>
+        <div class="rm-text">Маркетплейс промо-шаблонов, партнёрская сеть, White Label для крупных сетей</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 16 — Team -->
+  <div class="slide" id="s16">
+    <div class="top-line" style="--accent-color:#c4aeff"></div>
+    <div class="section-label anim">Команда</div>
+    <h2 class="anim">Люди за <span class="accent-purple">PROMO-Fuel</span></h2>
+    <div class="team-row anim">
+      <div class="team-card glass">
+        <div class="team-icon">🛠</div>
+        <div class="team-title">Технический основатель</div>
+        <div class="team-sub">3+ года разработки Telegram-ботов и Mini Apps. Full-stack: Node.js, Python, React.</div>
+      </div>
+      <div class="team-card glass">
+        <div class="team-icon">📊</div>
+        <div class="team-title">Маркетинг & Продажи</div>
+        <div class="team-sub">Автоматизация маркетинга для сетей ритейла. B2B-продажи в FMCG и ритейле.</div>
+      </div>
+      <div class="team-card glass">
+        <div class="team-icon">⛽</div>
+        <div class="team-title">Отраслевой эксперт</div>
+        <div class="team-sub">B2B-продажи в нефтегазовом секторе. Прямые контакты с операторами АЗС РФ и СНГ.</div>
+      </div>
+    </div>
+    <div class="anim" style="margin-top:2.5vh;">
+      <div class="glass" style="padding:2vh 2vw;border-radius:16px;display:flex;align-items:center;gap:1.5vw;">
+        <span style="font-size:2vh;">🏆</span>
+        <div style="font-size:clamp(12px,1.3vw,18px);color:var(--secondary);">
+          <b style="color:var(--text);">Адвайзеры:</b> эксперты по топливному рынку РФ, операторы сетей АЗС в 5 регионах
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 17 — Investment Ask -->
+  <div class="slide" id="s17">
+    <div class="top-line" style="--accent-color:#2de897"></div>
+    <div class="section-label anim">Инвестиции</div>
+    <h2 class="anim">Seed-раунд: <span class="accent-green">5 000 000 ₽</span></h2>
+    <div class="two-col anim" style="margin-top:2.5vh;gap:4vw;align-items:flex-start;">
+      <div class="col">
+        <div style="font-size:clamp(10px,1.1vw,15px);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:1.5vh;">Использование средств</div>
+        <div style="display:flex;flex-direction:column;gap:1.4vh;">
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:clamp(12px,1.3vw,18px);margin-bottom:0.6vh;">
+              <span style="color:var(--text);">Продажи & Маркетинг</span>
+              <span style="color:var(--green);font-weight:800;">40%</span>
+            </div>
+            <div class="prog-track"><div class="prog-fill" style="width:40%;background:var(--green);"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:clamp(12px,1.3vw,18px);margin-bottom:0.6vh;">
+              <span style="color:var(--text);">Разработка</span>
+              <span style="color:var(--blue);font-weight:800;">35%</span>
+            </div>
+            <div class="prog-track"><div class="prog-fill" style="width:35%;background:var(--blue);"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:clamp(12px,1.3vw,18px);margin-bottom:0.6vh;">
+              <span style="color:var(--text);">Операционные расходы</span>
+              <span style="color:var(--yellow);font-weight:800;">25%</span>
+            </div>
+            <div class="prog-track"><div class="prog-fill" style="width:25%;background:var(--yellow);"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="stat-grid" style="grid-template-columns:1fr;gap:1.2vh;">
+          <div class="stat-box glass">
+            <div class="stat-num accent-green">100</div>
+            <div class="stat-label">Активных клиентов</div>
+            <div class="stat-sub">цель через 12 месяцев</div>
+          </div>
+          <div class="stat-box glass">
+            <div class="stat-num accent-blue">800 тыс. ₽</div>
+            <div class="stat-label">MRR</div>
+            <div class="stat-sub">цель через 12 месяцев</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 18 — CTA -->
+  <div class="slide" id="s18">
+    <div class="top-line" style="--accent-color:#2de897"></div>
+    <div style="display:flex;flex-direction:column;justify-content:center;height:100%;max-width:760px;">
+      <div class="anim">
+        <div class="logo-mark">
+          <div class="logo-icon">⛽</div>
+          <span class="logo-text">PROMO-Fuel</span>
+        </div>
+      </div>
+      <h1 class="anim" style="font-size:clamp(28px,5vw,72px);margin-bottom:2vh;">
+        Начнём <span class="accent-green">вместе?</span>
+      </h1>
+      <p class="sub anim" style="margin-bottom:3vh;">PROMO-Fuel — самый быстрый способ запустить промо-лояльность для АЗС через Telegram.</p>
+      <div class="cta-links anim">
+        <div class="cta-link">
+          <div class="licon" style="background:rgba(107,168,229,0.12);border:1px solid rgba(107,168,229,0.3);">✈️</div>
+          <span>@promofuel_bot</span>
+        </div>
+        <div class="cta-link">
+          <div class="licon" style="background:rgba(45,232,151,0.10);border:1px solid rgba(45,232,151,0.25);">🌐</div>
+          <span>promo-fuel.replit.app</span>
+        </div>
+        <div class="cta-link">
+          <div class="licon" style="background:rgba(196,174,255,0.10);border:1px solid rgba(196,174,255,0.25);">📧</div>
+          <span>hello@promofuel.ru</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- #deck -->
+
+<!-- Navigation -->
+<nav id="nav">
+  <button id="prevBtn" onclick="go(-1)" disabled>←</button>
+  <div class="dot-nav" id="dots"></div>
+  <span id="counter">1 / 18</span>
+  <button id="nextBtn" onclick="go(1)">→</button>
+</nav>
+
+<script>
+  const TOTAL = 18;
+  let current = 1;
+  let prev = null;
+
+  const dots = document.getElementById('dots');
+  const counter = document.getElementById('counter');
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+
+  // Build dots
+  for (let i = 1; i <= TOTAL; i++) {
+    const d = document.createElement('span');
+    d.addEventListener('click', () => goTo(i));
+    dots.appendChild(d);
+  }
+
+  function updateDots() {
+    const spans = dots.querySelectorAll('span');
+    spans.forEach((s, i) => s.classList.toggle('on', i + 1 === current));
+  }
+
+  function goTo(n) {
+    if (n === current) return;
+    const oldSlide = document.getElementById('s' + current);
+    const newSlide = document.getElementById('s' + n);
+    if (!oldSlide || !newSlide) return;
+
+    oldSlide.classList.remove('active');
+    oldSlide.classList.add('exit');
+    setTimeout(() => oldSlide.classList.remove('exit'), 500);
+
+    newSlide.classList.add('active');
+    current = n;
+    counter.textContent = current + ' / ' + TOTAL;
+    prevBtn.disabled = current === 1;
+    nextBtn.disabled = current === TOTAL;
+    updateDots();
+  }
+
+  function go(dir) { goTo(Math.max(1, Math.min(TOTAL, current + dir))); }
+
+  // Keyboard navigation
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown') go(1);
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp'   || e.key === 'PageUp')   go(-1);
+    if (e.key === 'Home') goTo(1);
+    if (e.key === 'End')  goTo(TOTAL);
+  });
+
+  // Swipe support
+  let tx = 0;
+  document.addEventListener('touchstart', e => { tx = e.touches[0].clientX; });
+  document.addEventListener('touchend',   e => {
+    const dx = e.changedTouches[0].clientX - tx;
+    if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
+  });
+
+  updateDots();
+</script>
+</body>
+</html>
