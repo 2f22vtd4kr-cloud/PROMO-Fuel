@@ -631,6 +631,21 @@ def run_migrations(db_path: str = DB_PATH) -> None:  # noqa: C901 — long but l
     conn.commit()
     logger.info("[migrations] Step 7 — data fixups OK")
 
+    # ── Step 8: Cross-process account rate-limit table ───────────────────────
+    #
+    # Shared by all workers and campaign_sender so that a single Telegram
+    # account cannot exceed flood limits even when concurrent tasks are running.
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS account_rate_limits (
+            account_id   INTEGER PRIMARY KEY,
+            window_start REAL    NOT NULL,
+            count        INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.commit()
+    logger.info("[migrations] Step 8 — account_rate_limits OK")
+
     # ── Done ─────────────────────────────────────────────────────────────────
 
     conn.close()

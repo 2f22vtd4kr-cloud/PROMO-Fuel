@@ -45,7 +45,7 @@ from telethon.errors import (
 import campaign_db as cdb
 from utils.proxy import parse_proxies, proxy_to_telethon, proxy_label
 from utils.spintax import resolve as resolve_spintax
-from utils.ratelimiter import PerAccountRateLimiter
+from utils.account_ratelimit import acquire as _rl_acquire
 from utils.preflight import run_account_preflight, invalidate_cache as preflight_invalidate
 
 logger = logging.getLogger(__name__)
@@ -55,9 +55,6 @@ SESSIONS_DIR = os.getenv("SESSION_DIR", "./sessions")
 
 # Per-account file locks — prevent concurrent Telethon sessions on the same .session file
 _account_locks: dict[int, FileLock] = {}
-
-# Per-account Telethon rate limiter: max 20 messages per 60 seconds
-_rate_limiter = PerAccountRateLimiter(rate=20, per=60.0)
 
 # Cached Telethon clients: account_id → TelegramClient
 _telethon_clients: dict[int, TelegramClient] = {}
@@ -741,7 +738,9 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
                 results["failed"] += 1
                 continue
 
-            await _rate_limiter.acquire(account_id)
+            # Cross-process rate gate — shared across all workers and campaign_sender
+            # via SQLite so a single account never exceeds 20 sends/60 s globally.
+            await _rl_acquire(account_id)
 
             text = resolve_spintax(text_template)
 

@@ -17,6 +17,7 @@ from telethon.errors import (
 )
 
 import campaign_db as db
+from utils.account_ratelimit import acquire as _rl_acquire
 
 # Cache of active Telethon clients: account_id -> TelegramClient
 _telethon_clients: dict = {}
@@ -286,6 +287,9 @@ async def send_campaign(bot: Bot, campaign_id: int, notify_chat_id: int, tag: st
             # ── Telethon send ───────────────────────────────────────────
             if telethon_client:
                 try:
+                    # Cross-process rate gate — shared with groupbroadcaster workers
+                    # via SQLite so this account never exceeds 20 sends/60 s globally.
+                    await _rl_acquire(sender_account_id)
                     await telethon_client.send_message(chat_id, text, parse_mode="md")
                     state["sent"] += 1
                     await db.log_send(campaign_id, chat_id, "ok", account_id=sender_account_id)
