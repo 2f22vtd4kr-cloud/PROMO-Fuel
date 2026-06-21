@@ -561,7 +561,7 @@ const ru = {
 };
 
 const en: typeof ru = {
-  lang: { ru: "RU", en: "EN", uk: "UK", label: "Language" },
+  lang: { ru: "RU", en: "EN", ua: "UA", label: "Language" },
   nav: {
     dashboard: "Dashboard",
     home: "Home",
@@ -1121,7 +1121,7 @@ const en: typeof ru = {
 };
 
 const ua: typeof ru = {
-  lang: { ru: "RU", en: "EN", uk: "UK", label: "Мова" },
+  lang: { ru: "RU", en: "EN", ua: "UA", label: "Мова" },
   nav: {
     dashboard: "Дашборд",
     home: "Головна",
