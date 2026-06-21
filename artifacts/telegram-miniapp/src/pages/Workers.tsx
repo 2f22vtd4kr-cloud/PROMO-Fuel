@@ -106,12 +106,16 @@ function RestartWorkerButton({ workerId, onRestarted }: { workerId: string; onRe
   );
 }
 
-function WorkerCard({ worker, index = 0, onDelete }: { worker: BroadcastWorker; index?: number; onDelete: () => void }) {
+function WorkerCard({ worker, index = 0, onDelete, accounts = [], accountStats = {} }: { worker: BroadcastWorker; index?: number; onDelete: () => void; accounts?: SenderAccount[]; accountStats?: Record<string, { ok: number; failed: number }> }) {
   const [busy, setBusy] = useState(false);
   const alive   = worker.is_alive ?? false;
   const working = alive && worker.status === "working";
   const color   = alive ? sc(worker.status) : "#ff6b7a";
   const topAccentColor = alive ? "rgba(45,232,151,1)" : "rgba(255,107,122,1)";
+
+  const linkedAccount = accounts.find(a => a.locked_by === worker.worker_id);
+  const sendsToday    = linkedAccount ? accountStats[String(linkedAccount.id)] : undefined;
+  const todayTotal    = (sendsToday?.ok ?? 0) + (sendsToday?.failed ?? 0);
 
   async function remove() {
     haptic.warning(); setBusy(true);
@@ -146,11 +150,22 @@ function WorkerCard({ worker, index = 0, onDelete }: { worker: BroadcastWorker; 
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
         {[
           { label: "Выполнено", value: String(worker.tasks_done),   color: "#2de897" },
           { label: "Ошибок",    value: String(worker.tasks_failed), color: "#ff6b7a" },
           { label: "Пульс",     value: worker.last_heartbeat ? timeAgo(worker.last_heartbeat) : "—", color: alive ? "#6ba8e5" : "#ff6b7a" },
+          {
+            label: "Сегодня",
+            value: sendsToday
+              ? todayTotal === 0
+                ? "0"
+                : sendsToday.failed > 0
+                  ? `${sendsToday.ok}+${sendsToday.failed}`
+                  : String(sendsToday.ok)
+              : "—",
+            color: !sendsToday || todayTotal === 0 ? TG.muted : sendsToday.failed > 0 ? "#ffc946" : "#2de897",
+          },
         ].map(s => (
           <div key={s.label} style={{ textAlign: "center", background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "8px 4px" }}>
             <div style={{ fontSize: 14, fontWeight: 800, color: s.color }}>{s.value}</div>
@@ -825,7 +840,7 @@ export function WorkersPage() {
                       <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 8px", background: "rgba(255,107,122,0.1)", borderRadius: 12, fontSize: 10, fontWeight: 700, color: "#ff6b7a" }}><AlertTriangle size={12} /> {deadWorkers.length} мертв.</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 8px", background: "rgba(107,168,229,0.1)", borderRadius: 12, fontSize: 10, fontWeight: 700, color: "#6ba8e5" }}><CheckCircle size={12} /> {workers.reduce((acc, w) => acc + (w.tasks_done || 0), 0)} задач</div>
                     </div>
-                    {aliveWorkers.map((w, i) => <WorkerCard key={w.worker_id} worker={w} index={i} onDelete={load} />)}
+                    {aliveWorkers.map((w, i) => <WorkerCard key={w.worker_id} worker={w} index={i} onDelete={load} accounts={accounts} accountStats={accountStats} />)}
                   </div>
                 )}
               </div>
