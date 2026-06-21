@@ -6,6 +6,7 @@ import { existsSync } from "fs";
 import { join } from "path";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { startWatchdog } from "./lib/watchdog";
 
 const app: Express = express();
 
