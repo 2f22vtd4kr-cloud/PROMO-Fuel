@@ -83,7 +83,12 @@ from dbmigrations   import run_migrations           # noqa: E402
 from task_queue     import TaskQueue                # noqa: E402
 from groupbroadcaster import run_group_campaign_task  # noqa: E402
 from utils.supervisor import WorkerHeartbeat        # noqa: E402
+from utils.alert_cooldown import CrashAlertCooldown  # noqa: E402
 from campaign_db    import reset_daily_counts, account_flood_wait  # noqa: E402
+
+# One cooldown instance per worker process.  15-minute window per worker_id.
+# Initialised after DB_PATH is set (done above via _args / env before these imports).
+_crash_cooldown = CrashAlertCooldown(default_window=900)
 
 try:
     from telethon.errors import FloodWaitError as TelethonFloodWait
@@ -419,6 +424,9 @@ async def main_loop(
                         f"📨 Отправлено: {sent_n}  ❌ Ошибок: {failed_n}"
                         + resume_note
                     ))
+                    # Successful task completion — clear the crash-alert cooldown
+                    # so the next crash (if any) always fires an immediate alert.
+                    _crash_cooldown.reset("task_crash", WORKER_ID)
                 else:
                     errors = "; ".join(result.get("errors", []))[:300]
                     await _task_queue.fail_task(task_id, error=errors, campaign_id=campaign_id)
@@ -485,12 +493,20 @@ async def main_loop(
                             WORKER_ID, account_id, unlock_err,
                         )
 
-                asyncio.create_task(_notify_owner(
+                # Rate-limited crash alert: at most one message per 15 minutes
+                # per worker.  Suppressed errors are counted and included as a
+                # note in the next alert that fires when the window expires.
+                _crash_raw = (
                     f"💥 *Критическая ошибка воркера*\n"
                     f"Воркер: `{WORKER_ID}`\n"
                     f"Задача #{task_id} · Кампания #{campaign_id}\n"
                     f"`{err_str}`"
-                ))
+                )
+                _crash_decision = _crash_cooldown.check(
+                    "task_crash", WORKER_ID, _crash_raw
+                )
+                if _crash_decision.should_fire:
+                    asyncio.create_task(_notify_owner(_crash_decision.message))
 
             await asyncio.sleep(POLL_INTERVAL)
 

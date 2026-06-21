@@ -587,14 +587,32 @@ class WorkerSupervisor:
         ]
         if not token or not chat_ids:
             return
+
+        raw_text = (
+            f"🚨 CRITICAL — crash loop detected\n"
+            f"Worker: {worker_id}\n"
+            f"Restarted {count}× in the last {self._respawn_window}s\n"
+            f"Check logs immediately."
+        )
+
+        # Rate-limit crash-loop alerts: at most one per worker per 30 minutes.
+        # Any alerts fired during the cooldown window are counted and surfaced
+        # in the next message as a suppression note.
+        try:
+            from utils.alert_cooldown import CrashAlertCooldown  # noqa: PLC0415
+            decision = CrashAlertCooldown(
+                db_path        = self._db_path,
+                default_window = 1800,   # 30 minutes
+            ).check("crash_loop", worker_id, raw_text)
+            if not decision.should_fire:
+                return
+            text = decision.message
+        except Exception:
+            # Fail-open: if the cooldown module fails, still send the alert.
+            text = raw_text
+
         try:
             import urllib.request, urllib.parse  # noqa: PLC0415
-            text = (
-                f"🚨 CRITICAL — crash loop detected\n"
-                f"Worker: {worker_id}\n"
-                f"Restarted {count}× in the last {self._respawn_window}s\n"
-                f"Check logs immediately."
-            )
             data = urllib.parse.urlencode({"chat_id": chat_ids[0], "text": text}).encode()
             req  = urllib.request.Request(
                 f"https://api.telegram.org/bot{token}/sendMessage",
