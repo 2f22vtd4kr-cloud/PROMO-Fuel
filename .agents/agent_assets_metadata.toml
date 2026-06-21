@@ -12,3 +12,21 @@ id = "Q2_cpBPxen1bztFKwp-Gw"
 uri = "file://artifacts/mockup-sandbox/public/images/promo-bg-2.png"
 type = "image"
 title = "Abstract data network with green accents"
+
+[[generated]]
+id = "NHGIReO0ZCYtigAtHq_Js"
+uri = "file://artifacts/mockup-sandbox/public/images/bg-tech-navy.png"
+type = "image"
+title = "Dark cinematic tech background"
+
+[[generated]]
+id = "LrOHZ6OuOK776TLrNOhtG"
+uri = "file://artifacts/mockup-sandbox/public/images/fuel-network.png"
+type = "image"
+title = "Abstract fuel network graph"
+
+[[generated]]
+id = "Ew0fpIuhCq7Ed4pBurWoK"
+uri = "file://artifacts/mockup-sandbox/public/images/abstract-dashboard.png"
+type = "image"
+title = "Dashboard abstract ui"

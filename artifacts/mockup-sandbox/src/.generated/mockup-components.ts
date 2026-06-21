@@ -2,6 +2,7 @@
 type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/PromoDeck.tsx": () => import("../components/mockups/PromoDeck.tsx"),
+  "./components/mockups/video.tsx": () => import("../components/mockups/video.tsx"),
   "./components/mockups/crm/AnalyticsDashboard.tsx": () => import("../components/mockups/crm/AnalyticsDashboard.tsx"),
   "./components/mockups/crm/CampaignManager.tsx": () => import("../components/mockups/crm/CampaignManager.tsx"),
   "./components/mockups/crm/CustomerJourney.tsx": () => import("../components/mockups/crm/CustomerJourney.tsx"),
@@ -15,6 +16,13 @@ export const modules: ModuleMap = {
   "./components/mockups/crm/UsabilityAccessibility.tsx": () => import("../components/mockups/crm/UsabilityAccessibility.tsx"),
   "./components/mockups/crm/UsabilityAffordances.tsx": () => import("../components/mockups/crm/UsabilityAffordances.tsx"),
   "./components/mockups/crm/UsabilityHierarchy.tsx": () => import("../components/mockups/crm/UsabilityHierarchy.tsx"),
+  "./components/mockups/video/VideoTemplate.tsx": () => import("../components/mockups/video/VideoTemplate.tsx"),
+  "./components/mockups/video/video_scenes/Scene1.tsx": () => import("../components/mockups/video/video_scenes/Scene1.tsx"),
+  "./components/mockups/video/video_scenes/Scene2.tsx": () => import("../components/mockups/video/video_scenes/Scene2.tsx"),
+  "./components/mockups/video/video_scenes/Scene3.tsx": () => import("../components/mockups/video/video_scenes/Scene3.tsx"),
+  "./components/mockups/video/video_scenes/Scene4.tsx": () => import("../components/mockups/video/video_scenes/Scene4.tsx"),
+  "./components/mockups/video/video_scenes/Scene5.tsx": () => import("../components/mockups/video/video_scenes/Scene5.tsx"),
+  "./components/mockups/video/video_scenes/Scene6.tsx": () => import("../components/mockups/video/video_scenes/Scene6.tsx"),
   "./components/mockups/promo-fuel/PerfectAccounts.tsx": () => import("../components/mockups/promo-fuel/PerfectAccounts.tsx"),
   "./components/mockups/promo-fuel/PerfectAnalytics.tsx": () => import("../components/mockups/promo-fuel/PerfectAnalytics.tsx"),
   "./components/mockups/promo-fuel/PerfectAudience.tsx": () => import("../components/mockups/promo-fuel/PerfectAudience.tsx"),
@@ -41,12 +49,5 @@ export const modules: ModuleMap = {
   "./components/mockups/telegram-miniapp/SessionsScreen.tsx": () => import("../components/mockups/telegram-miniapp/SessionsScreen.tsx"),
   "./components/mockups/telegram-miniapp/WorkersScreen.tsx": () => import("../components/mockups/telegram-miniapp/WorkersScreen.tsx"),
   "./components/mockups/telegram-miniapp/WorkersV2.tsx": () => import("../components/mockups/telegram-miniapp/WorkersV2.tsx"),
-  "./components/mockups/telegram-miniapp/WorkersV3.tsx": () => import("../components/mockups/telegram-miniapp/WorkersV3.tsx"),
-  "./components/mockups/video/VideoTemplate.tsx": () => import("../components/mockups/video/VideoTemplate.tsx"),
-  "./components/mockups/video/video_scenes/Scene1.tsx": () => import("../components/mockups/video/video_scenes/Scene1.tsx"),
-  "./components/mockups/video/video_scenes/Scene2.tsx": () => import("../components/mockups/video/video_scenes/Scene2.tsx"),
-  "./components/mockups/video/video_scenes/Scene3.tsx": () => import("../components/mockups/video/video_scenes/Scene3.tsx"),
-  "./components/mockups/video/video_scenes/Scene4.tsx": () => import("../components/mockups/video/video_scenes/Scene4.tsx"),
-  "./components/mockups/video/video_scenes/Scene5.tsx": () => import("../components/mockups/video/video_scenes/Scene5.tsx"),
-  "./components/mockups/video/video_scenes/Scene6.tsx": () => import("../components/mockups/video/video_scenes/Scene6.tsx")
+  "./components/mockups/telegram-miniapp/WorkersV3.tsx": () => import("../components/mockups/telegram-miniapp/WorkersV3.tsx")
 };

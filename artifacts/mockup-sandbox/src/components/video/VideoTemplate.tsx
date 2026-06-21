@@ -7,59 +7,78 @@ import { Scene4 } from './video_scenes/Scene4';
 import { Scene5 } from './video_scenes/Scene5';
 import { Scene6 } from './video_scenes/Scene6';
 
-// Total: 45 seconds
 const SCENE_DURATIONS = {
-  open: 7000,
-  solution: 7000,
-  features: 9000,
-  market: 8000,
-  business: 6000,
-  close: 8000
+  intro: 6000,
+  title: 7000,
+  campaigns: 9000,
+  broadcast: 8000,
+  analytics: 10000,
+  outro: 10000
 };
 
 export default function VideoTemplate() {
   const { currentScene } = useVideoPlayer({ durations: SCENE_DURATIONS });
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-[#050B14] font-sans selection:bg-white/20">
-      <style>{`
-        :root {
-          --color-brand-green: #2de897;
-          --color-brand-blue: #6ba8e5;
-          --color-bg-dark: #050B14;
-        }
-      `}</style>
+    <div className="relative w-full h-screen overflow-hidden bg-[#050B14] font-sans selection:bg-[#005BBB] selection:text-white">
+      {/* Persistent Background Layer */}
+      <div className="absolute inset-0 z-0">
+        <motion.div 
+          className="absolute inset-0 bg-cover bg-center opacity-40 mix-blend-screen"
+          style={{ backgroundImage: `url('${import.meta.env.BASE_URL}images/bg-tech-navy.png')` }}
+          animate={{ scale: [1, 1.05, 1], opacity: [0.3, 0.5, 0.3] }}
+          transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+        />
+        
+        {/* Dynamic Image Overlay driven by scene */}
+        <motion.div
+          className="absolute inset-0 bg-cover bg-center mix-blend-lighten"
+          style={{ backgroundImage: `url('${import.meta.env.BASE_URL}images/fuel-network.png')` }}
+          animate={{ opacity: currentScene === 3 ? 0.6 : 0, scale: currentScene === 3 ? 1.1 : 1 }}
+          transition={{ duration: 2, ease: "easeInOut" }}
+        />
 
-      {/* Persistent Background */}
-      <div className="absolute inset-0">
-        <motion.div 
-          className="absolute inset-0 bg-cover bg-center opacity-40 mix-blend-luminosity"
-          style={{ backgroundImage: \`url('\${import.meta.env.BASE_URL}images/promo-bg-1.png')\` }}
-          animate={{ scale: [1.1, 1, 1.05, 1.1] }}
-          transition={{ duration: 45, ease: "linear" }}
+        <motion.div
+          className="absolute inset-0 bg-cover bg-center mix-blend-lighten"
+          style={{ backgroundImage: `url('${import.meta.env.BASE_URL}images/abstract-dashboard.png')` }}
+          animate={{ opacity: currentScene === 4 ? 0.7 : 0, y: currentScene === 4 ? [20, 0] : 0 }}
+          transition={{ duration: 2, ease: "easeOut" }}
         />
-        <motion.div 
-          className="absolute inset-0 bg-cover bg-center opacity-30 mix-blend-screen"
-          style={{ backgroundImage: \`url('\${import.meta.env.BASE_URL}images/promo-bg-2.png')\` }}
-          animate={{ opacity: currentScene === 2 || currentScene === 3 ? 0.6 : 0, scale: [1, 1.1] }}
-          transition={{ duration: 45, ease: "linear" }}
-        />
+
         <div className="absolute inset-0 bg-gradient-to-t from-[#050B14] via-transparent to-[#050B14]/80" />
       </div>
 
-      {/* Noise Texture */}
-      <div className="absolute inset-0 opacity-[0.04] pointer-events-none mix-blend-overlay"
-           style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.8%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }} />
+      {/* Persistent motifs - Ukrainian flag split lines */}
+      <div className="absolute inset-0 pointer-events-none z-10">
+        <motion.div 
+          className="absolute left-0 top-[10vh] h-[2px] bg-[#005BBB]"
+          animate={{ 
+            width: ['0%', '30%', '10%', '60%', '20%', '100%'][currentScene] || '0%',
+            opacity: [0, 1, 0.5, 1, 0.8, 1][currentScene] || 0
+          }}
+          transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
+        />
+        <motion.div 
+          className="absolute right-0 bottom-[10vh] h-[2px] bg-[#FFD500]"
+          animate={{ 
+            width: ['0%', '40%', '20%', '80%', '40%', '100%'][currentScene] || '0%',
+            opacity: [0, 1, 0.5, 1, 0.8, 1][currentScene] || 0
+          }}
+          transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
+        />
+      </div>
 
-      {/* Scene Content */}
-      <AnimatePresence mode="popLayout">
-        {currentScene === 0 && <Scene1 key="scene-open" />}
-        {currentScene === 1 && <Scene2 key="scene-solution" />}
-        {currentScene === 2 && <Scene3 key="scene-features" />}
-        {currentScene === 3 && <Scene4 key="scene-market" />}
-        {currentScene === 4 && <Scene5 key="scene-business" />}
-        {currentScene === 5 && <Scene6 key="scene-close" />}
-      </AnimatePresence>
+      {/* Scenes */}
+      <div className="relative z-20 w-full h-full">
+        <AnimatePresence mode="popLayout">
+          {currentScene === 0 && <Scene1 key="intro" />}
+          {currentScene === 1 && <Scene2 key="title" />}
+          {currentScene === 2 && <Scene3 key="campaigns" />}
+          {currentScene === 3 && <Scene4 key="broadcast" />}
+          {currentScene === 4 && <Scene5 key="analytics" />}
+          {currentScene === 5 && <Scene6 key="outro" />}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
