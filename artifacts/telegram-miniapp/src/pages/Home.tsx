@@ -1,16 +1,15 @@
 import { useState, useEffect } from "react";
-import { Bell, Megaphone, BarChart2, ArrowUpRight, Gift, Users2, TrendingUp, Shield, Flame, Radio, Cpu, Fuel, Play } from "lucide-react";
+import { Bell, Megaphone, BarChart2, ArrowUpRight, Gift, Users2, TrendingUp, Shield, Flame, Radio, Cpu, Fuel } from "lucide-react";
 import { api, Campaign, AnalyticsOverview, WorkersSummary, DailyDigest } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
 import { haptic } from "../lib/haptics";
 import { useI18n } from "../lib/i18n";
 
-export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate, onWatchPitch }: {
+export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
   onNewCampaign: () => void;
   onViewCampaigns: () => void;
   onNavigate: (tab: string) => void;
-  onWatchPitch: () => void;
 }) {
   const [overview,       setOverview]       = useState<AnalyticsOverview | null>(null);
   const [digest,         setDigest]         = useState<DailyDigest | null>(null);
@@ -386,42 +385,6 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate, onWatchPi
               );
             })}
           </div>
-        </div>
-
-        {/* Watch Pitch button */}
-        <div
-          onClick={() => { haptic.medium(); onWatchPitch(); }}
-          style={{
-            display: "flex", alignItems: "center", gap: 12,
-            padding: "12px 16px", borderRadius: 16, cursor: "pointer",
-            background: "linear-gradient(135deg, rgba(107,168,229,0.12) 0%, rgba(196,174,255,0.10) 100%)",
-            border: "1px solid rgba(107,168,229,0.28)",
-            boxShadow: "0 0 20px rgba(107,168,229,0.08)",
-            animation: "slideUp 0.4s ease-out 0.3s both",
-          }}
-        >
-          <div style={{
-            width: 36, height: 36, borderRadius: 12, flexShrink: 0,
-            background: "linear-gradient(135deg, rgba(107,168,229,0.25) 0%, rgba(196,174,255,0.18) 100%)",
-            border: "1px solid rgba(107,168,229,0.40)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 0 14px rgba(107,168,229,0.30)",
-          }}>
-            <Play size={16} color="#6ba8e5" fill="#6ba8e5" />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: TG.text }}>
-              {lang === "ua" ? "Дивитись презентацію" : "Смотреть презентацию"}
-            </div>
-            <div style={{ fontSize: 11, color: TG.muted, marginTop: 1 }}>
-              {lang === "ua" ? "Як це працює для АЗС" : "Как это работает для АЗС"}
-            </div>
-          </div>
-          <div style={{
-            fontSize: 10, fontWeight: 700, color: "#6ba8e5",
-            background: "rgba(107,168,229,0.12)", border: "1px solid rgba(107,168,229,0.25)",
-            borderRadius: 20, padding: "2px 8px", flexShrink: 0,
-          }}>Pitch</div>
         </div>
 
         {/* Group campaigns quick strip */}
