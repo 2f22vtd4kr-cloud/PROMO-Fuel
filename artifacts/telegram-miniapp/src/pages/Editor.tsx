@@ -6,6 +6,18 @@ import { TG, BLUR, BLUR_HEAVY } from "../lib/theme";
 import { FullSpinner } from "../components/Spinner";
 import { haptic } from "../lib/haptics";
 
+const DELAY_PRESETS = [
+  { label: "15 мин",  value: 900 },
+  { label: "30 мин",  value: 1800 },
+  { label: "1 ч",     value: 3600 },
+  { label: "3 ч",     value: 10800 },
+  { label: "6 ч",     value: 21600 },
+  { label: "12 ч",    value: 43200 },
+  { label: "24 ч",    value: 86400 },
+  { label: "3 дня",   value: 259200 },
+  { label: "7 дней",  value: 604800 },
+];
+
 function GlassInput({
   value, onChange, onFocus, onBlur, placeholder, focused, type = "text", style: extra,
 }: {
@@ -104,7 +116,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
   const [success, setSuccess]           = useState(false);
   const [error, setError]               = useState<string | null>(null);
   const [scheduleMode, setScheduleMode] = useState(false);
-  const [delay, setDelay]               = useState("15");
+  const [delay, setDelay]               = useState("3600");
   const [dryRun, setDryRun]             = useState(false);
   const [showPreview, setShowPreview]   = useState(false);
   const [abMode, setAbMode]             = useState(false);
@@ -190,7 +202,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
         name: name.trim(), text_template: text.trim(),
         notes: notes.trim() || undefined,
         scheduled_at: isoScheduled,
-        send_delay_seconds: Math.max(1, parseInt(delay) || 15),
+        send_delay_seconds: Math.max(1, parseInt(delay) || 3600),
         dry_run: dryRun ? 1 : 0,
         scheduled_tag: selectedTag || null,
         ab_text_b: abMode ? textB.trim() : null,
@@ -534,27 +546,33 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
 
         {/* Send delay */}
         <div style={{ marginBottom: 18 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <Timer size={13} color={TG.muted} />
-              <FieldLabel>{t.editor.delayLabel}</FieldLabel>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {["5","10","15","30","60"].map(v => (
-                <button key={v} onClick={() => { haptic.select(); setDelay(v); }} className="tap" style={{
-                  padding: "4px 9px", borderRadius: 9, fontSize: 11, fontWeight: 700,
-                  border: `1px solid ${delay === v ? "rgba(107,168,229,0.50)" : "rgba(255,255,255,0.10)"}`,
-                  background: delay === v ? "rgba(107,168,229,0.18)" : "rgba(255,255,255,0.05)",
-                  color: delay === v ? TG.accentLight : TG.muted,
-                }}>
-                  {v}с
-                </button>
-              ))}
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+            <Timer size={13} color={TG.muted} />
+            <FieldLabel>{t.editor.delayLabel}</FieldLabel>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+            {DELAY_PRESETS.map(p => (
+              <button key={p.value} onClick={() => { haptic.select(); setDelay(String(p.value)); }} className="tap" style={{
+                padding: "5px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                border: `1px solid ${parseInt(delay) === p.value ? "rgba(107,168,229,0.50)" : "rgba(255,255,255,0.10)"}`,
+                background: parseInt(delay) === p.value ? "rgba(107,168,229,0.18)" : "rgba(255,255,255,0.05)",
+                color: parseInt(delay) === p.value ? TG.accentLight : TG.muted,
+                transition: "all 0.15s",
+              }}>
+                {p.label}
+              </button>
+            ))}
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <input
-                type="number" min="1" max="600" value={delay}
-                onChange={e => setDelay(e.target.value)}
-                style={{ width: 52, padding: "4px 8px", background: TG.inputBg, border: `1px solid ${TG.inputBorder}`, borderRadius: 9, color: TG.text, fontSize: 12, outline: "none", textAlign: "center" }}
+                type="number" min="0.25" max="168" step="0.5"
+                value={Math.round((parseInt(delay) / 3600) * 10) / 10}
+                onChange={e => {
+                  const h = parseFloat(e.target.value);
+                  if (!isNaN(h) && h > 0) setDelay(String(Math.round(h * 3600)));
+                }}
+                style={{ width: 54, padding: "4px 8px", background: TG.inputBg, border: `1px solid ${TG.inputBorder}`, borderRadius: 9, color: TG.text, fontSize: 12, outline: "none", textAlign: "center" }}
               />
+              <span style={{ fontSize: 11, color: TG.muted, fontWeight: 600 }}>ч</span>
             </div>
           </div>
         </div>
