@@ -478,31 +478,53 @@ function RateLimitSummaryStrip({ accounts }: { accounts: SenderAccount[] }) {
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
         {activeAccounts.map(a => {
-          const rl    = rateLimits[a.id];
-          const count = rl?.count ?? 0;
-          const max   = rl?.window_max ?? 20;
-          const pct   = Math.min(100, (count / max) * 100);
-          const rem   = rl ? rl.remaining / rl.window_max : 1;
-          const color = !rl || count === 0
-            ? "#7c8db0"
-            : rem > 0.5 ? "#2de897" : rem > 0.25 ? "#ffc946" : "#ff6b7a";
+          const rl        = rateLimits[a.id];
+          const count     = rl?.count ?? 0;
+          const max       = rl?.window_max ?? 20;
+          const pct       = Math.min(100, (count / max) * 100);
+          const rem       = rl ? rl.remaining / rl.window_max : 1;
+          const isFlooded = a.status === "flood_wait" ||
+            !!(a.flood_wait_until && new Date(a.flood_wait_until) > new Date());
+          const color = isFlooded
+            ? "#ffc946"
+            : !rl || count === 0
+              ? "#7c8db0"
+              : rem > 0.5 ? "#2de897" : rem > 0.25 ? "#ffc946" : "#ff6b7a";
           return (
             <div key={a.id} style={{
               borderRadius: 8, padding: "7px 9px",
-              background: count > 0 ? `${color}0d` : "rgba(255,255,255,0.03)",
-              border: `1px solid ${count > 0 ? color + "25" : "rgba(255,255,255,0.07)"}`,
+              background: isFlooded
+                ? "rgba(255,201,70,0.09)"
+                : count > 0 ? `${color}0d` : "rgba(255,255,255,0.03)",
+              border: `1px solid ${isFlooded ? "rgba(255,201,70,0.35)" : count > 0 ? color + "25" : "rgba(255,255,255,0.07)"}`,
+              position: "relative",
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                <span style={{ fontSize: 10, color: TG.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "65%" }}>
+                <span style={{ fontSize: 10, color: TG.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "55%" }}>
                   {a.label || a.phone.slice(-8)}
                 </span>
-                <span style={{ fontSize: 10, fontWeight: 700, color, flexShrink: 0 }}>
-                  {!rl ? "…" : `${count}/${max}`}
-                </span>
+                {isFlooded ? (
+                  <span style={{ fontSize: 9, fontWeight: 700, color: "#ffc946", background: "rgba(255,201,70,0.15)", border: "1px solid rgba(255,201,70,0.30)", borderRadius: 4, padding: "1px 5px", flexShrink: 0, display: "flex", alignItems: "center", gap: 3 }}>
+                    <Timer size={8} color="#ffc946" />flood
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 10, fontWeight: 700, color, flexShrink: 0 }}>
+                    {!rl ? "…" : `${count}/${max}`}
+                  </span>
+                )}
               </div>
               <div style={{ height: 2, borderRadius: 1, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 1, transition: "width 0.6s ease" }} />
+                {isFlooded ? (
+                  <div style={{ height: "100%", width: "100%", background: "linear-gradient(90deg,#ffc946,#ffa94d)", borderRadius: 1, animation: "pulse 1.4s ease-in-out infinite" }} />
+                ) : (
+                  <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 1, transition: "width 0.6s ease" }} />
+                )}
               </div>
+              {isFlooded && (
+                <div style={{ marginTop: 4, fontSize: 8, color: "#ffc946", opacity: 0.75 }}>
+                  ⏳ flood wait — пауза
+                </div>
+              )}
             </div>
           );
         })}
