@@ -2,7 +2,7 @@ import { useI18n } from "../lib/i18n";
 import type { Lang } from "../lib/translations";
 import { haptic } from "../lib/haptics";
 
-const LANGS: Lang[] = ["ru", "en", "uk"];
+const LANGS: Lang[] = ["ru", "en", "ua"];
 
 export function LangSwitcher() {
   const { lang, setLang } = useI18n();

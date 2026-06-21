@@ -1,7 +1,7 @@
-export type Lang = "ru" | "en" | "uk";
+export type Lang = "ru" | "en" | "ua";
 
 const ru = {
-  lang: { ru: "RU", en: "EN", uk: "UK", label: "Язык" },
+  lang: { ru: "RU", en: "EN", ua: "UA", label: "Язык" },
   nav: {
     dashboard: "Дашборд",
     home: "Главная",
@@ -1120,7 +1120,7 @@ const en: typeof ru = {
   },
 };
 
-const uk: typeof ru = {
+const ua: typeof ru = {
   lang: { ru: "RU", en: "EN", uk: "UK", label: "Мова" },
   nav: {
     dashboard: "Дашборд",
@@ -1680,5 +1680,5 @@ const uk: typeof ru = {
   },
 };
 
-export const translations: Record<Lang, typeof ru> = { ru, en, uk };
+export const translations: Record<Lang, typeof ru> = { ru, en, ua };
 export type Translations = typeof ru;

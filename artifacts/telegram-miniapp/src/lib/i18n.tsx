@@ -6,7 +6,7 @@ const STORAGE_KEY = "promo_fuel_lang";
 function detectLang(): Lang {
   try {
     const stored = localStorage.getItem(STORAGE_KEY) as Lang | null;
-    if (stored && (stored === "ru" || stored === "en" || stored === "uk")) return stored;
+    if (stored && (stored === "ru" || stored === "en" || stored === "ua")) return stored;
   } catch {}
   return "ru";
 }
