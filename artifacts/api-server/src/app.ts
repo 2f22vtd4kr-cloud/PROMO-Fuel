@@ -7,6 +7,7 @@ import { join } from "path";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { startWatchdog } from "./lib/watchdog";
+import { twaLimiter, authLimiter, apiLimiter } from "./lib/rate-limit";
 
 const app: Express = express();
 
@@ -26,6 +27,12 @@ app.use(
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
+
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+// Applied before auth middleware so blocked requests never reach business logic.
+app.use("/api/twa", twaLimiter);   // Mini App consumers  — 120 req/min  (dev: off)
+app.post("/api/auth", authLimiter); // Login attempts      — 10  req/15min (always on)
+app.use("/api",       apiLimiter);  // CRM/admin routes    — 300 req/min  (dev: off)
 
 // ── Login endpoint — must come BEFORE auth middleware ──
 app.post("/api/auth", (req: Request, res: Response) => {
