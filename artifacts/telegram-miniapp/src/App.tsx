@@ -13,6 +13,7 @@ import { DashboardPage }            from "./pages/Dashboard";
 import { AccountLoginPage }         from "./pages/AccountLogin";
 import { ManualPage }              from "./pages/Manual";
 import { LockScreen, getStoredSecret } from "./pages/LockScreen";
+import { WelcomeSplash } from "./pages/WelcomeSplash";
 import { BottomNav }                from "./components/BottomNav";
 import { LangSwitcher }             from "./components/LangSwitcher";
 import { ConsumerApp }              from "./ConsumerApp";
@@ -23,12 +24,22 @@ export type Tab = "home" | "campaigns" | "analytics" | "audience" | "upload" | "
 
 export function App() {
   const [unlocked, setUnlocked] = useState(() => getStoredSecret() !== "");
+  const [showSplash, setShowSplash] = useState(false);
+
+  function handleUnlocked() {
+    setUnlocked(true);
+    setShowSplash(true);
+  }
+
   return (
     <I18nProvider>
-      {!unlocked
-        ? <LockScreen onUnlocked={() => setUnlocked(true)} />
-        : <AppContent />
-      }
+      {!unlocked ? (
+        <LockScreen onUnlocked={handleUnlocked} />
+      ) : showSplash ? (
+        <WelcomeSplash onDone={() => setShowSplash(false)} />
+      ) : (
+        <AppContent />
+      )}
     </I18nProvider>
   );
 }
