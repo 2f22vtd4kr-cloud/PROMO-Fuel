@@ -1,24 +1,35 @@
-"""Standalone broadcast worker process.
+"""Standalone group-broadcast worker process.
 
 Usage:
-    python worker.py worker-1          # uses DB_PATH env or campaigns.db
+    python worker.py worker-1
     python worker.py worker-2 --db /path/to/campaigns.db
     python worker.py worker-3 --poll 3 --idle-sleep 8
 
-Main loop:
+Main loop
+---------
   1. Force-release any account locks / claimed tasks left by a previous crash
-  2. Reset stuck tasks / recover stale locks on startup
-  3. Claim next pending task from the task queue
-  4. Execute via groupbroadcaster.run_group_campaign_task()
-  5. Report done / failed + update heartbeat
-  6. Repeat — self-restart up to MAX_CRASHES times on unhandled exceptions
+     of this same worker_id (idempotent startup cleanup).
+  2. Recover globally stale locks (from other crashed workers, if any).
+  3. Wait for the heartbeat daemon to register in broadcast_workers.
+  4. Enter the claim → execute → report cycle:
+       a. Claim one pending task via TaskQueue.claim_task().  The claim atomically
+          sets the sender account's auth_status to 'broadcasting' in the DB.
+       b. Run it through groupbroadcaster.run_group_campaign_task().
+       c. On FloodWaitError (if it escapes the broadcaster): write flood_wait_until
+          to the DB and sleep the indicated time without failing the task.
+       d. On success → complete_task + notify owner.
+          On error    → fail_task  + notify owner.
+  5. Repeat until SIGTERM / KeyboardInterrupt.
 
-Self-restart:  On crash, the worker sleeps (exponential back-off) then re-runs
-               main_loop(). After MAX_CRASHES consecutive crashes it marks itself
-               dead in worker_heartbeats and exits.
+Self-restart
+  On unhandled exception the worker sleeps (exponential back-off starting at 5s,
+  capped at 120s) then re-runs main_loop().  After MAX_CRASHES consecutive crashes
+  it writes status='dead' to broadcast_workers and exits with code 1.
 
-SIGTERM:       Force-releases all locked accounts + claimed tasks held by this
-               worker before exiting (ensures no orphaned locks on graceful stop).
+SIGTERM handler
+  Cancels the currently running asyncio Task so the event loop exits cleanly,
+  then calls force_release_worker_sync() to release all locked accounts and
+  re-queue all claimed tasks before the process terminates.
 """
 from __future__ import annotations
 
@@ -32,7 +43,7 @@ import sys
 import time
 from datetime import datetime, timezone
 
-# ── Parse args early so DB_PATH is set before module-level imports ────────────
+# ── CLI args parsed before any expensive module imports ───────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
@@ -40,28 +51,35 @@ logging.basicConfig(
 )
 logger = logging.getLogger("worker")
 
-parser = argparse.ArgumentParser(description="PROMO-Fuel Group Broadcast Worker")
-parser.add_argument("worker_id",    nargs="?", default=None)
-parser.add_argument("--db",         default=None, help="SQLite DB path")
-parser.add_argument("--poll",       type=float, default=5.0)
-parser.add_argument("--idle-sleep", type=float, default=10.0)
-args, _ = parser.parse_known_args()
+_parser = argparse.ArgumentParser(description="PROMO-Fuel Group Broadcast Worker")
+_parser.add_argument("worker_id",    nargs="?", default=None)
+_parser.add_argument("--db",         default=None, help="Path to campaigns.db")
+_parser.add_argument("--poll",       type=float, default=5.0,  help="Claim poll interval (s)")
+_parser.add_argument("--idle-sleep", type=float, default=10.0, help="Idle sleep interval (s)")
+_args, _ = _parser.parse_known_args()
 
-WORKER_ID = args.worker_id or os.getenv("WORKER_ID", f"worker-{os.getpid()}")
-if args.db:
-    os.environ["DB_PATH"] = args.db
+WORKER_ID = _args.worker_id or os.getenv("WORKER_ID", f"worker-{os.getpid()}")
+if _args.db:
+    os.environ["DB_PATH"] = _args.db
 
-from dbmigrations import run_migrations
-from task_queue   import TaskQueue
-from groupbroadcaster import run_group_campaign_task
-from utils.supervisor import WorkerHeartbeat
-from campaign_db  import reset_daily_counts
+# ── All downstream imports happen AFTER DB_PATH is set ───────────────────────
+from dbmigrations   import run_migrations           # noqa: E402
+from task_queue     import TaskQueue                # noqa: E402
+from groupbroadcaster import run_group_campaign_task  # noqa: E402
+from utils.supervisor import WorkerHeartbeat        # noqa: E402
+from campaign_db    import reset_daily_counts, account_flood_wait  # noqa: E402
 
+try:
+    from telethon.errors import FloodWaitError as TelethonFloodWait
+except ImportError:
+    TelethonFloodWait = None  # type: ignore[assignment,misc]
+
+# ── Configuration ─────────────────────────────────────────────────────────────
 DB_PATH              = os.getenv("DB_PATH", "campaigns.db")
-POLL_INTERVAL        = args.poll
-IDLE_SLEEP           = args.idle_sleep
-STUCK_RESET_INTERVAL = 300       # seconds between periodic stuck-task sweeps
-MAX_CRASHES          = 5         # self-restart limit before marking dead
+POLL_INTERVAL        = _args.poll
+IDLE_SLEEP           = _args.idle_sleep
+STUCK_RESET_INTERVAL = 300    # seconds between periodic stale-lock sweeps
+MAX_CRASHES          = 5      # consecutive crash limit before marking dead
 BOT_TOKEN            = os.getenv("TELEGRAM_TOKEN", os.getenv("TELEGRAM_BOT_TOKEN", ""))
 OWNER_IDS            = [
     int(x) for x in
@@ -69,31 +87,146 @@ OWNER_IDS            = [
     if x.strip().lstrip("-").isdigit()
 ]
 
-# ── Global state ──────────────────────────────────────────────────────────────
-_running    = True
-_should_die = False
-_heartbeat: WorkerHeartbeat | None = None
-_task_queue: TaskQueue | None      = None
+# ── Global mutable state (guarded by asyncio event loop in all async paths) ───
+_running:     bool                    = True
+_main_task:   asyncio.Task | None     = None
+_heartbeat:   WorkerHeartbeat | None  = None
+_task_queue:  TaskQueue | None        = None
 
 
-# ── Signal handling ───────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# SIGTERM / SIGINT handler
+# ─────────────────────────────────────────────────────────────────────────────
 
-def _handle_signal(sig, frame):
+def _handle_signal(sig, frame) -> None:  # noqa: ANN001
+    """Signal handler: cancel the main asyncio task for a clean shutdown.
+
+    Cancelling the Task causes main_loop()'s while-loop to break via
+    asyncio.CancelledError, which triggers the finally block that releases
+    all DB locks before the event loop stops.  We also call
+    _release_resources_sync() here as a belt-and-suspenders measure in case
+    the loop is already stopped (e.g., we receive SIGTERM during startup).
+    """
     global _running
-    logger.info("[%s] Signal %s received — releasing locks and shutting down...", WORKER_ID, sig)
+    logger.info("[%s] Signal %s — shutting down cleanly", WORKER_ID, signal.Signals(sig).name)
     _running = False
-    # Release locks immediately in the signal handler so they are freed even if the
-    # asyncio loop is blocked mid-task. The release at the end of main() is idempotent.
-    _release_worker_resources()
+
+    # Cancel the asyncio task if the loop is running
+    if _main_task is not None and not _main_task.done():
+        try:
+            loop = _main_task.get_loop()
+            loop.call_soon_threadsafe(_main_task.cancel)
+        except Exception:
+            pass
+
+    # Belt-and-suspenders: also release resources synchronously right now
+    # in case the event loop never gets to run the CancelledError path.
+    _release_resources_sync()
 
 
-# ── Notification helper ───────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# DB helpers (synchronous, used in signal handler + startup/shutdown)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _db_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    return conn
+
+
+def _update_heartbeat_table(
+    status:          str = "idle",
+    tasks_completed: int = 0,
+    tasks_failed:    int = 0,
+) -> None:
+    """Write a row to worker_heartbeats (the lightweight API-queryable table)."""
+    try:
+        conn = _db_conn()
+        now  = datetime.now(timezone.utc).isoformat()
+        conn.execute("""
+            INSERT INTO worker_heartbeats
+                (worker_id, last_seen, status, tasks_completed, tasks_failed)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(worker_id) DO UPDATE SET
+                last_seen       = excluded.last_seen,
+                status          = excluded.status,
+                tasks_completed = excluded.tasks_completed,
+                tasks_failed    = excluded.tasks_failed
+        """, (WORKER_ID, now, status, tasks_completed, tasks_failed))
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        logger.debug("[%s] Heartbeat table write failed: %s", WORKER_ID, exc)
+
+
+def _mark_self_dead() -> None:
+    """Write status='dead' to both heartbeat tables so the supervisor sees it."""
+    _update_heartbeat_table(status="dead")
+    try:
+        conn = _db_conn()
+        conn.execute(
+            "UPDATE broadcast_workers SET status='dead' WHERE worker_id=?", (WORKER_ID,)
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+    logger.critical("[%s] Marked dead after %d consecutive crashes", WORKER_ID, MAX_CRASHES)
+
+
+def _release_resources_sync() -> dict[str, int]:
+    """Synchronously release all account locks + re-queue claimed tasks.
+
+    Uses the TaskQueue FileLock path for correctness.  Falls back to a raw
+    SQL statement if TaskQueue cannot be imported (e.g., during very early
+    startup before migrations have run).
+
+    Safe to call multiple times — both UPDATEs are idempotent via their
+    WHERE locked_by = WORKER_ID clause.
+    """
+    try:
+        tq     = TaskQueue(db_path=DB_PATH)
+        result = tq.force_release_worker_sync(WORKER_ID)
+        return result
+    except Exception as exc:
+        logger.warning("[%s] TaskQueue release failed, falling back to raw SQL: %s", WORKER_ID, exc)
+
+    # Raw-SQL fallback (no FileLock — last-resort only)
+    try:
+        conn = _db_conn()
+        acct = conn.execute(
+            "UPDATE sender_accounts "
+            "SET locked_by=NULL, locked_at=NULL, broadcasting=0, auth_status='idle', "
+            "status=CASE WHEN status IN ('banned','proxy_failed') THEN status ELSE 'idle' END "
+            "WHERE locked_by=?",
+            (WORKER_ID,),
+        ).rowcount
+        tasks = conn.execute(
+            "UPDATE tasks SET status='pending', worker_id=NULL, claimed_at=NULL, "
+            "attempts=MAX(0,attempts-1) WHERE worker_id=? AND status='claimed'",
+            (WORKER_ID,),
+        ).rowcount
+        conn.commit()
+        conn.close()
+        if acct or tasks:
+            logger.info("[%s] Raw-SQL release: accounts=%d  tasks=%d", WORKER_ID, acct, tasks)
+        return {"accounts": acct, "tasks": tasks}
+    except Exception as exc2:
+        logger.error("[%s] Raw-SQL release also failed: %s", WORKER_ID, exc2)
+        return {"accounts": 0, "tasks": 0}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Owner notification (fire-and-forget)
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def _notify_owner(text: str) -> None:
     if not BOT_TOKEN or not OWNER_IDS:
         return
     try:
-        import aiohttp
+        import aiohttp  # noqa: PLC0415
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         async with aiohttp.ClientSession() as session:
             for uid in OWNER_IDS:
@@ -109,173 +242,145 @@ async def _notify_owner(text: str) -> None:
         pass
 
 
-# ── Release all locked accounts + claimed tasks on shutdown ──────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# FloodWait handler (worker-level, for escaping FloodWaitErrors)
+# ─────────────────────────────────────────────────────────────────────────────
 
-def _release_worker_resources() -> dict[str, int]:
-    """On SIGTERM or crash: release all accounts + re-queue claimed tasks.
-
-    Preserves 'banned' and 'proxy_failed' account statuses — only resets to
-    'idle' for accounts that were temporarily locked for broadcasting.
-    Safe to call multiple times (idempotent via WHERE locked_by=WORKER_ID).
-    """
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=30)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA busy_timeout=30000")
-        # Release account locks — preserve banned/proxy_failed statuses
-        acct_cur = conn.execute(
-            "UPDATE sender_accounts SET locked_by=NULL, locked_at=NULL, broadcasting=0, "
-            "status=CASE WHEN status IN ('banned','proxy_failed') THEN status ELSE 'idle' END "
-            "WHERE locked_by=?",
-            (WORKER_ID,),
-        )
-        # Re-queue claimed tasks (roll back attempt counter so they get retried)
-        task_cur = conn.execute("""
-            UPDATE tasks
-            SET status='pending', worker_id=NULL, claimed_at=NULL,
-                attempts=MAX(0, attempts-1)
-            WHERE worker_id=? AND status='claimed'
-        """, (WORKER_ID,))
-        conn.commit()
-        accounts = acct_cur.rowcount
-        tasks    = task_cur.rowcount
-        conn.close()
-        if accounts or tasks:
-            logger.info(
-                "[%s] Released %d account lock(s), reset %d task(s) on exit",
-                WORKER_ID, accounts, tasks,
-            )
-        return {"accounts": accounts, "tasks": tasks}
-    except Exception as e:
-        logger.warning("[%s] Could not release resources on exit: %s", WORKER_ID, e)
-        return {"accounts": 0, "tasks": 0}
-
-
-# ── Write heartbeat to worker_heartbeats table ────────────────────────────────
-
-def _update_heartbeat_table(
-    status: str = "idle",
-    tasks_completed: int = 0,
-    tasks_failed: int = 0,
+async def _handle_flood_wait(
+    exc:         Exception,
+    task_id:     int,
+    campaign_id: int,
+    account_id:  int | None,
 ) -> None:
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=30)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA busy_timeout=30000")
-        now  = datetime.now(timezone.utc).isoformat()
-        conn.execute("""
-            INSERT INTO worker_heartbeats (worker_id, last_seen, status, tasks_completed, tasks_failed)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(worker_id) DO UPDATE SET
-                last_seen       = excluded.last_seen,
-                status          = excluded.status,
-                tasks_completed = excluded.tasks_completed,
-                tasks_failed    = excluded.tasks_failed
-        """, (WORKER_ID, now, status, tasks_completed, tasks_failed))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.debug("[%s] Heartbeat table write failed: %s", WORKER_ID, e)
+    """Handle a FloodWaitError that escaped from the broadcaster.
+
+    When Telethon raises FloodWaitError, we:
+      1. Write flood_wait_until to the sender account so the claim guard
+         in TaskQueue skips this account until it is ready again.
+      2. Re-queue the task (fail_task with attempts-1 so it gets retried).
+      3. Sleep the indicated wait time before returning to the claim loop.
+
+    This path is only reached if the broadcaster itself did not catch
+    the exception — it is a safety net, not the primary handler.
+    """
+    wait_secs = getattr(exc, "seconds", 60)
+    logger.warning(
+        "[%s] ⏳ FloodWaitError(%ds) escaped broadcaster — "
+        "writing flood_wait_until and re-queuing task #%d",
+        WORKER_ID, wait_secs, task_id,
+    )
+    if account_id is not None:
+        try:
+            await account_flood_wait(account_id, wait_secs)
+        except Exception as db_err:
+            logger.debug("[%s] flood_wait DB write failed: %s", WORKER_ID, db_err)
+
+    if _task_queue is not None:
+        await _task_queue.fail_task(task_id, f"FloodWait {wait_secs}s", campaign_id)
+
+    sleep_for = wait_secs + 10
+    logger.info("[%s] Sleeping %ds for FloodWait", WORKER_ID, sleep_for)
+    await asyncio.sleep(sleep_for)
 
 
-def _mark_self_dead() -> None:
-    _update_heartbeat_table(status="dead")
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=30)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA busy_timeout=30000")
-        conn.execute(
-            "UPDATE broadcast_workers SET status='dead' WHERE worker_id=?",
-            (WORKER_ID,),
-        )
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass
-    logger.critical("[%s] Marked dead after %d crashes", WORKER_ID, MAX_CRASHES)
-
-
-# ── Main async loop ───────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Main async loop
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def main_loop(
     tasks_completed: int = 0,
-    tasks_failed: int = 0,
+    tasks_failed:    int = 0,
 ) -> tuple[int, int]:
-    """One run of the worker loop.
+    """One execution of the worker event loop.
 
-    Returns (tasks_completed, tasks_failed) so they accumulate across restarts.
+    Returns (tasks_completed, tasks_failed) so counters accumulate across
+    self-restarts triggered by the outer synchronous wrapper.
     """
     global _heartbeat, _task_queue
 
-    logger.info("[%s] Starting (pid=%d, db=%s)", WORKER_ID, os.getpid(), DB_PATH)
+    logger.info("[%s] Starting (pid=%d  db=%s)", WORKER_ID, os.getpid(), DB_PATH)
+
+    # ── Migrations (idempotent) ────────────────────────────────────────────────
     run_migrations(DB_PATH)
 
+    # ── Initialise queue and heartbeat ─────────────────────────────────────────
     _task_queue = TaskQueue(db_path=DB_PATH)
     _heartbeat  = WorkerHeartbeat(WORKER_ID, db_path=DB_PATH)
     _heartbeat.start()
 
-    # ── Startup cleanup: force-release any residue from our previous crash ────
+    # ── Startup cleanup: release any residue from our previous crash ───────────
     cleanup = _task_queue.force_release_worker_sync(WORKER_ID)
     if cleanup["accounts"] or cleanup["tasks"]:
         logger.info(
-            "[%s] Startup cleanup: released %d account(s), re-queued %d task(s)",
+            "[%s] Startup cleanup: accounts=%d  tasks=%d",
             WORKER_ID, cleanup["accounts"], cleanup["tasks"],
         )
 
-    # ── Also recover any globally stale locks (from other crashed workers) ────
+    # ── Recover stale locks from other crashed workers ─────────────────────────
     recovered = _task_queue.recover_stale_locks_sync(timeout_seconds=120)
     if recovered:
-        logger.info("[%s] Recovered %d stale account lock(s)", WORKER_ID, recovered)
+        logger.info("[%s] Recovered %d stale account lock(s) from other workers", WORKER_ID, recovered)
 
-    last_stuck_reset = time.monotonic()
-    last_reset_date  = datetime.now().date()
-    consecutive_idle = 0
+    # ── State tracking ─────────────────────────────────────────────────────────
+    last_stuck_reset  = time.monotonic()
+    last_reset_date   = datetime.now().date()
+    consecutive_idle  = 0
 
     logger.info("[%s] Ready — polling every %.1fs", WORKER_ID, POLL_INTERVAL)
     _update_heartbeat_table("idle", tasks_completed, tasks_failed)
 
-    while _running:
-        try:
-            # Daily counter reset
+    try:
+        while _running:
+            # ── Daily counter reset ────────────────────────────────────────────
             today = datetime.now().date()
             if today != last_reset_date:
                 try:
                     await reset_daily_counts()
                     logger.info("[%s] Daily sent_today counters reset", WORKER_ID)
-                except Exception as e:
-                    logger.warning("[%s] Daily reset failed: %s", WORKER_ID, e)
+                except Exception as exc:
+                    logger.warning("[%s] Daily reset failed: %s", WORKER_ID, exc)
                 last_reset_date = today
 
-            # Periodic stuck-task sweep
+            # ── Periodic stale-lock sweep ──────────────────────────────────────
             if time.monotonic() - last_stuck_reset > STUCK_RESET_INTERVAL:
-                _task_queue.recover_stale_locks_sync(300)
+                _task_queue.recover_stale_locks_sync(STUCK_RESET_INTERVAL)
                 last_stuck_reset = time.monotonic()
 
-            # Claim a task
+            # ── Claim next task ────────────────────────────────────────────────
             task = await _task_queue.claim_task(WORKER_ID)
 
             if task is None:
                 consecutive_idle += 1
-                if consecutive_idle % 12 == 0:
-                    logger.debug("[%s] No tasks available", WORKER_ID)
+                if consecutive_idle == 1 or consecutive_idle % 12 == 0:
+                    logger.debug("[%s] No tasks available (idle=%d)", WORKER_ID, consecutive_idle)
                 _update_heartbeat_table("idle", tasks_completed, tasks_failed)
                 await asyncio.sleep(IDLE_SLEEP if consecutive_idle > 2 else POLL_INTERVAL)
                 continue
 
             consecutive_idle = 0
-            task_id     = task["id"]
-            campaign_id = task["campaign_id"]
-            logger.info("[%s] ▶ Task #%d — campaign %d", WORKER_ID, task_id, campaign_id)
+            task_id          = task["id"]
+            campaign_id      = task["campaign_id"]
+            account_id: int | None = None
 
+            # Try to resolve account_id for FloodWait handling
+            try:
+                payload    = task.get("payload") or {}
+                account_id = int(
+                    payload.get("sender_account_id")
+                    or payload.get("account_id")
+                    or 0
+                ) or None
+            except Exception:
+                pass
+
+            logger.info("[%s] ▶ Task #%d — campaign=%d", WORKER_ID, task_id, campaign_id)
             _heartbeat.set_status("working", task_id=task_id)
             _update_heartbeat_table("working", tasks_completed, tasks_failed)
 
+            # ── Execute task ───────────────────────────────────────────────────
             try:
                 result   = await run_group_campaign_task(task, worker_id=WORKER_ID)
-                sent_n   = result.get("sent", 0)
+                sent_n   = result.get("sent",   0)
                 failed_n = result.get("failed", 0)
 
                 if result.get("ok") or sent_n > 0:
@@ -284,7 +389,7 @@ async def main_loop(
                     _heartbeat.record_done()
                     _update_heartbeat_table("idle", tasks_completed, tasks_failed)
                     logger.info(
-                        "[%s] ✓ Task #%d done — sent=%d failed=%d",
+                        "[%s] ✓ Task #%d done — sent=%d  failed=%d",
                         WORKER_ID, task_id, sent_n, failed_n,
                     )
                     asyncio.create_task(_notify_owner(
@@ -306,10 +411,21 @@ async def main_loop(
                     ))
 
             except asyncio.CancelledError:
-                await _task_queue.fail_task(task_id, "Worker cancelled", campaign_id)
+                # SIGTERM path — release task cleanly and propagate cancellation
+                logger.info("[%s] Task #%d cancelled via SIGTERM", WORKER_ID, task_id)
+                await _task_queue.fail_task(task_id, "Worker cancelled (SIGTERM)", campaign_id)
                 raise
+
             except Exception as exc:
-                err_str = str(exc)[:300]
+                # ── FloodWaitError: handle gracefully without a crash ──────────
+                if TelethonFloodWait is not None and isinstance(exc, TelethonFloodWait):
+                    await _handle_flood_wait(exc, task_id, campaign_id, account_id)
+                    _heartbeat.set_status("idle")
+                    _update_heartbeat_table("idle", tasks_completed, tasks_failed)
+                    continue
+
+                # ── All other unhandled errors ─────────────────────────────────
+                err_str = str(exc)[:400]
                 logger.error(
                     "[%s] ✗ Task #%d unhandled error: %s",
                     WORKER_ID, task_id, err_str, exc_info=True,
@@ -327,23 +443,30 @@ async def main_loop(
 
             await asyncio.sleep(POLL_INTERVAL)
 
-        except asyncio.CancelledError:
-            break
-        except Exception as e:
-            logger.error("[%s] Outer loop error: %s", WORKER_ID, e, exc_info=True)
-            await asyncio.sleep(POLL_INTERVAL * 2)
+    except asyncio.CancelledError:
+        logger.info("[%s] Main loop cancelled — cleaning up", WORKER_ID)
 
-    # Graceful shutdown
-    if _heartbeat:
-        _heartbeat.stop()
-    _update_heartbeat_table("stopped", tasks_completed, tasks_failed)
-    logger.info("[%s] Stopped (completed=%d failed=%d)", WORKER_ID, tasks_completed, tasks_failed)
+    finally:
+        # ── Graceful shutdown: stop heartbeat and release all locks ───────────
+        if _heartbeat:
+            _heartbeat.stop()
+        _update_heartbeat_table("stopped", tasks_completed, tasks_failed)
+        released = _release_resources_sync()
+        logger.info(
+            "[%s] Stopped — completed=%d  failed=%d  released=%s",
+            WORKER_ID, tasks_completed, tasks_failed, released,
+        )
+
     return tasks_completed, tasks_failed
 
 
-# ── Entry point with self-restart ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Entry point with self-restart and exponential back-off
+# ─────────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    global _main_task
+
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT,  _handle_signal)
 
@@ -353,35 +476,49 @@ def main() -> None:
     tasks_failed    = 0
 
     while crash_count < MAX_CRASHES:
+        if not _running:
+            break
+
         try:
-            completed, failed = asyncio.run(main_loop(tasks_completed, tasks_failed))
-            tasks_completed   = completed
-            tasks_failed      = failed
-            # Clean exit (SIGTERM / _running = False) → don't restart
+            # Create a fresh event loop for each restart cycle
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            async def _guarded_run() -> tuple[int, int]:
+                global _main_task
+                _main_task = asyncio.current_task()
+                return await main_loop(tasks_completed, tasks_failed)
+
+            completed, failed = loop.run_until_complete(_guarded_run())
+            loop.close()
+
+            tasks_completed = completed
+            tasks_failed    = failed
+
+            # Clean exit (SIGTERM set _running = False) → do not restart
             break
 
         except KeyboardInterrupt:
             logger.info("[%s] KeyboardInterrupt — exiting cleanly", WORKER_ID)
             break
 
-        except Exception as e:
+        except Exception as exc:
             crash_count += 1
             logger.critical(
                 "[%s] Crash #%d/%d: %s",
-                WORKER_ID, crash_count, MAX_CRASHES, e, exc_info=True,
+                WORKER_ID, crash_count, MAX_CRASHES, exc, exc_info=True,
             )
             if crash_count < MAX_CRASHES:
-                sleep_for = min(backoff * (2 ** (crash_count - 1)), 120)
+                sleep_for = min(backoff * (2 ** (crash_count - 1)), 120.0)
                 logger.info("[%s] Restarting in %.0fs...", WORKER_ID, sleep_for)
                 time.sleep(sleep_for)
             else:
                 _mark_self_dead()
-                # Release resources one final time before hard exit
-                _release_worker_resources()
+                _release_resources_sync()
                 sys.exit(1)
 
-    # Always release account locks + re-queue tasks on any exit path
-    _release_worker_resources()
+    # Final release on any clean exit path
+    _release_resources_sync()
 
 
 if __name__ == "__main__":
