@@ -45,7 +45,7 @@ from datetime import datetime, timezone
 import aiosqlite
 from telethon import TelegramClient
 from telethon.errors import (
-    AuthKeyDuplicated,
+    AuthKeyDuplicatedError as AuthKeyDuplicated,
     AuthKeyUnregisteredError,
     FloodWaitError,
     SessionRevokedError,
