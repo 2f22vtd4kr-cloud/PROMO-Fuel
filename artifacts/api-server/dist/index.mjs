@@ -52067,7 +52067,8 @@ if (API_SECRET) {
 }
 app.use("/api", routes_default);
 startWatchdog();
-var FRONTEND_DIST = join(process.cwd(), "artifacts", "telegram-miniapp", "dist");
+var WORKSPACE_ROOT = join(import.meta.dirname, "../../..");
+var FRONTEND_DIST = join(WORKSPACE_ROOT, "artifacts", "telegram-miniapp", "dist");
 if (existsSync2(FRONTEND_DIST)) {
   app.use(import_express13.default.static(FRONTEND_DIST));
   app.get("/*path", (_req, res) => {

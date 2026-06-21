@@ -95,8 +95,11 @@ app.use("/api", router);
 // ── Background watchdog: campaign completion + worker crash notifications ──
 startWatchdog();
 
-// ── Serve telegram-miniapp SPA in production ──
-const FRONTEND_DIST = join(process.cwd(), "artifacts", "telegram-miniapp", "dist");
+// ── Serve telegram-miniapp SPA ──
+// Use import.meta.dirname so the path resolves correctly regardless of cwd
+// (cwd differs when launched via start-api.sh vs pnpm run start from the package dir)
+const WORKSPACE_ROOT = join(import.meta.dirname, "../../..");
+const FRONTEND_DIST = join(WORKSPACE_ROOT, "artifacts", "telegram-miniapp", "dist");
 if (existsSync(FRONTEND_DIST)) {
   app.use(express.static(FRONTEND_DIST));
   app.get("/*path", (_req, res) => {
