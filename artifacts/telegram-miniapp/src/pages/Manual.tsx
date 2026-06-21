@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from "react";
 
 interface Props { onClose: () => void }
 
-const TOTAL = 17;
+const TOTAL = 18;
 
 const ACCENT   = "#00d4ff";
 const PURPLE   = "#a855f7";
@@ -566,18 +566,38 @@ function Slide14Workers() {
         ))}
       </div>
       <div style={cardStyle(ACCENT)}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 8 }}>Управление</div>
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", lineHeight: 1.8 }}>
-          ▶️ Запустить воркер — команда из UI или терминала{"\n"}
-          ⏹️ Остановить воркер — безопасная остановка{"\n"}
-          📋 Копировать команду запуска из UI{"\n"}
-          📈 Просмотр статистики: задач выполнено / ошибок
+        <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 10 }}>Плитки на каждой карточке воркера</div>
+        {[
+          ["✅", "Выполнено", GREEN,   "Задач завершено за всё время"],
+          ["❌", "Ошибок",    "#ef4444","Задач завершилось с ошибкой"],
+          ["💓", "Пульс",     ACCENT,  "Время с последнего heartbeat"],
+          ["📤", "Сегодня",   GREEN,   "Сообщений отправлено сегодня привязанным аккаунтом"],
+        ].map(([icon, label, col, desc]) => (
+          <div key={label} style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
+            <span style={{ fontSize: 14, flexShrink: 0 }}>{icon}</span>
+            <div>
+              <span style={{ fontSize: 13, fontWeight: 700, color: col as string }}>{label} </span>
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>— {desc}</span>
+            </div>
+          </div>
+        ))}
+        <div style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.4)", lineHeight: 1.5, borderTop: `1px solid ${BORDER}`, paddingTop: 8 }}>
+          💡 <b style={{ color: "#fff" }}>Сегодня</b>: если у воркера есть аккаунт (locked_by), счётчик показывает его дневные отправки без переключения вкладок. Формат: <code style={{ background: GLASS2, padding: "1px 4px", borderRadius: 4 }}>38</code> (только успех) или <code style={{ background: GLASS2, padding: "1px 4px", borderRadius: 4 }}>38+4</code> (успех + ошибки).
         </div>
       </div>
-      <div style={{ ...cardStyle(GREEN), marginTop: 8 }}>
+      <div style={cardStyle(PURPLE)}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 8 }}>Управление</div>
+        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", lineHeight: 1.8 }}>
+          ▶️ Запустить воркер — кнопка в UI или команда в терминале{"\n"}
+          ⏹️ Остановить / удалить — кнопка корзины (только для мёртвых){"\n"}
+          📋 Копировать команду запуска — клик по строке в карточке{"\n"}
+          🔓 Освободить застрявшие блокировки — кнопка под списком
+        </div>
+      </div>
+      <div style={{ ...cardStyle(GREEN), marginTop: 4 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: GREEN, marginBottom: 6 }}>⏱️ Панель скорости аккаунтов</div>
         <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", lineHeight: 1.6 }}>
-          Под суммарными плитками — виджет <b style={{ color: "#fff" }}>«Скорость / мин — все аккаунты»</b>: 
+          Под суммарными плитками — виджет <b style={{ color: "#fff" }}>«Скорость / мин — все аккаунты»</b>:{" "}
           сетка мини-полосок для каждого активного аккаунта. Обновляется каждые 15 с.
           Цвет: 🟢 свободно · 🟡 умеренно · 🔴 лимит почти исчерпан.
         </div>
