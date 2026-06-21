@@ -304,6 +304,95 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
   );
 }
 
+// ── Rate-limit gauge ──────────────────────────────────────────────────────────
+
+type RateData = {
+  window_seconds: number; window_max: number;
+  count: number; remaining: number; resets_at: string | null;
+};
+
+function RateLimitGauge({ accountId }: { accountId: number }) {
+  const [data,        setData]     = useState<RateData | null>(null);
+  const [secsToReset, setCountdown]= useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const d = await api.getAccountRateLimit(accountId);
+      setData(d);
+      setCountdown(d.resets_at ? Math.max(0, Math.round((new Date(d.resets_at).getTime() - Date.now()) / 1000)) : 0);
+    } catch {}
+  }, [accountId]);
+
+  useEffect(() => {
+    fetchData();
+    const poll = setInterval(fetchData, 15_000);
+    return () => clearInterval(poll);
+  }, [fetchData]);
+
+  useEffect(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (!data?.resets_at) return;
+    timerRef.current = setInterval(() => {
+      setCountdown(prev => {
+        const next = Math.max(0, prev - 1);
+        if (next === 0) fetchData();
+        return next;
+      });
+    }, 1000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [data?.resets_at, fetchData]);
+
+  if (!data) return null;
+
+  const pct     = data.window_max > 0 ? Math.min(100, (data.count / data.window_max) * 100) : 0;
+  const free    = data.remaining / data.window_max;
+  const barColor = free > 0.5 ? "#2de897" : free > 0.25 ? "#ffc946" : "#ff6b7a";
+  const isEmpty  = data.count === 0;
+
+  return (
+    <div style={{
+      borderRadius: 10, padding: "9px 11px",
+      background: isEmpty ? "rgba(255,255,255,0.03)" : `${barColor}0e`,
+      border: `1px solid ${isEmpty ? "rgba(255,255,255,0.08)" : barColor + "28"}`,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <Timer size={10} color={isEmpty ? "rgba(255,255,255,0.35)" : barColor} />
+          <span style={{ fontSize: 10, fontWeight: 700, color: isEmpty ? "rgba(255,255,255,0.35)" : barColor }}>
+            Скорость / мин
+          </span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: isEmpty ? "rgba(255,255,255,0.3)" : barColor }}>
+            {data.count} / {data.window_max}
+          </span>
+          {secsToReset > 0 && (
+            <span style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", fontVariantNumeric: "tabular-nums" }}>
+              ↺{secsToReset}с
+            </span>
+          )}
+        </div>
+      </div>
+      <div style={{ height: 3, borderRadius: 2, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
+        <div style={{
+          height: "100%", borderRadius: 2,
+          width: `${pct}%`,
+          background: `linear-gradient(90deg,${barColor},${barColor}99)`,
+          boxShadow: pct > 0 ? `0 0 6px ${barColor}66` : "none",
+          transition: "width 0.6s ease",
+        }} />
+      </div>
+      {!isEmpty && (
+        <div style={{ marginTop: 5, fontSize: 9, color: "rgba(255,255,255,0.35)", display: "flex", justifyContent: "space-between" }}>
+          <span>осталось {data.remaining} сообщ.</span>
+          <span>окно {data.window_seconds} сек</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Account card ─────────────────────────────────────────────────────────────
 
 function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => void }) {
@@ -462,6 +551,9 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
               </div>
             );
           })()}
+
+          {/* Rate-limit gauge */}
+          <RateLimitGauge accountId={acc.id} />
 
           {/* API creds + proxy indicator */}
           {(acc.api_id || acc.username || acc.proxy || (acc as any).proxies) && (

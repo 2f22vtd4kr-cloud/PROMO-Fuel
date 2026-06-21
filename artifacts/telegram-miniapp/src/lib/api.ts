@@ -395,6 +395,10 @@ export const api = {
     post<SenderAccount>("/accounts", data),
   deleteAccount:  (id: number) => del(`/accounts/${id}`),
   clearFlood:     (id: number) => post<SenderAccount>(`/accounts/${id}/clear-flood`, {}),
+  getAccountRateLimit: (id: number) => get<{
+    account_id: number; window_seconds: number; window_max: number;
+    count: number; remaining: number; window_start: string | null; resets_at: string | null;
+  }>(`/accounts/${id}/rate-limit`),
   resetDailyCounts: () => post<{ ok: boolean }>("/accounts/reset-daily", {}),
   getAudienceTags:  () => get<string[]>("/audience/tags"),
   getAudienceCount: (tag?: string) => get<{ count: number; tag: string | null }>(`/audience/count${tag ? `?tag=${encodeURIComponent(tag)}` : ""}`),
