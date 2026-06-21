@@ -360,7 +360,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
         {/* Quick actions */}
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, color: TG.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>
-            {lang === "ru" ? "Быстрые действия" : lang === "ua" ? "Швидкі дії" : "Quick Actions"}
+            {lang === "ua" ? "Швидкі дії" : "Quick Actions"}
           </div>
           <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
             {quickActions.map((a) => {
@@ -398,7 +398,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                 <div style={{ fontSize: 11, fontWeight: 700, color: TG.text }}>
                   {t.groups.title}: <span style={{ color: "#ffc946" }}>{groupCampaigns} {t.groups.running.toLowerCase()}</span>
                 </div>
-                <div style={{ fontSize: 10, color: TG.muted, marginTop: 1 }}>{lang === "ru" ? "Нажми для управления" : lang === "ua" ? "Натисніть для керування" : "Tap to manage"}</div>
+                <div style={{ fontSize: 10, color: TG.muted, marginTop: 1 }}>{lang === "ua" ? "Натисніть для керування" : "Tap to manage"}</div>
               </div>
               <ArrowUpRight size={12} color={TG.muted} />
             </GlassCard>
@@ -464,13 +464,13 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                     </div>
                     <div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                        <span style={{ fontSize: 10, color: TG.muted }}>{lang === "ru" ? "Использовано" : lang === "ua" ? "Використано" : "Used"}</span>
+                        <span style={{ fontSize: 10, color: TG.muted }}>{lang === "ua" ? "Використано" : "Used"}</span>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           {pct > 0 && (
                             <span style={{ fontSize: 9, fontWeight: 700, color, background: `${color}15`, border: `1px solid ${color}35`, borderRadius: 8, padding: "1px 5px" }}>{pct}%</span>
                           )}
                           <span style={{ fontSize: 10, color, fontWeight: 700 }}>
-                            {claimed.toLocaleString("ru")} / {total.toLocaleString("ru")}
+                            {claimed.toLocaleString("uk-UA")} / {total.toLocaleString("uk-UA")}
                           </span>
                         </div>
                       </div>

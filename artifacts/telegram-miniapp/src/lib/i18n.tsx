@@ -6,9 +6,9 @@ const STORAGE_KEY = "promo_fuel_lang";
 function detectLang(): Lang {
   try {
     const stored = localStorage.getItem(STORAGE_KEY) as Lang | null;
-    if (stored && (stored === "ru" || stored === "en" || stored === "ua")) return stored;
+    if (stored && (stored === "en" || stored === "ua")) return stored;
   } catch {}
-  return "ru";
+  return "ua";
 }
 
 interface I18nCtx {
@@ -18,9 +18,9 @@ interface I18nCtx {
 }
 
 const I18nContext = createContext<I18nCtx>({
-  lang: "ru",
+  lang: "ua",
   setLang: () => {},
-  t: translations.ru,
+  t: translations.ua,
 });
 
 export function I18nProvider({ children }: { children: ReactNode }) {

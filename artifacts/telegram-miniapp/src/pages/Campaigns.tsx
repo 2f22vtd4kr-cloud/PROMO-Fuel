@@ -136,7 +136,7 @@ function LogsPanel({ campaignId, isActive }: { campaignId: number; isActive: boo
             const { icon, color, label } = logMeta(log.status);
             const name = log.first_name ?? (log.username ? `@${log.username}` : `ID ${log.chat_id}`);
             const time = log.sent_at
-              ? new Date(log.sent_at).toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+              ? new Date(log.sent_at).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
               : "";
             return (
               <div key={log.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", borderRadius: 9, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
@@ -240,7 +240,7 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
   const d = new Date(campaign.scheduled_at ?? campaign.created_at);
   const dateStr = campaign.scheduled_at
     ? `${d.getDate().toString().padStart(2,"0")}.${(d.getMonth()+1).toString().padStart(2,"0")} ${d.getHours().toString().padStart(2,"0")}:${d.getMinutes().toString().padStart(2,"0")}`
-    : d.toLocaleDateString("ru");
+    : d.toLocaleDateString("uk-UA");
 
   return (
     <GlassCard style={{ padding: "14px", animation: `slideUp 0.4s ease-out calc(${index} * 0.08s) both` }} glow={glow}>
@@ -353,7 +353,7 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 {etaStr && <span style={{ fontSize: 9, color: TG.muted }}>осталось {etaStr}</span>}
                 <span style={{ fontSize: 10, color, fontWeight: 700 }}>
-                  {campaign.sent_count.toLocaleString("ru")} / {campaign.target_count.toLocaleString("ru")} ({pct}%)
+                  {campaign.sent_count.toLocaleString("uk-UA")} / {campaign.target_count.toLocaleString("uk-UA")} ({pct}%)
                 </span>
               </div>
             </div>
@@ -428,10 +428,10 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)", fontSize: 10, color: TG.muted }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          <div>Отправлено: <span style={{ color: TG.text }}>{campaign.sent_count.toLocaleString("ru")}</span></div>
+          <div>Отправлено: <span style={{ color: TG.text }}>{campaign.sent_count.toLocaleString("uk-UA")}</span></div>
           <div style={{ display: "flex", gap: 8 }}>
-            <span>Цель: <span style={{ color: TG.text }}>{campaign.target_count.toLocaleString("ru")}</span></span>
-            <span>Ошибок: <span style={{ color: "#ff6b7a" }}>{(campaign.failed_count || 0).toLocaleString("ru")}</span></span>
+            <span>Цель: <span style={{ color: TG.text }}>{campaign.target_count.toLocaleString("uk-UA")}</span></span>
+            <span>Ошибок: <span style={{ color: "#ff6b7a" }}>{(campaign.failed_count || 0).toLocaleString("uk-UA")}</span></span>
           </div>
         </div>
         {sparkline && sparkline.some(v => v > 0) && (
@@ -521,7 +521,7 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
     })
     .sort((a, b) => {
       if (sortBy === "sent") return (b.sent_count ?? 0) - (a.sent_count ?? 0);
-      if (sortBy === "name") return a.name.localeCompare(b.name, "ru");
+      if (sortBy === "name") return a.name.localeCompare(b.name, "uk-UA");
       return statusPriority(a.status) - statusPriority(b.status);
     });
 

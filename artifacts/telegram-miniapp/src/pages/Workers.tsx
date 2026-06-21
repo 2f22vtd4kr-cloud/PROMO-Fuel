@@ -439,7 +439,7 @@ function AccountRow({ account, sendsToday }: { account: SenderAccount; sendsToda
                 </div>
                 {g.banned_at && (
                   <div style={{ fontSize: 8, color: TG.muted, marginTop: 1 }}>
-                    {new Date(g.banned_at).toLocaleDateString("ru")}
+                    {new Date(g.banned_at).toLocaleDateString("uk-UA")}
                   </div>
                 )}
               </div>

@@ -356,7 +356,7 @@ function GroupCampaignCard({
       {/* Last sent timestamp */}
       {campaign.last_sent_at && (
         <div style={{ fontSize: 9, color: TG.muted, textAlign: "right", marginTop: -6, marginBottom: 4 }}>
-          Последний: {new Date(campaign.last_sent_at).toLocaleString("ru", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+          Последний: {new Date(campaign.last_sent_at).toLocaleString("uk-UA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
         </div>
       )}
 

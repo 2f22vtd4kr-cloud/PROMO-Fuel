@@ -58,7 +58,7 @@ export function CampaignRow({
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5 }}>
           <span style={{ fontSize: 11, color: meta.color, fontWeight: 700, letterSpacing: "0.01em" }}>{meta.label}</span>
           <span style={{ fontSize: 11, color: TG.muted }}>
-            {campaign.sent_count.toLocaleString("ru")} / {campaign.target_count.toLocaleString("ru")}
+            {campaign.sent_count.toLocaleString("uk-UA")} / {campaign.target_count.toLocaleString("uk-UA")}
           </span>
         </div>
       </div>

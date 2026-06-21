@@ -404,7 +404,7 @@ export function AudiencePage() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
               <div style={{ fontSize: 32, fontWeight: 900, color: TG.text, letterSpacing: "-0.04em", lineHeight: 1 }}>
-                {loading ? "—" : (hasAnyFilter ? filtered.length : users.length).toLocaleString("ru")}
+                {loading ? "—" : (hasAnyFilter ? filtered.length : users.length).toLocaleString("uk-UA")}
               </div>
               <div style={{ fontSize: 12, color: TG.textSecondary, marginTop: 4 }}>
                 {hasAnyFilter ? t.audience.foundOf(users.length.toLocaleString(lang)) : t.audience.totalUsers}
@@ -433,7 +433,7 @@ export function AudiencePage() {
                     </div>
                     <span style={{ fontSize: 11, color: TG.textSecondary, fontWeight: 600 }}>{label}</span>
                   </div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: TG.text }}>{segments[i]?.toLocaleString("ru")}</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: TG.text }}>{segments[i]?.toLocaleString("uk-UA")}</div>
                 </GlassCard>
               );
             })}

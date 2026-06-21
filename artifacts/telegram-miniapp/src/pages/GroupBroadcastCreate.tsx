@@ -239,7 +239,7 @@ function ScheduleSection({
       {firstSendAt && (
         <div style={{ marginTop: 6, fontSize: 10, color: "#2de897", background: "rgba(45,232,151,0.07)", border: "1px solid rgba(45,232,151,0.18)", borderRadius: 8, padding: "5px 10px", display: "flex", alignItems: "center", gap: 5 }}>
           <Calendar size={10} />
-          Первая отправка: {new Date(firstSendAt).toLocaleString("ru")}
+          Первая отправка: {new Date(firstSendAt).toLocaleString("uk-UA")}
         </div>
       )}
     </div>
@@ -544,7 +544,7 @@ export function GroupBroadcastCreatePage({
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 12, color: TG.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.group_title || g.group_id}</div>
-                          <div style={{ fontSize: 10, color: TG.muted }}>{g.group_type}{g.member_count ? ` · ${g.member_count.toLocaleString("ru")} уч.` : ""}</div>
+                          <div style={{ fontSize: 10, color: TG.muted }}>{g.group_type}{g.member_count ? ` · ${g.member_count.toLocaleString("uk-UA")} уч.` : ""}</div>
                         </div>
                       </div>
                     );

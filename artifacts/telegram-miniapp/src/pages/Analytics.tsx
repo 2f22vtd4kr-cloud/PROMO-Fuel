@@ -323,10 +323,10 @@ export function AnalyticsPage() {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
               {[
-                { label: "Отправлено", value: digest.sent_last_7_days.toLocaleString("ru"), color: "#6ba8e5" },
-                { label: "Сегодня",    value: digest.total_sent_today.toLocaleString("ru"), color: "#2de897" },
-                { label: "DM",         value: digest.dm_sent_today.toLocaleString("ru"),    color: "#c4aeff" },
-                { label: "Группы",     value: digest.group_sent_today.toLocaleString("ru"), color: "#ffc946" },
+                { label: "Отправлено", value: digest.sent_last_7_days.toLocaleString("uk-UA"), color: "#6ba8e5" },
+                { label: "Сегодня",    value: digest.total_sent_today.toLocaleString("uk-UA"), color: "#2de897" },
+                { label: "DM",         value: digest.dm_sent_today.toLocaleString("uk-UA"),    color: "#c4aeff" },
+                { label: "Группы",     value: digest.group_sent_today.toLocaleString("uk-UA"), color: "#ffc946" },
               ].map(item => (
                 <div key={item.label} style={{ textAlign: "center" }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: item.color }}>{item.value}</div>
@@ -391,7 +391,7 @@ export function AnalyticsPage() {
           <GlassCard style={{ padding:"14px 14px 12px" }}>
             <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10 }}>
               <div style={{ fontSize:12,fontWeight:700,color:TG.textSecondary }}>Отправки по часам (сегодня)</div>
-              <span style={{ fontSize:10,color:TG.muted }}>{new Date().toLocaleDateString("ru",{day:"2-digit",month:"short"})}</span>
+              <span style={{ fontSize:10,color:TG.muted }}>{new Date().toLocaleDateString("uk-UA",{day:"2-digit",month:"short"})}</span>
             </div>
             <HourlySendRateChart data={sendRate} />
           </GlassCard>
@@ -429,7 +429,7 @@ export function AnalyticsPage() {
                           </span>
                         )}
                         <div>
-                          <span style={{ fontSize:11,fontWeight:800,color:TG.green }}>{c.sent.toLocaleString("ru")}</span>
+                          <span style={{ fontSize:11,fontWeight:800,color:TG.green }}>{c.sent.toLocaleString("uk-UA")}</span>
                           <span style={{ fontSize:10,color:TG.muted,marginLeft:4 }}>отпр.</span>
                         </div>
                       </div>

@@ -1,4 +1,4 @@
-export type Lang = "ru" | "en" | "ua";
+export type Lang = "en" | "ua";
 
 const ru = {
   lang: { ru: "RU", en: "EN", ua: "UA", label: "Язык" },
@@ -561,7 +561,7 @@ const ru = {
 };
 
 const en: typeof ru = {
-  lang: { ru: "RU", en: "EN", ua: "UA", label: "Language" },
+  lang: { en: "EN", ua: "UA", label: "Language" },
   nav: {
     dashboard: "Dashboard",
     home: "Home",
@@ -1121,7 +1121,7 @@ const en: typeof ru = {
 };
 
 const ua: typeof ru = {
-  lang: { ru: "RU", en: "EN", ua: "UA", label: "Мова" },
+  lang: { en: "EN", ua: "UA", label: "Мова" },
   nav: {
     dashboard: "Дашборд",
     home: "Головна",
@@ -1680,5 +1680,5 @@ const ua: typeof ru = {
   },
 };
 
-export const translations: Record<Lang, typeof ru> = { ru, en, ua };
+export const translations: Record<Lang, typeof ru> = { en, ua };
 export type Translations = typeof ru;

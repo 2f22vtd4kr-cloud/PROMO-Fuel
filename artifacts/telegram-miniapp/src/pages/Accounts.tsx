@@ -519,7 +519,7 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
               style={{ fontSize: 10, color: statusColor, fontWeight: 700, cursor: "pointer", borderBottom: "1px dashed rgba(107,168,229,0.4)", paddingBottom: 1 }}
               title="Нажмите для изменения лимита"
             >
-              {acc.sent_today.toLocaleString("ru")} / {limit.toLocaleString("ru")}
+              {acc.sent_today.toLocaleString("uk-UA")} / {limit.toLocaleString("uk-UA")}
             </span>
           )}
         </div>
@@ -711,7 +711,7 @@ export function AccountsPage({ onClose }: { onClose?: () => void }) {
             <GlassCard style={{ padding: "10px 14px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                 <span style={{ fontSize: 10, fontWeight: 700, color: TG.muted }}>Общая квота за сегодня</span>
-                <span style={{ fontSize: 11, fontWeight: 800, color: quotaColor }}>{totalSent.toLocaleString("ru")} / {totalLimit.toLocaleString("ru")} · {quotaPct}%</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: quotaColor }}>{totalSent.toLocaleString("uk-UA")} / {totalLimit.toLocaleString("uk-UA")} · {quotaPct}%</span>
               </div>
               <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${quotaPct}%`, borderRadius: 2, background: `linear-gradient(90deg, ${quotaColor}, ${quotaColor}99)`, boxShadow: `0 0 6px ${quotaColor}66`, transition: "width 0.6s ease" }} />
