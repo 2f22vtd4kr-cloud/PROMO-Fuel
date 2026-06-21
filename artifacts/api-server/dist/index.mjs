@@ -52070,8 +52070,19 @@ startWatchdog();
 var WORKSPACE_ROOT = join(import.meta.dirname, "../../..");
 var FRONTEND_DIST = join(WORKSPACE_ROOT, "artifacts", "telegram-miniapp", "dist");
 if (existsSync2(FRONTEND_DIST)) {
-  app.use(import_express13.default.static(FRONTEND_DIST));
+  app.use(import_express13.default.static(FRONTEND_DIST, {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith(".html")) {
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+      }
+    }
+  }));
   app.get("/*path", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     res.sendFile(join(FRONTEND_DIST, "index.html"));
   });
   logger.info({ path: FRONTEND_DIST }, "Serving frontend static files");

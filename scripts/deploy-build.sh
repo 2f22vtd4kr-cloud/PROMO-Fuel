@@ -47,8 +47,12 @@ fi
 echo "Building API server..."
 pnpm --filter @workspace/api-server run build
 
-# Step 4: Build the Telegram Mini App
+# Step 4: Build the Telegram Mini App (always clean rebuild)
 echo "Building Telegram Mini App..."
-pnpm --filter @workspace/telegram-miniapp run build
+NODE_ENV=production pnpm --filter @workspace/telegram-miniapp run build
+
+# Step 5: Build the CRM Platform (served as static artifact at /crm-platform/)
+echo "Building CRM Platform..."
+NODE_ENV=production pnpm --filter @workspace/crm-platform run build
 
 echo "=== Build complete ==="

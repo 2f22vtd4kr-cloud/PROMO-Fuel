@@ -101,8 +101,22 @@ startWatchdog();
 const WORKSPACE_ROOT = join(import.meta.dirname, "../../..");
 const FRONTEND_DIST = join(WORKSPACE_ROOT, "artifacts", "telegram-miniapp", "dist");
 if (existsSync(FRONTEND_DIST)) {
-  app.use(express.static(FRONTEND_DIST));
+  // Static assets (JS/CSS) — Vite hashes them so long-term caching is safe
+  app.use(express.static(FRONTEND_DIST, {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith(".html")) {
+        // index.html must never be cached — it references hashed asset filenames
+        // that change on every build. Caching it causes "old layout" in production.
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+      }
+    },
+  }));
   app.get("/*path", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     res.sendFile(join(FRONTEND_DIST, "index.html"));
   });
   logger.info({ path: FRONTEND_DIST }, "Serving frontend static files");
