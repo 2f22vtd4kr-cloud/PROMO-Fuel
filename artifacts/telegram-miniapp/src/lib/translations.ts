@@ -558,6 +558,13 @@ const ru = {
   upload: {
     title: "Загрузка файлов",
   },
+  lock: {
+    subtitle: "Доступ обмежено",
+    placeholder: "Введіть пароль доступу",
+    unlockBtn: "Увійти",
+    error: "Невірний пароль",
+    hint: "Введіть API_SECRET для доступу до системи",
+  },
 };
 
 const en: typeof ru = {
@@ -1118,6 +1125,13 @@ const en: typeof ru = {
   upload: {
     title: "File Upload",
   },
+  lock: {
+    subtitle: "Access restricted",
+    placeholder: "Enter access password",
+    unlockBtn: "Unlock",
+    error: "Wrong password",
+    hint: "Enter your API_SECRET to access the system",
+  },
 };
 
 const ua: typeof ru = {
@@ -1677,6 +1691,13 @@ const ua: typeof ru = {
   },
   upload: {
     title: "Завантаження файлів",
+  },
+  lock: {
+    subtitle: "Доступ обмежено",
+    placeholder: "Введіть пароль доступу",
+    unlockBtn: "Увійти",
+    error: "Невірний пароль",
+    hint: "Введіть API_SECRET для доступу до системи",
   },
 };
 

@@ -12,6 +12,7 @@ import { AccountsPage }             from "./pages/Accounts";
 import { DashboardPage }            from "./pages/Dashboard";
 import { AccountLoginPage }         from "./pages/AccountLogin";
 import { ManualPage }              from "./pages/Manual";
+import { LockScreen, getStoredSecret } from "./pages/LockScreen";
 import { BottomNav }                from "./components/BottomNav";
 import { LangSwitcher }             from "./components/LangSwitcher";
 import { ConsumerApp }              from "./ConsumerApp";
@@ -21,12 +22,20 @@ import { I18nProvider }             from "./lib/i18n";
 export type Tab = "home" | "campaigns" | "analytics" | "audience" | "upload" | "groups" | "workers" | "dashboard";
 
 export function App() {
-  const role = getOwnerRole();
+  const [unlocked, setUnlocked] = useState(() => getStoredSecret() !== "");
   return (
     <I18nProvider>
-      {role === "user" ? <ConsumerApp /> : <OwnerApp />}
+      {!unlocked
+        ? <LockScreen onUnlocked={() => setUnlocked(true)} />
+        : <AppContent />
+      }
     </I18nProvider>
   );
+}
+
+function AppContent() {
+  const role = getOwnerRole();
+  return role === "user" ? <ConsumerApp /> : <OwnerApp />;
 }
 
 function OwnerApp() {

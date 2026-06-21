@@ -293,6 +293,7 @@ function SpawnWorkerButton({ onSpawned, prominent = false }: { onSpawned: () => 
 }
 
 function RecoverLocksButton({ onDone }: { onDone: () => void }) {
+  const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<RecoverLocksResult | null>(null);
 

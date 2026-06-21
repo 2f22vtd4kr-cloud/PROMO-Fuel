@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Bell, Megaphone, BarChart2, ArrowUpRight, Gift, Users2, TrendingUp, Shield, Flame, Radio, Cpu } from "lucide-react";
+import { Bell, Megaphone, BarChart2, ArrowUpRight, Gift, Users2, TrendingUp, Shield, Flame, Radio, Cpu, Fuel } from "lucide-react";
 import { api, Campaign, AnalyticsOverview, WorkersSummary, DailyDigest } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
@@ -38,7 +38,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
         const totalSent  = accts.reduce((s: number, a: { sent_today: number }) => s + (a.sent_today || 0), 0);
         const totalLimit = accts.reduce((s: number, a: { daily_limit: number }) => s + (a.daily_limit || 300), 0);
         setQuotaPct(totalLimit > 0 ? Math.min(100, Math.round(totalSent / totalLimit * 100)) : null);
-        setFloodedCount(accts.filter((a: { flood_wait_until: string | null }) => !!a.flood_wait_until).length);
+        setFloodedCount(accts.filter(a => !!a.flood_wait_until).length);
         setUpcomingCamps(Array.isArray(upcoming) ? upcoming : []);
       })
       .catch(() => {})

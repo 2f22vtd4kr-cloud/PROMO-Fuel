@@ -709,7 +709,7 @@ export function GroupBroadcastsPage({
         {!loading && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 6 }}>
             {[
-              { label: t.dashboard.total,      value: campaigns.length,                                                                                   color: TG.text },
+              { label: t.campaigns.total,      value: campaigns.length,                                                                                   color: TG.text },
               { label: t.groups.running,      value: running,                                                                                             color: "#2de897" },
               { label: t.groups.paused,       value: paused,                                                                                              color: "#ffc946" },
               { label: t.groups.draft,        value: campaigns.filter(c => c.status === "draft").length,                                                  color: "#7c8db0" },

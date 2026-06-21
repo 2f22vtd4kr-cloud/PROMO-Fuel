@@ -64,6 +64,11 @@ logging.getLogger().addHandler(_bot_fh)
 
 logger = logging.getLogger(__name__)
 
+# ── Password gate — in-memory set of authenticated user IDs ───────────────────
+# Resets on bot restart (intentional: forces re-auth after deployments).
+_authed_users: set[int] = set()
+
+
 def admin_only(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id if update.effective_user else None
@@ -76,9 +81,58 @@ def admin_only(func):
                 except Exception:
                     pass
             return
+        # Password gate — only enforced when API_SECRET is configured
+        api_secret = os.getenv("API_SECRET", "")
+        if api_secret and user_id not in _authed_users:
+            if update.callback_query:
+                try:
+                    await update.callback_query.answer(
+                        "🔒 Введіть пароль: /auth <пароль>", show_alert=True
+                    )
+                except Exception:
+                    pass
+            else:
+                msg = update.effective_message
+                if msg:
+                    await msg.reply_text(
+                        "🔒 *Потрібна авторизація*\n\n"
+                        "Введіть пароль для доступу до команд:\n"
+                        "`/auth <пароль>`",
+                        parse_mode="Markdown",
+                    )
+            return
         return await func(update, context)
     wrapper.__name__ = func.__name__
     return wrapper
+
+
+async def auth_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Authenticate with API_SECRET password to unlock bot commands."""
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id != ADMIN_ID:
+        # Non-admins get a silent ignore
+        return
+    api_secret = os.getenv("API_SECRET", "")
+    if not api_secret:
+        await update.effective_message.reply_text(
+            "ℹ️ Пароль не налаштований — всі команди відкриті."
+        )
+        return
+    if not context.args:
+        await update.effective_message.reply_text(
+            "Використання: `/auth <пароль>`", parse_mode="Markdown"
+        )
+        return
+    entered = context.args[0]
+    if entered == api_secret:
+        _authed_users.add(user_id)
+        logger.info(f"✅ User {user_id} authenticated via /auth")
+        await update.effective_message.reply_text(
+            "✅ *Авторизація успішна!*\n\nКоманди розблоковано.", parse_mode="Markdown"
+        )
+    else:
+        logger.warning(f"❌ Failed /auth attempt from user_id={user_id}")
+        await update.effective_message.reply_text("❌ Невірний пароль. Спробуйте ще раз.")
 
 
 DB_FILE = "bot_db.json"
@@ -2071,19 +2125,20 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("summary", summary_report))
-    app.add_handler(CommandHandler("report", summary_report))
-    app.add_handler(CommandHandler("stats", summary_report))
-    app.add_handler(CommandHandler("weeklyreport", weekly_report))
-    app.add_handler(CommandHandler("accounts", accounts_status))
-    app.add_handler(CommandHandler("workers", workers_status))
-    app.add_handler(CommandHandler("broadcasts", broadcasts_status))
-    app.add_handler(CommandHandler("quota", quota_report))
-    app.add_handler(CommandHandler("today", today_report))
-    app.add_handler(CommandHandler("top", top_campaigns))
-    app.add_handler(CommandHandler("upcoming", upcoming_campaigns))
-    app.add_handler(CommandHandler("help", bot_help))
+    app.add_handler(CommandHandler("auth",        auth_command))
+    app.add_handler(CommandHandler("start",       start))
+    app.add_handler(CommandHandler("summary",     summary_report))
+    app.add_handler(CommandHandler("report",      summary_report))
+    app.add_handler(CommandHandler("stats",       summary_report))
+    app.add_handler(CommandHandler("weeklyreport",weekly_report))
+    app.add_handler(CommandHandler("accounts",    accounts_status))
+    app.add_handler(CommandHandler("workers",     workers_status))
+    app.add_handler(CommandHandler("broadcasts",  broadcasts_status))
+    app.add_handler(CommandHandler("quota",       quota_report))
+    app.add_handler(CommandHandler("today",       today_report))
+    app.add_handler(CommandHandler("top",         top_campaigns))
+    app.add_handler(CommandHandler("upcoming",    upcoming_campaigns))
+    app.add_handler(CommandHandler("help",        bot_help))
     app.add_handler(CallbackQueryHandler(button_handler))
 
     asyncio.get_event_loop().run_until_complete(cdb.init_db())
@@ -2102,17 +2157,18 @@ def main():
         try:
             from telegram import BotCommand
             await application.bot.set_my_commands([
-                BotCommand("start",       "Открыть Mini App"),
-                BotCommand("summary",     "Сводка за сегодня"),
-                BotCommand("weeklyreport","График отправок за 7 дней"),
-                BotCommand("accounts",    "Статус аккаунтов и квоты"),
-                BotCommand("workers",     "Состояние воркеров"),
-                BotCommand("broadcasts",   "Групповые рассылки"),
-                BotCommand("quota",       "Квота отправок по аккаунтам"),
-                BotCommand("today",       "Детальная сводка за сегодня по часам"),
-                BotCommand("top",         "Топ-5 кампаний по отправкам"),
-                BotCommand("upcoming",    "Запланированные кампании на 24ч"),
-                BotCommand("help",        "Список всех команд"),
+                BotCommand("auth",        "🔑 Авторизуватись (ввести пароль)"),
+                BotCommand("start",       "Відкрити Mini App"),
+                BotCommand("summary",     "Зведення за сьогодні"),
+                BotCommand("weeklyreport","Графік відправок за 7 днів"),
+                BotCommand("accounts",    "Статус акаунтів і квоти"),
+                BotCommand("workers",     "Стан воркерів"),
+                BotCommand("broadcasts",  "Групові розсилки"),
+                BotCommand("quota",       "Квота відправок по акаунтах"),
+                BotCommand("today",       "Детальне зведення за сьогодні по годинах"),
+                BotCommand("top",         "Топ-5 кампаній за відправками"),
+                BotCommand("upcoming",    "Заплановані кампанії на 24г"),
+                BotCommand("help",        "Список усіх команд"),
             ])
             logger.info("✅ Bot commands registered with BotFather")
         except Exception as _e:
