@@ -2,8 +2,8 @@ modules = ["nodejs-20", "python-3.12", "web"]
 
 [deployment]
 router = "application"
-deploymentTarget = "autoscale"
-run = ["sh", "-c", "node --enable-source-maps ./artifacts/api-server/dist/index.mjs"]
+deploymentTarget = "vm"
+run = ["bash", "scripts/start.sh"]
 build = ["sh", "-c", "bash scripts/deploy-build.sh"]
 
 [deployment.postBuild]
