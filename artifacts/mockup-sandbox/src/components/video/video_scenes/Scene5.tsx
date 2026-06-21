@@ -9,69 +9,66 @@ export function Scene5() {
       setTimeout(() => setPhase(1), 500),
       setTimeout(() => setPhase(2), 1500),
       setTimeout(() => setPhase(3), 2500),
-      setTimeout(() => setPhase(4), 3500),
     ];
     return () => timers.forEach(t => clearTimeout(t));
   }, []);
 
   return (
     <motion.div 
-      className="absolute inset-0 flex items-center justify-center overflow-hidden"
+      className="absolute inset-0 flex items-center justify-center"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      exit={{ opacity: 0, scale: 1.5, filter: 'blur(20px)' }}
-      transition={{ duration: 1.2, ease: "easeInOut" }}
+      exit={{ opacity: 0, scale: 1.2 }}
+      transition={{ duration: 1 }}
     >
-      {/* Expanding rings */}
-      {phase >= 1 && [1, 2, 3].map(i => (
+      <div className="text-center relative z-10">
         <motion.div
-          key={i}
-          className="absolute rounded-full border border-white/10"
-          initial={{ width: 0, height: 0, opacity: 1 }}
-          animate={{ width: `${i * 40}vw`, height: `${i * 40}vw`, opacity: 0 }}
-          transition={{ duration: 4, repeat: Infinity, delay: i * 0.5, ease: "linear" }}
-        />
-      ))}
+          initial={{ opacity: 0, y: 30 }}
+          animate={phase >= 1 ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
+          className="text-[#6ba8e5] text-[1.5vw] font-bold tracking-[0.2em] uppercase mb-6"
+        >
+          Бизнес-модель
+        </motion.div>
 
-      <div className="relative z-10 text-center">
         <motion.h2
-          className="text-8xl font-black text-white tracking-tighter"
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={phase >= 2 ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.8 }}
-          transition={{ type: "spring", stiffness: 200, damping: 20 }}
+          className="text-[6vw] font-black text-white leading-none tracking-tight mb-8"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={phase >= 2 ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.9 }}
+          transition={{ type: "spring", stiffness: 200, damping: 25 }}
         >
-          SCALE
+          SaaS Подписка
         </motion.h2>
-        
-        <motion.div
-          className="text-3xl text-white/50 mt-6 font-light"
-          initial={{ opacity: 0, y: 20 }}
-          animate={phase >= 3 ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-          transition={{ duration: 0.8 }}
+
+        <motion.p
+          className="text-[2vw] text-white/70 font-light"
+          initial={{ opacity: 0 }}
+          animate={phase >= 3 ? { opacity: 1 } : { opacity: 0 }}
+          transition={{ duration: 1 }}
         >
-          Thousands of accounts. Millions of messages.
+          Стабильный и предсказуемый доход
+        </motion.p>
+      </div>
+
+      {/* Abstract background data visualization */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
+        <motion.div 
+          className="w-[80vw] h-[40vw] border-b border-l border-[#6ba8e5]/40"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+        >
+          <motion.svg className="w-full h-full" viewBox="0 0 100 50" preserveAspectRatio="none">
+            <motion.path
+              d="M0 50 Q 20 40 40 20 T 60 15 T 80 5 T 100 0"
+              fill="none"
+              stroke="#2de897"
+              strokeWidth="1"
+              initial={{ pathLength: 0 }}
+              animate={phase >= 2 ? { pathLength: 1 } : { pathLength: 0 }}
+              transition={{ duration: 2, ease: "easeInOut" }}
+            />
+          </motion.svg>
         </motion.div>
       </div>
-      
-      {/* Floating sender avatars */}
-      {phase >= 4 && Array.from({ length: 20 }).map((_, i) => (
-        <motion.div
-          key={i}
-          className="absolute w-8 h-8 rounded-full bg-white/10 backdrop-blur-md border border-white/20"
-          initial={{ 
-            opacity: 0, 
-            x: 0, 
-            y: 0 
-          }}
-          animate={{ 
-            opacity: [0, 1, 0],
-            x: (Math.random() - 0.5) * window.innerWidth * 0.8,
-            y: (Math.random() - 0.5) * window.innerHeight * 0.8,
-            scale: [0.5, 1.5, 0.5]
-          }}
-          transition={{ duration: 3 + Math.random() * 2, repeat: Infinity, ease: "easeInOut", delay: Math.random() * 2 }}
-        />
-      ))}
     </motion.div>
   );
 }

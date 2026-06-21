@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { CheckCircle, Calendar, Sparkles, X, Eye, Timer, FlaskConical } from "lucide-react";
+import { CheckCircle, Calendar, Sparkles, X, Eye, Timer, FlaskConical, Shuffle } from "lucide-react";
 import { api, Campaign } from "../lib/api";
 import { TG, BLUR, BLUR_HEAVY } from "../lib/theme";
 import { FullSpinner } from "../components/Spinner";
@@ -42,24 +42,26 @@ function GlassInput({
 }
 
 function GlassTextarea({
-  value, onChange, onFocus, onBlur, placeholder, focused, minHeight = 130,
+  value, onChange, onFocus, onBlur, placeholder, focused, minHeight = 130, accentColor,
 }: {
   value: string; onChange: (v: string) => void;
   onFocus?: () => void; onBlur?: () => void;
   placeholder?: string; focused?: boolean; minHeight?: number;
+  accentColor?: string;
 }) {
+  const accent = accentColor ?? "rgba(91,150,212,";
   return (
     <div style={{ position: "relative" }}>
       {focused && (
-        <div style={{ position: "absolute", inset: -1, borderRadius: 16, background: "linear-gradient(135deg,rgba(91,150,212,0.48),rgba(45,232,151,0.22))", zIndex: 0, pointerEvents: "none" }} />
+        <div style={{ position: "absolute", inset: -1, borderRadius: 16, background: `linear-gradient(135deg,${accent}0.48),rgba(45,232,151,0.22))`, zIndex: 0, pointerEvents: "none" }} />
       )}
       <textarea
         style={{
           position: "relative", zIndex: 1,
           width: "100%", padding: "13px 15px",
-          background: focused ? "rgba(91,150,212,0.08)" : TG.inputBg,
+          background: focused ? `${accent}0.08)` : TG.inputBg,
           backdropFilter: BLUR, WebkitBackdropFilter: BLUR,
-          border: `1px solid ${focused ? "rgba(91,150,212,0.48)" : TG.inputBorder}`,
+          border: `1px solid ${focused ? `${accent}0.48)` : TG.inputBorder}`,
           borderRadius: 15, color: TG.text, fontSize: 14,
           outline: "none", boxSizing: "border-box",
           transition: "border-color 0.2s, background 0.2s",
@@ -86,24 +88,27 @@ function FieldLabel({ children, hint }: { children: React.ReactNode; hint?: stri
 }
 
 export function EditorPage({ campaignId, onDone }: { campaignId: number | null; onDone: () => void }) {
-  const [loading, setLoading] = useState(campaignId !== null);
-  const [name, setName] = useState("");
-  const [text, setText] = useState("");
-  const [notes, setNotes] = useState("");
-  const [scheduledAt, setScheduledAt] = useState("");
-  const [nameFocus, setNameFocus] = useState(false);
-  const [textFocus, setTextFocus] = useState(false);
-  const [notesFocus, setNotesFocus] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading]           = useState(campaignId !== null);
+  const [name, setName]                 = useState("");
+  const [text, setText]                 = useState("");
+  const [textB, setTextB]               = useState("");
+  const [notes, setNotes]               = useState("");
+  const [scheduledAt, setScheduledAt]   = useState("");
+  const [nameFocus, setNameFocus]       = useState(false);
+  const [textFocus, setTextFocus]       = useState(false);
+  const [textBFocus, setTextBFocus]     = useState(false);
+  const [notesFocus, setNotesFocus]     = useState(false);
+  const [busy, setBusy]                 = useState(false);
+  const [success, setSuccess]           = useState(false);
+  const [error, setError]               = useState<string | null>(null);
   const [scheduleMode, setScheduleMode] = useState(false);
-  const [delay, setDelay] = useState("15");
-  const [dryRun, setDryRun] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
-  const [audienceTags, setAudienceTags]     = useState<string[]>([]);
-  const [selectedTag, setSelectedTag]       = useState<string>("");
-  const [audienceCount, setAudienceCount]   = useState<number | null>(null);
+  const [delay, setDelay]               = useState("15");
+  const [dryRun, setDryRun]             = useState(false);
+  const [showPreview, setShowPreview]   = useState(false);
+  const [abMode, setAbMode]             = useState(false);
+  const [audienceTags, setAudienceTags] = useState<string[]>([]);
+  const [selectedTag, setSelectedTag]   = useState<string>("");
+  const [audienceCount, setAudienceCount] = useState<number | null>(null);
 
   useEffect(() => {
     api.getAudienceTags().then(setAudienceTags).catch(() => {});
@@ -123,6 +128,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
       if (c.dry_run) setDryRun(Boolean(c.dry_run));
       if ((c as any).scheduled_tag) setSelectedTag((c as any).scheduled_tag);
       if (c.scheduled_at) { setScheduledAt(c.scheduled_at.slice(0, 16)); setScheduleMode(true); }
+      if (c.ab_text_b) { setTextB(c.ab_text_b); setAbMode(true); }
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [campaignId]);
@@ -150,7 +156,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
 
   const isEdit = campaignId !== null;
   const charCount = text.length;
-  const valid = name.trim().length > 0 && text.trim().length > 0;
+  const valid = name.trim().length > 0 && text.trim().length > 0 && (!abMode || textB.trim().length > 0);
   const vars = ["{first_name}", "{username}", "{promo}"];
 
   async function handleSave(launch?: boolean) {
@@ -164,6 +170,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
         send_delay_seconds: Math.max(1, parseInt(delay) || 15),
         dry_run: dryRun ? 1 : 0,
         scheduled_tag: selectedTag || null,
+        ab_text_b: abMode ? textB.trim() : null,
       };
       if (isEdit && campaignId) {
         await api.updateCampaign(campaignId, payload);
@@ -226,6 +233,8 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
     </div>
   );
 
+  const halfCount = audienceCount !== null ? Math.floor(audienceCount / 2) : null;
+
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "rgba(7,9,15,0.94)", backdropFilter: "blur(60px) saturate(200%)", WebkitBackdropFilter: "blur(60px) saturate(200%)" }}>
       {/* Sheet header */}
@@ -234,7 +243,6 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
         borderBottom: "1px solid rgba(255,255,255,0.08)",
         background: "linear-gradient(180deg,rgba(255,255,255,0.04) 0%,transparent 100%)",
       }}>
-        {/* Drag handle */}
         <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.16)", margin: "0 auto 14px" }} />
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: "linear-gradient(90deg,transparent,rgba(255,255,255,0.22) 50%,transparent)", pointerEvents: "none" }} />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -251,6 +259,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", paddingTop: 18, paddingLeft: 15, paddingRight: 15, paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 220px)", WebkitOverflowScrolling: "touch" }}>
+
         {/* Name */}
         <div style={{ marginBottom: 18 }}>
           <FieldLabel>Название</FieldLabel>
@@ -259,47 +268,150 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
             placeholder="Например: Акция декабрь" />
         </div>
 
-        {/* Text */}
+        {/* A/B Test toggle */}
         <div style={{ marginBottom: 18 }}>
-          <FieldLabel hint={`${charCount}`}>Текст сообщения</FieldLabel>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-            {vars.map(v => (
-              <button key={v} onClick={() => { haptic.select(); setText(t => t + v); }} className="tap" style={{
-                padding: "5px 11px", borderRadius: 10,
-                border: "1px solid rgba(91,150,212,0.30)",
-                background: "rgba(91,150,212,0.10)",
-                backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
-                color: TG.accentLight, fontSize: 11, fontFamily: "monospace", fontWeight: 700,
-              }}>
-                {v}
-              </button>
-            ))}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <Shuffle size={13} color={abMode ? "#c4aeff" : TG.muted} />
+              <span style={{ fontSize: 10, color: abMode ? "#c4aeff" : TG.muted, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em" }}>A/B Тест</span>
+            </div>
+            <button onClick={() => { haptic.select(); setAbMode(m => !m); if (abMode) setTextB(""); }} className="tap" style={{
+              padding: "5px 14px", borderRadius: 20, fontSize: 11, fontWeight: 800,
+              border: `1px solid ${abMode ? "rgba(196,174,255,0.40)" : "rgba(255,255,255,0.11)"}`,
+              background: abMode ? "rgba(196,174,255,0.13)" : "rgba(255,255,255,0.05)",
+              color: abMode ? "#c4aeff" : TG.muted,
+              boxShadow: abMode ? "0 0 16px rgba(196,174,255,0.20)" : "none",
+            }}>
+              {abMode ? "Вкл" : "Выкл"}
+            </button>
           </div>
-          <GlassTextarea value={text} onChange={setText} focused={textFocus} minHeight={170}
-            onFocus={() => setTextFocus(true)} onBlur={() => setTextFocus(false)}
-            placeholder={"Привет, {first_name}! 👋\n\nПишем тебе, потому что..."} />
-          {charCount > 4000 && <div style={{ marginTop: 6, fontSize: 11, color: TG.red, fontWeight: 600 }}>⚠️ Слишком длинный текст</div>}
-          {text.includes("|") && text.includes("{") && (
-            <div style={{ marginTop: 8 }}>
-              <button onClick={() => { haptic.select(); setShowPreview(p => !p); }} className="tap" style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 12, border: "1px solid rgba(107,168,229,0.30)", background: "rgba(107,168,229,0.09)", color: TG.accentLight, fontSize: 11, fontWeight: 700 }}>
-                <Eye size={12} /> {showPreview ? "Скрыть превью" : "Превью сообщения"}
-              </button>
-              {showPreview && spintaxSamples.length > 0 && (
-                <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
-                  {spintaxSamples.map((sample, i) => {
-                    const names = ["Иван", "Алексей", "Мария"];
-                    return (
-                      <div key={i} style={{ padding: "11px 13px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 13, fontSize: 13, color: TG.textSecondary, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                        <div style={{ fontSize: 9, color: TG.muted, fontWeight: 800, textTransform: "uppercase", marginBottom: 6, letterSpacing: "0.08em" }}>Вариант {i + 1} · {names[i]}</div>
-                        {sample}
-                      </div>
-                    );
-                  })}
-                </div>
+
+          {abMode && (
+            <div style={{ marginTop: 10, padding: "10px 13px", background: "rgba(196,174,255,0.06)", border: "1px solid rgba(196,174,255,0.18)", borderRadius: 12, fontSize: 11, color: TG.muted, lineHeight: 1.5 }}>
+              Аудитория делится <b style={{ color: "#c4aeff" }}>50/50</b> — каждый вариант получает свою половину. Результаты сравниваются по отправкам.
+              {halfCount !== null && (
+                <span style={{ marginLeft: 6 }}>
+                  По <b style={{ color: "#c4aeff" }}>{halfCount.toLocaleString("ru")}</b> польз. на вариант.
+                </span>
               )}
             </div>
           )}
         </div>
+
+        {/* Text — single or A/B */}
+        {!abMode ? (
+          <div style={{ marginBottom: 18 }}>
+            <FieldLabel hint={`${charCount}`}>Текст сообщения</FieldLabel>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+              {vars.map(v => (
+                <button key={v} onClick={() => { haptic.select(); setText(t => t + v); }} className="tap" style={{
+                  padding: "5px 11px", borderRadius: 10,
+                  border: "1px solid rgba(91,150,212,0.30)",
+                  background: "rgba(91,150,212,0.10)",
+                  backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
+                  color: TG.accentLight, fontSize: 11, fontFamily: "monospace", fontWeight: 700,
+                }}>
+                  {v}
+                </button>
+              ))}
+            </div>
+            <GlassTextarea value={text} onChange={setText} focused={textFocus} minHeight={170}
+              onFocus={() => setTextFocus(true)} onBlur={() => setTextFocus(false)}
+              placeholder={"Привет, {first_name}! 👋\n\nПишем тебе, потому что..."} />
+            {charCount > 4000 && <div style={{ marginTop: 6, fontSize: 11, color: TG.red, fontWeight: 600 }}>⚠️ Слишком длинный текст</div>}
+            {text.includes("|") && text.includes("{") && (
+              <div style={{ marginTop: 8 }}>
+                <button onClick={() => { haptic.select(); setShowPreview(p => !p); }} className="tap" style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 12, border: "1px solid rgba(107,168,229,0.30)", background: "rgba(107,168,229,0.09)", color: TG.accentLight, fontSize: 11, fontWeight: 700 }}>
+                  <Eye size={12} /> {showPreview ? "Скрыть превью" : "Превью сообщения"}
+                </button>
+                {showPreview && spintaxSamples.length > 0 && (
+                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+                    {spintaxSamples.map((sample, i) => {
+                      const names = ["Иван", "Алексей", "Мария"];
+                      return (
+                        <div key={i} style={{ padding: "11px 13px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 13, fontSize: 13, color: TG.textSecondary, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                          <div style={{ fontSize: 9, color: TG.muted, fontWeight: 800, textTransform: "uppercase", marginBottom: 6, letterSpacing: "0.08em" }}>Вариант {i + 1} · {names[i]}</div>
+                          {sample}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* A/B mode: two text areas */
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+              {vars.map(v => (
+                <button key={v} onClick={() => {
+                  haptic.select();
+                  if (textFocus) setText(t => t + v);
+                  else if (textBFocus) setTextB(t => t + v);
+                  else setText(t => t + v);
+                }} className="tap" style={{
+                  padding: "5px 11px", borderRadius: 10,
+                  border: "1px solid rgba(91,150,212,0.30)",
+                  background: "rgba(91,150,212,0.10)",
+                  backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
+                  color: TG.accentLight, fontSize: 11, fontFamily: "monospace", fontWeight: 700,
+                }}>
+                  {v}
+                </button>
+              ))}
+            </div>
+
+            {/* Split indicator */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <div style={{ flex: 1, height: 4, borderRadius: 4, overflow: "hidden", background: "rgba(255,255,255,0.07)" }}>
+                <div style={{ height: "100%", width: "50%", background: "linear-gradient(90deg,#6ba8e5,#c4aeff)", borderRadius: 4 }} />
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#c4aeff", flexShrink: 0 }}>50% / 50%</span>
+              <div style={{ flex: 1, height: 4, borderRadius: 4, overflow: "hidden", background: "rgba(255,255,255,0.07)" }}>
+                <div style={{ height: "100%", width: "50%", background: "linear-gradient(90deg,#c4aeff,#6ba8e5)", borderRadius: 4, marginLeft: "50%" }} />
+              </div>
+            </div>
+
+            {/* Variant A */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 22, height: 22, borderRadius: 7, background: "rgba(107,168,229,0.18)", border: "1px solid rgba(107,168,229,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, color: "#6ba8e5" }}>A</div>
+                  <span style={{ fontSize: 10, color: "#6ba8e5", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>Вариант A</span>
+                  {halfCount !== null && <span style={{ fontSize: 10, color: TG.muted }}>{halfCount.toLocaleString("ru")} польз.</span>}
+                </div>
+                <span style={{ fontSize: 11, color: TG.muted }}>{text.length} символов</span>
+              </div>
+              <GlassTextarea value={text} onChange={setText} focused={textFocus} minHeight={130}
+                onFocus={() => { setTextFocus(true); setTextBFocus(false); }}
+                onBlur={() => setTextFocus(false)}
+                accentColor="rgba(107,168,229,"
+                placeholder={"Привет, {first_name}! Акция A:\n10 рублей скидки на заправку"} />
+            </div>
+
+            {/* Variant B */}
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 22, height: 22, borderRadius: 7, background: "rgba(196,174,255,0.18)", border: "1px solid rgba(196,174,255,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, color: "#c4aeff" }}>B</div>
+                  <span style={{ fontSize: 10, color: "#c4aeff", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>Вариант B</span>
+                  {halfCount !== null && <span style={{ fontSize: 10, color: TG.muted }}>{halfCount.toLocaleString("ru")} польз.</span>}
+                </div>
+                <span style={{ fontSize: 11, color: TG.muted }}>{textB.length} символов</span>
+              </div>
+              <GlassTextarea value={textB} onChange={setTextB} focused={textBFocus} minHeight={130}
+                onFocus={() => { setTextBFocus(true); setTextFocus(false); }}
+                onBlur={() => setTextBFocus(false)}
+                accentColor="rgba(196,174,255,"
+                placeholder={"Привет, {first_name}! Акция B:\nБесплатная мойка при заправке от 30л"} />
+            </div>
+
+            {!textB.trim() && (
+              <div style={{ marginTop: 8, fontSize: 11, color: TG.red, fontWeight: 600 }}>⚠️ Заполните Вариант B</div>
+            )}
+          </div>
+        )}
 
         {/* Schedule */}
         <div style={{ marginBottom: 18 }}>
@@ -366,6 +478,11 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
                 ? <span style={{ fontSize: 10, color: TG.muted, opacity: 0.5 }}>…</span>
                 : <span style={{ fontSize: 10, fontWeight: 800, color: selectedTag ? TG.purple : TG.green }}>
                     {audienceCount.toLocaleString("ru")} польз.
+                    {abMode && halfCount !== null && (
+                      <span style={{ color: TG.muted, fontWeight: 400 }}>
+                        {" "}(A: {halfCount.toLocaleString("ru")} / B: {(audienceCount - halfCount).toLocaleString("ru")})
+                      </span>
+                    )}
                   </span>
               }
             </div>
@@ -465,7 +582,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               boxShadow: valid ? "0 4px 22px rgba(45,232,151,0.16)" : "none",
             }}>
-              <Sparkles size={15} /> Создать и запустить
+              <Sparkles size={15} /> {abMode ? "Запустить A/B тест" : "Создать и запустить"}
             </button>
           )}
         </div>

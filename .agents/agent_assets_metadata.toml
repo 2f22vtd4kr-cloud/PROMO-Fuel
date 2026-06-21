@@ -1,0 +1,14 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "YBkNSDWvQM4JNtFnf7D0P"
+uri = "file://artifacts/mockup-sandbox/public/images/promo-bg-1.png"
+type = "image"
+title = "Dark industrial background with fuel theme"
+
+[[generated]]
+id = "Q2_cpBPxen1bztFKwp-Gw"
+uri = "file://artifacts/mockup-sandbox/public/images/promo-bg-2.png"
+type = "image"
+title = "Abstract data network with green accents"

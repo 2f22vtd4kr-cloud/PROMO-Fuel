@@ -55,6 +55,7 @@ export interface Campaign {
   send_delay_seconds?: number;
   sender_account_id?: number | null;
   scheduled_tag?: string | null;
+  ab_text_b?: string | null;
 }
 
 export interface GroupCampaign {

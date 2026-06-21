@@ -29,19 +29,19 @@ router.get("/campaigns", (req, res) => {
 router.post("/campaigns", (req, res) => {
   try {
     const db = new Database(DB_PATH);
-    const { name, text_template, sender_account_id, send_delay_seconds, scheduled_at, scheduled_tag } = req.body as {
+    const { name, text_template, sender_account_id, send_delay_seconds, scheduled_at, scheduled_tag, ab_text_b } = req.body as {
       name: string; text_template: string;
-      sender_account_id?: number; send_delay_seconds?: number; scheduled_at?: string; scheduled_tag?: string;
+      sender_account_id?: number; send_delay_seconds?: number; scheduled_at?: string; scheduled_tag?: string; ab_text_b?: string;
     };
     if (!name || !text_template) return void res.status(400).json({ error: "name and text_template required" });
     const now = new Date().toISOString();
-    for (const [col, def] of [["sender_account_id", "INTEGER"], ["send_delay_seconds", "INTEGER DEFAULT 15"]] as [string, string][]) {
+    for (const [col, def] of [["sender_account_id", "INTEGER"], ["send_delay_seconds", "INTEGER DEFAULT 15"], ["ab_text_b", "TEXT"]] as [string, string][]) {
       try { db.exec(`ALTER TABLE campaigns ADD COLUMN ${col} ${def}`); } catch {}
     }
     const info = db.prepare(
-      `INSERT INTO campaigns (name, text_template, status, created_at, sent_count, failed_count, target_count, dry_run, sender_account_id, send_delay_seconds, scheduled_at, scheduled_tag)
-       VALUES (?, ?, 'draft', ?, 0, 0, 0, 0, ?, ?, ?, ?)`
-    ).run(name, text_template, now, sender_account_id ?? null, send_delay_seconds ?? 15, scheduled_at ?? null, scheduled_tag ?? null);
+      `INSERT INTO campaigns (name, text_template, status, created_at, sent_count, failed_count, target_count, dry_run, sender_account_id, send_delay_seconds, scheduled_at, scheduled_tag, ab_text_b)
+       VALUES (?, ?, 'draft', ?, 0, 0, 0, 0, ?, ?, ?, ?, ?)`
+    ).run(name, text_template, now, sender_account_id ?? null, send_delay_seconds ?? 15, scheduled_at ?? null, scheduled_tag ?? null, ab_text_b ?? null);
     const row = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(info.lastInsertRowid);
     db.close();
     res.status(201).json(row);
@@ -66,10 +66,13 @@ router.put("/campaigns/:id", (req, res) => {
   try {
     const db = new Database(DB_PATH);
     const id = parseInt(req.params.id);
-    const { name, text_template, status, notes, sender_account_id, send_delay_seconds } = req.body as {
+    const body = req.body as Record<string, unknown>;
+    const { name, text_template, status, notes, sender_account_id, send_delay_seconds } = body as {
       name?: string; text_template?: string; status?: string; notes?: string;
       sender_account_id?: number | null; send_delay_seconds?: number;
     };
+    // Ensure ab_text_b column exists
+    try { db.exec("ALTER TABLE campaigns ADD COLUMN ab_text_b TEXT"); } catch {}
     const fields: string[] = [];
     const values: unknown[] = [];
     if (name !== undefined) { fields.push("name = ?"); values.push(name); }
@@ -78,7 +81,8 @@ router.put("/campaigns/:id", (req, res) => {
     if (notes !== undefined) { fields.push("notes = ?"); values.push(notes); }
     if (sender_account_id !== undefined) { fields.push("sender_account_id = ?"); values.push(sender_account_id ?? null); }
     if (send_delay_seconds !== undefined) { fields.push("send_delay_seconds = ?"); values.push(send_delay_seconds); }
-    if ((req.body as Record<string, unknown>).scheduled_tag !== undefined) { fields.push("scheduled_tag = ?"); values.push((req.body as Record<string, unknown>).scheduled_tag ?? null); }
+    if (body.scheduled_tag !== undefined) { fields.push("scheduled_tag = ?"); values.push(body.scheduled_tag ?? null); }
+    if (body.ab_text_b !== undefined) { fields.push("ab_text_b = ?"); values.push(body.ab_text_b || null); }
     if (fields.length === 0) return void res.status(400).json({ error: "nothing to update" });
     values.push(id);
     db.prepare(`UPDATE campaigns SET ${fields.join(", ")} WHERE id = ?`).run(...values);
