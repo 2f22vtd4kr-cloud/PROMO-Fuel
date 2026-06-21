@@ -401,6 +401,17 @@ export function WorkersPage() {
         return { ...prev, alive_workers: ws.filter(w => w.is_alive).length };
       });
     }
+    if (type === "group_campaigns") {
+      const gcs = data as GroupCampaign[];
+      setScheduled(
+        gcs.filter(c => c.status === "running" || c.status === "paused")
+          .sort((a, b) => {
+            if (!a.next_send_at) return 1;
+            if (!b.next_send_at) return -1;
+            return new Date(a.next_send_at).getTime() - new Date(b.next_send_at).getTime();
+          })
+      );
+    }
     if (type === "accounts") setAccounts(data as SenderAccount[]);
     if (type === "tasks") {
       const ts = data as Task[];

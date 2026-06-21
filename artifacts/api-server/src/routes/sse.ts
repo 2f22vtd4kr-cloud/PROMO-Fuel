@@ -14,6 +14,7 @@ function broadcastEvent(event: string, data: unknown) {
 }
 
 let lastCampaignSnap      = "";
+let lastGroupCampaignSnap = "";
 let lastAccountSnap       = "";
 let lastWorkerSnap        = "";
 let lastHeartbeatSnap     = "";
@@ -32,6 +33,18 @@ function pollDb() {
       lastCampaignSnap = campSnap;
       broadcastEvent("campaigns", campaigns);
     }
+
+    // ── Group campaigns ───────────────────────────────────────────────────────
+    try {
+      const groupCampaigns = db.prepare(
+        "SELECT id, name, status, sent_count, failed_count, next_send_at, last_sent_at FROM group_campaigns ORDER BY id"
+      ).all();
+      const gcSnap = JSON.stringify(groupCampaigns);
+      if (gcSnap !== lastGroupCampaignSnap) {
+        lastGroupCampaignSnap = gcSnap;
+        broadcastEvent("group_campaigns", groupCampaigns);
+      }
+    } catch {}
 
     // ── Sender accounts (includes lock columns) ───────────────────────────────
     try {
