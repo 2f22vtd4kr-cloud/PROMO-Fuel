@@ -607,9 +607,9 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
           return (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
               {[
-                { label: t.campaigns.sortSent, value: totSent.toLocaleString(lang),   color: "#2de897" },
-                { label: t.campaigns.statErrors, value: totFailed.toLocaleString(lang), color: "#ff6b7a" },
-                { label: t.nav.audience, value: totTarget.toLocaleString(lang), color: "#6ba8e5" },
+                { label: t.campaigns.sortSent, value: totSent.toLocaleString(lang === "ua" ? "uk-UA" : lang),   color: "#2de897" },
+                { label: t.campaigns.statErrors, value: totFailed.toLocaleString(lang === "ua" ? "uk-UA" : lang), color: "#ff6b7a" },
+                { label: t.nav.audience, value: totTarget.toLocaleString(lang === "ua" ? "uk-UA" : lang), color: "#6ba8e5" },
                 { label: t.campaigns.statSuccess, value: sr !== null ? `${sr}%` : "—", color: sr === null ? TG.muted : sr >= 80 ? "#2de897" : "#ffc946" },
               ].map(s => (
                 <GlassCard key={s.label} style={{ padding: "8px 4px", textAlign: "center" }}>

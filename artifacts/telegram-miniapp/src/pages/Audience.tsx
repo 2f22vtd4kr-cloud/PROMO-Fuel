@@ -407,7 +407,7 @@ export function AudiencePage() {
                 {loading ? "—" : (hasAnyFilter ? filtered.length : users.length).toLocaleString("uk-UA")}
               </div>
               <div style={{ fontSize: 12, color: TG.textSecondary, marginTop: 4 }}>
-                {hasAnyFilter ? t.audience.foundOf(users.length.toLocaleString(lang)) : t.audience.totalUsers}
+                {hasAnyFilter ? t.audience.foundOf(users.length.toLocaleString(lang === "ua" ? "uk-UA" : lang)) : t.audience.totalUsers}
               </div>
             </div>
             <div style={{ textAlign: "right" }}>

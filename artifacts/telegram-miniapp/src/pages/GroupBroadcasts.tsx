@@ -713,7 +713,7 @@ export function GroupBroadcastsPage({
               { label: t.groups.running,      value: running,                                                                                             color: "#2de897" },
               { label: t.groups.paused,       value: paused,                                                                                              color: "#ffc946" },
               { label: t.groups.draft,        value: campaigns.filter(c => c.status === "draft").length,                                                  color: "#7c8db0" },
-              { label: t.groups.sentTotal,    value: campaigns.reduce((s, c) => s + (c.sent_count ?? 0), 0).toLocaleString(lang),                        color: "#6ba8e5" },
+              { label: t.groups.sentTotal,    value: campaigns.reduce((s, c) => s + (c.sent_count ?? 0), 0).toLocaleString(lang === "ua" ? "uk-UA" : lang),                        color: "#6ba8e5" },
             ].map(s => (
               <GlassCard key={s.label} style={{ padding: "10px 4px", textAlign: "center" }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: s.color }}>{s.value}</div>

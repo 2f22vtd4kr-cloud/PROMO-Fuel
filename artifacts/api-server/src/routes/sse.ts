@@ -76,7 +76,7 @@ function pollDb() {
       ).all() as Record<string, unknown>[]).map(w => {
         const lh = w["last_heartbeat"] as string | null;
         const age = lh ? Math.floor((now - new Date(lh).getTime()) / 1000) : 9999;
-        return { ...w, age_seconds: age, is_alive: age < 60 };
+        return { ...w, age_seconds: age, is_alive: age < 60 } as Record<string, unknown> & { age_seconds: number; is_alive: boolean };
       });
 
       // ── Crash detection: alive→dead transition ──────────────────────────

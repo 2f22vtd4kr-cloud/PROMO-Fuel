@@ -144,7 +144,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
           {/* Last-refresh timestamp */}
           {lastRefreshed && (
             <div style={{ fontSize: 9, color: TG.muted, textAlign: "right", paddingRight: 16, marginTop: -6 }}>
-              {t.home.updatedAt} {lastRefreshed.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              {t.home.updatedAt} {lastRefreshed.toLocaleTimeString(lang === "ua" ? "uk-UA" : lang, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             </div>
           )}
 
@@ -237,7 +237,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                   const delta = dt.getTime() - now;
                   const hh = Math.floor(delta / 3600000);
                   const mm = Math.floor((delta % 3600000) / 60000);
-                  const timeStr = dt.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
+                  const timeStr = dt.toLocaleTimeString(lang === "ua" ? "uk-UA" : lang, { hour: "2-digit", minute: "2-digit" });
                   const countdown = hh > 0 ? `${hh}h ${mm}m` : `${mm}m`;
                   return (
                     <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -266,7 +266,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                 {overview.activeCampaigns} активных кампаний
               </div>
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
-                {t.home.sentAndBase(overview.totalSent.toLocaleString(lang), users.toLocaleString(lang))}
+                {t.home.sentAndBase(overview.totalSent.toLocaleString(lang === "ua" ? "uk-UA" : lang), users.toLocaleString(lang === "ua" ? "uk-UA" : lang))}
               </div>
             </div>
             <span className="status-badge status-running">Live</span>

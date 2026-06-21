@@ -90,7 +90,7 @@ function MiniBarChart({ data, color }: { data: TrendPoint[]; color: string }) {
 }
 
 function HourlySendRateChart({ data }: { data: SendRatePoint[] }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const maxTotal = Math.max(...data.map(d => d.total), 1);
   const currentHour = new Date().getHours();
   const bestHour = data.reduce((best, d, i) => d.total > (data[best]?.total ?? 0) ? i : best, 0);
@@ -101,7 +101,7 @@ function HourlySendRateChart({ data }: { data: SendRatePoint[] }) {
     <div>
       {totalToday > 0 && (
         <div style={{ display: "flex", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: "#6ba8e5" }}>📊 {t.analytics.totalToday} {totalToday.toLocaleString()}</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#6ba8e5" }}>📊 {t.analytics.totalToday} {totalToday.toLocaleString(lang === "ua" ? "uk-UA" : lang)}</span>
           <span style={{ fontSize: 10, fontWeight: 700, color: "#ffc946" }}>⭐ {t.analytics.bestHour} {String(bestHour).padStart(2, "0")}:00–{String(bestHour + 1).padStart(2, "0")}:00</span>
           {totalErrors > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: "#ff6b7a" }}>✗ {t.analytics.errorsToday} {totalErrors}</span>}
         </div>

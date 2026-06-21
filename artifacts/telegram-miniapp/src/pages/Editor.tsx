@@ -320,7 +320,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
               {t.editor.abSplitHint}
               {halfCount !== null && (
                 <span style={{ marginLeft: 6 }}>
-                  {t.editor.variantUsers(halfCount.toLocaleString(lang))}
+                  {t.editor.variantUsers(halfCount.toLocaleString(lang === "ua" ? "uk-UA" : lang))}
                 </span>
               )}
             </div>
@@ -422,7 +422,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ width: 22, height: 22, borderRadius: 7, background: "rgba(107,168,229,0.18)", border: "1px solid rgba(107,168,229,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, color: "#6ba8e5" }}>A</div>
                   <span style={{ fontSize: 10, color: "#6ba8e5", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t.editor.variantA}</span>
-                  {halfCount !== null && <span style={{ fontSize: 10, color: TG.muted }}>{t.editor.userCountShort(halfCount.toLocaleString(lang))}</span>}
+                  {halfCount !== null && <span style={{ fontSize: 10, color: TG.muted }}>{t.editor.userCountShort(halfCount.toLocaleString(lang === "ua" ? "uk-UA" : lang))}</span>}
                 </div>
                 <span style={{ fontSize: 11, color: TG.muted }}>{text.length} {t.editor.chars}</span>
               </div>
@@ -439,7 +439,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ width: 22, height: 22, borderRadius: 7, background: "rgba(196,174,255,0.18)", border: "1px solid rgba(196,174,255,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, color: "#c4aeff" }}>B</div>
                   <span style={{ fontSize: 10, color: "#c4aeff", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t.editor.variantB}</span>
-                  {halfCount !== null && <span style={{ fontSize: 10, color: TG.muted }}>{t.editor.userCountShort(halfCount.toLocaleString(lang))}</span>}
+                  {halfCount !== null && <span style={{ fontSize: 10, color: TG.muted }}>{t.editor.userCountShort(halfCount.toLocaleString(lang === "ua" ? "uk-UA" : lang))}</span>}
                 </div>
                 <span style={{ fontSize: 11, color: TG.muted }}>{textB.length} {t.editor.chars}</span>
               </div>
@@ -520,10 +520,10 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
               {audienceCount === null
                 ? <span style={{ fontSize: 10, color: TG.muted, opacity: 0.5 }}>…</span>
                 : <span style={{ fontSize: 10, fontWeight: 800, color: selectedTag ? TG.purple : TG.green }}>
-                    {t.editor.userCountShort(audienceCount.toLocaleString(lang))}
+                    {t.editor.userCountShort(audienceCount.toLocaleString(lang === "ua" ? "uk-UA" : lang))}
                     {abMode && halfCount !== null && (
                       <span style={{ color: TG.muted, fontWeight: 400 }}>
-                        {" "}(A: {halfCount.toLocaleString(lang)} / B: {(audienceCount - halfCount).toLocaleString(lang)})
+                        {" "}(A: {halfCount.toLocaleString(lang === "ua" ? "uk-UA" : lang)} / B: {(audienceCount - halfCount).toLocaleString(lang === "ua" ? "uk-UA" : lang)})
                       </span>
                     )}
                   </span>

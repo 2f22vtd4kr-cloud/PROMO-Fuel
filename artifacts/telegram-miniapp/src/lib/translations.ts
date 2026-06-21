@@ -1,7 +1,7 @@
 export type Lang = "en" | "ua";
 
 const ru = {
-  lang: { ru: "RU", en: "EN", ua: "UA", label: "Язык" },
+  lang: { en: "EN", ua: "UA", label: "Язык" },
   nav: {
     dashboard: "Дашборд",
     home: "Главная",
@@ -307,7 +307,7 @@ const ru = {
     limit: "Лимит",
     status: "Статус",
     addNew: "Новый аккаунт",
-    phonePlaceholder: "+7XXXXXXXXXX",
+    phonePlaceholder: "+XXXXXXXXXXX",
     apiIdPlaceholder: "12345678",
     apiHashPlaceholder: "abc123...",
     proxyPlaceholder: "socks5://host:port",

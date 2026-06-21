@@ -540,8 +540,8 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
             return (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
                 {[
-                  { label: t.groups.sentTotal,    value: sent.toLocaleString(lang),    color: "#6ba8e5" },
-                  { label: t.workers.tasksFailed, value: failed.toLocaleString(lang),  color: "#ff6b7a" },
+                  { label: t.groups.sentTotal,    value: sent.toLocaleString(lang === "ua" ? "uk-UA" : lang),    color: "#6ba8e5" },
+                  { label: t.workers.tasksFailed, value: failed.toLocaleString(lang === "ua" ? "uk-UA" : lang),  color: "#ff6b7a" },
                   { label: t.analytics.kpiReach,  value: sr !== null ? `${sr}%` : "—", color: srColor },
                   { label: t.accounts.status,     value: acc.status,                   color: statusColor },
                 ].map(s => (
@@ -699,7 +699,7 @@ export function AccountsPage({ onClose }: { onClose?: () => void }) {
               { label: t.audience.total,       value: String(accounts.length),       color: TG.text },
               { label: t.dashboard.alive,      value: String(active),                color: "#2de897" },
               { label: t.accounts.authorized,  value: String(authed),                color: "#6ba8e5" },
-              { label: t.common.today,         value: totalSent.toLocaleString(lang), color: "#ffc946" },
+              { label: t.common.today,         value: totalSent.toLocaleString(lang === "ua" ? "uk-UA" : lang), color: "#ffc946" },
             ].map(s => (
               <GlassCard key={s.label} style={{ padding: "10px 6px", textAlign: "center" }}>
                 <div style={{ fontSize: 15, fontWeight: 800, color: s.color }}>{s.value}</div>

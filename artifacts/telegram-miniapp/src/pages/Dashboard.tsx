@@ -233,6 +233,7 @@ function RateLimitRow({ account }: { account: SenderAccount }) {
 }
 
 function AdminActions({ onAction }: { onAction: () => void }) {
+  const { t } = useI18n();
   const [busyReap,   setBusyReap]   = useState(false);
   const [busyLocks,  setBusyLocks]  = useState(false);
   const [reapResult, setReapResult] = useState<string | null>(null);
@@ -422,7 +423,7 @@ export function DashboardPage() {
               {/* Snapshot timestamp */}
               {snapshot && (
                 <div style={{ fontSize: 9, color: TG.muted, textAlign: "right", opacity: 0.6 }}>
-                  {t.dashboard.snapshot} {new Date(snapshot.timestamp).toLocaleTimeString(lang)}
+                  {t.dashboard.snapshot} {new Date(snapshot.timestamp).toLocaleTimeString(lang === "ua" ? "uk-UA" : lang)}
                 </div>
               )}
 
