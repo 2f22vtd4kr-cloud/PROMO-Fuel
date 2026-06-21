@@ -19,10 +19,16 @@ import { LangSwitcher }             from "./components/LangSwitcher";
 import { ConsumerApp }              from "./ConsumerApp";
 import { getOwnerRole }             from "./lib/twa";
 import { I18nProvider }             from "./lib/i18n";
+import { VideoPlayer }              from "./video/VideoPlayer";
 
 export type Tab = "home" | "campaigns" | "analytics" | "audience" | "upload" | "groups" | "workers" | "dashboard";
 
 export function App() {
+  // Full-screen video route — no lock screen, no auth
+  if (window.location.pathname === "/video") {
+    return <VideoPlayer />;
+  }
+
   const [unlocked, setUnlocked] = useState(() => getStoredSecret() !== "");
   const [showSplash, setShowSplash] = useState(false);
 

@@ -43,7 +43,7 @@ catalogs:
       specifier: ^0.45.2
       version: 0.45.2
     framer-motion:
-      specifier: ^12.23.24
+      specifier: 12.38.0
       version: 12.38.0
     lucide-react:
       specifier: ^0.545.0
@@ -608,6 +608,10 @@ importers:
         version: 3.25.76
 
   artifacts/telegram-miniapp:
+    dependencies:
+      framer-motion:
+        specifier: 'catalog:'
+        version: 12.38.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
