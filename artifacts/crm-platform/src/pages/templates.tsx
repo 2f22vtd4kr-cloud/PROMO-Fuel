@@ -107,7 +107,7 @@ function EditTemplateDialog({
   async function handleSave() {
     if (!name.trim() || !text.trim()) return;
     setBusy(true);
-    const tagsArr = tags.split(",").map(t => t.trim()).filter(Boolean);
+    const tagsArr = tags.split(",").map((t: string) => t.trim()).filter(Boolean);
     const body = { name: name.trim(), icon: icon.trim() || "📝", text: text.trim(), tags: tagsArr };
     if (template) {
       await fetch(`${API_BASE}/api/templates/${template.id}`, {

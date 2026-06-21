@@ -75,12 +75,12 @@ function RunningBadge({ status }: { status: string }) {
 export function Dashboard() {
   useCampaignSSE();
 
-  const { data: overview, isLoading: ovLoading } = useGetAnalyticsOverview({ query: { refetchInterval: REFETCH_MS } });
-  const { data: trend, isLoading: trendLoading } = useGetAnalyticsTrend({ days: 7 }, { query: { refetchInterval: REFETCH_MS } });
-  const { data: funnel } = useGetAnalyticsFunnel({ query: { refetchInterval: REFETCH_MS } });
-  const { data: topCampaigns } = useGetTopCampaigns({ limit: 5 }, { query: { refetchInterval: REFETCH_MS } });
-  const { data: activity } = useGetActivityFeed({ limit: 8 }, { query: { refetchInterval: REFETCH_MS } });
-  const { data: cohort } = useGetAnalyticsCohort({ query: { refetchInterval: REFETCH_MS } });
+  const { data: overview, isLoading: ovLoading } = useGetAnalyticsOverview({ query: { queryKey: [], refetchInterval: REFETCH_MS } });
+  const { data: trend, isLoading: trendLoading } = useGetAnalyticsTrend({ days: 7 }, { query: { queryKey: [], refetchInterval: REFETCH_MS } });
+  const { data: funnel } = useGetAnalyticsFunnel({ query: { queryKey: [], refetchInterval: REFETCH_MS } });
+  const { data: topCampaigns } = useGetTopCampaigns({ limit: 5 }, { query: { queryKey: [], refetchInterval: REFETCH_MS } });
+  const { data: activity } = useGetActivityFeed({ limit: 8 }, { query: { queryKey: [], refetchInterval: REFETCH_MS } });
+  const { data: cohort } = useGetAnalyticsCohort({ query: { queryKey: [], refetchInterval: REFETCH_MS } });
   const sendRate = useSendRate();
 
   const pieData = overview

@@ -10,6 +10,12 @@ import { useI18n } from "../lib/i18n";
 const STATUS_ORDER = ["sending", "running", "scheduled", "paused", "draft", "sent", "done"];
 function statusPriority(s: string) { const i = STATUS_ORDER.indexOf(s); return i === -1 ? 99 : i; }
 
+function fmtDelay(s: number): string {
+  if (s < 3600)  return `${Math.round(s / 60)} мин`;
+  if (s < 86400) return `${s % 3600 === 0 ? Math.round(s / 3600) : (s / 3600).toFixed(1)} ч`;
+  return `${Math.round(s / 86400)} д`;
+}
+
 type LogStatus = "ok" | "ok_retry" | "blocked" | "failed" | "skipped_already_targeted" | "dry_run" | string;
 
 function logMeta(status: LogStatus): { icon: React.ReactNode; color: string; label: string } {
@@ -271,9 +277,9 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
                 <FlaskConical size={8} /> Dry Run
               </span>
             )}
-            {campaign.send_delay_seconds && campaign.send_delay_seconds !== 15 && (
+            {campaign.send_delay_seconds && campaign.send_delay_seconds !== 3600 && (
               <span style={{ fontSize: 9, fontWeight: 700, color: TG.muted, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 8, padding: "2px 6px", display: "flex", alignItems: "center", gap: 3 }}>
-                <Timer size={8} /> {campaign.send_delay_seconds}с
+                <Timer size={8} /> {fmtDelay(campaign.send_delay_seconds)}
               </span>
             )}
             {(campaign as any).scheduled_tag && (

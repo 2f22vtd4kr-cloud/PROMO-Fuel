@@ -279,7 +279,7 @@ export function GroupBroadcastCreatePage({
   const [text,         setText]         = useState("");
   const [accountId,    setAccountId]    = useState<number | "">("");
   const [groups,       setGroups]       = useState<string[]>([]);
-  const [interval,     setInterval]     = useState(86400);
+  const [sendInterval, setSendInterval] = useState(86400);
   const [notes,        setNotes]        = useState("");
   const [mediaUrl,     setMediaUrl]     = useState("");
   const [pinMessage,   setPinMessage]   = useState(false);
@@ -316,7 +316,7 @@ export function GroupBroadcastCreatePage({
       setText(c.text_template);
       setAccountId(c.sender_account_id ?? "");
       setGroups((() => { try { return JSON.parse(c.selected_groups || "[]"); } catch { return []; } })());
-      setInterval(c.interval_seconds ?? 86400);
+      setSendInterval(c.interval_seconds ?? 86400);
       setNotes(c.notes ?? "");
       setMediaUrl(c.media_url ?? "");
       setPinMessage(!!c.pin_message);
@@ -389,7 +389,7 @@ export function GroupBroadcastCreatePage({
       text_template:     text.trim(),
       sender_account_id: Number(accountId),
       selected_groups:   JSON.stringify(groups),
-      interval_seconds:  interval,
+      interval_seconds:  sendInterval,
       notes:             notes.trim() || undefined,
       media_url:         mediaUrl.trim() || undefined,
       pin_message:       pinMessage ? 1 : 0,
@@ -476,8 +476,8 @@ export function GroupBroadcastCreatePage({
                 {INTERVAL_PRESETS.map(p => (
                   <button
                     key={p.value}
-                    onClick={() => setInterval(p.value)}
-                    style={{ fontSize: 11, padding: "5px 10px", borderRadius: 20, border: `1px solid ${interval === p.value ? "#2de897" : "rgba(255,255,255,0.12)"}`, background: interval === p.value ? "rgba(45,232,151,0.15)" : "transparent", color: interval === p.value ? "#2de897" : TG.muted, cursor: "pointer", fontWeight: 600, transition: "all 0.15s" }}
+                    onClick={() => setSendInterval(p.value)}
+                    style={{ fontSize: 11, padding: "5px 10px", borderRadius: 20, border: `1px solid ${sendInterval === p.value ? "#2de897" : "rgba(255,255,255,0.12)"}`, background: sendInterval === p.value ? "rgba(45,232,151,0.15)" : "transparent", color: sendInterval === p.value ? "#2de897" : TG.muted, cursor: "pointer", fontWeight: 600, transition: "all 0.15s" }}
                   >
                     {p.label}
                   </button>

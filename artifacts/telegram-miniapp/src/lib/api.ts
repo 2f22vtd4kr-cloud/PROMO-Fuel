@@ -424,7 +424,7 @@ export const api = {
   testSendGroupCampaign:(id: number, groupId: string) => post<{ ok: boolean; task: unknown }>(`/group-campaigns/${id}/test-send`, { group_id: groupId }),
   getGroupCampaignStats:(id: number) => get<{ by_group: GroupSendStat[]; daily: DailyStat[] }>(`/group-campaigns/${id}/stats`),
   getCampaignStats:     (id: number) => get<{ campaign: { id: number; name: string; status: string }; total: number; ok: number; failed: number; today: number; success_rate: number; hourly: { h: string; n: number }[] }>(`/campaigns/${id}/stats`),
-  patchCampaignNotes:   (id: number, notes: string) => fetch(`/api/campaigns/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ notes }) }).then(r => r.json()),
+  patchCampaignNotes:   (id: number, notes: string) => fetch(`${API_BASE}/api/twa/campaigns/${id}`, { method: "PATCH", headers: twaHeaders(), body: JSON.stringify({ notes }) }).then(r => r.json()),
   retryFailedSends:     (windowHours?: number) =>
     post<{ ok: boolean; tasks_created: number; campaigns: number }>("/group-campaigns/retry-failed-sends", { window_hours: windowHours ?? 24 }),
   bulkGroupCampaignAction: (action: "pause" | "resume" | "stop", ids?: number[]) =>

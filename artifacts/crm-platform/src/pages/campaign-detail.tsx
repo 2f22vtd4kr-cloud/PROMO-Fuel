@@ -199,8 +199,8 @@ export function CampaignDetail() {
   const params = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const id = parseInt(params.id || "0");
-  const { data: campaign, isLoading, refetch } = useGetCampaign(id, { query: { refetchInterval: 5_000 } });
-  const { data: logs, refetch: refetchLogs } = useListSendLogs(id, { query: { refetchInterval: 5_000 } });
+  const { data: campaign, isLoading, refetch } = useGetCampaign(id, { query: { queryKey: [], refetchInterval: 5_000 } });
+  const { data: logs, refetch: refetchLogs } = useListSendLogs(id, { query: { queryKey: [], refetchInterval: 5_000 } });
   const updateMut = useUpdateCampaign();
   const [editOpen, setEditOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
