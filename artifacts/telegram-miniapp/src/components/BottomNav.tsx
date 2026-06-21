@@ -2,21 +2,7 @@ import { LayoutGrid, Megaphone, BarChart2, Users2, Radio, Cpu, LayoutDashboard, 
 import type { Tab } from "../App";
 import { TG } from "../lib/theme";
 import { haptic } from "../lib/haptics";
-
-type NavItem =
-  | { id: Tab;          kind: "tab";    icon: React.ElementType; label: string; color: string; glow: string }
-  | { id: string;       kind: "action"; icon: React.ElementType; label: string; color: string; glow: string };
-
-const ITEMS: NavItem[] = [
-  { id: "dashboard", kind: "tab",    icon: LayoutDashboard, label: "Дашборд",  color: "#22d3ee", glow: "rgba(34,211,238,0.55)"  },
-  { id: "home",      kind: "tab",    icon: LayoutGrid,      label: "Главная",  color: "#95c4f5", glow: "rgba(107,168,229,0.55)" },
-  { id: "campaigns", kind: "tab",    icon: Megaphone,       label: "Рассылки", color: "#2de897", glow: "rgba(45,232,151,0.55)"  },
-  { id: "groups",    kind: "tab",    icon: Radio,           label: "Группы",   color: "#c4aeff", glow: "rgba(196,174,255,0.55)" },
-  { id: "analytics", kind: "tab",    icon: BarChart2,       label: "Стат.",    color: "#ffc946", glow: "rgba(255,201,70,0.55)"  },
-  { id: "audience",  kind: "tab",    icon: Users2,          label: "Аудитория",color: "#ff9f40", glow: "rgba(255,159,64,0.55)"  },
-  { id: "workers",   kind: "tab",    icon: Cpu,             label: "Воркеры",  color: "#6ba8e5", glow: "rgba(107,168,229,0.55)" },
-  { id: "account-login", kind: "action", icon: Key,         label: "Auth",     color: "#ff7eb3", glow: "rgba(255,126,179,0.55)" },
-];
+import { useI18n } from "../lib/i18n";
 
 export function BottomNav({
   active,
@@ -27,6 +13,23 @@ export function BottomNav({
   onNav: (t: Tab) => void;
   onNavigate?: (t: string) => void;
 }) {
+  const { t } = useI18n();
+
+  type NavItem =
+    | { id: Tab;   kind: "tab";    icon: React.ElementType; label: string; color: string; glow: string }
+    | { id: string; kind: "action"; icon: React.ElementType; label: string; color: string; glow: string };
+
+  const ITEMS: NavItem[] = [
+    { id: "dashboard", kind: "tab",    icon: LayoutDashboard, label: t.nav.dashboard,  color: "#22d3ee", glow: "rgba(34,211,238,0.55)"  },
+    { id: "home",      kind: "tab",    icon: LayoutGrid,      label: t.nav.home,        color: "#95c4f5", glow: "rgba(107,168,229,0.55)" },
+    { id: "campaigns", kind: "tab",    icon: Megaphone,       label: t.nav.campaigns,   color: "#2de897", glow: "rgba(45,232,151,0.55)"  },
+    { id: "groups",    kind: "tab",    icon: Radio,           label: t.nav.groups,      color: "#c4aeff", glow: "rgba(196,174,255,0.55)" },
+    { id: "analytics", kind: "tab",    icon: BarChart2,       label: t.nav.analytics,   color: "#ffc946", glow: "rgba(255,201,70,0.55)"  },
+    { id: "audience",  kind: "tab",    icon: Users2,          label: t.nav.audience,    color: "#ff9f40", glow: "rgba(255,159,64,0.55)"  },
+    { id: "workers",   kind: "tab",    icon: Cpu,             label: t.nav.workers,     color: "#6ba8e5", glow: "rgba(107,168,229,0.55)" },
+    { id: "account-login", kind: "action", icon: Key,         label: t.nav.auth,        color: "#ff7eb3", glow: "rgba(255,126,179,0.55)" },
+  ];
+
   return (
     <div style={{
       paddingBottom: "calc(env(safe-area-inset-bottom, 8px) + 4px)",

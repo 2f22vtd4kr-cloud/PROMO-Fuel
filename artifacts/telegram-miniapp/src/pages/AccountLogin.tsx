@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useI18n } from "../lib/i18n";
 import {
   X, Key, Shield, CheckCircle, Loader, Lock, Phone,
   ChevronLeft, AlertCircle, RefreshCw,
@@ -162,6 +163,7 @@ function AccountCard({
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function AccountLoginPage({ onClose }: { onClose: () => void }) {
+  const { t, lang } = useI18n();
   const [accounts,       setAccounts]       = useState<SenderAccount[]>([]);
   const [activeSessions, setActiveSessions] = useState<AuthSession[]>([]);
   const [loadingAccts,   setLoadingAccts]   = useState(true);
@@ -330,13 +332,13 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
           )}
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 16, fontWeight: 800, color: TG.text }}>
-              {phase === "select"      ? "Авторизация аккаунтов"
-                : phase === "credentials" ? `Данные API · ${account?.phone}`
-                : phase === "otp"        ? "Код подтверждения"
-                : phase === "twofa"      ? "Двухфакторный пароль"
-                : phase === "done"       ? "Успешно!"
-                : phase === "sending"    ? "Подключение…"
-                : "Авторизация"}
+              {phase === "select"      ? t.accountLogin.title
+                : phase === "credentials" ? `${t.accountLogin.credentials} · ${account?.phone}`
+                : phase === "otp"        ? t.accountLogin.codeTitle
+                : phase === "twofa"      ? t.accountLogin.twoFaTitle
+                : phase === "done"       ? t.accountLogin.successTitle
+                : phase === "sending"    ? t.accountLogin.connecting
+                : t.accountLogin.title}
             </div>
             {account && phase !== "select" && phase !== "done" && (
               <div style={{ fontSize: 11, color: TG.muted, marginTop: 1 }}>{account.label || account.phone}</div>
@@ -362,10 +364,10 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: TG.muted, letterSpacing: "0.07em", textTransform: "uppercase" }}>
-                  Аккаунты ({accounts.length})
+                  {t.accountLogin.accountsTitle(accounts.length)}
                 </div>
                 <button onClick={() => { haptic.light(); load(); }} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", color: "#6ba8e5", fontSize: 11, fontWeight: 700, padding: 0 }}>
-                  <RefreshCw size={11} />Обновить
+                  <RefreshCw size={11} />{t.common.refresh}
                 </button>
               </div>
 
@@ -376,8 +378,8 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
               ) : accounts.length === 0 ? (
                 <GlassCard style={{ padding: 20, textAlign: "center" }}>
                   <Shield size={28} color={TG.muted} style={{ marginBottom: 8, opacity: 0.4 }} />
-                  <div style={{ fontSize: 13, color: TG.muted }}>Нет добавленных аккаунтов</div>
-                  <div style={{ fontSize: 11, color: TG.muted, marginTop: 4, opacity: 0.7 }}>Добавьте аккаунт в разделе «Аккаунты»</div>
+                  <div style={{ fontSize: 13, color: TG.muted }}>{t.accountLogin.noAccountsDesc}</div>
+                  <div style={{ fontSize: 11, color: TG.muted, marginTop: 4, opacity: 0.7 }}>{t.accountLogin.addAccountHint}</div>
                 </GlassCard>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -395,7 +397,7 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
                 <GlassCard style={{ padding: 12, marginTop: 4 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: "#ffc946", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
                     <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#ffc946", animation: "pulse 1.5s ease-in-out infinite" }} />
-                    АКТИВНЫЕ СЕССИИ ({activeSessions.length})
+                    {t.accountLogin.activeSessionsTitle(activeSessions.length)}
                   </div>
                   {activeSessions.map(s => (
                     <div key={s.phone} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 8, background: "rgba(255,201,70,0.06)", border: "1px solid rgba(255,201,70,0.15)", marginBottom: 4 }}>
@@ -429,7 +431,7 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
 
               <button onClick={handleSendCode} disabled={busy} style={{ width: "100%", padding: "14px", borderRadius: 16, background: busy ? "rgba(107,168,229,0.35)" : "rgba(107,168,229,0.18)", border: `1px solid ${busy ? "rgba(107,168,229,0.3)" : "rgba(107,168,229,0.45)"}`, fontSize: 14, fontWeight: 800, color: "#6ba8e5", cursor: busy ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: busy ? "none" : "0 0 20px rgba(107,168,229,0.15)" }}>
                 {busy ? <Loader size={15} style={{ animation: "spin 0.8s linear infinite" }} /> : <Key size={15} />}
-                {busy ? "Отправляем код…" : "Получить код в Telegram"}
+                {busy ? t.accountLogin.sendingCode : t.accountLogin.getCode}
               </button>
             </div>
           )}
@@ -438,8 +440,8 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
           {phase === "sending" && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", gap: 16 }}>
               <div style={{ width: 52, height: 52, borderRadius: "50%", border: "2.5px solid rgba(107,168,229,0.2)", borderTopColor: "#6ba8e5", animation: "spin 0.9s linear infinite" }} />
-              <div style={{ fontSize: 14, color: TG.textSecondary, fontWeight: 600 }}>Подключение к Telegram…</div>
-              <div style={{ fontSize: 11, color: TG.muted }}>Это может занять несколько секунд</div>
+              <div style={{ fontSize: 14, color: TG.textSecondary, fontWeight: 600 }}>{t.accountLogin.connecting}</div>
+              <div style={{ fontSize: 11, color: TG.muted }}>{t.accountLogin.connectingHint}</div>
             </div>
           )}
 
@@ -449,9 +451,9 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
               <GlassCard style={{ padding: 16 }}>
                 <div style={{ textAlign: "center", marginBottom: 14 }}>
                   <div style={{ fontSize: 32, marginBottom: 6 }}>✉️</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: TG.text }}>Код из Telegram</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: TG.text }}>{t.accountLogin.codeTitle}</div>
                   <div style={{ fontSize: 11, color: TG.muted, marginTop: 4, lineHeight: 1.5 }}>
-                    Мы отправили 5-значный код на номер<br/>
+                    {t.accountLogin.codeSentFull}<br/>
                     <span style={{ color: "#6ba8e5", fontWeight: 700 }}>{wizard.phone}</span>
                   </div>
                 </div>
@@ -481,11 +483,11 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
               {wizard.errorMsg && <ErrorBanner msg={wizard.errorMsg} />}
 
               <button onClick={handleConfirmOtp} disabled={!wizard.code.trim()} style={{ width: "100%", padding: "14px", borderRadius: 16, background: wizard.code.trim() ? "#2de897" : "rgba(45,232,151,0.2)", border: "none", fontSize: 14, fontWeight: 800, color: wizard.code.trim() ? "#07090f" : "rgba(45,232,151,0.5)", cursor: wizard.code.trim() ? "pointer" : "not-allowed", transition: "all 0.2s" }}>
-                Подтвердить код ✓
+                {t.accountLogin.confirmCode}
               </button>
 
               <button onClick={handleCancelSession} style={{ background: "none", border: "none", cursor: "pointer", color: TG.muted, fontSize: 12, padding: "4px 0", textAlign: "center", width: "100%" }}>
-                Отменить и выбрать другой аккаунт
+                {t.accountLogin.cancelAndSelect}
               </button>
             </div>
           )}
@@ -496,9 +498,9 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
               <GlassCard style={{ padding: 16 }}>
                 <div style={{ textAlign: "center", marginBottom: 14 }}>
                   <div style={{ fontSize: 32, marginBottom: 6 }}>🔐</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: "#ffc946" }}>Двухфакторная защита</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#ffc946" }}>{t.accountLogin.twoFaTitle}</div>
                   <div style={{ fontSize: 11, color: TG.muted, marginTop: 4, lineHeight: 1.5 }}>
-                    На этом аккаунте включена 2FA.<br/>Введите облачный пароль Telegram.
+                    {t.accountLogin.twoFaHint}
                   </div>
                 </div>
 
@@ -526,11 +528,11 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
               {wizard.errorMsg && <ErrorBanner msg={wizard.errorMsg} />}
 
               <button onClick={handleConfirm2fa} disabled={!wizard.password.trim()} style={{ width: "100%", padding: "14px", borderRadius: 16, background: wizard.password.trim() ? "#ffc946" : "rgba(255,201,70,0.2)", border: "none", fontSize: 14, fontWeight: 800, color: wizard.password.trim() ? "#07090f" : "rgba(255,201,70,0.5)", cursor: wizard.password.trim() ? "pointer" : "not-allowed", transition: "all 0.2s" }}>
-                Войти с паролем 2FA
+                {t.accountLogin.loginWith2fa}
               </button>
 
               <button onClick={() => setPhase("otp")} style={{ background: "none", border: "none", cursor: "pointer", color: TG.muted, fontSize: 12, padding: "4px 0", textAlign: "center", width: "100%" }}>
-                ← Назад к вводу кода
+                {t.accountLogin.backToCode}
               </button>
             </div>
           )}
@@ -542,10 +544,10 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
                 <CheckCircle size={28} color="#2de897" />
               </div>
               <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 18, fontWeight: 800, color: "#2de897" }}>Авторизация успешна!</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: "#2de897" }}>{t.accountLogin.successTitle}</div>
                 {wizard.displayName && (
                   <div style={{ fontSize: 13, color: TG.textSecondary, marginTop: 6 }}>
-                    Вошли как: <span style={{ fontWeight: 700, color: TG.text }}>{wizard.displayName}</span>
+                    {t.accountLogin.loggedAs} <span style={{ fontWeight: 700, color: TG.text }}>{wizard.displayName}</span>
                   </div>
                 )}
               </div>

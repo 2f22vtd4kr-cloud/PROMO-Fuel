@@ -5,6 +5,7 @@ import { TG } from "../lib/theme";
 import { GlassCard, StatusBadge } from "../components/GlassCard";
 import { haptic } from "../lib/haptics";
 import { useSse } from "../lib/useSse";
+import { useI18n } from "../lib/i18n";
 
 const STATUS_ORDER = ["sending", "running", "scheduled", "paused", "draft", "sent", "done"];
 function statusPriority(s: string) { const i = STATUS_ORDER.indexOf(s); return i === -1 ? 99 : i; }
@@ -444,15 +445,11 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
   );
 }
 
-const STATUS_TABS = [
-  { key: "all",      label: "Все" },
-  { key: "active",   label: "Активные" },
-  { key: "draft",    label: "Черновики" },
-  { key: "done",     label: "Завершённые" },
-] as const;
-type StatusTab = typeof STATUS_TABS[number]["key"];
+const STATUS_TAB_KEYS = ["all", "active", "draft", "done"] as const;
+type StatusTab = typeof STATUS_TAB_KEYS[number];
 
 export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
+  const { t, lang } = useI18n();
   const [campaigns,   setCampaigns]   = useState<Campaign[]>([]);
   const [loading,     setLoading]     = useState(true);
   const [search,      setSearch]      = useState("");
@@ -486,6 +483,13 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
       });
     }
   });
+
+  const STATUS_TABS = [
+    { key: "all" as StatusTab,    label: t.campaigns.tabAll },
+    { key: "active" as StatusTab, label: t.campaigns.tabActive },
+    { key: "draft" as StatusTab,  label: t.campaigns.tabDraft },
+    { key: "done" as StatusTab,   label: t.campaigns.tabDone },
+  ];
 
   const active    = campaigns.filter(c => c.status === "running" || c.status === "sending").length;
   const scheduled = campaigns.filter(c => c.status === "scheduled").length;
@@ -530,19 +534,19 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "14px 14px 24px" }}>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>Рассылки</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>{t.nav.campaigns}</div>
           <GlassCard style={{ padding: "8px 12px", borderRadius: 14, cursor: "pointer" }} onClick={() => { haptic.medium(); onEdit(); }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <Plus size={14} color={TG.green} />
-              <span style={{ fontSize: 12, color: TG.green, fontWeight: 700 }}>Создать</span>
+              <span style={{ fontSize: 12, color: TG.green, fontWeight: 700 }}>{t.common.create}</span>
             </div>
           </GlassCard>
         </div>
 
         {/* Sort toggle */}
         <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-          <span style={{ fontSize: 10, color: TG.muted, fontWeight: 600 }}>Сортировка:</span>
-          {([["status", "Статус"], ["sent", "Отправлено"], ["name", "А–Я"]] as const).map(([key, label]) => (
+          <span style={{ fontSize: 10, color: TG.muted, fontWeight: 600 }}>{t.campaigns.sortLabel}</span>
+          {([["status", t.campaigns.sortStatus], ["sent", t.campaigns.sortSent], ["name", t.campaigns.sortName]] as const).map(([key, label]) => (
             <button key={key} onClick={() => setSortBy(key)} style={{ fontSize: 10, padding: "3px 9px", borderRadius: 20, border: `1px solid ${sortBy === key ? "#6ba8e5" : "rgba(255,255,255,0.10)"}`, background: sortBy === key ? "rgba(107,168,229,0.15)" : "transparent", color: sortBy === key ? "#6ba8e5" : TG.muted, cursor: "pointer", fontWeight: 600, flexShrink: 0 }}>
               {label}
             </button>
@@ -551,19 +555,19 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
 
         {/* Status tabs */}
         <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
-          {STATUS_TABS.map(t => {
-            const isActive = t.key === tab;
-            const cnt = t.key === "all" ? campaigns.length
-              : t.key === "active" ? campaigns.filter(c => ["running","sending","paused","scheduled"].includes(c.status)).length
-              : t.key === "draft"  ? campaigns.filter(c => c.status === "draft").length
+          {STATUS_TABS.map(st => {
+            const isActive = st.key === tab;
+            const cnt = st.key === "all" ? campaigns.length
+              : st.key === "active" ? campaigns.filter(c => ["running","sending","paused","scheduled"].includes(c.status)).length
+              : st.key === "draft"  ? campaigns.filter(c => c.status === "draft").length
               : campaigns.filter(c => c.status === "done" || c.status === "cancelled").length;
             return (
-              <button key={t.key} onClick={() => { haptic.light(); setTab(t.key); setSearch(""); }} style={{
+              <button key={st.key} onClick={() => { haptic.light(); setTab(st.key); setSearch(""); }} style={{
                 flexShrink: 0, padding: "6px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700,
                 border: `1px solid ${isActive ? TG.green + "55" : "rgba(255,255,255,0.10)"}`,
                 background: isActive ? `${TG.green}18` : "rgba(255,255,255,0.04)",
                 color: isActive ? TG.green : TG.muted, cursor: "pointer",
-              }}>{t.label}{cnt > 0 ? ` (${cnt})` : ""}</button>
+              }}>{st.label}{cnt > 0 ? ` (${cnt})` : ""}</button>
             );
           })}
         </div>
@@ -573,7 +577,7 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Поиск по названию..."
+              placeholder={t.common.searchByName}
               style={{
                 width: "100%", boxSizing: "border-box",
                 padding: "9px 36px 9px 34px",
@@ -603,10 +607,10 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
           return (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
               {[
-                { label: "Отправлено", value: totSent.toLocaleString("ru"),   color: "#2de897" },
-                { label: "Ошибок",     value: totFailed.toLocaleString("ru"), color: "#ff6b7a" },
-                { label: "Аудитория",  value: totTarget.toLocaleString("ru"), color: "#6ba8e5" },
-                { label: "Успех",      value: sr !== null ? `${sr}%` : "—",   color: sr === null ? TG.muted : sr >= 80 ? "#2de897" : "#ffc946" },
+                { label: t.campaigns.sortSent, value: totSent.toLocaleString(lang),   color: "#2de897" },
+                { label: t.campaigns.statErrors, value: totFailed.toLocaleString(lang), color: "#ff6b7a" },
+                { label: t.nav.audience, value: totTarget.toLocaleString(lang), color: "#6ba8e5" },
+                { label: t.campaigns.statSuccess, value: sr !== null ? `${sr}%` : "—", color: sr === null ? TG.muted : sr >= 80 ? "#2de897" : "#ffc946" },
               ].map(s => (
                 <GlassCard key={s.label} style={{ padding: "8px 4px", textAlign: "center" }}>
                   <div style={{ fontSize: 12, fontWeight: 800, color: s.color }}>{s.value}</div>
@@ -619,21 +623,21 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
 
         {!loading && (active > 0 || paused > 0) && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            {active > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: TG.green, background: `${TG.green}18`, border: `1px solid ${TG.green}35`, borderRadius: 20, padding: "4px 10px", display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: TG.green, display: "inline-block", boxShadow: `0 0 6px ${TG.green}`, animation: "pulse 1.5s ease-in-out infinite" }} />{active} активных</span>}
-            {scheduled > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: TG.yellow, background: `${TG.yellow}18`, border: `1px solid ${TG.yellow}35`, borderRadius: 20, padding: "4px 10px" }}>{scheduled} запланир.</span>}
+            {active > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: TG.green, background: `${TG.green}18`, border: `1px solid ${TG.green}35`, borderRadius: 20, padding: "4px 10px", display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: TG.green, display: "inline-block", boxShadow: `0 0 6px ${TG.green}`, animation: "pulse 1.5s ease-in-out infinite" }} />{t.campaigns.activeCount(active)}</span>}
+            {scheduled > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: TG.yellow, background: `${TG.yellow}18`, border: `1px solid ${TG.yellow}35`, borderRadius: 20, padding: "4px 10px" }}>{t.campaigns.scheduledCount(scheduled)}</span>}
             <div style={{ marginLeft: "auto", display: "flex", gap: 5 }}>
               {active > 1 && (
                 <button onClick={bulkPause} disabled={bulkBusy !== null} style={{ fontSize: 10, fontWeight: 700, color: "#ffc946", background: "rgba(255,201,70,0.10)", border: "1px solid rgba(255,201,70,0.28)", borderRadius: 10, padding: "4px 8px", cursor: "pointer", opacity: bulkBusy ? 0.6 : 1, display: "flex", alignItems: "center", gap: 3 }}>
-                  ⏸ Пауза всем
+                  {t.campaigns.bulkPause}
                 </button>
               )}
               {paused > 1 && (
                 <button onClick={bulkResume} disabled={bulkBusy !== null} style={{ fontSize: 10, fontWeight: 700, color: "#2de897", background: "rgba(45,232,151,0.10)", border: "1px solid rgba(45,232,151,0.28)", borderRadius: 10, padding: "4px 8px", cursor: "pointer", opacity: bulkBusy ? 0.6 : 1, display: "flex", alignItems: "center", gap: 3 }}>
-                  ▶ Старт всем
+                  {t.campaigns.bulkResume}
                 </button>
               )}
             </div>
-            {paused > 0    && <span style={{ fontSize: 10, fontWeight: 700, color: "#6ba8e5", background: "rgba(107,168,229,0.18)", border: "1px solid rgba(107,168,229,0.35)", borderRadius: 20, padding: "4px 10px" }}>{paused} на паузе</span>}
+            {paused > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: "#6ba8e5", background: "rgba(107,168,229,0.18)", border: "1px solid rgba(107,168,229,0.35)", borderRadius: 20, padding: "4px 10px" }}>{t.campaigns.pausedCount(paused)}</span>}
           </div>
         )}
 
@@ -643,8 +647,8 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
           </div>
         ) : campaigns.length === 0 ? (
           <GlassCard style={{ padding: "32px 16px", textAlign: "center" }}>
-            <div style={{ fontSize: 14, color: TG.muted, marginBottom: 12 }}>Кампаний пока нет</div>
-            <div onClick={() => { haptic.medium(); onEdit(); }} style={{ fontSize: 13, color: TG.green, fontWeight: 700, cursor: "pointer" }}>+ Создать первую кампанию</div>
+            <div style={{ fontSize: 14, color: TG.muted, marginBottom: 12 }}>{t.campaigns.noCampaignsYet}</div>
+            <div onClick={() => { haptic.medium(); onEdit(); }} style={{ fontSize: 13, color: TG.green, fontWeight: 700, cursor: "pointer" }}>{t.campaigns.createFirst}</div>
           </GlassCard>
         ) : (() => {
           const q = search.trim().toLowerCase();
@@ -654,7 +658,7 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
               {filtered.length === 0 ? (
                 <GlassCard style={{ padding: "24px 16px", textAlign: "center" }}>
                   <div style={{ fontSize: 13, color: TG.muted }}>
-                    {q ? `Ничего не найдено по «${search}»` : "Нет кампаний в этой категории"}
+                    {q ? t.common.notFoundQuery(search) : t.campaigns.emptyCategory}
                   </div>
                 </GlassCard>
               ) : filtered.map((c, index) => <CampaignCard key={c.id} campaign={c} index={index} onEdit={onEdit} onRefresh={load} sparkline={sparklines[c.id]} />)}

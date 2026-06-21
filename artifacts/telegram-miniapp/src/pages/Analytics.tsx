@@ -4,6 +4,7 @@ import { api, AnalyticsOverview, DailyDigest } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
 import { haptic } from "../lib/haptics";
+import { useI18n } from "../lib/i18n";
 
 interface TopCampaign { id: number; name: string; status: string; sent: number; openRate: number; ctr: number }
 
@@ -11,11 +12,11 @@ interface TrendPoint { d: string; sent: number; conv: number }
 
 interface SendRatePoint { hour: string; total: number; ok: number; errors: number }
 
-const MOCK_TREND: TrendPoint[] = [
-  { d:"Пн",sent:820,conv:280 },{ d:"Вт",sent:1140,conv:410 },
-  { d:"Ср",sent:960,conv:340 },{ d:"Чт",sent:1380,conv:520 },
-  { d:"Пт",sent:1620,conv:590 },{ d:"Сб",sent:2100,conv:810 },
-  { d:"Вс",sent:1840,conv:730 },
+const MOCK_TREND_BASE: TrendPoint[] = [
+  { d:"Mon",sent:820,conv:280 },{ d:"Tue",sent:1140,conv:410 },
+  { d:"Wed",sent:960,conv:340 },{ d:"Thu",sent:1380,conv:520 },
+  { d:"Fri",sent:1620,conv:590 },{ d:"Sat",sent:2100,conv:810 },
+  { d:"Sun",sent:1840,conv:730 },
 ];
 
 const FUEL_MIX = [
@@ -89,6 +90,7 @@ function MiniBarChart({ data, color }: { data: TrendPoint[]; color: string }) {
 }
 
 function HourlySendRateChart({ data }: { data: SendRatePoint[] }) {
+  const { t } = useI18n();
   const maxTotal = Math.max(...data.map(d => d.total), 1);
   const currentHour = new Date().getHours();
   const bestHour = data.reduce((best, d, i) => d.total > (data[best]?.total ?? 0) ? i : best, 0);
@@ -99,9 +101,9 @@ function HourlySendRateChart({ data }: { data: SendRatePoint[] }) {
     <div>
       {totalToday > 0 && (
         <div style={{ display: "flex", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: "#6ba8e5" }}>📊 Сегодня: {totalToday.toLocaleString("ru")}</span>
-          <span style={{ fontSize: 10, fontWeight: 700, color: "#ffc946" }}>⭐ Пик: {String(bestHour).padStart(2, "0")}:00–{String(bestHour + 1).padStart(2, "0")}:00</span>
-          {totalErrors > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: "#ff6b7a" }}>✗ Ошибок: {totalErrors}</span>}
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#6ba8e5" }}>📊 {t.analytics.totalToday} {totalToday.toLocaleString()}</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#ffc946" }}>⭐ {t.analytics.bestHour} {String(bestHour).padStart(2, "0")}:00–{String(bestHour + 1).padStart(2, "0")}:00</span>
+          {totalErrors > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: "#ff6b7a" }}>✗ {t.analytics.errorsToday} {totalErrors}</span>}
         </div>
       )}
       <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 60 }}>
@@ -140,19 +142,19 @@ function HourlySendRateChart({ data }: { data: SendRatePoint[] }) {
       <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#6ba8e5" }} />
-          <span style={{ fontSize: 9, color: TG.muted }}>Отправлено</span>
+          <span style={{ fontSize: 9, color: TG.muted }}>{t.analytics.legendSent}</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "rgba(255,107,107,0.9)" }} />
-          <span style={{ fontSize: 9, color: TG.muted }}>Ошибки</span>
+          <span style={{ fontSize: 9, color: TG.muted }}>{t.analytics.legendErrors}</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#ffc946" }} />
-          <span style={{ fontSize: 9, color: TG.muted }}>Пиковый час</span>
+          <span style={{ fontSize: 9, color: TG.muted }}>{t.analytics.legendPeakHour}</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: TG.green }} />
-          <span style={{ fontSize: 9, color: TG.muted }}>Текущий час</span>
+          <span style={{ fontSize: 9, color: TG.muted }}>{t.analytics.legendCurrentHour}</span>
         </div>
       </div>
     </div>
@@ -207,11 +209,12 @@ export function AnalyticsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [overview, setOverview]   = useState<AnalyticsOverview | null>(null);
   const [digest, setDigest]       = useState<DailyDigest | null>(null);
-  const [trend, setTrend]         = useState<TrendPoint[]>(MOCK_TREND);
+  const [trend, setTrend]         = useState<TrendPoint[]>(MOCK_TREND_BASE);
   const [topCamps, setTopCamps]   = useState<TopCampaign[]>([]);
   const [sendRate, setSendRate]   = useState<SendRatePoint[]>([]);
   const [loading, setLoading]     = useState(true);
   const [groupSendsToday, setGroupSendsToday] = useState<{ ok: number; failed: number } | null>(null);
+  const { t, lang } = useI18n();
 
   function loadAll(showRefresh = false) {
     if (showRefresh) setRefreshing(true); else setLoading(true);
@@ -219,7 +222,7 @@ export function AnalyticsPage() {
       api.getOverview(),
       api.getAnalyticsTrend()
         .then(rows => rows.map(r => ({ d: r.date, sent: r.sent, conv: r.opened })))
-        .catch(() => MOCK_TREND),
+        .catch(() => MOCK_TREND_BASE),
       api.getAnalyticsTopCampaigns(5).catch(() => []),
       api.getAnalyticsSendRate().catch(() => []),
       api.getAccountSendsToday().catch(() => [] as { account_id: string; ok: number; failed: number }[]),
@@ -242,10 +245,10 @@ export function AnalyticsPage() {
 
   const ov = overview;
   const kpis = [
-    { label:"Охват",     value: loading?"—":`${((ov?.totalSent ?? 0) / 1000).toFixed(1)}K`,   delta: ov ? (ov.sentDelta >= 0 ? `+${ov.sentDelta}%` : `${ov.sentDelta}%`) : "—",  color:"#6ba8e5",  icon:Users2, progress: 78 },
-    { label:"Open Rate", value: loading?"—":`${(ov?.avgOpenRate ?? 0).toFixed(1)}%`,           delta: ov ? (ov.openDelta >= 0 ? `+${ov.openDelta}%` : `${ov.openDelta}%`) : "—", color:TG.green,   icon:Target, progress: (ov?.avgOpenRate ?? 0) },
-    { label:"CTR",       value: loading?"—":`${(ov?.avgCtr ?? 0).toFixed(1)}%`,                delta: ov ? (ov.ctrDelta >= 0  ? `+${ov.ctrDelta}%`  : `${ov.ctrDelta}%`)  : "—", color:TG.purple,  icon:TrendingUp, progress: Math.min(((ov?.avgCtr ?? 0) * 5), 100) },
-    { label:"Кампании",  value: loading?"—":String(ov?.totalCampaigns ?? 0),                   delta:"всего",                                                                    color:TG.yellow,  icon:Zap, progress: 100 },
+    { label: t.analytics.kpiReach,     value: loading?"—":`${((ov?.totalSent ?? 0) / 1000).toFixed(1)}K`,   delta: ov ? (ov.sentDelta >= 0 ? `+${ov.sentDelta}%` : `${ov.sentDelta}%`) : "—",  color:"#6ba8e5",  icon:Users2, progress: 78 },
+    { label: "Open Rate",              value: loading?"—":`${(ov?.avgOpenRate ?? 0).toFixed(1)}%`,           delta: ov ? (ov.openDelta >= 0 ? `+${ov.openDelta}%` : `${ov.openDelta}%`) : "—", color:TG.green,   icon:Target, progress: (ov?.avgOpenRate ?? 0) },
+    { label: "CTR",                    value: loading?"—":`${(ov?.avgCtr ?? 0).toFixed(1)}%`,                delta: ov ? (ov.ctrDelta >= 0  ? `+${ov.ctrDelta}%`  : `${ov.ctrDelta}%`)  : "—", color:TG.purple,  icon:TrendingUp, progress: Math.min(((ov?.avgCtr ?? 0) * 5), 100) },
+    { label: t.analytics.kpiCampaigns, value: loading?"—":String(ov?.totalCampaigns ?? 0),                   delta: t.common.allTime,                                                          color:TG.yellow,  icon:Zap, progress: 100 },
   ];
 
   return (
@@ -265,7 +268,7 @@ export function AnalyticsPage() {
           backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
           display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
-          <span style={{ fontSize:18,fontWeight:800,color:TG.text,letterSpacing:"-0.02em" }}>Аналитика</span>
+          <span style={{ fontSize:18,fontWeight:800,color:TG.text,letterSpacing:"-0.02em" }}>{t.nav.analytics}</span>
           <button
             onClick={() => { haptic.light(); loadAll(true); }}
             disabled={refreshing || loading}
@@ -362,15 +365,15 @@ export function AnalyticsPage() {
         {/* Trend chart */}
         <GlassCard style={{ padding:"14px 14px 10px" }}>
           <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10 }}>
-            <div style={{ fontSize:12,fontWeight:700,color:TG.textSecondary }}>Рассылки vs Конверсии</div>
+            <div style={{ fontSize:12,fontWeight:700,color:TG.textSecondary }}>{t.groups.sentTotal} vs {t.analytics.convRate}</div>
             <div style={{ display:"flex",gap:12 }}>
               <div style={{ display:"flex",alignItems:"center",gap:4 }}>
                 <div style={{ width:6,height:6,borderRadius:"50%",background:"#6ba8e5" }} />
-                <span style={{ fontSize:9,color:TG.muted }}>Отпр.</span>
+                <span style={{ fontSize:9,color:TG.muted }}>{t.analytics.sentLabel}</span>
               </div>
               <div style={{ display:"flex",alignItems:"center",gap:4 }}>
                 <div style={{ width:6,height:6,borderRadius:"50%",background:TG.green }} />
-                <span style={{ fontSize:9,color:TG.muted }}>Конв.</span>
+                <span style={{ fontSize:9,color:TG.muted }}>{t.analytics.convLabel}</span>
               </div>
             </div>
           </div>

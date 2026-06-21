@@ -13,15 +13,20 @@ import { DashboardPage }            from "./pages/Dashboard";
 import { AccountLoginPage }         from "./pages/AccountLogin";
 import { ManualPage }              from "./pages/Manual";
 import { BottomNav }                from "./components/BottomNav";
+import { LangSwitcher }             from "./components/LangSwitcher";
 import { ConsumerApp }              from "./ConsumerApp";
 import { getOwnerRole }             from "./lib/twa";
+import { I18nProvider }             from "./lib/i18n";
 
 export type Tab = "home" | "campaigns" | "analytics" | "audience" | "upload" | "groups" | "workers" | "dashboard";
 
 export function App() {
   const role = getOwnerRole();
-  if (role === "user") return <ConsumerApp />;
-  return <OwnerApp />;
+  return (
+    <I18nProvider>
+      {role === "user" ? <ConsumerApp /> : <OwnerApp />}
+    </I18nProvider>
+  );
 }
 
 function OwnerApp() {
@@ -112,21 +117,26 @@ function OwnerApp() {
         <ManualPage onClose={() => setShowManual(false)} />
       )}
 
-      {/* ── Floating help button ───────────────────────────────────── */}
+      {/* ── Top-right controls: lang switcher + help ───────────────── */}
       {!anyOverlay && (
-        <button
-          onClick={() => setShowManual(true)}
-          style={{
-            position: "absolute", top: 14, right: 16, zIndex: 10,
-            width: 32, height: 32, borderRadius: 10,
-            background: "rgba(255,255,255,0.06)",
-            border: "1px solid rgba(255,255,255,0.12)",
-            color: "rgba(255,255,255,0.45)",
-            fontSize: 15, fontWeight: 700,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer",
-          }}
-        >?</button>
+        <div style={{
+          position: "absolute", top: 14, right: 16, zIndex: 10,
+          display: "flex", alignItems: "center", gap: 6,
+        }}>
+          <LangSwitcher />
+          <button
+            onClick={() => setShowManual(true)}
+            style={{
+              width: 32, height: 32, borderRadius: 10,
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              color: "rgba(255,255,255,0.45)",
+              fontSize: 15, fontWeight: 700,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer",
+            }}
+          >?</button>
+        </div>
       )}
 
       {/* ── Bottom nav — hidden when overlay is open ──────────────── */}

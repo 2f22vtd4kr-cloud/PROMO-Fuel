@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useI18n } from "../lib/i18n";
 import { Plus, Play, Pause, Square, Copy, Trash2, Radio, ChevronRight, ChevronDown, ChevronUp, Clock, Send, AlertCircle, CheckCircle, BarChart2, X } from "lucide-react";
 import { api, GroupCampaign, GroupCampaignLog, GroupSendStat, DailyStat, AccountGroup } from "../lib/api";
 import { TG } from "../lib/theme";
@@ -602,6 +603,7 @@ export function GroupBroadcastsPage({
   onNew: () => void;
   onEdit: (id: number) => void;
 }) {
+  const { t, lang } = useI18n();
   const [campaigns,         setCampaigns]         = useState<GroupCampaign[]>([]);
   const [activeCampaignIds, setActiveCampaignIds] = useState<Set<number>>(new Set());
   const [loading,           setLoading]           = useState(true);
@@ -683,7 +685,7 @@ export function GroupBroadcastsPage({
             <GlassCard style={{ padding: "8px 12px", borderRadius: 14, cursor: "pointer" }} onClick={() => { haptic.medium(); onNew(); }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <Plus size={14} color="#2de897" />
-                <span style={{ fontSize: 12, color: "#2de897", fontWeight: 700 }}>Создать</span>
+                <span style={{ fontSize: 12, color: "#2de897", fontWeight: 700 }}>{t.common.create}</span>
               </div>
             </GlassCard>
           </div>
@@ -692,7 +694,7 @@ export function GroupBroadcastsPage({
         {campaigns.length > 3 && (
           <div style={{ position: "relative" }}>
             <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="🔍 Поиск рассылок…"
+              placeholder={`🔍 ${t.groups.searchPlaceholder}`}
               style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, padding: "10px 40px 10px 14px", fontSize: 13, color: TG.text, outline: "none", boxSizing: "border-box" }}
             />
             {search && (
@@ -707,11 +709,11 @@ export function GroupBroadcastsPage({
         {!loading && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 6 }}>
             {[
-              { label: "Всего",    value: campaigns.length,                                                                                   color: TG.text },
-              { label: "Активных", value: running,                                                                                             color: "#2de897" },
-              { label: "Пауза",    value: paused,                                                                                              color: "#ffc946" },
-              { label: "Черновик", value: campaigns.filter(c => c.status === "draft").length,                                                  color: "#7c8db0" },
-              { label: "Отправлено", value: campaigns.reduce((s, c) => s + (c.sent_count ?? 0), 0).toLocaleString("ru"),                       color: "#6ba8e5" },
+              { label: t.dashboard.total,      value: campaigns.length,                                                                                   color: TG.text },
+              { label: t.groups.running,      value: running,                                                                                             color: "#2de897" },
+              { label: t.groups.paused,       value: paused,                                                                                              color: "#ffc946" },
+              { label: t.groups.draft,        value: campaigns.filter(c => c.status === "draft").length,                                                  color: "#7c8db0" },
+              { label: t.groups.sentTotal,    value: campaigns.reduce((s, c) => s + (c.sent_count ?? 0), 0).toLocaleString(lang),                        color: "#6ba8e5" },
             ].map(s => (
               <GlassCard key={s.label} style={{ padding: "10px 4px", textAlign: "center" }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: s.color }}>{s.value}</div>
@@ -731,14 +733,14 @@ export function GroupBroadcastsPage({
         ) : campaigns.length === 0 ? (
           <GlassCard style={{ padding: "32px 16px", textAlign: "center" }}>
             <Radio size={24} color="#2de897" style={{ marginBottom: 10, opacity: 0.6 }} />
-            <div style={{ fontSize: 14, color: TG.muted, marginBottom: 12 }}>Нет групповых рассылок</div>
+            <div style={{ fontSize: 14, color: TG.muted, marginBottom: 12 }}>{t.groups.noGroups}</div>
             <div onClick={() => { haptic.medium(); onNew(); }} style={{ fontSize: 13, color: "#2de897", fontWeight: 700, cursor: "pointer" }}>
-              + Создать первую
+              {t.groups.noGroupsHint}
             </div>
           </GlassCard>
         ) : filtered.length === 0 ? (
           <div style={{ fontSize: 12, color: TG.muted, textAlign: "center", padding: "20px 0" }}>
-            Ничего не найдено по «{search}»
+            {t.common.notFoundQuery(search)}
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

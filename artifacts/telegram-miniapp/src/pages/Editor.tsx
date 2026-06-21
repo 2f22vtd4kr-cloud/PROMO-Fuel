@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useI18n } from "../lib/i18n";
 import { CheckCircle, Calendar, Sparkles, X, Eye, Timer, FlaskConical, Shuffle, BookOpen } from "lucide-react";
 import { api, Campaign, MessageTemplate } from "../lib/api";
 import { TG, BLUR, BLUR_HEAVY } from "../lib/theme";
@@ -88,6 +89,7 @@ function FieldLabel({ children, hint }: { children: React.ReactNode; hint?: stri
 }
 
 export function EditorPage({ campaignId, onDone }: { campaignId: number | null; onDone: () => void }) {
+  const { t, lang } = useI18n();
   const [loading, setLoading]           = useState(campaignId !== null);
   const [name, setName]                 = useState("");
   const [text, setText]                 = useState("");
@@ -209,7 +211,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
       haptic.success();
       setSuccess(true);
       setTimeout(() => { setSuccess(false); onDone(); }, 1400);
-    } catch { haptic.error(); setError("Ошибка при сохранении. Проверьте соединение."); }
+    } catch { haptic.error(); setError(t.editor.errorSaveFull); }
     setBusy(false);
   }
 
@@ -228,7 +230,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
         padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between",
         borderBottom: "1px solid rgba(255,255,255,0.08)", flexShrink: 0,
       }}>
-        <span style={{ fontSize: 17, fontWeight: 800, color: TG.text }}>{isEdit ? "Редактировать" : "Новая рассылка"}</span>
+        <span style={{ fontSize: 17, fontWeight: 800, color: TG.text }}>{isEdit ? t.editor.editTitle : t.editor.title}</span>
         {CloseBtn}
       </div>
       <FullSpinner />
@@ -252,9 +254,9 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
         </div>
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.5px", background: "linear-gradient(135deg,#2de897,#5b96d4)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text", marginBottom: 8 }}>
-            {isEdit ? "Сохранено!" : "Создана!"}
+            {isEdit ? t.editor.saved : t.editor.createdOk}
           </div>
-          <div style={{ fontSize: 13, color: TG.muted }}>Возвращаемся к рассылкам...</div>
+          <div style={{ fontSize: 13, color: TG.muted }}>{t.editor.returning}</div>
         </div>
       </div>
     </div>
@@ -275,10 +277,10 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.4px", background: "linear-gradient(135deg,#eef2ff,rgba(149,196,245,0.85))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
-              {isEdit ? "Редактировать" : "Новая рассылка"}
+              {isEdit ? t.editor.editTitle : t.editor.title}
             </div>
             <div style={{ fontSize: 11.5, color: TG.muted, marginTop: 2 }}>
-              {isEdit ? "Изменить кампанию" : "Создать кампанию"}
+              {isEdit ? t.editor.editTitle : t.editor.title}
             </div>
           </div>
           {CloseBtn}
@@ -289,10 +291,10 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
 
         {/* Name */}
         <div style={{ marginBottom: 18 }}>
-          <FieldLabel>Название</FieldLabel>
+          <FieldLabel>{t.editor.name}</FieldLabel>
           <GlassInput value={name} onChange={setName} focused={nameFocus}
             onFocus={() => setNameFocus(true)} onBlur={() => setNameFocus(false)}
-            placeholder="Например: Акция декабрь" />
+            placeholder={t.editor.namePlaceholder} />
         </div>
 
         {/* A/B Test toggle */}
@@ -300,7 +302,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
               <Shuffle size={13} color={abMode ? "#c4aeff" : TG.muted} />
-              <span style={{ fontSize: 10, color: abMode ? "#c4aeff" : TG.muted, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em" }}>A/B Тест</span>
+              <span style={{ fontSize: 10, color: abMode ? "#c4aeff" : TG.muted, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em" }}>{t.editor.abTest}</span>
             </div>
             <button onClick={() => { haptic.select(); setAbMode(m => !m); if (abMode) setTextB(""); }} className="tap" style={{
               padding: "5px 14px", borderRadius: 20, fontSize: 11, fontWeight: 800,
@@ -309,16 +311,16 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
               color: abMode ? "#c4aeff" : TG.muted,
               boxShadow: abMode ? "0 0 16px rgba(196,174,255,0.20)" : "none",
             }}>
-              {abMode ? "Вкл" : "Выкл"}
+              {abMode ? t.editor.toggleOn : t.editor.toggleOff}
             </button>
           </div>
 
           {abMode && (
             <div style={{ marginTop: 10, padding: "10px 13px", background: "rgba(196,174,255,0.06)", border: "1px solid rgba(196,174,255,0.18)", borderRadius: 12, fontSize: 11, color: TG.muted, lineHeight: 1.5 }}>
-              Аудитория делится <b style={{ color: "#c4aeff" }}>50/50</b> — каждый вариант получает свою половину. Результаты сравниваются по отправкам.
+              {t.editor.abSplitHint}
               {halfCount !== null && (
                 <span style={{ marginLeft: 6 }}>
-                  По <b style={{ color: "#c4aeff" }}>{halfCount.toLocaleString("ru")}</b> польз. на вариант.
+                  {t.editor.variantUsers(halfCount.toLocaleString(lang))}
                 </span>
               )}
             </div>
@@ -329,7 +331,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
         {!abMode ? (
           <div style={{ marginBottom: 18 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-              <label style={{ fontSize: 10, color: TG.muted, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em" }}>Текст сообщения</label>
+              <label style={{ fontSize: 10, color: TG.muted, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em" }}>{t.editor.msgText}</label>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 11, color: TG.muted }}>{charCount}</span>
                 <button onClick={openTemplates} className="tap" style={{
@@ -339,13 +341,13 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
                   background: "rgba(196,174,255,0.09)",
                   color: "#c4aeff",
                 }}>
-                  <BookOpen size={11} /> Шаблоны
+                  <BookOpen size={11} /> {t.editor.templatesBtn}
                 </button>
               </div>
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
               {vars.map(v => (
-                <button key={v} onClick={() => { haptic.select(); setText(t => t + v); }} className="tap" style={{
+                <button key={v} onClick={() => { haptic.select(); setText(prev => prev + v); }} className="tap" style={{
                   padding: "5px 11px", borderRadius: 10,
                   border: "1px solid rgba(91,150,212,0.30)",
                   background: "rgba(91,150,212,0.10)",
@@ -359,11 +361,11 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
             <GlassTextarea value={text} onChange={setText} focused={textFocus} minHeight={170}
               onFocus={() => setTextFocus(true)} onBlur={() => setTextFocus(false)}
               placeholder={"Привет, {first_name}! 👋\n\nПишем тебе, потому что..."} />
-            {charCount > 4000 && <div style={{ marginTop: 6, fontSize: 11, color: TG.red, fontWeight: 600 }}>⚠️ Слишком длинный текст</div>}
+            {charCount > 4000 && <div style={{ marginTop: 6, fontSize: 11, color: TG.red, fontWeight: 600 }}>{t.editor.textTooLong}</div>}
             {text.includes("|") && text.includes("{") && (
               <div style={{ marginTop: 8 }}>
                 <button onClick={() => { haptic.select(); setShowPreview(p => !p); }} className="tap" style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 12, border: "1px solid rgba(107,168,229,0.30)", background: "rgba(107,168,229,0.09)", color: TG.accentLight, fontSize: 11, fontWeight: 700 }}>
-                  <Eye size={12} /> {showPreview ? "Скрыть превью" : "Превью сообщения"}
+                  <Eye size={12} /> {showPreview ? t.editor.hidePreview : t.editor.showPreview}
                 </button>
                 {showPreview && spintaxSamples.length > 0 && (
                   <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -371,7 +373,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
                       const names = ["Иван", "Алексей", "Мария"];
                       return (
                         <div key={i} style={{ padding: "11px 13px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 13, fontSize: 13, color: TG.textSecondary, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                          <div style={{ fontSize: 9, color: TG.muted, fontWeight: 800, textTransform: "uppercase", marginBottom: 6, letterSpacing: "0.08em" }}>Вариант {i + 1} · {names[i]}</div>
+                          <div style={{ fontSize: 9, color: TG.muted, fontWeight: 800, textTransform: "uppercase", marginBottom: 6, letterSpacing: "0.08em" }}>{t.editor.variantLabel(i + 1, names[i])}</div>
                           {sample}
                         </div>
                       );
@@ -388,9 +390,9 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
               {vars.map(v => (
                 <button key={v} onClick={() => {
                   haptic.select();
-                  if (textFocus) setText(t => t + v);
-                  else if (textBFocus) setTextB(t => t + v);
-                  else setText(t => t + v);
+                  if (textFocus) setText(prev => prev + v);
+                  else if (textBFocus) setTextB(prev => prev + v);
+                  else setText(prev => prev + v);
                 }} className="tap" style={{
                   padding: "5px 11px", borderRadius: 10,
                   border: "1px solid rgba(91,150,212,0.30)",
@@ -419,10 +421,10 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ width: 22, height: 22, borderRadius: 7, background: "rgba(107,168,229,0.18)", border: "1px solid rgba(107,168,229,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, color: "#6ba8e5" }}>A</div>
-                  <span style={{ fontSize: 10, color: "#6ba8e5", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>Вариант A</span>
-                  {halfCount !== null && <span style={{ fontSize: 10, color: TG.muted }}>{halfCount.toLocaleString("ru")} польз.</span>}
+                  <span style={{ fontSize: 10, color: "#6ba8e5", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t.editor.variantA}</span>
+                  {halfCount !== null && <span style={{ fontSize: 10, color: TG.muted }}>{t.editor.userCountShort(halfCount.toLocaleString(lang))}</span>}
                 </div>
-                <span style={{ fontSize: 11, color: TG.muted }}>{text.length} символов</span>
+                <span style={{ fontSize: 11, color: TG.muted }}>{text.length} {t.editor.chars}</span>
               </div>
               <GlassTextarea value={text} onChange={setText} focused={textFocus} minHeight={130}
                 onFocus={() => { setTextFocus(true); setTextBFocus(false); }}
@@ -436,10 +438,10 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ width: 22, height: 22, borderRadius: 7, background: "rgba(196,174,255,0.18)", border: "1px solid rgba(196,174,255,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, color: "#c4aeff" }}>B</div>
-                  <span style={{ fontSize: 10, color: "#c4aeff", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>Вариант B</span>
-                  {halfCount !== null && <span style={{ fontSize: 10, color: TG.muted }}>{halfCount.toLocaleString("ru")} польз.</span>}
+                  <span style={{ fontSize: 10, color: "#c4aeff", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t.editor.variantB}</span>
+                  {halfCount !== null && <span style={{ fontSize: 10, color: TG.muted }}>{t.editor.userCountShort(halfCount.toLocaleString(lang))}</span>}
                 </div>
-                <span style={{ fontSize: 11, color: TG.muted }}>{textB.length} символов</span>
+                <span style={{ fontSize: 11, color: TG.muted }}>{textB.length} {t.editor.chars}</span>
               </div>
               <GlassTextarea value={textB} onChange={setTextB} focused={textBFocus} minHeight={130}
                 onFocus={() => { setTextBFocus(true); setTextFocus(false); }}
@@ -449,7 +451,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
             </div>
 
             {!textB.trim() && (
-              <div style={{ marginTop: 8, fontSize: 11, color: TG.red, fontWeight: 600 }}>⚠️ Заполните Вариант B</div>
+              <div style={{ marginTop: 8, fontSize: 11, color: TG.red, fontWeight: 600 }}>{t.editor.textTooLong}</div>
             )}
           </div>
         )}
@@ -459,7 +461,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: scheduleMode ? 12 : 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
               <Calendar size={13} color={TG.yellow} />
-              <FieldLabel>Запланировать</FieldLabel>
+              <FieldLabel>{t.editor.scheduleToggle}</FieldLabel>
             </div>
             <button onClick={() => { haptic.select(); setScheduleMode(m => !m); if (scheduleMode) setScheduledAt(""); }} className="tap" style={{
               padding: "5px 14px", borderRadius: 20, fontSize: 11, fontWeight: 800,
@@ -469,7 +471,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
               color: scheduleMode ? TG.yellow : TG.muted,
               boxShadow: scheduleMode ? "0 0 16px rgba(255,201,70,0.20)" : "none",
             }}>
-              {scheduleMode ? "Вкл" : "Выкл"}
+              {scheduleMode ? t.editor.toggleOn : t.editor.toggleOff}
             </button>
           </div>
           {scheduleMode && (
@@ -491,7 +493,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
         {audienceTags.length > 0 && (
           <div style={{ marginBottom: 18 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
-              <span style={{ fontSize: 10, color: TG.muted, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em" }}>Сегмент аудитории</span>
+              <span style={{ fontSize: 10, color: TG.muted, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em" }}>{t.editor.segmentLabel}</span>
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <button onClick={() => { haptic.select(); setSelectedTag(""); }} className="tap" style={{
@@ -499,9 +501,9 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
                 border: `1px solid ${!selectedTag ? "rgba(45,232,151,0.40)" : "rgba(255,255,255,0.10)"}`,
                 background: !selectedTag ? "rgba(45,232,151,0.13)" : "rgba(255,255,255,0.05)",
                 color: !selectedTag ? TG.green : TG.muted,
-              }}>Все</button>
+              }}>{t.editor.allAudienceBtn}</button>
               {audienceTags.map(tag => (
-                <button key={tag} onClick={() => { haptic.select(); setSelectedTag(t => t === tag ? "" : tag); }} className="tap" style={{
+                <button key={tag} onClick={() => { haptic.select(); setSelectedTag(prev => prev === tag ? "" : tag); }} className="tap" style={{
                   padding: "5px 11px", borderRadius: 10, fontSize: 11, fontWeight: 700,
                   border: `1px solid ${selectedTag === tag ? "rgba(196,174,255,0.40)" : "rgba(255,255,255,0.10)"}`,
                   background: selectedTag === tag ? "rgba(196,174,255,0.13)" : "rgba(255,255,255,0.05)",
@@ -512,16 +514,16 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
             <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ fontSize: 10, color: TG.muted }}>
                 {selectedTag
-                  ? <>Только тег <b style={{ color: TG.purple }}>#{selectedTag}</b>:</>
-                  : "Вся аудитория:"}
+                  ? <>{t.editor.tagOnly(selectedTag)}</>
+                  : t.editor.allAudience}
               </span>
               {audienceCount === null
                 ? <span style={{ fontSize: 10, color: TG.muted, opacity: 0.5 }}>…</span>
                 : <span style={{ fontSize: 10, fontWeight: 800, color: selectedTag ? TG.purple : TG.green }}>
-                    {audienceCount.toLocaleString("ru")} польз.
+                    {t.editor.userCountShort(audienceCount.toLocaleString(lang))}
                     {abMode && halfCount !== null && (
                       <span style={{ color: TG.muted, fontWeight: 400 }}>
-                        {" "}(A: {halfCount.toLocaleString("ru")} / B: {(audienceCount - halfCount).toLocaleString("ru")})
+                        {" "}(A: {halfCount.toLocaleString(lang)} / B: {(audienceCount - halfCount).toLocaleString(lang)})
                       </span>
                     )}
                   </span>
@@ -535,7 +537,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
               <Timer size={13} color={TG.muted} />
-              <FieldLabel>Задержка между отправками</FieldLabel>
+              <FieldLabel>{t.editor.delayLabel}</FieldLabel>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               {["5","10","15","30","60"].map(v => (
@@ -562,7 +564,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
               <FlaskConical size={13} color={dryRun ? "#6ba8e5" : TG.muted} />
-              <FieldLabel>Тестовый режим (Dry Run)</FieldLabel>
+              <FieldLabel>{t.editor.dryRunLabel}</FieldLabel>
             </div>
             <button onClick={() => { haptic.select(); setDryRun(d => !d); }} className="tap" style={{
               padding: "5px 14px", borderRadius: 20, fontSize: 11, fontWeight: 800,
@@ -571,12 +573,12 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
               color: dryRun ? TG.accentLight : TG.muted,
               boxShadow: dryRun ? "0 0 16px rgba(107,168,229,0.20)" : "none",
             }}>
-              {dryRun ? "Вкл" : "Выкл"}
+              {dryRun ? t.editor.toggleOn : t.editor.toggleOff}
             </button>
           </div>
           {dryRun && (
             <div style={{ marginTop: 8, padding: "9px 13px", background: "rgba(107,168,229,0.07)", border: "1px solid rgba(107,168,229,0.20)", borderRadius: 12, fontSize: 11, color: TG.muted, lineHeight: 1.5 }}>
-              Сообщения не отправляются — рассылка симулируется. Полезно для проверки списка аудитории.
+              {t.editor.dryRunHint}
             </div>
           )}
         </div>
@@ -597,17 +599,17 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
               background: "rgba(196,174,255,0.07)",
               color: "#c4aeff", width: "100%", justifyContent: "center",
             }}>
-              <BookOpen size={12} /> Сохранить как шаблон
+              <BookOpen size={12} /> {t.editor.saveTemplate}
             </button>
           </div>
         )}
 
         {/* Notes */}
         <div style={{ marginBottom: 22 }}>
-          <FieldLabel>Заметки</FieldLabel>
+          <FieldLabel>{t.editor.audience}</FieldLabel>
           <GlassTextarea value={notes} onChange={setNotes} focused={notesFocus} minHeight={74}
             onFocus={() => setNotesFocus(true)} onBlur={() => setNotesFocus(false)}
-            placeholder="Внутренние заметки (не отправляются)..." />
+            placeholder={t.editor.audiencePlaceholder} />
         </div>
 
         {error && (
@@ -628,7 +630,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
             position: "relative", overflow: "hidden",
           }}>
             {valid && <div style={{ position: "absolute", top: 0, left: "-60%", width: "50%", height: "100%", background: "linear-gradient(90deg,transparent,rgba(255,255,255,0.16),transparent)", transform: "skewX(-18deg)", animation: "shimmerX 3s ease-in-out infinite" }} />}
-            <span style={{ position: "relative", zIndex: 1 }}>{busy ? "Сохраняем..." : scheduleMode && scheduledAt ? "📅 Запланировать" : isEdit ? "Сохранить изменения" : "Создать рассылку"}</span>
+            <span style={{ position: "relative", zIndex: 1 }}>{busy ? t.common.saving : scheduleMode && scheduledAt ? `📅 ${t.editor.scheduleToggle}` : isEdit ? t.editor.save : t.editor.send}</span>
           </button>
 
           {!isEdit && (
@@ -644,7 +646,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               boxShadow: valid ? "0 4px 22px rgba(45,232,151,0.16)" : "none",
             }}>
-              <Sparkles size={15} /> {abMode ? "Запустить A/B тест" : "Создать и запустить"}
+              <Sparkles size={15} /> {abMode ? `${t.editor.abTest} →` : t.editor.send}
             </button>
           )}
         </div>

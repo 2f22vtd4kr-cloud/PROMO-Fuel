@@ -4,6 +4,7 @@ import { api, Campaign, AnalyticsOverview, WorkersSummary, DailyDigest } from ".
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
 import { haptic } from "../lib/haptics";
+import { useI18n } from "../lib/i18n";
 
 export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
   onNewCampaign: () => void;
@@ -22,6 +23,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
   const [floodedCount,    setFloodedCount]    = useState(0);
   const [lastRefreshed,  setLastRefreshed]  = useState<Date | null>(null);
   const [upcomingCamps,  setUpcomingCamps]  = useState<{ id: number; name: string; scheduled_at: string; target_count: number }[]>([]);
+  const { t, lang } = useI18n();
 
   useEffect(() => {
     Promise.all([api.getOverview(), api.getCampaigns(), api.getUsers(), api.getWorkersSummary(), api.getGroupCampaigns(), api.getAccounts(), api.getDailyDigest(), api.getUpcomingCampaigns()])
@@ -56,33 +58,33 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
 
   const stats = [
     {
-      label: "Отправлено",
+      label: t.home.statSent,
       value: overview ? (overview.totalSent >= 1000 ? `${(overview.totalSent / 1000).toFixed(0)}K` : String(overview.totalSent)) : "—",
       sub: todaySent !== null
-        ? (todaySent > 0 ? `+${todaySent} сегодня` : "за всё время")
-        : (overview && overview.sentDelta > 0 ? `+${overview.sentDelta}% сегодня` : "за всё время"),
+        ? (todaySent > 0 ? `+${todaySent} ${t.common.today}` : t.common.allTime)
+        : (overview && overview.sentDelta > 0 ? `+${overview.sentDelta}% ${t.common.today}` : t.common.allTime),
       color: TG.green,
       glow: TG.greenGlow,
       icon: Gift,
     },
     {
-      label: "Активных",
+      label: t.home.statActive,
       value: overview ? String(overview.activeCampaigns) : "—",
-      sub: "кампании",
+      sub: t.home.campaigns,
       color: "#ff9f40",
       glow: "rgba(255,159,64,0.38)",
       icon: Flame,
     },
     {
-      label: "Охват",
+      label: t.home.statReach,
       value: users >= 1000 ? `${(users / 1000).toFixed(1)}K` : String(users),
-      sub: "пользователей",
+      sub: t.home.users,
       color: TG.accent ?? "#6ba8e5",
       glow: "rgba(107,168,229,0.38)",
       icon: Users2,
     },
     {
-      label: "Конверсия",
+      label: t.home.statConversion,
       value: overview ? `${overview.avgOpenRate.toFixed(0)}%` : "—",
       sub: overview && overview.avgCtr ? `CTR ${overview.avgCtr.toFixed(1)}%` : "open rate",
       color: TG.purple,
@@ -92,12 +94,12 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
   ];
 
   const quickActions = [
-    { label: "Новая рассылка", icon: Megaphone, color: TG.green,              glow: TG.greenGlow,                action: () => { haptic.medium(); onNewCampaign(); } },
-    { label: "Группы",         icon: Radio,     color: "#ffc946",             glow: "rgba(255,201,70,0.38)",     action: () => { haptic.light(); onNavigate("groups"); } },
-    { label: "Статистика",     icon: BarChart2, color: TG.accent ?? "#6ba8e5", glow: "rgba(107,168,229,0.38)",   action: () => { haptic.light(); onNavigate("analytics"); } },
-    { label: "Аудитория",      icon: Users2,    color: "#c4aeff",             glow: "rgba(196,174,255,0.38)",    action: () => { haptic.light(); onNavigate("audience"); } },
-    { label: "Аккаунты",       icon: Shield,    color: "#ff7eb3",             glow: "rgba(255,126,179,0.38)",    action: () => { haptic.light(); onNavigate("accounts"); } },
-    { label: "Воркеры",        icon: Cpu,       color: "#a78bfa",             glow: "rgba(167,139,250,0.38)",    action: () => { haptic.light(); onNavigate("workers"); } },
+    { label: t.home.quickActions.newCampaign, icon: Megaphone, color: TG.green,              glow: TG.greenGlow,                action: () => { haptic.medium(); onNewCampaign(); } },
+    { label: t.home.quickActions.groups,      icon: Radio,     color: "#ffc946",             glow: "rgba(255,201,70,0.38)",     action: () => { haptic.light(); onNavigate("groups"); } },
+    { label: t.home.quickActions.stats,       icon: BarChart2, color: TG.accent ?? "#6ba8e5", glow: "rgba(107,168,229,0.38)",   action: () => { haptic.light(); onNavigate("analytics"); } },
+    { label: t.home.quickActions.audience,    icon: Users2,    color: "#c4aeff",             glow: "rgba(196,174,255,0.38)",    action: () => { haptic.light(); onNavigate("audience"); } },
+    { label: t.home.quickActions.accounts,    icon: Shield,    color: "#ff7eb3",             glow: "rgba(255,126,179,0.38)",    action: () => { haptic.light(); onNavigate("accounts"); } },
+    { label: t.home.quickActions.workers,     icon: Cpu,       color: "#a78bfa",             glow: "rgba(167,139,250,0.38)",    action: () => { haptic.light(); onNavigate("workers"); } },
   ];
 
   const sparklineHeights = [4, 8, 6, 12, 8, 10, 16];
@@ -117,10 +119,10 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", position: 'sticky', top: 0, zIndex: 50, background: 'linear-gradient(to bottom, rgba(6,8,16,0.95) 0%, transparent 100%)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', padding: "14px 14px 10px" }}>
             <div>
               <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>
-                Добро пожаловать 👋
+                {t.home.welcome}
               </div>
               <div style={{ fontSize: 12, color: TG.textSecondary, marginTop: 2 }}>
-                PROMO-Fuel • Личный кабинет
+                {t.home.personalCabinet}
               </div>
             </div>
             <div style={{ position: "relative" }}>
@@ -142,7 +144,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
           {/* Last-refresh timestamp */}
           {lastRefreshed && (
             <div style={{ fontSize: 9, color: TG.muted, textAlign: "right", paddingRight: 16, marginTop: -6 }}>
-              Обновлено: {lastRefreshed.toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              {t.home.updatedAt} {lastRefreshed.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             </div>
           )}
 
@@ -155,8 +157,8 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
               >
                 <span style={{ fontSize: 13 }}>⚠️</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#ffc946" }}>Нет активных воркеров</div>
-                  <div style={{ fontSize: 10, color: TG.muted }}>Рассылки не выполняются — нажми чтобы запустить</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#ffc946" }}>{t.home.noWorkers}</div>
+                  <div style={{ fontSize: 10, color: TG.muted }}>{t.home.noWorkersHint}</div>
                 </div>
                 <ArrowUpRight size={14} color="#ffc946" />
               </div>
@@ -169,11 +171,11 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                   );
                 })}
                 <div style={{ fontSize: 10, color: TG.muted, marginLeft: 4, fontWeight: 600 }}>
-                  {workers.alive_workers} воркер{workers.alive_workers === 1 ? "" : "а"} активн{workers.alive_workers === 1 ? "ый" : "ых"}
+                  {t.home.workerActive(workers.alive_workers)}
                 </div>
                 {groupCampaigns > 0 && (
                   <div style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, color: "#6ba8e5", background: "rgba(107,168,229,0.12)", border: "1px solid rgba(107,168,229,0.25)", borderRadius: 20, padding: "2px 7px" }}>
-                    📡 {groupCampaigns} групп в эфире
+                    {t.home.groupsOnAir(groupCampaigns)}
                   </div>
                 )}
               </div>
@@ -189,9 +191,9 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
               <span style={{ fontSize: 13 }}>⛔</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#ff6b7a" }}>
-                  {bannedAcctCount === 1 ? "1 аккаунт заблокирован Telegram" : `${bannedAcctCount} аккаунта заблокированы Telegram`}
+                  {bannedAcctCount === 1 ? t.home.bannedAccount : t.home.bannedAccountsMulti(bannedAcctCount)}
                 </div>
-                <div style={{ fontSize: 10, color: TG.muted }}>Нажми чтобы проверить аккаунты</div>
+                <div style={{ fontSize: 10, color: TG.muted }}>{t.home.bannedHint}</div>
               </div>
               <ArrowUpRight size={14} color="#ff6b7a" />
             </div>
@@ -205,7 +207,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: TG.muted }}>📊 Квота отправок</span>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: TG.muted }}>{t.home.quotaSent}</span>
                   {floodedCount > 0 && (
                     <span style={{ fontSize: 9, color: "#ffc946", background: "rgba(255,201,70,0.12)", border: "1px solid rgba(255,201,70,0.25)", borderRadius: 8, padding: "1px 5px" }}>⏳ {floodedCount} flood</span>
                   )}
@@ -225,18 +227,18 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
               style={{ margin: "0 14px", padding: "9px 12px", borderRadius: 12, background: "rgba(196,174,255,0.06)", border: "1px solid rgba(196,174,255,0.18)", cursor: "pointer", animation: "slideUp 0.4s ease-out 0.05s both" }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: "#c4aeff" }}>⏰ Запланировано</span>
-                <span style={{ fontSize: 9, color: "rgba(196,174,255,0.6)" }}>{upcomingCamps.length} кампаний · 24ч</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#c4aeff" }}>{t.home.scheduledLabel}</span>
+                <span style={{ fontSize: 9, color: "rgba(196,174,255,0.6)" }}>{t.home.scheduledSuffix(upcomingCamps.length)}</span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {upcomingCamps.slice(0, 2).map(c => {
-                  const t = new Date(c.scheduled_at);
+                  const dt = new Date(c.scheduled_at);
                   const now = Date.now();
-                  const delta = t.getTime() - now;
+                  const delta = dt.getTime() - now;
                   const hh = Math.floor(delta / 3600000);
                   const mm = Math.floor((delta % 3600000) / 60000);
-                  const timeStr = t.toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
-                  const countdown = hh > 0 ? `${hh}ч ${mm}м` : `${mm}м`;
+                  const timeStr = dt.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
+                  const countdown = hh > 0 ? `${hh}h ${mm}m` : `${mm}m`;
                   return (
                     <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span style={{ fontSize: 11, color: TG.text, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", maxWidth: "60%" }}>{c.name}</span>
@@ -245,7 +247,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                   );
                 })}
                 {upcomingCamps.length > 2 && (
-                  <span style={{ fontSize: 9, color: "rgba(196,174,255,0.5)" }}>+{upcomingCamps.length - 2} ещё...</span>
+                  <span style={{ fontSize: 9, color: "rgba(196,174,255,0.5)" }}>+{upcomingCamps.length - 2} {t.common.more}</span>
                 )}
               </div>
             </div>
@@ -264,7 +266,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                 {overview.activeCampaigns} активных кампаний
               </div>
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
-                {overview.totalSent.toLocaleString("ru")} отправлено / {users.toLocaleString("ru")} в базе
+                {t.home.sentAndBase(overview.totalSent.toLocaleString(lang), users.toLocaleString(lang))}
               </div>
             </div>
             <span className="status-badge status-running">Live</span>
@@ -340,14 +342,14 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: TG.text }}>
-                  Воркеры: <span style={{ color: workers.alive_workers > 0 ? "#2de897" : "#ff6b7a" }}>{workers.alive_workers} активных</span>
-                  {workers.dead_workers > 0 && <span style={{ color: "#ff6b7a", marginLeft: 6 }}>· {workers.dead_workers} мёртвых</span>}
-                  {groupCampaigns > 0 && <span style={{ color: "#ffc946", marginLeft: 6 }}>· {groupCampaigns} рассылок</span>}
+                  {t.nav.workers}: <span style={{ color: workers.alive_workers > 0 ? "#2de897" : "#ff6b7a" }}>{workers.alive_workers} {t.workers.alive}</span>
+                  {workers.dead_workers > 0 && <span style={{ color: "#ff6b7a", marginLeft: 6 }}>· {workers.dead_workers} {t.workers.dead}</span>}
+                  {groupCampaigns > 0 && <span style={{ color: "#ffc946", marginLeft: 6 }}>· {groupCampaigns} {t.groups.title.toLowerCase()}</span>}
                 </div>
                 <div style={{ fontSize: 10, color: TG.muted, marginTop: 1 }}>
                   {workers.tasks_pending > 0
-                    ? `${workers.tasks_pending} задач в очереди · ${workers.tasks_done} выполнено`
-                    : `Очередь пуста · ${workers.tasks_done} выполнено всего`}
+                    ? `${workers.tasks_pending} ${t.workers.tasksPending} · ${workers.tasks_done} ${t.workers.tasksDone}`
+                    : `${t.workers.tasksPending}: 0 · ${workers.tasks_done} ${t.workers.tasksDone}`}
                 </div>
               </div>
               <ArrowUpRight size={12} color={TG.muted} />
@@ -358,7 +360,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
         {/* Quick actions */}
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, color: TG.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>
-            Быстрые действия
+            {lang === "ru" ? "Быстрые действия" : lang === "uk" ? "Швидкі дії" : "Quick Actions"}
           </div>
           <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
             {quickActions.map((a) => {
@@ -394,9 +396,9 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: TG.text }}>
-                  Групповые рассылки: <span style={{ color: "#ffc946" }}>{groupCampaigns} активных</span>
+                  {t.groups.title}: <span style={{ color: "#ffc946" }}>{groupCampaigns} {t.groups.running.toLowerCase()}</span>
                 </div>
-                <div style={{ fontSize: 10, color: TG.muted, marginTop: 1 }}>Нажми для управления</div>
+                <div style={{ fontSize: 10, color: TG.muted, marginTop: 1 }}>{lang === "ru" ? "Нажми для управления" : lang === "uk" ? "Натисніть для керування" : "Tap to manage"}</div>
               </div>
               <ArrowUpRight size={12} color={TG.muted} />
             </GlassCard>
@@ -407,9 +409,9 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
         <div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: TG.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-              Активные акции
+              {t.home.recentCampaigns}
             </div>
-            <span onClick={() => { haptic.light(); onViewCampaigns(); }} style={{ fontSize: 11, color: TG.accent ?? "#6ba8e5", fontWeight: 600, cursor: "pointer" }}>Все →</span>
+            <span onClick={() => { haptic.light(); onViewCampaigns(); }} style={{ fontSize: 11, color: TG.accent ?? "#6ba8e5", fontWeight: 600, cursor: "pointer" }}>{t.home.viewAll} →</span>
           </div>
 
           {loading ? (
@@ -418,8 +420,8 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
             </div>
           ) : campaigns.length === 0 ? (
             <GlassCard style={{ padding: "20px 16px", textAlign: "center" }}>
-              <div style={{ fontSize: 13, color: TG.muted }}>Нет активных кампаний</div>
-              <div onClick={() => { haptic.medium(); onNewCampaign(); }} style={{ marginTop: 10, fontSize: 12, color: TG.green, fontWeight: 700, cursor: "pointer" }}>+ Создать кампанию</div>
+              <div style={{ fontSize: 13, color: TG.muted }}>{t.home.noCampaigns}</div>
+              <div onClick={() => { haptic.medium(); onNewCampaign(); }} style={{ marginTop: 10, fontSize: 12, color: TG.green, fontWeight: 700, cursor: "pointer" }}>+ {t.campaigns.newCampaign}</div>
             </GlassCard>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -428,7 +430,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                 const glows = ["rgba(107,168,229,0.38)", "rgba(45,232,151,0.38)", "rgba(255,159,64,0.38)"];
                 const color = colors[i % colors.length]!;
                 const glow = glows[i % glows.length]!;
-                const badge = c.status === "running" ? "АКТИВНА" : c.status === "paused" ? "ПАУЗА" : "ЧЕРНОВИК";
+                const badge = c.status === "running" ? t.status.running.toUpperCase() : c.status === "paused" ? t.status.paused.toUpperCase() : t.status.draft.toUpperCase();
                 const badgeColor = c.status === "running" ? "#2de897" : c.status === "paused" ? "#ffc946" : "#7c8db0";
                 const claimed = c.sent_count;
                 const total = c.target_count || 1;
@@ -462,7 +464,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                     </div>
                     <div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                        <span style={{ fontSize: 10, color: TG.muted }}>Использовано</span>
+                        <span style={{ fontSize: 10, color: TG.muted }}>{lang === "ru" ? "Использовано" : lang === "uk" ? "Використано" : "Used"}</span>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           {pct > 0 && (
                             <span style={{ fontSize: 9, fontWeight: 700, color, background: `${color}15`, border: `1px solid ${color}35`, borderRadius: 8, padding: "1px 5px" }}>{pct}%</span>

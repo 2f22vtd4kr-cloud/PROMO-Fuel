@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useI18n } from "../lib/i18n";
 import {
   Cpu, RefreshCw, Trash2, AlertTriangle, CheckCircle,
   Activity, ListTodo, Calendar, Plus, Shield, Phone, Zap, RotateCcw, Timer,
@@ -107,6 +108,7 @@ function RestartWorkerButton({ workerId, onRestarted }: { workerId: string; onRe
 }
 
 function WorkerCard({ worker, index = 0, onDelete, accounts = [], accountStats = {} }: { worker: BroadcastWorker; index?: number; onDelete: () => void; accounts?: SenderAccount[]; accountStats?: Record<string, { ok: number; failed: number }> }) {
+  const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const alive   = worker.is_alive ?? false;
   const working = alive && worker.status === "working";
@@ -178,8 +180,8 @@ function WorkerCard({ worker, index = 0, onDelete, accounts = [], accountStats =
         <div style={{ marginTop: 10, padding: "6px 8px", borderRadius: 8, background: "rgba(107,168,229,0.08)", border: "1px solid rgba(107,168,229,0.20)", display: "flex", alignItems: "center", gap: 6 }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#6ba8e5", flexShrink: 0, animation: "pulse 1.2s ease-in-out infinite" }} />
           <Activity size={9} color="#6ba8e5" />
-          <span style={{ fontSize: 10, color: "#6ba8e5", fontWeight: 700 }}>Задача #{worker.current_task}</span>
-          {worker.status === "working" && <span style={{ fontSize: 9, color: TG.muted, marginLeft: "auto" }}>в процессе</span>}
+          <span style={{ fontSize: 10, color: "#6ba8e5", fontWeight: 700 }}>{t.workers.workerTaskRunning} #{worker.current_task}</span>
+          {worker.status === "working" && <span style={{ fontSize: 9, color: TG.muted, marginLeft: "auto" }}>{t.workers.inProgress}</span>}
         </div>
       )}
       {worker.last_error && (
@@ -203,6 +205,7 @@ function WorkerCard({ worker, index = 0, onDelete, accounts = [], accountStats =
 }
 
 function TaskRow({ task, onAction, campaignName }: { task: Task; onAction: () => void; campaignName?: string }) {
+  const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const color = sc(task.status);
 
@@ -216,12 +219,12 @@ function TaskRow({ task, onAction, campaignName }: { task: Task; onAction: () =>
         <div style={{ fontSize: 12, color: TG.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {campaignName
             ? <span style={{ fontWeight: 600 }}>{campaignName}</span>
-            : <span style={{ color: TG.muted }}>кампания #{task.campaign_id}</span>
+            : <span style={{ color: TG.muted }}>{t.workers.campaignLabel} #{task.campaign_id}</span>
           }
           {task.worker_id && task.status === "claimed" && <span style={{ color: "#ffc946", fontSize: 10, marginLeft: 5 }}>@ {task.worker_id}</span>}
         </div>
         <div style={{ fontSize: 9, color: TG.muted }}>
-          Задача #{task.id}
+          {t.workers.workerTaskRunning} #{task.id}
           {task.scheduled_at && task.status === "pending" && (() => {
             const diff = Math.floor((new Date(task.scheduled_at!).getTime() - Date.now()) / 1000);
             return diff > 5 ? <span style={{ color: "#ffc946", marginLeft: 5 }}>⏰ через {formatCountdown(task.scheduled_at)}</span> : null;
@@ -231,10 +234,10 @@ function TaskRow({ task, onAction, campaignName }: { task: Task; onAction: () =>
       </div>
       <div style={{ fontSize: 9, color: TG.muted, flexShrink: 0 }}>{task.attempts}/{task.max_attempts}</div>
       {(task.status === "failed" || task.status === "dead") && (
-        <button onClick={retry} disabled={busy} style={{ fontSize: 10, color: "#6ba8e5", background: "rgba(107,168,229,0.12)", border: "1px solid rgba(107,168,229,0.3)", borderRadius: 8, padding: "4px 8px", cursor: "pointer" }}>Повтор</button>
+        <button onClick={retry} disabled={busy} style={{ fontSize: 10, color: "#6ba8e5", background: "rgba(107,168,229,0.12)", border: "1px solid rgba(107,168,229,0.3)", borderRadius: 8, padding: "4px 8px", cursor: "pointer" }}>{t.common.retry}</button>
       )}
       {(task.status === "pending" || task.status === "claimed") && (
-        <button onClick={cancel} disabled={busy} style={{ fontSize: 10, color: "#ff6b7a", background: "rgba(255,107,122,0.10)", border: "1px solid rgba(255,107,122,0.25)", borderRadius: 8, padding: "4px 8px", cursor: "pointer" }}>Отмена</button>
+        <button onClick={cancel} disabled={busy} style={{ fontSize: 10, color: "#ff6b7a", background: "rgba(255,107,122,0.10)", border: "1px solid rgba(255,107,122,0.25)", borderRadius: 8, padding: "4px 8px", cursor: "pointer" }}>{t.common.cancel}</button>
       )}
     </div>
   );
@@ -306,11 +309,11 @@ function RecoverLocksButton({ onDone }: { onDone: () => void }) {
     <div>
       <button onClick={recover} disabled={busy} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", padding: "10px 14px", borderRadius: 12, background: busy ? "rgba(255,201,70,0.05)" : "rgba(255,201,70,0.09)", border: "1px solid rgba(255,201,70,0.27)", color: "#ffc946", fontSize: 12, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1, transition: "opacity 0.2s" }}>
         <Shield size={13} color="#ffc946" />
-        {busy ? "Освобождаем блокировки…" : "🔓 Освободить застрявшие блокировки"}
+        {busy ? t.workers.releasingLocks : t.workers.releaseLocksBtn}
       </button>
       {result && (
         <div style={{ marginTop: 6, fontSize: 11, color: "#ffc946", background: "rgba(255,201,70,0.08)", border: "1px solid rgba(255,201,70,0.18)", borderRadius: 10, padding: "8px 12px" }}>
-          ✓ Аккаунтов: <b>{result.released_accounts}</b> · Задач: <b>{result.reset_tasks}</b>
+          ✓ {t.accounts.title}: <b>{result.released_accounts}</b> · {t.workers.tasks}: <b>{result.reset_tasks}</b>
           {result.stale.length > 0 && <div style={{ marginTop: 4, color: TG.muted }}>{result.stale.map(s => `${s.phone} (${s.locked_by})`).join(", ")}</div>}
         </div>
       )}
@@ -553,6 +556,7 @@ const MAX_CRASHES = 5; // must match worker.py MAX_CRASHES
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function WorkersPage() {
+  const { t, lang } = useI18n();
   const [workers,      setWorkers]      = useState<BroadcastWorker[]>([]);
   const [tasks,        setTasks]        = useState<Task[]>([]);
   const [summary,      setSummary]      = useState<WorkersSummary | null>(null);
@@ -695,7 +699,7 @@ export function WorkersPage() {
           {/* ── Header ──────────────────────────────────────────────── */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>Воркеры</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>{t.nav.workers}</div>
               {aliveWorkers.length > 0 && (
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#2de897", background: "rgba(45,232,151,0.10)", borderRadius: 20, padding: "2px 9px" }}>
                   {aliveWorkers.length} активных
@@ -820,15 +824,15 @@ export function WorkersPage() {
               {/* ── Active workers ──────────────────────────────────── */}
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: TG.muted, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
-                  Активные воркеры {aliveWorkers.length > 0 && `(${aliveWorkers.length})`}
+                  {t.workers.liveWorkers} {aliveWorkers.length > 0 && `(${aliveWorkers.length})`}
                 </div>
                 {aliveWorkers.length === 0 ? (
                   <GlassCard style={{ padding: "18px 16px", border: "1px solid rgba(255,201,70,0.30)", background: "rgba(255,201,70,0.04)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                       <AlertTriangle size={18} color="#ffc946" style={{ flexShrink: 0 }} />
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: "#ffc946" }}>Рассылки не выполняются</div>
-                        <div style={{ fontSize: 11, color: TG.muted, marginTop: 2 }}>Нет активных воркеров для обработки задач</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#ffc946" }}>{t.home.noWorkers}</div>
+                        <div style={{ fontSize: 11, color: TG.muted, marginTop: 2 }}>{t.workers.noWorkersDesc}</div>
                       </div>
                     </div>
                     <SpawnWorkerButton onSpawned={() => setTimeout(load, 2000)} prominent />
@@ -836,9 +840,9 @@ export function WorkersPage() {
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 8px", background: "rgba(45,232,151,0.1)", borderRadius: 12, fontSize: 10, fontWeight: 700, color: "#2de897" }}><Cpu size={12} /> {aliveWorkers.length} жив.</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 8px", background: "rgba(255,107,122,0.1)", borderRadius: 12, fontSize: 10, fontWeight: 700, color: "#ff6b7a" }}><AlertTriangle size={12} /> {deadWorkers.length} мертв.</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 8px", background: "rgba(107,168,229,0.1)", borderRadius: 12, fontSize: 10, fontWeight: 700, color: "#6ba8e5" }}><CheckCircle size={12} /> {workers.reduce((acc, w) => acc + (w.tasks_done || 0), 0)} задач</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 8px", background: "rgba(45,232,151,0.1)", borderRadius: 12, fontSize: 10, fontWeight: 700, color: "#2de897" }}><Cpu size={12} /> {aliveWorkers.length} {t.workers.aliveShort}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 8px", background: "rgba(255,107,122,0.1)", borderRadius: 12, fontSize: 10, fontWeight: 700, color: "#ff6b7a" }}><AlertTriangle size={12} /> {deadWorkers.length} {t.workers.deadShort}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 8px", background: "rgba(107,168,229,0.1)", borderRadius: 12, fontSize: 10, fontWeight: 700, color: "#6ba8e5" }}><CheckCircle size={12} /> {workers.reduce((acc, w) => acc + (w.tasks_done || 0), 0)} {t.workers.tasksShort}</div>
                     </div>
                     {aliveWorkers.map((w, i) => <WorkerCard key={w.worker_id} worker={w} index={i} onDelete={load} accounts={accounts} accountStats={accountStats} />)}
                   </div>
@@ -861,7 +865,7 @@ export function WorkersPage() {
                 >
                   <div style={{ fontSize: 11, fontWeight: 700, color: TG.muted, letterSpacing: "0.07em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
                     <Phone size={11} />
-                    Аккаунты ({accounts.length})
+                    {t.nav.accounts} ({accounts.length})
                     {lockedAccounts.length > 0 && (
                       <span style={{ fontSize: 10, color: "#ffc946", background: "rgba(255,201,70,0.12)", borderRadius: 20, padding: "1px 7px" }}>
                         🔒 {lockedAccounts.length}
@@ -874,13 +878,13 @@ export function WorkersPage() {
                 {showAccounts && (
                   <GlassCard style={{ padding: "8px 10px" }}>
                     {accounts.length === 0 ? (
-                      <div style={{ textAlign: "center", padding: "12px 0", fontSize: 12, color: TG.muted }}>Нет аккаунтов</div>
+                      <div style={{ textAlign: "center", padding: "12px 0", fontSize: 12, color: TG.muted }}>{t.accounts.noAccounts}</div>
                     ) : (
                       <>
                         <div style={{ display: "flex", gap: 10, marginBottom: 8, fontSize: 10, color: TG.muted, flexWrap: "wrap" }}>
-                          <span><span style={{ color: "#2de897" }}>●</span> свободен</span>
-                          <span><span style={{ color: "#ffc946" }}>●</span> занят</span>
-                          <span><span style={{ color: "#ff6b7a" }}>●</span> ошибка/бан</span>
+                          <span><span style={{ color: "#2de897" }}>●</span> {t.workers.free}</span>
+                          <span><span style={{ color: "#ffc946" }}>●</span> {t.workers.inProgress}</span>
+                          <span><span style={{ color: "#ff6b7a" }}>●</span> {t.status.banned.toLowerCase()}</span>
                           {accounts.some(a => a.status === "proxy_failed") && (
                             <span style={{ color: "#ff6b7a", fontWeight: 700 }}>⚠️ proxy_failed: {accounts.filter(a => a.status === "proxy_failed").length}</span>
                           )}
@@ -922,7 +926,7 @@ export function WorkersPage() {
                   <div style={{ position: "relative", marginBottom: 8 }}>
                     <input
                       value={taskSearch} onChange={e => setTaskSearch(e.target.value)}
-                      placeholder="🔍 Поиск по задаче, кампании, ошибке…"
+                      placeholder={`🔍 ${t.workers.taskSearchPlaceholder}`}
                       style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 10, padding: "8px 36px 8px 12px", fontSize: 12, color: TG.text, outline: "none", boxSizing: "border-box" }}
                     />
                     {taskSearch && (

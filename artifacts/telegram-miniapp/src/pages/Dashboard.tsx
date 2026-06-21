@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useI18n } from "../lib/i18n";
 import {
   Cpu, Activity, RefreshCw, Globe, AlertTriangle,
   Zap, Phone, ListTodo, Shield, RotateCcw, Server,
@@ -72,6 +73,7 @@ function StatTile({ label, value, color, sub }: { label: string; value: string |
 }
 
 function WorkerMiniTile({ worker }: { worker: BroadcastWorker }) {
+  const { t } = useI18n();
   const alive   = worker.is_alive ?? false;
   const color   = alive ? sc(worker.status) : "#ff6b7a";
   const crashes = worker.crash_count ?? 0;
@@ -97,7 +99,7 @@ function WorkerMiniTile({ worker }: { worker: BroadcastWorker }) {
       {crashes > 0 && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-            <span style={{ fontSize: 8, color: TG.muted }}>Рестарты</span>
+            <span style={{ fontSize: 8, color: TG.muted }}>{t.workers.crashCount}</span>
             <span style={{ fontSize: 8, fontWeight: 700, color: barColor }}>{crashes}/{MAX_C}</span>
           </div>
           <div style={{ height: 3, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
@@ -108,7 +110,7 @@ function WorkerMiniTile({ worker }: { worker: BroadcastWorker }) {
 
       {worker.current_task && alive && (
         <div style={{ marginTop: 6, fontSize: 9, color: "#6ba8e5", display: "flex", alignItems: "center", gap: 4 }}>
-          <Activity size={9} /> задача #{worker.current_task}
+          <Activity size={9} /> {t.workers.workerTaskRunning} #{worker.current_task}
         </div>
       )}
 
@@ -122,18 +124,19 @@ function WorkerMiniTile({ worker }: { worker: BroadcastWorker }) {
 }
 
 function QueueBar({ stats }: { stats: QueueStats }) {
+  const { t } = useI18n();
   const total = stats.pending + stats.active + stats.done + stats.failed + stats.dead + stats.cancelled;
   const segments = [
-    { key: "pending",   v: stats.pending,   c: "#ffc946", l: "Ожидает" },
-    { key: "active",    v: stats.active,    c: "#6ba8e5", l: "В работе" },
-    { key: "done",      v: stats.done,      c: "#2de897", l: "Готово" },
-    { key: "failed",    v: stats.failed + stats.dead, c: "#ff6b7a", l: "Ошибок" },
+    { key: "pending",   v: stats.pending,   c: "#ffc946", l: t.workers.tasksPending },
+    { key: "active",    v: stats.active,    c: "#6ba8e5", l: t.workers.tasksClaimed },
+    { key: "done",      v: stats.done,      c: "#2de897", l: t.workers.tasksDone },
+    { key: "failed",    v: stats.failed + stats.dead, c: "#ff6b7a", l: t.workers.tasksFailed },
   ].filter(s => s.v > 0);
 
   return (
     <GlassCard style={{ padding: "12px 14px" }}>
       <div style={{ fontSize: 10, fontWeight: 700, color: TG.muted, marginBottom: 10, letterSpacing: "0.07em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5 }}>
-        <ListTodo size={10} />ОЧЕРЕДЬ ЗАДАЧ
+        <ListTodo size={10} />{t.dashboard.queueTitle.toUpperCase()}
       </div>
 
       {/* Stacked bar */}
@@ -149,10 +152,10 @@ function QueueBar({ stats }: { stats: QueueStats }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 4 }}>
         {[
-          { label: "Ожидает",  value: stats.pending,              color: "#ffc946" },
-          { label: "В работе", value: stats.active,               color: "#6ba8e5" },
-          { label: "Готово",   value: stats.done,                 color: "#2de897" },
-          { label: "Ошибок",   value: stats.failed + stats.dead,  color: "#ff6b7a" },
+          { label: t.workers.tasksPending, value: stats.pending,              color: "#ffc946" },
+          { label: t.workers.tasksClaimed, value: stats.active,              color: "#6ba8e5" },
+          { label: t.workers.tasksDone,   value: stats.done,                 color: "#2de897" },
+          { label: t.workers.tasksFailed, value: stats.failed + stats.dead,  color: "#ff6b7a" },
         ].map(s => (
           <div key={s.label} style={{ textAlign: "center", background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "6px 4px" }}>
             <div style={{ fontSize: 14, fontWeight: 800, color: s.color }}>{s.value}</div>
@@ -196,6 +199,7 @@ function ProxyRow({ account }: { account: SenderAccount }) {
 }
 
 function RateLimitRow({ account }: { account: SenderAccount }) {
+  const { t } = useI18n();
   const color = account.is_banned ? "#ff6b7a"
     : account.status === "flood_wait" ? "#ffc946"
     : account.status === "proxy_failed" ? "#ff6b7a"
@@ -203,10 +207,10 @@ function RateLimitRow({ account }: { account: SenderAccount }) {
 
   const limit = account.daily_limit ?? 300;
   const pct   = limit > 0 ? Math.min(100, Math.round((account.sent_today / limit) * 100)) : 0;
-  const label = account.is_banned ? "ЗАБЛОКИРОВАН"
+  const label = account.is_banned ? t.accounts.banned.toUpperCase()
     : account.status === "flood_wait" ? "FLOOD WAIT"
     : account.status === "proxy_failed" ? "PROXY FAIL"
-    : `${pct}% лимита`;
+    : `${pct}% ${t.accounts.limit}`;
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 10, background: `${color}06`, border: `1px solid ${color}18`, marginBottom: 4 }}>
@@ -249,7 +253,7 @@ function AdminActions({ onAction }: { onAction: () => void }) {
     try {
       const r = await controlApi.recoverStaleLocks();
       haptic.success();
-      setReapResult(`Освобождено ${r.released} блокировок`);
+      setReapResult(t.workers.locksReleased(r.released));
       setTimeout(() => setReapResult(null), 4000);
       onAction();
     } catch (e: unknown) {
@@ -264,16 +268,16 @@ function AdminActions({ onAction }: { onAction: () => void }) {
   return (
     <GlassCard style={{ padding: "12px 14px" }}>
       <div style={{ fontSize: 10, fontWeight: 700, color: TG.muted, marginBottom: 10, letterSpacing: "0.07em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5 }}>
-        <Shield size={10} />АДМИНИСТРАТИВНЫЕ ДЕЙСТВИЯ
+        <Shield size={10} />{t.workers.adminActions.toUpperCase()}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <button onClick={reap} disabled={busyReap} style={{ padding: "9px 12px", borderRadius: 12, background: busyReap ? "rgba(107,168,229,0.05)" : "rgba(107,168,229,0.10)", border: "1px solid rgba(107,168,229,0.25)", color: "#6ba8e5", fontSize: 12, fontWeight: 700, cursor: busyReap ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 7, opacity: busyReap ? 0.6 : 1 }}>
           <RotateCcw size={12} style={{ animation: busyReap ? "spin 0.8s linear infinite" : "none" }} />
-          {busyReap ? "Очистка…" : "Reap мёртвых воркеров"}
+          {busyReap ? t.workers.reaping : t.workers.reapWorkers}
         </button>
         <button onClick={locks} disabled={busyLocks} style={{ padding: "9px 12px", borderRadius: 12, background: busyLocks ? "rgba(255,201,70,0.05)" : "rgba(255,201,70,0.09)", border: "1px solid rgba(255,201,70,0.25)", color: "#ffc946", fontSize: 12, fontWeight: 700, cursor: busyLocks ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 7, opacity: busyLocks ? 0.6 : 1 }}>
           <Shield size={12} />
-          {busyLocks ? "Освобождение…" : "🔓 Освободить застрявшие блокировки"}
+          {busyLocks ? t.workers.releasingLocks : t.workers.releaseLocksBtn}
         </button>
         {reapResult && (
           <div style={{ fontSize: 11, color: "#2de897", background: "rgba(45,232,151,0.08)", border: "1px solid rgba(45,232,151,0.18)", borderRadius: 8, padding: "6px 10px" }}>
@@ -288,6 +292,7 @@ function AdminActions({ onAction }: { onAction: () => void }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function DashboardPage() {
+  const { t, lang } = useI18n();
   const [workers,  setWorkers]  = useState<BroadcastWorker[]>([]);
   const [accounts, setAccounts] = useState<SenderAccount[]>([]);
   const [tasks,    setTasks]    = useState<Task[]>([]);
@@ -387,8 +392,8 @@ export function DashboardPage() {
                 <Server size={15} color="#6ba8e5" />
               </div>
               <div>
-                <div style={{ fontSize: 17, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>Дашборд</div>
-                <div style={{ fontSize: 10, color: TG.muted }}>Мониторинг системы</div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>{t.nav.dashboard}</div>
+                <div style={{ fontSize: 10, color: TG.muted }}>{t.dashboard.systemSnapshot}</div>
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -408,16 +413,16 @@ export function DashboardPage() {
             <>
               {/* ── System overview tiles ─────────────────────────────── */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6 }}>
-                <StatTile label="Живых"   value={aliveWorkers.length}   color="#2de897" />
-                <StatTile label="Очередь" value={queue?.pending ?? 0}   color="#ffc946" />
-                <StatTile label="Заблок." value={lockedAccounts.length} color="#6ba8e5" />
-                <StatTile label="Ошибок"  value={(queue?.failed ?? 0) + (queue?.dead ?? 0)} color="#ff6b7a" />
+                <StatTile label={t.dashboard.alive}   value={aliveWorkers.length}   color="#2de897" />
+                <StatTile label={t.dashboard.queue}  value={queue?.pending ?? 0}   color="#ffc946" />
+                <StatTile label={t.status.banned}    value={lockedAccounts.length} color="#6ba8e5" />
+                <StatTile label={t.dashboard.failed} value={(queue?.failed ?? 0) + (queue?.dead ?? 0)} color="#ff6b7a" />
               </div>
 
               {/* Snapshot timestamp */}
               {snapshot && (
                 <div style={{ fontSize: 9, color: TG.muted, textAlign: "right", opacity: 0.6 }}>
-                  Снапшот: {new Date(snapshot.timestamp).toLocaleTimeString("ru")}
+                  {t.dashboard.snapshot} {new Date(snapshot.timestamp).toLocaleTimeString(lang)}
                 </div>
               )}
 
@@ -427,7 +432,7 @@ export function DashboardPage() {
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <AlertTriangle size={14} color="#ff6b7a" />
                     <span style={{ fontSize: 12, fontWeight: 800, color: "#ff6b7a" }}>
-                      {deadWorkers.length} воркер(а) упали
+                      {t.dashboard.workersDown(deadWorkers.length)}
                     </span>
                   </div>
                   {deadWorkers.map(w => (
@@ -441,14 +446,14 @@ export function DashboardPage() {
               {/* ── Worker cluster grid ───────────────────────────────── */}
               <div>
                 <div style={{ fontSize: 10, fontWeight: 700, color: TG.muted, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
-                  <Cpu size={10} />ВОРКЕРЫ ({workers.length})
-                  {aliveWorkers.length > 0 && <span style={{ fontSize: 9, color: "#2de897", background: "rgba(45,232,151,0.10)", borderRadius: 20, padding: "1px 7px" }}>{aliveWorkers.length} живых</span>}
+                  <Cpu size={10} />{t.workers.title.toUpperCase()} ({workers.length})
+                  {aliveWorkers.length > 0 && <span style={{ fontSize: 9, color: "#2de897", background: "rgba(45,232,151,0.10)", borderRadius: 20, padding: "1px 7px" }}>{aliveWorkers.length} {t.workers.alive}</span>}
                 </div>
                 {workers.length === 0 ? (
                   <GlassCard style={{ padding: "20px 16px", textAlign: "center", border: "1px solid rgba(255,201,70,0.22)", background: "rgba(255,201,70,0.04)" }}>
                     <AlertTriangle size={20} color="#ffc946" style={{ marginBottom: 8 }} />
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#ffc946" }}>Нет запущенных воркеров</div>
-                    <div style={{ fontSize: 11, color: TG.muted, marginTop: 4 }}>Перейдите в «Воркеры» для запуска</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#ffc946" }}>{t.workers.noWorkers}</div>
+                    <div style={{ fontSize: 11, color: TG.muted, marginTop: 4 }}>{t.dashboard.goToWorkers}</div>
                   </GlassCard>
                 ) : (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -468,7 +473,7 @@ export function DashboardPage() {
               {rateLimited.length > 0 && (
                 <div>
                   <div style={{ fontSize: 10, fontWeight: 700, color: TG.muted, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
-                    <Zap size={10} />ОГРАНИЧЕНИЕ СКОРОСТИ ({rateLimited.length})
+                    <Zap size={10} />{t.dashboard.rateLimited.toUpperCase()} ({rateLimited.length})
                   </div>
                   <GlassCard style={{ padding: "10px 12px" }}>
                     {rateLimited.map(a => <RateLimitRow key={a.id} account={a} />)}
@@ -480,7 +485,7 @@ export function DashboardPage() {
               {proxiedAccounts.length > 0 && (
                 <div>
                   <div style={{ fontSize: 10, fontWeight: 700, color: TG.muted, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
-                    <Globe size={10} />АКТИВНЫЕ ПРОКСИ ({proxiedAccounts.length})
+                    <Globe size={10} />{t.dashboard.activeProxies.toUpperCase()} ({proxiedAccounts.length})
                   </div>
                   <GlassCard style={{ padding: "10px 12px" }}>
                     {proxiedAccounts.map(a => <ProxyRow key={a.id} account={a} />)}
@@ -492,7 +497,7 @@ export function DashboardPage() {
               {lockedAccounts.length > 0 && (
                 <div>
                   <div style={{ fontSize: 10, fontWeight: 700, color: TG.muted, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
-                    <Phone size={10} />ЗАНЯТЫЕ АККАУНТЫ ({lockedAccounts.length})
+                    <Phone size={10} />{t.dashboard.busyAccounts.toUpperCase()} ({lockedAccounts.length})
                   </div>
                   <GlassCard style={{ padding: "10px 12px" }}>
                     {lockedAccounts.map(a => (
@@ -513,22 +518,22 @@ export function DashboardPage() {
               {tasks.filter(t => t.status === "failed" || t.status === "dead").length > 0 && (
                 <div>
                   <div style={{ fontSize: 10, fontWeight: 700, color: TG.muted, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
-                    <AlertTriangle size={10} />ОШИБКИ ЗАДАЧ
+                    <AlertTriangle size={10} />{t.workers.taskErrors.toUpperCase()}
                   </div>
                   <GlassCard style={{ padding: "10px 12px" }}>
-                    {tasks.filter(t => t.status === "failed" || t.status === "dead").slice(0, 5).map(t => (
-                      <div key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "7px 8px", borderRadius: 8, background: "rgba(255,107,122,0.05)", border: "1px solid rgba(255,107,122,0.14)", marginBottom: 4 }}>
-                        <span style={{ fontSize: 9, fontWeight: 700, color: "#ff6b7a", background: "rgba(255,107,122,0.12)", borderRadius: 20, padding: "1px 6px", flexShrink: 0 }}>{t.status}</span>
+                    {tasks.filter(tk => tk.status === "failed" || tk.status === "dead").slice(0, 5).map(tk => (
+                      <div key={tk.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "7px 8px", borderRadius: 8, background: "rgba(255,107,122,0.05)", border: "1px solid rgba(255,107,122,0.14)", marginBottom: 4 }}>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: "#ff6b7a", background: "rgba(255,107,122,0.12)", borderRadius: 20, padding: "1px 6px", flexShrink: 0 }}>{tk.status}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 10, color: TG.text }}>Задача #{t.id} · Кампания #{t.campaign_id}</div>
-                          {t.error && <div style={{ fontSize: 9, color: "#ff6b7a", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.error}</div>}
+                          <div style={{ fontSize: 10, color: TG.text }}>{t.workers.workerTaskRunning} #{tk.id} · #{tk.campaign_id}</div>
+                          {tk.error && <div style={{ fontSize: 9, color: "#ff6b7a", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tk.error}</div>}
                         </div>
-                        <span style={{ fontSize: 9, color: TG.muted, flexShrink: 0 }}>{t.attempts}/{t.max_attempts}</span>
+                        <span style={{ fontSize: 9, color: TG.muted, flexShrink: 0 }}>{tk.attempts}/{tk.max_attempts}</span>
                       </div>
                     ))}
-                    {tasks.filter(t => t.status === "failed" || t.status === "dead").length > 5 && (
+                    {tasks.filter(tk => tk.status === "failed" || tk.status === "dead").length > 5 && (
                       <div style={{ fontSize: 10, color: TG.muted, textAlign: "center", paddingTop: 4 }}>
-                        + ещё {tasks.filter(t => t.status === "failed" || t.status === "dead").length - 5} ошибок — см. «Воркеры»
+                        + {tasks.filter(tk => tk.status === "failed" || tk.status === "dead").length - 5} {t.workers.tasksFailed}
                       </div>
                     )}
                   </GlassCard>

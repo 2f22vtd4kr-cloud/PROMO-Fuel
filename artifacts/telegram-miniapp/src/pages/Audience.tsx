@@ -4,6 +4,7 @@ import { api, User } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
 import { haptic } from "../lib/haptics";
+import { useI18n } from "../lib/i18n";
 
 const SEGMENT_COLORS = ["#c4aeff", "#2de897", "#6ba8e5", "rgba(160,190,230,0.50)"];
 const SEGMENT_ICONS  = [Award, Zap, Star, Clock];
@@ -63,6 +64,7 @@ function exportCSV(rows: User[]) {
 }
 
 export function AudiencePage() {
+  const { t, lang } = useI18n();
   const [users, setUsers]                   = useState<User[]>([]);
   const [loading, setLoading]               = useState(true);
   const [search, setSearch]                 = useState("");
@@ -157,12 +159,12 @@ export function AudiencePage() {
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>Аудитория</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>{t.nav.audience}</div>
             {!loading && (
               <div style={{ fontSize: 10, color: TG.muted, marginTop: 1 }}>
                 {users.length > 0 ? (
                   <>
-                    <span style={{ color: "#6ba8e5", fontWeight: 700 }}>{users.length}</span> пользователей
+                    <span style={{ color: "#6ba8e5", fontWeight: 700 }}>{users.length}</span> {t.audience.usersCount}
                     {allTags.length > 0 && <> · <span style={{ color: "#c4aeff", fontWeight: 700 }}>{allTags.length}</span> тегов</>}
                     {hasAnyFilter && <> · <span style={{ color: "#ffc946", fontWeight: 700 }}>{filtered.length}</span> в фильтре</>}
                   </>
@@ -405,7 +407,7 @@ export function AudiencePage() {
                 {loading ? "—" : (hasAnyFilter ? filtered.length : users.length).toLocaleString("ru")}
               </div>
               <div style={{ fontSize: 12, color: TG.textSecondary, marginTop: 4 }}>
-                {hasAnyFilter ? `Найдено из ${users.length.toLocaleString("ru")}` : "Всего пользователей"}
+                {hasAnyFilter ? t.audience.foundOf(users.length.toLocaleString(lang)) : t.audience.totalUsers}
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
@@ -448,7 +450,7 @@ export function AudiencePage() {
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: TG.text }}>{activeStation.name}</div>
                 <div style={{ fontSize: 11, color: TG.muted, marginTop: 2 }}>
-                  В радиусе {geoRadius} км: <span style={{ color: "#6ba8e5", fontWeight: 700 }}>{filtered.length} пользователей</span>
+                  {t.audience.inRadius(geoRadius)}: <span style={{ color: "#6ba8e5", fontWeight: 700 }}>{filtered.length} {t.audience.usersCount}</span>
                 </div>
               </div>
               {/* Mini radar visual */}
@@ -485,7 +487,7 @@ export function AudiencePage() {
             value={search} onChange={e => setSearch(e.target.value)}
             onFocus={() => { setFocused(true); haptic.light(); }}
             onBlur={() => setFocused(false)}
-            placeholder="Поиск по имени или @username..."
+            placeholder={t.audience.searchPlaceholder}
             style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 13, color: TG.text }}
           />
           {search && <div onClick={() => setSearch("")} style={{ cursor: "pointer", color: TG.muted, lineHeight: 1 }}>×</div>}
@@ -515,7 +517,7 @@ export function AudiencePage() {
           ) : filtered.length === 0 ? (
             <GlassCard style={{ padding: "24px 16px", textAlign: "center" }}>
               <div style={{ fontSize: 13, color: TG.muted }}>
-                {hasAnyFilter ? "Нет пользователей в этой зоне / с этими тегами" : "Пользователи не найдены"}
+                {hasAnyFilter ? t.audience.emptyFiltered : t.audience.emptySearch}
               </div>
               {hasAnyFilter && (
                 <div onClick={clearFilters} style={{ fontSize: 12, color: "#6ba8e5", fontWeight: 700, marginTop: 8, cursor: "pointer" }}>

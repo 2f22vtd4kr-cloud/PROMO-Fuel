@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useI18n } from "../lib/i18n";
 import {
   X, RefreshCw, Eye, EyeOff, Radio, ChevronDown, ChevronUp,
   Plus, Trash2, Globe, Calendar, Shuffle, CheckCircle,
@@ -83,6 +84,7 @@ function InlineButton({ text, url, onRemove }: { text: string; url: string; onRe
 }
 
 function SpintaxPreviewBlock({ text, show, onToggle }: { text: string; show: boolean; onToggle: () => void }) {
+  const { t } = useI18n();
   const previews = show && text ? preview_all(text, 4) : [];
   const hasSpintax = text.includes("{") && text.includes("|");
 
@@ -95,14 +97,14 @@ function SpintaxPreviewBlock({ text, show, onToggle }: { text: string; show: boo
         style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", color: "#c4aeff", fontSize: 11, fontWeight: 700, padding: 0 }}
       >
         {show ? <EyeOff size={12} /> : <Eye size={12} />}
-        {show ? "Скрыть превью" : "Превью спинтакс"}
-        {!show && <span style={{ fontSize: 9, color: TG.muted, fontWeight: 400 }}>({text.match(/\{[^}]+\}/g)?.length ?? 0} блоков)</span>}
+        {show ? t.editor.hidePreview : t.editor.showPreview}
+        {!show && <span style={{ fontSize: 9, color: TG.muted, fontWeight: 400 }}>({text.match(/\{[^}]+\}/g)?.length ?? 0} {t.groups.spintaxBlocks})</span>}
       </button>
 
       {show && previews.length > 0 && (
         <div style={{ marginTop: 8, borderRadius: 12, background: "rgba(196,174,255,0.06)", border: "1px solid rgba(196,174,255,0.15)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 0 }}>
           <div style={{ fontSize: 9, color: "#c4aeff", fontWeight: 700, marginBottom: 8, letterSpacing: "0.06em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5 }}>
-            <Shuffle size={9} />ВАРИАНТЫ СПИНТАКС
+            <Shuffle size={9} />{t.groups.spintaxVariants}
           </div>
           {previews.map((p, i) => (
             <div key={i} style={{ fontSize: 12, color: TG.textSecondary, lineHeight: 1.55, borderTop: i > 0 ? "1px solid rgba(255,255,255,0.06)" : "none", paddingTop: i > 0 ? 8 : 0, marginTop: i > 0 ? 8 : 0 }}>
@@ -110,7 +112,7 @@ function SpintaxPreviewBlock({ text, show, onToggle }: { text: string; show: boo
             </div>
           ))}
           <div style={{ marginTop: 8, fontSize: 9, color: TG.muted, borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 6 }}>
-            Вариант при реальной отправке: «{resolveSpintax(text)}»
+            {t.groups.spintaxLivePreview} «{resolveSpintax(text)}»
           </div>
         </div>
       )}
@@ -124,6 +126,7 @@ function ProxyParserSection({
   proxiesRaw: string;
   onChangeRaw: (v: string) => void;
 }) {
+  const { t } = useI18n();
   const [showParsed, setShowParsed] = useState(false);
   const parsed = proxiesRaw.trim() ? parseProxies(proxiesRaw) : [];
   const hasErrors = proxiesRaw.trim() && parsed.length === 0;
@@ -131,7 +134,7 @@ function ProxyParserSection({
   return (
     <div>
       <div style={{ fontSize: 10, color: TG.muted, marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span>Список прокси (по одному на строку)</span>
+        <span>{t.groups.proxyListHint}</span>
         {parsed.length > 0 && (
           <button
             onClick={() => setShowParsed(s => !s)}
@@ -160,7 +163,7 @@ function ProxyParserSection({
       {showParsed && parsed.length > 0 && (
         <div style={{ marginTop: 8, borderRadius: 10, background: "rgba(45,232,151,0.05)", border: "1px solid rgba(45,232,151,0.15)", padding: "8px 10px" }}>
           <div style={{ fontSize: 9, color: "#2de897", fontWeight: 700, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: 4 }}>
-            <Globe size={9} />РАЗОБРАННЫЕ ПРОКСИ
+            <Globe size={9} />{t.groups.parsedProxies}
           </div>
           {parsed.map((p, i) => (
             <div key={i} style={{ fontSize: 10, color: TG.textSecondary, fontFamily: "monospace", padding: "3px 0", borderTop: i > 0 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
@@ -270,6 +273,7 @@ export function GroupBroadcastCreatePage({
   onDone: () => void;
 }) {
   const editing = !!campaignId;
+  const { t, lang } = useI18n();
 
   const [name,         setName]         = useState("");
   const [text,         setText]         = useState("");
@@ -420,7 +424,7 @@ export function GroupBroadcastCreatePage({
 
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: 17, fontWeight: 800, color: TG.text }}>{editing ? "Редактировать" : "Новая групповая"}</div>
+          <div style={{ fontSize: 17, fontWeight: 800, color: TG.text }}>{editing ? t.common.edit : t.groups.newGroupCampaign}</div>
           <div onClick={() => { haptic.light(); onDone(); }} style={{ padding: 8, cursor: "pointer", color: TG.muted }}>
             <X size={18} />
           </div>
@@ -428,15 +432,15 @@ export function GroupBroadcastCreatePage({
 
         {/* ── ОСНОВНОЕ ────────────────────────────────────────────────── */}
         <GlassCard style={{ padding: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: TG.muted, marginBottom: 10, letterSpacing: "0.06em", textTransform: "uppercase" }}>ОСНОВНОЕ</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TG.muted, marginBottom: 10, letterSpacing: "0.06em", textTransform: "uppercase" }}>{t.groups.sectionBasic}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <Field value={name} onChange={setName} placeholder="Название рассылки" />
+            <Field value={name} onChange={setName} placeholder={t.groups.campaignName} />
 
             <div>
               <textarea
                 value={text}
                 onChange={e => { setText(e.target.value); }}
-                placeholder="Текст сообщения (поддерживается {вариант1|вариант2})"
+                placeholder={t.groups.messageTextPlaceholder}
                 rows={4}
                 style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 14, padding: "12px 14px", fontSize: 13, color: TG.text, outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
               />
@@ -451,14 +455,14 @@ export function GroupBroadcastCreatePage({
 
         {/* ── АККАУНТ И РАСПИСАНИЕ ──────────────────────────────────── */}
         <GlassCard style={{ padding: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: TG.muted, marginBottom: 10, letterSpacing: "0.06em", textTransform: "uppercase" }}>АККАУНТ И РАСПИСАНИЕ</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TG.muted, marginBottom: 10, letterSpacing: "0.06em", textTransform: "uppercase" }}>{t.groups.sectionSchedule}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <select
               value={accountId}
               onChange={e => setAccountId(Number(e.target.value) || "")}
               style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 14, padding: "12px 14px", fontSize: 13, color: accountId ? TG.text : TG.muted, outline: "none" }}
             >
-              <option value="">Выберите аккаунт</option>
+              <option value="">{t.common.selectAccount}</option>
               {accounts.filter(a => a.is_active && !a.is_banned).map(a => (
                 <option key={a.id} value={a.id} style={{ background: "#0e1220" }}>
                   {a.label || a.phone} {a.session_file ? "✓" : "⚠️"}
@@ -467,7 +471,7 @@ export function GroupBroadcastCreatePage({
             </select>
 
             <div>
-              <div style={{ fontSize: 10, color: TG.muted, marginBottom: 6 }}>Интервал повторной отправки</div>
+              <div style={{ fontSize: 10, color: TG.muted, marginBottom: 6 }}>{t.groups.repeatInterval}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {INTERVAL_PRESETS.map(p => (
                   <button
@@ -552,7 +556,7 @@ export function GroupBroadcastCreatePage({
         ) : (
           <GlassCard style={{ padding: 16, textAlign: "center" }}>
             <Radio size={20} color={TG.muted} style={{ marginBottom: 6, opacity: 0.4 }} />
-            <div style={{ fontSize: 12, color: TG.muted }}>Выберите аккаунт для загрузки групп</div>
+            <div style={{ fontSize: 12, color: TG.muted }}>{t.groups.selectAccountHint}</div>
           </GlassCard>
         )}
 
@@ -562,7 +566,7 @@ export function GroupBroadcastCreatePage({
             onClick={() => setShowAdvanced(s => !s)}
             style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
           >
-            <div style={{ fontSize: 11, fontWeight: 700, color: TG.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>ДОПОЛНИТЕЛЬНО</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: TG.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>{t.groups.sectionAdvanced}</div>
             {showAdvanced ? <ChevronUp size={14} color={TG.muted} /> : <ChevronDown size={14} color={TG.muted} />}
           </div>
 
@@ -573,7 +577,7 @@ export function GroupBroadcastCreatePage({
               {/* Proxy parser */}
               <div style={{ background: "rgba(107,168,229,0.04)", border: "1px solid rgba(107,168,229,0.14)", borderRadius: 12, padding: "12px 12px" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "#6ba8e5", marginBottom: 10, letterSpacing: "0.06em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5 }}>
-                  <Globe size={10} />ПРОКСИ ДЛЯ ЭТОЙ КАМПАНИИ
+                  <Globe size={10} />{t.groups.proxySection}
                 </div>
                 <ProxyParserSection proxiesRaw={proxiesRaw} onChangeRaw={setProxiesRaw} />
               </div>
@@ -583,7 +587,7 @@ export function GroupBroadcastCreatePage({
                 <div style={{ fontSize: 10, fontWeight: 700, color: "#ff6b7a", marginBottom: 10, letterSpacing: "0.06em" }}>⚡ АНТИ-БАН</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
                   <div>
-                    <div style={{ fontSize: 10, color: TG.muted, marginBottom: 4 }}>Мин. задержка (с)</div>
+                    <div style={{ fontSize: 10, color: TG.muted, marginBottom: 4 }}>{t.groups.minDelay}</div>
                     <input
                       type="number" min="1" max="300" step="0.5" value={minDelay}
                       onChange={e => setMinDelay(parseFloat(e.target.value) || 1)}
@@ -591,7 +595,7 @@ export function GroupBroadcastCreatePage({
                     />
                   </div>
                   <div>
-                    <div style={{ fontSize: 10, color: TG.muted, marginBottom: 4 }}>Макс. задержка (с)</div>
+                    <div style={{ fontSize: 10, color: TG.muted, marginBottom: 4 }}>{t.groups.maxDelay}</div>
                     <input
                       type="number" min="1" max="600" step="0.5" value={maxDelay}
                       onChange={e => setMaxDelay(parseFloat(e.target.value) || 2)}
@@ -600,7 +604,7 @@ export function GroupBroadcastCreatePage({
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 10, color: TG.muted, marginBottom: 4 }}>Лимит в день (0 = без лимита)</div>
+                  <div style={{ fontSize: 10, color: TG.muted, marginBottom: 4 }}>{t.groups.dailyLimitHint}</div>
                   <input
                     type="number" min="0" max="9999" value={dailyLimit}
                     onChange={e => setDailyLimit(parseInt(e.target.value) || 0)}
@@ -617,12 +621,12 @@ export function GroupBroadcastCreatePage({
                 >
                   {pinMessage && <span style={{ fontSize: 11, color: "#07090f", fontWeight: 900 }}>✓</span>}
                 </div>
-                <span style={{ fontSize: 12, color: TG.textSecondary }}>Закрепить сообщение</span>
+                <span style={{ fontSize: 12, color: TG.textSecondary }}>{t.groups.pinMessage}</span>
               </div>
 
               {/* Inline buttons */}
               <div>
-                <div style={{ fontSize: 11, color: TG.muted, marginBottom: 6 }}>Инлайн-кнопки</div>
+                <div style={{ fontSize: 11, color: TG.muted, marginBottom: 6 }}>{t.groups.inlineButtons}</div>
                 {buttons.map((b, i) => (
                   <InlineButton key={i} text={b.text} url={b.url} onRemove={() => setButtons(bs => bs.filter((_, j) => j !== i))} />
                 ))}
@@ -653,7 +657,7 @@ export function GroupBroadcastCreatePage({
           disabled={busy}
           style={{ width: "100%", padding: "14px", borderRadius: 16, background: busy ? "rgba(45,232,151,0.5)" : "#2de897", border: "none", fontSize: 14, fontWeight: 800, color: "#07090f", cursor: busy ? "not-allowed" : "pointer", boxShadow: busy ? "none" : "0 4px 20px rgba(45,232,151,0.25)" }}
         >
-          {busy ? "Сохранение…" : (editing ? "Сохранить изменения" : "Создать рассылку")}
+          {busy ? t.common.saving : (editing ? t.editor.save : t.editor.send)}
         </button>
       </div>
 

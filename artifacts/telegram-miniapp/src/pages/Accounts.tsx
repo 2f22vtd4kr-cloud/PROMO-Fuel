@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useI18n } from "../lib/i18n";
 import {
   Shield, Plus, ChevronDown, ChevronUp, X, RotateCcw, Power,
   Trash2, Key, CheckCircle, AlertCircle, Loader, Lock, Timer, XCircle, Copy,
@@ -396,6 +397,7 @@ function RateLimitGauge({ accountId }: { accountId: number }) {
 // ── Account card ─────────────────────────────────────────────────────────────
 
 function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => void }) {
+  const { t, lang } = useI18n();
   const [expanded,      setExpanded]      = useState(false);
   const [showAuth,      setShowAuth]      = useState(false);
   const [busy,          setBusy]          = useState(false);
@@ -469,7 +471,7 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
             <div style={{ position: "absolute", bottom: -2, right: -2, width: 8, height: 8, borderRadius: "50%", background: authorized ? "#2de897" : "#ff6b7a", border: "1.5px solid #07090f" }} />
           </div>
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: TG.text }}>{acc.label || `Аккаунт ${acc.id}`}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: TG.text }}>{acc.label || `${t.nav.accounts} ${acc.id}`}</div>
             <div style={{ fontSize: 10, color: TG.muted }}>{acc.phone}</div>
           </div>
         </div>
@@ -538,10 +540,10 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
             return (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
                 {[
-                  { label: "Всего",    value: sent.toLocaleString("ru"),   color: "#6ba8e5" },
-                  { label: "Ошибок",   value: failed.toLocaleString("ru"), color: "#ff6b7a" },
-                  { label: "Успех",    value: sr !== null ? `${sr}%` : "—", color: srColor },
-                  { label: "Статус",   value: acc.status,                  color: statusColor },
+                  { label: t.groups.sentTotal,    value: sent.toLocaleString(lang),    color: "#6ba8e5" },
+                  { label: t.workers.tasksFailed, value: failed.toLocaleString(lang),  color: "#ff6b7a" },
+                  { label: t.analytics.kpiReach,  value: sr !== null ? `${sr}%` : "—", color: srColor },
+                  { label: t.accounts.status,     value: acc.status,                   color: statusColor },
                 ].map(s => (
                   <div key={s.label} style={{ textAlign: "center", background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "7px 4px" }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: s.color }}>{s.value}</div>
@@ -603,17 +605,17 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
             <TelethonAuthFlow acc={acc} onDone={() => { setShowAuth(false); onRefresh(); }} />
           ) : (
             <button onClick={() => setShowAuth(true)} style={{ padding: "9px 6px", borderRadius: 12, background: "rgba(107,168,229,0.10)", border: "1px solid rgba(107,168,229,0.25)", fontSize: 11, fontWeight: 700, color: "#6ba8e5", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-              <Key size={11} />{authorized ? "Сменить сессию" : "Авторизоваться"}
+              <Key size={11} />{t.accounts.authButton}
             </button>
           )}
 
           {/* Action buttons row */}
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={toggleActive} disabled={busy} style={{ flex: 1, padding: "9px 6px", borderRadius: 12, background: acc.is_active ? "rgba(255,107,122,0.12)" : "rgba(45,232,151,0.12)", border: `1px solid ${acc.is_active ? "rgba(255,107,122,0.3)" : "rgba(45,232,151,0.3)"}`, fontSize: 11, fontWeight: 700, color: acc.is_active ? "#ff6b7a" : TG.green, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-              <Power size={11} />{acc.is_active ? "Откл." : "Вкл."}
+              <Power size={11} />{acc.is_active ? t.editor.toggleOff : t.editor.toggleOn}
             </button>
             <button onClick={resetDaily} disabled={busy} style={{ flex: 1, padding: "9px 6px", borderRadius: 12, background: "rgba(107,168,229,0.12)", border: "1px solid rgba(107,168,229,0.3)", fontSize: 11, fontWeight: 700, color: "#6ba8e5", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-              <RotateCcw size={11} />Сброс
+              <RotateCcw size={11} />{t.accounts.resetLimit}
             </button>
             <button onClick={deleteAcc} disabled={busy} style={{ width: 36, padding: "9px 6px", borderRadius: 12, background: "rgba(255,107,122,0.10)", border: "1px solid rgba(255,107,122,0.25)", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Trash2 size={12} color="#ff6b7a" />
@@ -628,6 +630,7 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function AccountsPage({ onClose }: { onClose?: () => void }) {
+  const { t, lang } = useI18n();
   const [accounts, setAccounts] = useState<SenderAccount[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -667,7 +670,7 @@ export function AccountsPage({ onClose }: { onClose?: () => void }) {
                 <X size={18} />
               </div>
             )}
-            <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>Аккаунты</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>{t.nav.accounts}</div>
           </div>
           <div style={{ display: "flex", gap: 6 }}>
             <GlassCard
@@ -693,10 +696,10 @@ export function AccountsPage({ onClose }: { onClose?: () => void }) {
           <>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
             {[
-              { label: "Всего",      value: String(accounts.length),  color: TG.text },
-              { label: "Активных",   value: String(active),           color: "#2de897" },
-              { label: "Авт-х",      value: String(authed),           color: "#6ba8e5" },
-              { label: "Сегодня",    value: totalSent.toLocaleString("ru"), color: "#ffc946" },
+              { label: t.audience.total,       value: String(accounts.length),       color: TG.text },
+              { label: t.dashboard.alive,      value: String(active),                color: "#2de897" },
+              { label: t.accounts.authorized,  value: String(authed),                color: "#6ba8e5" },
+              { label: t.common.today,         value: totalSent.toLocaleString(lang), color: "#ffc946" },
             ].map(s => (
               <GlassCard key={s.label} style={{ padding: "10px 6px", textAlign: "center" }}>
                 <div style={{ fontSize: 15, fontWeight: 800, color: s.color }}>{s.value}</div>
@@ -724,9 +727,9 @@ export function AccountsPage({ onClose }: { onClose?: () => void }) {
           </div>
         ) : accounts.length === 0 ? (
           <GlassCard style={{ padding: "32px 16px", textAlign: "center" }}>
-            <div style={{ fontSize: 14, color: TG.muted, marginBottom: 12 }}>Аккаунтов нет</div>
+            <div style={{ fontSize: 14, color: TG.muted, marginBottom: 12 }}>{t.accounts.noAccounts}</div>
             <div onClick={() => { haptic.medium(); setShowForm(true); }} style={{ fontSize: 13, color: "#ff7eb3", fontWeight: 700, cursor: "pointer" }}>
-              + Добавить первый аккаунт
+              + {t.accounts.noAccountsHint}
             </div>
           </GlassCard>
         ) : (

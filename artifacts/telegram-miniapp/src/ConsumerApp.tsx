@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useI18n } from "./lib/i18n";
 import { Flame, MapPin, Gift, Star, Fuel, ChevronRight, Zap } from "lucide-react";
 import { api, Campaign } from "./lib/api";
 import { TG } from "./lib/theme";
@@ -23,7 +24,8 @@ function MeshBackground() {
 }
 
 function ConsumerHeader({ user }: { user: ReturnType<typeof getTelegramUser> }) {
-  const name = user?.first_name ?? "Гость";
+  const { t } = useI18n();
+  const name = user?.first_name ?? t.consumer.guest;
   return (
     <div style={{
       background: "linear-gradient(180deg, rgba(10,14,26,0.82) 0%, rgba(8,11,20,0.72) 100%)",
@@ -40,11 +42,11 @@ function ConsumerHeader({ user }: { user: ReturnType<typeof getTelegramUser> }) 
         <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.5px", background: "linear-gradient(135deg,#ffc946 0%,#ff8c42 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
           PROMO-Fuel
         </div>
-        <div style={{ fontSize: 11.5, color: TG.muted, marginTop: 1 }}>Привет, {name} 👋</div>
+        <div style={{ fontSize: 11.5, color: TG.muted, marginTop: 1 }}>{t.consumer.hello(name)}</div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,201,70,0.12)", border: "1px solid rgba(255,201,70,0.22)", borderRadius: 12, padding: "5px 11px" }}>
         <Flame size={13} color="#ffc946" />
-        <span style={{ fontSize: 12, fontWeight: 700, color: "#ffc946" }}>Акции</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#ffc946" }}>{t.consumer.promoTab}</span>
       </div>
     </div>
   );
@@ -83,6 +85,7 @@ function PromoCard({ campaign, index }: { campaign: Campaign; index: number }) {
 }
 
 function PromosTab() {
+  const { t } = useI18n();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -107,8 +110,8 @@ function PromosTab() {
         <div style={{ width: 64, height: 64, borderRadius: 22, background: "rgba(255,201,70,0.10)", border: "1px solid rgba(255,201,70,0.18)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
           <Flame size={28} color="#ffc946" />
         </div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: TG.text, marginBottom: 6 }}>Акций пока нет</div>
-        <div style={{ fontSize: 13, color: TG.muted, lineHeight: 1.5 }}>Следите за новыми предложениями от АЗС</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: TG.text, marginBottom: 6 }}>{t.consumer.noPromos}</div>
+        <div style={{ fontSize: 13, color: TG.muted, lineHeight: 1.5 }}>{t.consumer.noPromosHint}</div>
       </div>
     );
   }
@@ -116,7 +119,7 @@ function PromosTab() {
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "16px 14px 24px" }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: TG.muted, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 12, paddingLeft: 2 }}>
-        Актуальные акции
+        {t.consumer.activePromos}
       </div>
       {campaigns.map((c, i) => <PromoCard key={c.id} campaign={c} index={i} />)}
     </div>
@@ -124,6 +127,7 @@ function PromosTab() {
 }
 
 function MapTab() {
+  const { t } = useI18n();
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, textAlign: "center" }}>
       <div style={{
@@ -137,27 +141,28 @@ function MapTab() {
         <MapPin size={34} color="#95c4f5" />
       </div>
       <div style={{ fontSize: 17, fontWeight: 800, color: TG.text, marginBottom: 8, letterSpacing: "-0.3px" }}>
-        Карта АЗС
+        {t.consumer.mapTitle}
       </div>
       <div style={{ fontSize: 13, color: TG.muted, lineHeight: 1.6, maxWidth: 240 }}>
-        Ближайшие заправки с акциями будут здесь
+        {t.consumer.mapHintFull}
       </div>
       <div className="lg" style={{ marginTop: 24, padding: "12px 20px", display: "flex", alignItems: "center", gap: 10 }}>
         <Fuel size={16} color="#95c4f5" />
-        <span style={{ fontSize: 13, color: TG.textSecondary, fontWeight: 600 }}>Скоро</span>
+        <span style={{ fontSize: 13, color: TG.textSecondary, fontWeight: 600 }}>{t.consumer.soon}</span>
       </div>
     </div>
   );
 }
 
 function RewardsTab({ user }: { user: ReturnType<typeof getTelegramUser> }) {
-  const name = user ? `${user.first_name}${user.last_name ? " " + user.last_name : ""}` : "Гость";
+  const { t } = useI18n();
+  const name = user ? `${user.first_name}${user.last_name ? " " + user.last_name : ""}` : t.consumer.guest;
   const initials = user ? user.first_name.slice(0, 1) + (user.last_name?.slice(0, 1) ?? "") : "G";
 
   const tiers = [
-    { label: "Бронза", points: 0, color: "#cd7f32", active: true },
-    { label: "Серебро", points: 1000, color: "#c0c0c0", active: false },
-    { label: "Золото", points: 5000, color: "#ffc946", active: false },
+    { label: t.consumer.tierBronze, points: 0, color: "#cd7f32", active: true },
+    { label: t.consumer.tierSilver, points: 1000, color: "#c0c0c0", active: false },
+    { label: t.consumer.tierGold, points: 5000, color: "#ffc946", active: false },
   ];
 
   return (
@@ -181,17 +186,17 @@ function RewardsTab({ user }: { user: ReturnType<typeof getTelegramUser> }) {
 
       <div className="lg fade-up stagger-item" style={{ padding: 18, marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <div style={{ fontSize: 12, color: TG.muted, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" }}>Баллы</div>
+          <div style={{ fontSize: 12, color: TG.muted, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" }}>{t.consumer.rewardsPoints}</div>
           <Star size={14} color="#ffc946" />
         </div>
         <div style={{ fontSize: 36, fontWeight: 900, letterSpacing: "-1.5px", background: "linear-gradient(135deg,#ffc946,#ff8c42)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
           0
         </div>
-        <div style={{ fontSize: 12, color: TG.muted, marginTop: 4 }}>Участвуйте в акциях, чтобы накапливать баллы</div>
+        <div style={{ fontSize: 12, color: TG.muted, marginTop: 4 }}>{t.consumer.rewardsParticipate}</div>
       </div>
 
       <div style={{ fontSize: 11, fontWeight: 700, color: TG.muted, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10, paddingLeft: 2 }}>
-        Статусы
+        {t.consumer.tierStatuses}
       </div>
       {tiers.map((tier, i) => (
         <div key={tier.label} className={`lg stagger-item ${i === 0 ? "fade-up" : ""}`} style={{ padding: "14px 16px", marginBottom: 10, opacity: tier.active ? 1 : 0.5 }}>
@@ -202,10 +207,10 @@ function RewardsTab({ user }: { user: ReturnType<typeof getTelegramUser> }) {
               </div>
               <div>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: TG.text }}>{tier.label}</div>
-                <div style={{ fontSize: 11, color: TG.muted }}>от {tier.points.toLocaleString("ru")} баллов</div>
+                <div style={{ fontSize: 11, color: TG.muted }}>{t.consumer.tierFrom(tier.points)}</div>
               </div>
             </div>
-            {tier.active && <div style={{ fontSize: 10, fontWeight: 700, color: tier.color, background: `${tier.color}18`, border: `1px solid ${tier.color}28`, borderRadius: 8, padding: "3px 8px" }}>Текущий</div>}
+            {tier.active && <div style={{ fontSize: 10, fontWeight: 700, color: tier.color, background: `${tier.color}18`, border: `1px solid ${tier.color}28`, borderRadius: 8, padding: "3px 8px" }}>{t.consumer.tierCurrent}</div>}
           </div>
         </div>
       ))}
@@ -213,11 +218,12 @@ function RewardsTab({ user }: { user: ReturnType<typeof getTelegramUser> }) {
   );
 }
 
-function ConsumerBottomNav({ active, onNav }: { active: ConsumerTab; onNav: (t: ConsumerTab) => void }) {
+function ConsumerBottomNav({ active, onNav }: { active: ConsumerTab; onNav: (tab: ConsumerTab) => void }) {
+  const { t } = useI18n();
   const items: { id: ConsumerTab; icon: React.ElementType; label: string; color: string; glow: string }[] = [
-    { id: "promos",  icon: Flame,  label: "Акции",  color: "#ffc946", glow: "rgba(255,201,70,0.55)" },
-    { id: "map",     icon: MapPin, label: "Карта",  color: "#95c4f5", glow: "rgba(107,168,229,0.55)" },
-    { id: "rewards", icon: Gift,   label: "Бонусы", color: "#2de897", glow: "rgba(45,232,151,0.55)" },
+    { id: "promos",  icon: Flame,  label: t.consumer.promos,  color: "#ffc946", glow: "rgba(255,201,70,0.55)" },
+    { id: "map",     icon: MapPin, label: t.consumer.map,     color: "#95c4f5", glow: "rgba(107,168,229,0.55)" },
+    { id: "rewards", icon: Gift,   label: t.consumer.rewards, color: "#2de897", glow: "rgba(45,232,151,0.55)" },
   ];
   return (
     <div style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 8px) + 4px)", paddingLeft: 12, paddingRight: 12, paddingTop: 8, position: "relative" }}>
