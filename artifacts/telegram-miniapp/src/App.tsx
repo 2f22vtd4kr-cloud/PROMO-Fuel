@@ -11,6 +11,7 @@ import { WorkersPage }              from "./pages/Workers";
 import { AccountsPage }             from "./pages/Accounts";
 import { DashboardPage }            from "./pages/Dashboard";
 import { AccountLoginPage }         from "./pages/AccountLogin";
+import { ManualPage }              from "./pages/Manual";
 import { BottomNav }                from "./components/BottomNav";
 import { ConsumerApp }              from "./ConsumerApp";
 import { getOwnerRole }             from "./lib/twa";
@@ -31,6 +32,7 @@ function OwnerApp() {
   const [showGroupEditor,  setShowGroupEditor] = useState(false);
   const [showAccounts,     setShowAccounts]    = useState(false);
   const [showAccountLogin, setShowAccountLogin]= useState(false);
+  const [showManual,       setShowManual]      = useState(false);
 
   function openEditor(id?: number) {
     setEditId(id ?? null);
@@ -53,10 +55,11 @@ function OwnerApp() {
   function handleNavigate(t: string) {
     if (t === "accounts")     { setShowAccounts(true);     return; }
     if (t === "account-login"){ setShowAccountLogin(true); return; }
+    if (t === "manual")       { setShowManual(true);       return; }
     setTab(t as Tab);
   }
 
-  const anyOverlay = showEditor || showGroupEditor || showAccounts || showAccountLogin;
+  const anyOverlay = showEditor || showGroupEditor || showAccounts || showAccountLogin || showManual;
 
   return (
     <div style={{
@@ -103,6 +106,27 @@ function OwnerApp() {
         <div style={{ position: "absolute", inset: 0, zIndex: 50, background: "#07090f" }}>
           <AccountLoginPage onClose={() => setShowAccountLogin(false)} />
         </div>
+      )}
+
+      {showManual && (
+        <ManualPage onClose={() => setShowManual(false)} />
+      )}
+
+      {/* ── Floating help button ───────────────────────────────────── */}
+      {!anyOverlay && (
+        <button
+          onClick={() => setShowManual(true)}
+          style={{
+            position: "absolute", top: 14, right: 16, zIndex: 10,
+            width: 32, height: 32, borderRadius: 10,
+            background: "rgba(255,255,255,0.06)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            color: "rgba(255,255,255,0.45)",
+            fontSize: 15, fontWeight: 700,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer",
+          }}
+        >?</button>
       )}
 
       {/* ── Bottom nav — hidden when overlay is open ──────────────── */}
