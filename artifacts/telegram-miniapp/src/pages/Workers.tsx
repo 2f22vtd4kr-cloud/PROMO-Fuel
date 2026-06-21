@@ -499,6 +499,35 @@ export function WorkersPage() {
             </div>
           )}
 
+          {/* ── Crash-loop alert banner ─────────────────────────── */}
+          {!loading && deadWorkers.length > 0 && (
+            <GlassCard glow="rgba(255,107,122,0.18)" style={{ padding: "12px 14px", border: "1px solid rgba(255,107,122,0.30)", background: "rgba(255,107,122,0.07)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <AlertTriangle size={14} color="#ff6b7a" />
+                <span style={{ fontSize: 12, fontWeight: 800, color: "#ff6b7a" }}>
+                  {deadWorkers.length === 1 ? "Воркер упал" : `${deadWorkers.length} воркера упали`} — аварийное завершение
+                </span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {deadWorkers.map(w => (
+                  <div key={w.worker_id} style={{ padding: "8px 10px", borderRadius: 10, background: "rgba(255,107,122,0.10)", border: "1px solid rgba(255,107,122,0.20)" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: w.last_error ? 4 : 0 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#ff6b7a" }}>{w.worker_id}</span>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <RestartWorkerButton workerId={w.worker_id} onRestarted={load} />
+                      </div>
+                    </div>
+                    {w.last_error && (
+                      <div style={{ fontSize: 10, color: "rgba(255,107,122,0.85)", fontFamily: "monospace", wordBreak: "break-word", marginTop: 2 }}>
+                        {w.last_error.length > 120 ? w.last_error.slice(0, 120) + "…" : w.last_error}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          )}
+
           {loading ? (
             <div style={{ textAlign: "center", padding: "40px 0" }}>
               <div style={{ width: 28, height: 28, borderRadius: "50%", border: "2px solid rgba(107,168,229,0.4)", borderTopColor: "#6ba8e5", animation: "spin 0.8s linear infinite", display: "inline-block" }} />

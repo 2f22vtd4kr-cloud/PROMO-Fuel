@@ -19,6 +19,7 @@ let lastAccountSnap       = "";
 let lastWorkerSnap        = "";
 let lastHeartbeatSnap     = "";
 let lastTaskSnap          = "";
+let lastGroupSendsSnap    = "";
 
 function pollDb() {
   try {
@@ -107,6 +108,19 @@ function pollDb() {
       if (tSnap !== lastTaskSnap) {
         lastTaskSnap = tSnap;
         broadcastEvent("tasks", tasks);
+      }
+    } catch {}
+
+    // ── Recent group sends (live log feed) ────────────────────────────────────
+    try {
+      const groupSends = db.prepare(
+        `SELECT id, campaign_id, group_id, group_title, status, error, sent_at
+         FROM group_sends ORDER BY id DESC LIMIT 40`
+      ).all();
+      const gsSnap = JSON.stringify(groupSends);
+      if (gsSnap !== lastGroupSendsSnap) {
+        lastGroupSendsSnap = gsSnap;
+        broadcastEvent("group_sends", groupSends);
       }
     } catch {}
 

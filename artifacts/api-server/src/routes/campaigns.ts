@@ -83,6 +83,7 @@ router.put("/campaigns/:id", (req, res) => {
     if (send_delay_seconds !== undefined) { fields.push("send_delay_seconds = ?"); values.push(send_delay_seconds); }
     if (body.scheduled_tag !== undefined) { fields.push("scheduled_tag = ?"); values.push(body.scheduled_tag ?? null); }
     if (body.ab_text_b !== undefined) { fields.push("ab_text_b = ?"); values.push(body.ab_text_b || null); }
+    if (body.scheduled_at !== undefined) { fields.push("scheduled_at = ?"); values.push(body.scheduled_at ?? null); }
     if (fields.length === 0) return void res.status(400).json({ error: "nothing to update" });
     values.push(id);
     db.prepare(`UPDATE campaigns SET ${fields.join(", ")} WHERE id = ?`).run(...values);
@@ -194,10 +195,12 @@ router.post("/accounts/reset-all-daily", (_req, res) => {
 
 router.post("/campaigns/:id/action", (req, res) => {
   let { action } = req.body as { action: string };
-  if (action === "pause")   action = "paused";
-  if (action === "resume")  action = "running";
-  if (action === "start")   action = "running";
-  if (action === "cancel")  action = "cancelled";
+  const scheduled_at_body = (req.body as any).scheduled_at as string | undefined;
+  if (action === "pause")    action = "paused";
+  if (action === "resume")   action = "running";
+  if (action === "start")    action = "running";
+  if (action === "cancel")   action = "cancelled";
+  if (action === "schedule") action = "scheduled";
   const allowed = ["running", "paused", "cancelled", "draft", "scheduled"];
   if (!action || !allowed.includes(action)) return void res.status(400).json({ error: "invalid action" });
   try {
@@ -205,6 +208,8 @@ router.post("/campaigns/:id/action", (req, res) => {
     const camp = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(parseInt(req.params.id)) as any;
     if (!camp) return void res.status(404).json({ error: "not found" });
     const extra: Record<string, unknown> = {};
+    if (action === "scheduled" && scheduled_at_body) extra.scheduled_at = scheduled_at_body;
+    if (action === "running" && camp.status === "scheduled") extra.scheduled_at = null;
     if (action === "running" && !camp.started_at) extra.started_at = new Date().toISOString();
     // When starting a campaign, ensure notify_chat is set to ADMIN_TELEGRAM_ID
     if (action === "running" && !camp.notify_chat) {

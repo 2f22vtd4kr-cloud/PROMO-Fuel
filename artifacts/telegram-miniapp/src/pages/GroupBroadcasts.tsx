@@ -4,6 +4,7 @@ import { api, GroupCampaign, GroupCampaignLog, GroupSendStat, DailyStat, Account
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
 import { haptic } from "../lib/haptics";
+import { useSse } from "../lib/useSse";
 
 const STATUS_COLOR: Record<string, string> = {
   draft:     "#7c8db0",
@@ -55,11 +56,13 @@ function GroupCampaignCard({
   onRefresh,
   onEdit,
   isActive,
+  liveSends,
 }: {
   campaign: GroupCampaign;
   onRefresh: () => void;
   onEdit: (id: number) => void;
   isActive?: boolean;
+  liveSends?: GroupCampaignLog[];
 }) {
   const [busy,         setBusy]         = useState(false);
   const [expanded,     setExpanded]     = useState(false);
@@ -75,6 +78,13 @@ function GroupCampaignCard({
 
   const color  = STATUS_COLOR[campaign.status] ?? "#7c8db0";
   const groups: string[] = (() => { try { return JSON.parse(campaign.selected_groups || "[]"); } catch { return []; } })();
+
+  const liveCampSends = (liveSends ?? []).filter(l => l.campaign_id === campaign.id);
+  const seenLogIds = new Set(logs.map(l => l.id));
+  const newLiveSends = liveCampSends.filter(l => !seenLogIds.has(l.id));
+  const mergedLogs = [...newLiveSends, ...logs].slice(0, 25);
+  const chartMaxVal = Math.max(...daily.map(d => d.sent + d.failed), 1);
+  const chartBarW   = Math.floor(240 / Math.max(daily.length, 1)) - 2;
 
   // Load account groups for test-send title lookup (lazy, once)
   function ensureAcctGroups() {
@@ -299,26 +309,34 @@ function GroupCampaignCard({
       {expanded && (
         <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
           {expandTab === "logs" ? (
-            logs.length === 0 ? (
+            mergedLogs.length === 0 ? (
               <div style={{ fontSize: 11, color: TG.muted, textAlign: "center", padding: "8px 0" }}>Отправок ещё нет</div>
             ) : (
               <>
-                <button onClick={() => {
-                  const rows = ["Группа,Статус,Ошибка,Время",
-                    ...logs.map(l => `"${l.group_title || l.group_id}",${l.status},"${l.error ?? ""}","${l.sent_at}"`)
-                  ].join("\n");
-                  const a = document.createElement("a");
-                  a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(rows);
-                  a.download = `campaign_${campaign.id}_logs.csv`;
-                  a.click();
-                }} style={{ padding: "4px 10px", background: "rgba(107,168,229,0.08)", border: "1px solid rgba(107,168,229,0.25)", borderRadius: 8, fontSize: 10, color: "#6ba8e5", fontWeight: 700, cursor: "pointer", alignSelf: "flex-start", marginBottom: 4 }}>
-                  ↓ CSV
-                </button>
-                {logs.map(l => {
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <button onClick={() => {
+                    const rows = ["Группа,Статус,Ошибка,Время",
+                      ...mergedLogs.map(l => `"${l.group_title || l.group_id}",${l.status},"${l.error ?? ""}","${l.sent_at}"`)
+                    ].join("\n");
+                    const a = document.createElement("a");
+                    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(rows);
+                    a.download = `campaign_${campaign.id}_logs.csv`;
+                    a.click();
+                  }} style={{ padding: "4px 10px", background: "rgba(107,168,229,0.08)", border: "1px solid rgba(107,168,229,0.25)", borderRadius: 8, fontSize: 10, color: "#6ba8e5", fontWeight: 700, cursor: "pointer" }}>
+                    ↓ CSV
+                  </button>
+                  {newLiveSends.length > 0 && (
+                    <span style={{ fontSize: 9, color: "#2de897", background: "rgba(45,232,151,0.10)", border: "1px solid rgba(45,232,151,0.25)", borderRadius: 20, padding: "2px 7px", fontWeight: 700 }}>
+                      ● live
+                    </span>
+                  )}
+                </div>
+                {mergedLogs.map((l, idx) => {
                   const lc = STATUS_COLOR[l.status] ?? "#7c8db0";
                   const Icon = l.status === "ok" || l.status === "sent" ? CheckCircle : AlertCircle;
+                  const isNew = idx < newLiveSends.length;
                   return (
-                    <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 8, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                    <div key={l.id ?? idx} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 8, background: isNew ? "rgba(45,232,151,0.05)" : "rgba(255,255,255,0.03)", border: `1px solid ${isNew ? "rgba(45,232,151,0.18)" : "rgba(255,255,255,0.07)"}`, transition: "background 0.3s" }}>
                       <Icon size={11} color={lc} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 11, color: TG.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.group_title || l.group_id}</div>
@@ -335,7 +353,6 @@ function GroupCampaignCard({
               <div style={{ fontSize: 11, color: TG.muted, textAlign: "center", padding: "8px 0" }}>Статистики пока нет</div>
             ) : (
               <>
-                {/* CSV export */}
                 {stats.length > 0 && (
                   <button onClick={() => {
                     const rows = ["Группа,Отправлено,Ошибок,Всего,Последняя отправка",
@@ -349,39 +366,31 @@ function GroupCampaignCard({
                     ↓ CSV
                   </button>
                 )}
-                {/* Daily sends mini bar chart */}
-                {daily.length > 1 && (() => {
-                  const maxVal = Math.max(...daily.map(d => d.sent + d.failed), 1);
-                  const barW = Math.floor(240 / daily.length) - 2;
-                  return (
-                    <div style={{ padding: "8px 10px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                      <div style={{ fontSize: 9, color: TG.muted, marginBottom: 6, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                        Динамика ({daily.length} дн.)
-                      </div>
-                      <svg width="100%" height="48" viewBox={`0 0 ${daily.length * (barW + 2)} 48`} preserveAspectRatio="none" style={{ overflow: "visible" }}>
-                        {daily.map((d, i) => {
-                          const x = i * (barW + 2);
-                          const sentH  = Math.max(2, Math.round((d.sent   / maxVal) * 40));
-                          const failH  = Math.max(0, Math.round((d.failed / maxVal) * 40));
-                          return (
-                            <g key={d.day}>
-                              {d.failed > 0 && <rect x={x} y={48 - failH} width={barW} height={failH} rx="2" fill="rgba(255,107,122,0.6)" />}
-                              <rect x={x} y={48 - sentH - (d.failed > 0 ? failH : 0)} width={barW} height={sentH} rx="2" fill="rgba(45,232,151,0.7)" />
-                            </g>
-                          );
-                        })}
-                      </svg>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
-                        <span style={{ fontSize: 8, color: TG.muted }}>{daily[0]?.day?.slice(5)}</span>
-                        <span style={{ fontSize: 8, color: TG.muted }}>{daily[daily.length - 1]?.day?.slice(5)}</span>
-                      </div>
+                {daily.length > 1 && (
+                  <div style={{ padding: "8px 10px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                    <div style={{ fontSize: 9, color: TG.muted, marginBottom: 6, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Динамика ({daily.length} дн.)</div>
+                    <svg width="100%" height="48" viewBox={`0 0 ${daily.length * (chartBarW + 2)} 48`} preserveAspectRatio="none" style={{ overflow: "visible" }}>
+                      {daily.map((d, i) => {
+                        const x     = i * (chartBarW + 2);
+                        const sentH = Math.max(2, Math.round((d.sent   / chartMaxVal) * 40));
+                        const failH = Math.max(0, Math.round((d.failed / chartMaxVal) * 40));
+                        return (
+                          <g key={d.day}>
+                            {d.failed > 0 && <rect x={x} y={48 - failH} width={chartBarW} height={failH} rx="2" fill="rgba(255,107,122,0.6)" />}
+                            <rect x={x} y={48 - sentH - (d.failed > 0 ? failH : 0)} width={chartBarW} height={sentH} rx="2" fill="rgba(45,232,151,0.7)" />
+                          </g>
+                        );
+                      })}
+                    </svg>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
+                      <span style={{ fontSize: 8, color: TG.muted }}>{daily[0]?.day?.slice(5)}</span>
+                      <span style={{ fontSize: 8, color: TG.muted }}>{daily[daily.length - 1]?.day?.slice(5)}</span>
                     </div>
-                  );
-                })()}
-                {/* Top groups list */}
+                  </div>
+                )}
                 {stats.slice(0, 8).map(s => {
                   const total = s.sent + s.failed;
-                  const pct = total > 0 ? Math.round((s.sent / total) * 100) : 0;
+                  const pct   = total > 0 ? Math.round((s.sent / total) * 100) : 0;
                   return (
                     <div key={s.group_id} style={{ padding: "7px 8px", borderRadius: 8, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
@@ -400,9 +409,7 @@ function GroupCampaignCard({
                   );
                 })}
                 {stats.length > 8 && (
-                  <div style={{ fontSize: 10, color: TG.muted, textAlign: "center", padding: "4px 0" }}>
-                    +{stats.length - 8} групп ещё
-                  </div>
+                  <div style={{ fontSize: 10, color: TG.muted, textAlign: "center", padding: "4px 0" }}>+{stats.length - 8} групп ещё</div>
                 )}
               </>
             )
@@ -420,10 +427,11 @@ export function GroupBroadcastsPage({
   onNew: () => void;
   onEdit: (id: number) => void;
 }) {
-  const [campaigns,     setCampaigns]     = useState<GroupCampaign[]>([]);
+  const [campaigns,         setCampaigns]         = useState<GroupCampaign[]>([]);
   const [activeCampaignIds, setActiveCampaignIds] = useState<Set<number>>(new Set());
-  const [loading,       setLoading]       = useState(true);
-  const [search,        setSearch]        = useState("");
+  const [loading,           setLoading]           = useState(true);
+  const [search,            setSearch]            = useState("");
+  const [liveSends,         setLiveSends]         = useState<GroupCampaignLog[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -432,11 +440,18 @@ export function GroupBroadcastsPage({
         api.getTasks("claimed"),
       ]);
       setCampaigns(camps);
-      // Build a set of campaign IDs that have an active (claimed) task
       setActiveCampaignIds(new Set(tasks.map(t => t.campaign_id)));
     }
     catch {} finally { setLoading(false); }
   }, []);
+
+  useSse((type, data) => {
+    if (type === "group_campaigns") setCampaigns(data as GroupCampaign[]);
+    if (type === "group_sends") {
+      const sends = data as GroupCampaignLog[];
+      setLiveSends(sends.slice(0, 40));
+    }
+  });
 
   useEffect(() => { load(); const t = setInterval(load, 12_000); return () => clearInterval(t); }, [load]);
 
@@ -503,7 +518,7 @@ export function GroupBroadcastsPage({
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {filtered.map(c => (
-              <GroupCampaignCard key={c.id} campaign={c} onRefresh={load} onEdit={onEdit} isActive={activeCampaignIds.has(c.id)} />
+              <GroupCampaignCard key={c.id} campaign={c} onRefresh={load} onEdit={onEdit} isActive={activeCampaignIds.has(c.id)} liveSends={liveSends} />
             ))}
           </div>
         )}

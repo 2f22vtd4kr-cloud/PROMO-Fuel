@@ -162,22 +162,29 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
   async function handleSave(launch?: boolean) {
     if (!valid || busy) return;
     setBusy(true); setError(null);
+    const isoScheduled = scheduleMode && scheduledAt ? new Date(scheduledAt).toISOString() : undefined;
     try {
       const payload: Partial<Campaign> = {
         name: name.trim(), text_template: text.trim(),
         notes: notes.trim() || undefined,
-        scheduled_at: scheduleMode && scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+        scheduled_at: isoScheduled ?? null,
         send_delay_seconds: Math.max(1, parseInt(delay) || 15),
         dry_run: dryRun ? 1 : 0,
         scheduled_tag: selectedTag || null,
         ab_text_b: abMode ? textB.trim() : null,
       };
+      let savedId: number;
       if (isEdit && campaignId) {
         await api.updateCampaign(campaignId, payload);
-        if (launch) await api.actionCampaign(campaignId, "running");
+        savedId = campaignId;
       } else {
         const created = await api.createCampaign(payload as any);
-        if (launch) await api.actionCampaign(created.id, "running");
+        savedId = created.id;
+      }
+      if (launch) {
+        await api.actionCampaign(savedId, "running");
+      } else if (isoScheduled) {
+        await api.actionCampaign(savedId, "schedule");
       }
       haptic.success();
       setSuccess(true);
@@ -566,7 +573,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
             position: "relative", overflow: "hidden",
           }}>
             {valid && <div style={{ position: "absolute", top: 0, left: "-60%", width: "50%", height: "100%", background: "linear-gradient(90deg,transparent,rgba(255,255,255,0.16),transparent)", transform: "skewX(-18deg)", animation: "shimmerX 3s ease-in-out infinite" }} />}
-            <span style={{ position: "relative", zIndex: 1 }}>{busy ? "Сохраняем..." : isEdit ? "Сохранить изменения" : "Создать рассылку"}</span>
+            <span style={{ position: "relative", zIndex: 1 }}>{busy ? "Сохраняем..." : scheduleMode && scheduledAt ? "📅 Запланировать" : isEdit ? "Сохранить изменения" : "Создать рассылку"}</span>
           </button>
 
           {!isEdit && (
