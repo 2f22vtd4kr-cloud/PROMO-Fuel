@@ -42,10 +42,26 @@ async def get_telethon_client():
             )
     return _tg_client
 
+import logging.handlers as _log_handlers
+
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+    level=logging.INFO,
 )
+
+# ── Rotating file handler — prevents bot.log from exhausting disk space ───────
+os.makedirs("logs", exist_ok=True)
+_bot_fh = _log_handlers.RotatingFileHandler(
+    "logs/bot.log",
+    maxBytes=5_000_000,   # 5 MB per file
+    backupCount=3,        # keep bot.log, bot.log.1, bot.log.2, bot.log.3
+    encoding="utf-8",
+)
+_bot_fh.setFormatter(
+    logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+)
+logging.getLogger().addHandler(_bot_fh)
+
 logger = logging.getLogger(__name__)
 
 def admin_only(func):

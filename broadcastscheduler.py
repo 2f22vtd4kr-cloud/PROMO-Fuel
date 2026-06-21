@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import os
+import sqlite3
 from datetime import datetime, timedelta
 
 import aiosqlite
@@ -24,6 +25,68 @@ logger = logging.getLogger(__name__)
 DB_PATH = os.getenv("DB_PATH", "campaigns.db")
 
 _scheduler_task: asyncio.Task | None = None
+_vacuum_task:    asyncio.Task | None = None
+
+VACUUM_INTERVAL_SECONDS = 86_400  # run once every 24 hours
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Daily VACUUM + WAL checkpoint
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _vacuum_db_sync(db_file: str) -> None:
+    """Synchronous VACUUM + WAL checkpoint — must run outside a transaction.
+
+    SQLite's VACUUM rewrites the entire DB into a fresh file, reclaiming all
+    fragmented free pages.  WAL checkpoint(TRUNCATE) shrinks the write-ahead
+    log to zero bytes so the WAL file doesn't grow unboundedly on write-heavy
+    workloads.
+
+    isolation_level=None puts the connection in autocommit mode, which is
+    required for VACUUM (it cannot execute inside a BEGIN block).
+    """
+    conn = sqlite3.connect(db_file, timeout=120)
+    conn.isolation_level = None          # autocommit — required for VACUUM
+    conn.execute("PRAGMA busy_timeout=120000")
+    try:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        logger.info("[vacuum] WAL checkpoint(TRUNCATE) done on %s", db_file)
+        conn.execute("VACUUM")
+        logger.info("[vacuum] VACUUM done on %s", db_file)
+    finally:
+        conn.close()
+
+
+async def _vacuum_databases() -> None:
+    """Vacuum all known SQLite DB files — runs in a thread-pool executor so the
+    event loop is not blocked during what can be a multi-second I/O operation."""
+    # Deduplicate: tasks table lives in campaigns.db; TASKS_DB_PATH lets
+    # operators override if they ever split the DBs.
+    db_files: list[str] = list(dict.fromkeys([
+        DB_PATH,
+        os.getenv("TASKS_DB_PATH", "tasks.db"),
+    ]))
+
+    loop = asyncio.get_event_loop()
+    for db_file in db_files:
+        if not os.path.exists(db_file):
+            logger.debug("[vacuum] %s not found — skipping", db_file)
+            continue
+        try:
+            logger.info("[vacuum] Starting VACUUM + WAL checkpoint on %s …", db_file)
+            await loop.run_in_executor(None, _vacuum_db_sync, db_file)
+            logger.info("[vacuum] ✓ %s defragmented successfully", db_file)
+        except Exception as exc:
+            logger.error("[vacuum] %s failed: %s", db_file, exc, exc_info=True)
+
+
+async def _vacuum_loop() -> None:
+    """Daily vacuum loop — initial 60-second delay lets startup I/O settle,
+    then vacuums every VACUUM_INTERVAL_SECONDS (default 24 h)."""
+    await asyncio.sleep(60)
+    while True:
+        await _vacuum_databases()
+        await asyncio.sleep(VACUUM_INTERVAL_SECONDS)
 
 
 async def _aio_conn(path: str = DB_PATH) -> aiosqlite.Connection:

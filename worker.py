@@ -44,6 +44,8 @@ import time
 from datetime import datetime, timezone
 
 # ── CLI args parsed before any expensive module imports ───────────────────────
+import logging.handlers as _log_handlers
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
