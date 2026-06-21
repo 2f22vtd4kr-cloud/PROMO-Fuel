@@ -30,6 +30,10 @@ args = "API Server"
 task = "workflow.run"
 args = "Telegram Mini App"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "CRM Platform"
+
 [[workflows.workflow]]
 name = "Telegram Bot"
 author = "agent"
@@ -56,13 +60,25 @@ args = "bash scripts/start-api.sh"
 name = "Telegram Mini App"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "console"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm --filter @workspace/telegram-miniapp run dev"
-waitForPort = 5000
+waitForPort = 3000
+
+[[workflows.workflow]]
+name = "CRM Platform"
+author = "agent"
 
 [workflows.workflow.metadata]
-outputType = "webview"
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/crm-platform run dev"
+waitForPort = 3001
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -74,7 +90,7 @@ timeoutMs = 20000
 
 [[ports]]
 localPort = 3000
-externalPort = 4200
+externalPort = 3000
 
 [[ports]]
 localPort = 3001
@@ -83,6 +99,10 @@ externalPort = 3001
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 5173
+externalPort = 3000
 
 [[ports]]
 localPort = 8080
