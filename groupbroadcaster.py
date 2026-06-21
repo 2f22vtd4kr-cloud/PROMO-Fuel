@@ -156,6 +156,24 @@ async def _persist_last_error(account_id: int, error: str) -> None:
         pass
 
 
+async def _mark_group_banned(account_id: int, group_id: str, reason: str) -> None:
+    """Persist a per-group ban for this account so future sends skip it automatically."""
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("""
+                UPDATE account_groups
+                SET is_banned=1, banned_at=datetime('now'), ban_reason=?
+                WHERE account_id=? AND group_id=?
+            """, (reason[:200], account_id, group_id))
+            await db.commit()
+        logger.warning(
+            "[broadcaster] Account %d banned from group %s — marked permanently: %s",
+            account_id, group_id, reason,
+        )
+    except Exception as e:
+        logger.debug("[broadcaster] _mark_group_banned failed: %s", e)
+
+
 async def _mark_proxy_failed(account_id: int) -> None:
     """Mark an account as proxy_failed when all proxy options are exhausted."""
     try:
@@ -431,7 +449,7 @@ async def _send_to_group(
 
 # ── Send result sentinel ──────────────────────────────────────────────────────
 
-SendResult = Literal["sent", "group_error", "abort_task", "proxy_failed"]
+SendResult = Literal["sent", "group_error", "group_banned", "abort_task", "proxy_failed"]
 
 
 async def _try_send(
@@ -489,8 +507,13 @@ async def _try_send(
             await cdb.account_flag_banned(account["id"], "UserDeactivatedBanError")
             return "abort_task", f"Account {account['id']} banned/deactivated"
 
-        except (ChatWriteForbiddenError, UserBannedInChannelError, ChannelPrivateError) as e:
-            return "group_error", str(e)[:120]
+        except (ChatWriteForbiddenError, UserBannedInChannelError) as e:
+            # Hard ban — account is blocked from this group permanently
+            return "group_banned", f"{type(e).__name__}: {str(e)[:100]}"
+
+        except ChannelPrivateError as e:
+            # Group became private/deleted — skip this send but don't mark as banned
+            return "group_error", f"ChannelPrivate: {str(e)[:100]}"
 
         except SlowModeWaitError as e:
             return "group_error", f"SlowModeWait {e.seconds}s"
@@ -643,38 +666,67 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
         max_delay      = float(campaign.get("max_delay_seconds") or 6.0)
         daily_limit    = int(campaign.get("daily_limit") or 0)
 
-        group_meta = await _get_group_meta(account_id, selected_groups)
-        sent_count = 0
+        group_meta    = await _get_group_meta(account_id, selected_groups)
+        banned_groups = await _get_banned_groups(account_id)
+        sent_count    = 0
 
         for group_id in selected_groups:
             if daily_limit > 0 and results["sent"] >= daily_limit:
                 logger.info("[broadcaster] Daily limit %d reached — stopping", daily_limit)
                 break
 
+            gid_str     = str(group_id)
+            group_title = group_meta.get(gid_str, gid_str)
+
+            # ── Pre-skip groups where this account is already banned ───────────
+            if gid_str in banned_groups:
+                reason = banned_groups[gid_str]
+                logger.info(
+                    "[broadcaster] Skipping banned group %s (%s): %s",
+                    group_title, gid_str, reason,
+                )
+                await _log_send(campaign_id, gid_str, group_title,
+                                account_id, task_id, "banned", reason)
+                results["failed"] += 1
+                continue
+
             await _rate_limiter.acquire(account_id)
 
-            group_title = group_meta.get(str(group_id), str(group_id))
             text = resolve_spintax(text_template)
 
             outcome, err_msg = await _try_send(
                 client_ref, proxy_ref, index_ref, account, proxies,
-                str(group_id), text, media_url, media_type, inline_buttons, pin,
+                gid_str, text, media_url, media_type, inline_buttons, pin,
                 consec_err,
             )
 
             if outcome == "sent":
-                await _log_send(campaign_id, str(group_id), group_title,
+                await _log_send(campaign_id, gid_str, group_title,
                                 account_id, task_id, "ok")
                 results["sent"] += 1
                 sent_count += 1
                 logger.info("[broadcaster] ✓ #%d → %s", task_id, group_title)
                 await _inter_message_delay(sent_count, min_delay, max_delay)
 
+            elif outcome == "group_banned":
+                # Persist the ban so this group is auto-skipped from now on
+                await _mark_group_banned(account_id, gid_str, err_msg or "Banned")
+                banned_groups[gid_str] = err_msg or "Banned"   # update in-memory cache too
+                await _log_send(campaign_id, gid_str, group_title,
+                                account_id, task_id, "banned", err_msg)
+                results["failed"] += 1
+                results["errors"].append(f"BANNED {group_title}: {err_msg}")
+                logger.warning(
+                    "[broadcaster] ⛔ #%d → %s banned — marked, skipping future sends",
+                    task_id, group_title,
+                )
+                # No delay needed — we didn't actually send
+
             elif outcome == "group_error":
-                await _log_send(campaign_id, str(group_id), group_title,
+                await _log_send(campaign_id, gid_str, group_title,
                                 account_id, task_id, "failed", err_msg)
                 results["failed"] += 1
-                results["errors"].append(f"{group_id}: {err_msg}")
+                results["errors"].append(f"{gid_str}: {err_msg}")
                 logger.warning("[broadcaster] ✗ #%d → %s: %s", task_id, group_title, err_msg)
                 await _inter_message_delay(sent_count, min_delay, max_delay)
 
@@ -712,6 +764,23 @@ async def _get_campaign(campaign_id: int) -> dict | None:
         ) as cur:
             row = await cur.fetchone()
     return dict(row) if row else None
+
+
+async def _get_banned_groups(account_id: int) -> dict[str, str]:
+    """Return {group_id: ban_reason} for all groups this account is banned from."""
+    try:
+        async with aiosqlite.connect(DB_PATH) as conn:
+            conn.row_factory = aiosqlite.Row
+            async with conn.execute(
+                "SELECT group_id, ban_reason FROM account_groups "
+                "WHERE account_id=? AND is_banned=1",
+                (account_id,),
+            ) as cur:
+                rows = await cur.fetchall()
+        return {r["group_id"]: (r["ban_reason"] or "Banned") for r in rows}
+    except Exception as e:
+        logger.debug("[broadcaster] _get_banned_groups(%d) failed: %s", account_id, e)
+        return {}
 
 
 async def _get_group_meta(account_id: int, group_ids: list) -> dict[str, str]:

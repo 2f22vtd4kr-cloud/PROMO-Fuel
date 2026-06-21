@@ -285,4 +285,26 @@ router.post("/accounts/:id/groups/refresh", async (req, res) => {
   }
 });
 
+router.get("/accounts/sends-today", (_req, res) => {
+  try {
+    const db = getDb(true);
+    const today = new Date().toISOString().slice(0, 10);
+    let rows: { account_id: string; ok: number; failed: number }[] = [];
+    try {
+      rows = db.prepare(`
+        SELECT account_id, 
+               SUM(CASE WHEN status IN ('ok','sent') THEN 1 ELSE 0 END) as ok,
+               SUM(CASE WHEN status IN ('failed','error') THEN 1 ELSE 0 END) as failed
+        FROM group_sends
+        WHERE DATE(sent_at) = ?
+        GROUP BY account_id
+      `).all(today) as { account_id: string; ok: number; failed: number }[];
+    } catch {}
+    db.close();
+    res.json(rows);
+  } catch (err) {
+    res.json([]);
+  }
+});
+
 export default router;

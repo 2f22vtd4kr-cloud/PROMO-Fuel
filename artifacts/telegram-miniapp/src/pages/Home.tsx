@@ -121,26 +121,36 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
 
           {/* Worker dots strip */}
           {workers && (
-            <div style={{ display: "flex", gap: 6, margin: "0 14px", alignItems: "center", animation: "slideUp 0.4s ease-out" }}>
-              {Array.from({ length: workers.alive_workers + workers.dead_workers }).map((_, i) => {
-                const isAlive = i < workers.alive_workers;
-                return (
-                  <div
-                    key={i}
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: "50%",
-                      backgroundColor: isAlive ? "#2de897" : "#ff6b7a",
-                      boxShadow: isAlive ? "0 0 8px rgba(45,232,151,0.6)" : "none",
-                    }}
-                  />
-                );
-              })}
-              <div style={{ fontSize: 10, color: TG.muted, marginLeft: 4, fontWeight: 600 }}>
-                {workers.alive_workers + workers.dead_workers > 0 ? "Воркеры" : "Нет воркеров"}
+            workers.alive_workers === 0 ? (
+              <div
+                onClick={() => { haptic.medium(); onNavigate("workers"); }}
+                style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 14px", padding: "8px 12px", borderRadius: 12, background: "rgba(255,201,70,0.07)", border: "1px solid rgba(255,201,70,0.30)", cursor: "pointer", animation: "slideUp 0.4s ease-out" }}
+              >
+                <span style={{ fontSize: 13 }}>⚠️</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#ffc946" }}>Нет активных воркеров</div>
+                  <div style={{ fontSize: 10, color: TG.muted }}>Рассылки не выполняются — нажми чтобы запустить</div>
+                </div>
+                <ArrowUpRight size={14} color="#ffc946" />
               </div>
-            </div>
+            ) : (
+              <div style={{ display: "flex", gap: 6, margin: "0 14px", alignItems: "center", animation: "slideUp 0.4s ease-out" }}>
+                {Array.from({ length: workers.alive_workers + workers.dead_workers }).map((_, i) => {
+                  const isAlive = i < workers.alive_workers;
+                  return (
+                    <div key={i} style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: isAlive ? "#2de897" : "#ff6b7a", boxShadow: isAlive ? "0 0 8px rgba(45,232,151,0.6)" : "none" }} />
+                  );
+                })}
+                <div style={{ fontSize: 10, color: TG.muted, marginLeft: 4, fontWeight: 600 }}>
+                  {workers.alive_workers} воркер{workers.alive_workers === 1 ? "" : "а"} активн{workers.alive_workers === 1 ? "ый" : "ых"}
+                </div>
+                {groupCampaigns > 0 && (
+                  <div style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, color: "#6ba8e5", background: "rgba(107,168,229,0.12)", border: "1px solid rgba(107,168,229,0.25)", borderRadius: 20, padding: "2px 7px" }}>
+                    📡 {groupCampaigns} групп в эфире
+                  </div>
+                )}
+              </div>
+            )
           )}
 
           <div style={{ padding: "0 14px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -167,8 +177,9 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           {stats.map((s, i) => {
             const Icon = s.icon;
+            const navTarget = i === 0 ? "campaigns" : i === 1 ? "campaigns" : i === 2 ? "audience" : "analytics";
             return (
-              <GlassCard key={s.label} glow={`${s.glow}30`} style={{ padding: "14px 14px 12px", position: "relative", animation: `slideUp 0.4s ease-out ${i * 0.1 + 0.2}s both` }}>
+              <GlassCard key={s.label} glow={`${s.glow}30`} style={{ padding: "14px 14px 12px", position: "relative", animation: `slideUp 0.4s ease-out ${i * 0.1 + 0.2}s both`, cursor: "pointer" }} onClick={() => { haptic.light(); onNavigate(navTarget); }}>
                 <div style={{ position: "absolute", top: 0, left: "10%", right: "10%", height: 1, background: `linear-gradient(90deg, transparent, ${s.color}, transparent)`, opacity: 0.8 }} />
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                   <div style={{

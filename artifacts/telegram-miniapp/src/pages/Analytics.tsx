@@ -197,7 +197,9 @@ export function AnalyticsPage() {
   useEffect(() => {
     Promise.all([
       api.getOverview(),
-      fetch(`${BASE}/api/analytics/trend`).then(r => r.ok ? r.json() : MOCK_TREND).catch(() => MOCK_TREND),
+      fetch(`${BASE}/api/analytics/trend`).then(r => r.ok ? r.json().then((rows: { date: string; sent: number; opened: number }[]) =>
+        rows.map(r => ({ d: r.date, sent: r.sent, conv: r.opened }))
+      ) : MOCK_TREND).catch(() => MOCK_TREND),
       fetch(`${BASE}/api/analytics/top-campaigns?limit=5`).then(r => r.ok ? r.json() : []).catch(() => []),
       fetch(`${BASE}/api/analytics/send-rate`).then(r => r.ok ? r.json() : []).catch(() => []),
     ]).then(([ov, tr, tc, sr]) => {

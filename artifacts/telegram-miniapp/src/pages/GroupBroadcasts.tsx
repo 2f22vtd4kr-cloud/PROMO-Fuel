@@ -51,10 +51,12 @@ function NextSendCountdown({ iso }: { iso: string }) {
 
 // ── Live Send Feed component ──────────────────────────────────────────────────
 
-function LiveSendFeed({ sends }: { sends: GroupCampaignLog[] }) {
-  const [collapsed, setCollapsed] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const prevLenRef = useRef(0);
+function LiveSendFeed({ sends, onRetried }: { sends: GroupCampaignLog[]; onRetried?: () => void }) {
+  const [collapsed,  setCollapsed]  = useState(false);
+  const [retrying,   setRetrying]   = useState(false);
+  const [retryDone,  setRetryDone]  = useState<{ tasks: number; camps: number } | null>(null);
+  const scrollRef   = useRef<HTMLDivElement>(null);
+  const prevLenRef  = useRef(0);
 
   useEffect(() => {
     if (sends.length > prevLenRef.current && !collapsed && scrollRef.current) {
@@ -65,8 +67,21 @@ function LiveSendFeed({ sends }: { sends: GroupCampaignLog[] }) {
 
   if (sends.length === 0) return null;
 
-  const okCount     = sends.filter(s => s.status === "ok" || s.status === "sent").length;
-  const errorCount  = sends.filter(s => s.status === "error" || s.status === "failed").length;
+  const okCount    = sends.filter(s => s.status === "ok" || s.status === "sent").length;
+  const errorCount = sends.filter(s => s.status === "error" || s.status === "failed").length;
+
+  async function handleRetry(e: React.MouseEvent) {
+    e.stopPropagation();
+    haptic.medium(); setRetrying(true); setRetryDone(null);
+    try {
+      const r = await api.retryFailedSends(24);
+      haptic.success();
+      setRetryDone({ tasks: r.tasks_created, camps: r.campaigns });
+      onRetried?.();
+      setTimeout(() => setRetryDone(null), 4000);
+    } catch { haptic.error(); }
+    finally { setRetrying(false); }
+  }
 
   return (
     <GlassCard glow="rgba(45,232,151,0.12)" style={{ padding: "10px 12px", border: "1px solid rgba(45,232,151,0.22)", background: "rgba(45,232,151,0.04)" }}>
@@ -83,12 +98,20 @@ function LiveSendFeed({ sends }: { sends: GroupCampaignLog[] }) {
           <span style={{ fontSize: 12, fontWeight: 800, color: "#2de897" }}>Live-лента отправок</span>
           <span style={{ fontSize: 10, color: TG.muted }}>({sends.length})</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {okCount > 0 && (
             <span style={{ fontSize: 10, fontWeight: 700, color: "#2de897", background: "rgba(45,232,151,0.10)", borderRadius: 10, padding: "1px 6px" }}>✓ {okCount}</span>
           )}
           {errorCount > 0 && (
             <span style={{ fontSize: 10, fontWeight: 700, color: "#ff6b7a", background: "rgba(255,107,122,0.10)", borderRadius: 10, padding: "1px 6px" }}>✗ {errorCount}</span>
+          )}
+          {errorCount > 0 && (
+            <button
+              onClick={handleRetry} disabled={retrying}
+              style={{ fontSize: 10, fontWeight: 700, color: retryDone ? "#2de897" : "#ffc946", background: retryDone ? "rgba(45,232,151,0.12)" : "rgba(255,201,70,0.12)", border: `1px solid ${retryDone ? "rgba(45,232,151,0.30)" : "rgba(255,201,70,0.30)"}`, borderRadius: 8, padding: "3px 8px", cursor: retrying ? "not-allowed" : "pointer", opacity: retrying ? 0.6 : 1, transition: "all 0.25s" }}
+            >
+              {retrying ? "…" : retryDone ? `✓ ${retryDone.tasks} задач` : "↺ Повторить ошибки"}
+            </button>
           )}
           {collapsed ? <ChevronDown size={14} color={TG.muted} /> : <ChevronUp size={14} color={TG.muted} />}
         </div>
@@ -167,6 +190,8 @@ function GroupCampaignCard({
   const seenLogIds = new Set(logs.map(l => l.id));
   const newLiveSends = liveCampSends.filter(l => !seenLogIds.has(l.id));
   const mergedLogs = [...newLiveSends, ...logs].slice(0, 25);
+  const recentOk = liveCampSends.filter(s => (s.status === "ok" || s.status === "sent")).length;
+  const recentErr = liveCampSends.filter(s => (s.status === "failed" || s.status === "error")).length;
   const chartMaxVal = Math.max(...daily.map(d => d.sent + d.failed), 1);
   const chartBarW   = Math.floor(240 / Math.max(daily.length, 1)) - 2;
 
@@ -266,13 +291,21 @@ function GroupCampaignCard({
           <div style={{ fontSize: 10, color: TG.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{campaign.text_template}</div>
           {campaign.notes && <div style={{ fontSize: 9, color: "#c4aeff", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📝 {campaign.notes}</div>}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
-          <span style={{ fontSize: 9, fontWeight: 700, color, background: `${color}18`, border: `1px solid ${color}35`, borderRadius: 20, padding: "2px 7px" }}>
-            {campaign.status.toUpperCase()}
-          </span>
-          <div onClick={() => { haptic.light(); onEdit(campaign.id); }} style={{ width: 26, height: 26, borderRadius: 8, background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-            <ChevronRight size={13} color={TG.muted} />
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color, background: `${color}18`, border: `1px solid ${color}35`, borderRadius: 20, padding: "2px 7px" }}>
+              {campaign.status.toUpperCase()}
+            </span>
+            <div onClick={() => { haptic.light(); onEdit(campaign.id); }} style={{ width: 26, height: 26, borderRadius: 8, background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+              <ChevronRight size={13} color={TG.muted} />
+            </div>
           </div>
+          {isActive && (recentOk + recentErr) > 0 && (
+            <div style={{ display: "flex", gap: 3 }}>
+              {recentOk > 0 && <span style={{ fontSize: 8, fontWeight: 700, color: "#2de897", background: "rgba(45,232,151,0.12)", border: "1px solid rgba(45,232,151,0.25)", borderRadius: 20, padding: "1px 5px" }}>✓{recentOk} live</span>}
+              {recentErr > 0 && <span style={{ fontSize: 8, fontWeight: 700, color: "#ff6b7a", background: "rgba(255,107,122,0.12)", border: "1px solid rgba(255,107,122,0.25)", borderRadius: 20, padding: "1px 5px" }}>✗{recentErr}</span>}
+            </div>
+          )}
         </div>
       </div>
 
@@ -516,6 +549,7 @@ export function GroupBroadcastsPage({
   const [loading,           setLoading]           = useState(true);
   const [search,            setSearch]            = useState("");
   const [liveSends,         setLiveSends]         = useState<GroupCampaignLog[]>([]);
+  const [bulkBusy,          setBulkBusy]          = useState<"pause" | "resume" | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -544,20 +578,57 @@ export function GroupBroadcastsPage({
   const filtered = search.trim() === "" ? campaigns
     : campaigns.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.text_template.toLowerCase().includes(search.toLowerCase()));
 
+  async function bulkAction(action: "pause" | "resume") {
+    haptic.medium(); setBulkBusy(action);
+    try {
+      const r = await api.bulkGroupCampaignAction(action);
+      setCampaigns(r.campaigns);
+      haptic.success();
+    } catch { haptic.error(); }
+    finally { setBulkBusy(null); }
+  }
+
   return (
     <>
-    <style>{`@keyframes hb-ring { 0% { opacity:.8; transform:scale(1); } 100% { opacity:0; transform:scale(2.4); } }`}</style>
+    <style>{`@keyframes hb-ring { 0% { opacity:.8; transform:scale(1); } 100% { opacity:0; transform:scale(2.4); } } @keyframes spin { to { transform:rotate(360deg); } }`}</style>
     <div className="tab-content" style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "14px 14px 100px" }}>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>Групповые</div>
-          <GlassCard style={{ padding: "8px 12px", borderRadius: 14, cursor: "pointer" }} onClick={() => { haptic.medium(); onNew(); }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <Plus size={14} color="#2de897" />
-              <span style={{ fontSize: 12, color: "#2de897", fontWeight: 700 }}>Создать</span>
-            </div>
-          </GlassCard>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>Групповые</div>
+            {running > 0 && (
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#2de897", background: "rgba(45,232,151,0.10)", borderRadius: 20, padding: "2px 8px" }}>
+                {running} active
+              </span>
+            )}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {running > 0 && (
+              <button
+                onClick={() => bulkAction("pause")} disabled={bulkBusy !== null}
+                style={{ fontSize: 11, fontWeight: 700, color: "#ffc946", background: "rgba(255,201,70,0.10)", border: "1px solid rgba(255,201,70,0.28)", borderRadius: 10, padding: "6px 10px", cursor: "pointer", opacity: bulkBusy ? 0.5 : 1, display: "flex", alignItems: "center", gap: 4 }}
+              >
+                {bulkBusy === "pause" ? <div style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid rgba(255,201,70,0.5)", borderTopColor: "#ffc946", animation: "spin 0.8s linear infinite" }} /> : <Pause size={11} />}
+                Стоп всё
+              </button>
+            )}
+            {paused > 0 && (
+              <button
+                onClick={() => bulkAction("resume")} disabled={bulkBusy !== null}
+                style={{ fontSize: 11, fontWeight: 700, color: "#2de897", background: "rgba(45,232,151,0.10)", border: "1px solid rgba(45,232,151,0.28)", borderRadius: 10, padding: "6px 10px", cursor: "pointer", opacity: bulkBusy ? 0.5 : 1, display: "flex", alignItems: "center", gap: 4 }}
+              >
+                {bulkBusy === "resume" ? <div style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid rgba(45,232,151,0.5)", borderTopColor: "#2de897", animation: "spin 0.8s linear infinite" }} /> : <Play size={11} />}
+                Старт всё
+              </button>
+            )}
+            <GlassCard style={{ padding: "8px 12px", borderRadius: 14, cursor: "pointer" }} onClick={() => { haptic.medium(); onNew(); }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Plus size={14} color="#2de897" />
+                <span style={{ fontSize: 12, color: "#2de897", fontWeight: 700 }}>Создать</span>
+              </div>
+            </GlassCard>
+          </div>
         </div>
 
         {campaigns.length > 3 && (
@@ -584,7 +655,7 @@ export function GroupBroadcastsPage({
         )}
 
         {/* ── Global live send feed ───────────────────────────────── */}
-        <LiveSendFeed sends={liveSends} />
+        <LiveSendFeed sends={liveSends} onRetried={load} />
 
         {loading ? (
           <div style={{ textAlign: "center", padding: "40px 0" }}>

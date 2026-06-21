@@ -294,6 +294,10 @@ export const api = {
   sendNowGroupCampaign: (id: number) => post<{ ok: boolean; task: unknown }>(`/group-campaigns/${id}/send-now`, {}),
   testSendGroupCampaign: (id: number, groupId: string) => post<{ ok: boolean; task: unknown }>(`/group-campaigns/${id}/test-send`, { group_id: groupId }),
   getGroupCampaignStats: (id: number) => get<{ by_group: GroupSendStat[]; daily: DailyStat[] }>(`/group-campaigns/${id}/stats`),
+  retryFailedSends: (windowHours?: number) =>
+    post<{ ok: boolean; tasks_created: number; campaigns: number }>("/group-campaigns/retry-failed-sends", { window_hours: windowHours ?? 24 }),
+  bulkGroupCampaignAction: (action: "pause" | "resume" | "stop", ids?: number[]) =>
+    post<{ ok: boolean; updated: number; campaigns: GroupCampaign[] }>("/group-campaigns/bulk-action", { action, ids }),
 
   // Accounts
   getAccounts: () => get<SenderAccount[]>("/accounts"),
@@ -334,6 +338,9 @@ export const api = {
   bulkCancelTasks: () => post<{ updated: number }>("/tasks/bulk-cancel", {}),
   pushTask: (campaignId: number, payload?: Record<string, unknown>) =>
     post<Task>("/tasks", { campaign_id: campaignId, payload }),
+
+  getCampaignSparklines: () => get<Record<number, number[]>>("/stats/campaign-sparklines"),
+  getAccountSendsToday: () => get<{ account_id: string; ok: number; failed: number }[]>("/accounts/sends-today"),
 
   // Analytics / users
   getOverview: () => get<AnalyticsOverview>("/analytics/summary"),

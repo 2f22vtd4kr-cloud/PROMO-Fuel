@@ -294,7 +294,7 @@ function RecoverLocksButton({ onDone }: { onDone: () => void }) {
   );
 }
 
-function AccountRow({ account }: { account: SenderAccount }) {
+function AccountRow({ account, sendsToday }: { account: SenderAccount; sendsToday?: { ok: number; failed: number } }) {
   const locked = !!account.locked_by;
   const st     = account.status;
   const color  = (st === "idle" && !locked) ? "#2de897"
@@ -331,9 +331,18 @@ function AccountRow({ account }: { account: SenderAccount }) {
           {account.last_used_at && <span style={{ marginLeft: 8, opacity: 0.65 }}>{timeAgo(account.last_used_at)} назад</span>}
         </div>
       </div>
-      <span style={{ fontSize: 10, fontWeight: 700, color, background: `${color}14`, border: `1px solid ${color}28`, borderRadius: 20, padding: "2px 7px", flexShrink: 0 }}>
-        {account.broadcasting ? "⚡ live" : st}
-      </span>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color, background: `${color}14`, border: `1px solid ${color}28`, borderRadius: 20, padding: "2px 7px" }}>
+          {account.broadcasting ? "⚡ live" : st}
+        </span>
+        {sendsToday && (sendsToday.ok + sendsToday.failed) > 0 && (
+          <span style={{ fontSize: 8, color: TG.muted }}>
+            <span style={{ color: "#2de897" }}>✓{sendsToday.ok}</span>
+            {sendsToday.failed > 0 && <span style={{ color: "#ff6b7a", marginLeft: 3 }}>✗{sendsToday.failed}</span>}
+            {" сегодня"}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -347,31 +356,36 @@ export function WorkersPage() {
   const [tasks,        setTasks]        = useState<Task[]>([]);
   const [summary,      setSummary]      = useState<WorkersSummary | null>(null);
   const [scheduled,    setScheduled]    = useState<GroupCampaign[]>([]);
-  const [accounts,     setAccounts]     = useState<SenderAccount[]>([]);
-  const [loading,      setLoading]      = useState(true);
-  const [taskTab,      setTaskTab]      = useState<"all" | "pending" | "claimed" | "failed">("all");
-  const [showAccounts, setShowAccounts] = useState(false);
-  const [sseAlive,     setSseAlive]     = useState(false);
-  const [crashHistory, setCrashHistory] = useState<WorkerCrashEvent[]>([]);
+  const [accounts,      setAccounts]      = useState<SenderAccount[]>([]);
+  const [accountStats,  setAccountStats]  = useState<Record<string, { ok: number; failed: number }>>({});
+  const [loading,       setLoading]       = useState(true);
+  const [taskTab,       setTaskTab]       = useState<"all" | "pending" | "claimed" | "failed">("all");
+  const [showAccounts,  setShowAccounts]  = useState(false);
+  const [sseAlive,      setSseAlive]      = useState(false);
+  const [crashHistory,  setCrashHistory]  = useState<WorkerCrashEvent[]>([]);
   const lastSseRef = useRef(0);   // monotonic ms of last received SSE event
   const SSE_DEAD_MS = 20_000;     // treat SSE as dead if no event for 20s
 
   // ── Full REST load (initial + fallback) ──────────────────────────────────
   const load = useCallback(async () => {
     try {
-      const [w, t, s, gc, accts, crashes] = await Promise.all([
+      const [w, t, s, gc, accts, crashes, acctStats] = await Promise.all([
         api.getWorkers(),
         api.getTasks(),
         api.getWorkersSummary(),
         api.getGroupCampaigns(),
         api.getAccounts(),
         api.getWorkerCrashHistory(),
+        api.getAccountSendsToday().catch(() => [] as { account_id: string; ok: number; failed: number }[]),
       ]);
       setWorkers(w);
       setTasks(t);
       setSummary(s);
       setAccounts(accts);
       setCrashHistory(crashes);
+      const statsMap: Record<string, { ok: number; failed: number }> = {};
+      acctStats.forEach(s => { statsMap[s.account_id] = { ok: s.ok, failed: s.failed }; });
+      setAccountStats(statsMap);
       setScheduled(
         gc.filter(c => c.status === "running" || c.status === "paused")
           .sort((a, b) => {
@@ -399,8 +413,14 @@ export function WorkersPage() {
     setSseAlive(true);
 
     if (type === "workers") {
-      setWorkers(data as BroadcastWorker[]);
       const ws = data as BroadcastWorker[];
+      setWorkers(prev => {
+        // Auto-refresh crash history if any worker's crash_count increased
+        const prevMap = new Map(prev.map(w => [w.worker_id, w.crash_count ?? 0]));
+        const needsRefresh = ws.some(w => (w.crash_count ?? 0) > (prevMap.get(w.worker_id) ?? 0));
+        if (needsRefresh) api.getWorkerCrashHistory().then(h => setCrashHistory(h)).catch(() => {});
+        return ws;
+      });
       setSummary(prev => {
         if (!prev) return prev;
         return { ...prev, alive_workers: ws.filter(w => w.is_alive).length };
@@ -596,12 +616,15 @@ export function WorkersPage() {
                   Активные воркеры {aliveWorkers.length > 0 && `(${aliveWorkers.length})`}
                 </div>
                 {aliveWorkers.length === 0 ? (
-                  <GlassCard style={{ padding: "22px 16px", textAlign: "center" }}>
-                    <AlertTriangle size={20} color="#ffc946" style={{ marginBottom: 8, opacity: 0.7 }} />
-                    <div style={{ fontSize: 13, color: TG.muted }}>Нет активных воркеров</div>
-                    <div style={{ fontSize: 11, color: TG.textSecondary, marginTop: 6, lineHeight: 1.5 }}>
-                      Нажми «Запустить воркер» ↓ или запусти вручную
+                  <GlassCard style={{ padding: "18px 16px", border: "1px solid rgba(255,201,70,0.30)", background: "rgba(255,201,70,0.04)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                      <AlertTriangle size={18} color="#ffc946" style={{ flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#ffc946" }}>Рассылки не выполняются</div>
+                        <div style={{ fontSize: 11, color: TG.muted, marginTop: 2 }}>Нет активных воркеров для обработки задач</div>
+                      </div>
                     </div>
+                    <SpawnWorkerButton onSpawned={() => setTimeout(load, 2000)} prominent />
                   </GlassCard>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -617,12 +640,9 @@ export function WorkersPage() {
 
               {/* ── Action buttons ──────────────────────────────────── */}
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {aliveWorkers.length === 0 && (
-                  <div style={{ padding: "10px 14px", borderRadius: 12, background: "rgba(255,201,70,0.07)", border: "1px solid rgba(255,201,70,0.25)", fontSize: 11, color: "#ffc946", textAlign: "center", fontWeight: 700 }}>
-                    ⚠️ Нет активных воркеров — рассылки не выполняются
-                  </div>
+                {aliveWorkers.length > 0 && (
+                  <SpawnWorkerButton onSpawned={() => setTimeout(load, 2000)} />
                 )}
-                <SpawnWorkerButton onSpawned={() => setTimeout(load, 2000)} prominent={aliveWorkers.length === 0} />
                 <RecoverLocksButton onDone={load} />
               </div>
 
@@ -658,7 +678,7 @@ export function WorkersPage() {
                             <span style={{ color: "#ff6b7a", fontWeight: 700 }}>⚠️ proxy_failed: {accounts.filter(a => a.status === "proxy_failed").length}</span>
                           )}
                         </div>
-                        {accounts.map(a => <AccountRow key={a.id} account={a} />)}
+                        {accounts.map(a => <AccountRow key={a.id} account={a} sendsToday={accountStats[String(a.id)]} />)}
                       </>
                     )}
                   </GlassCard>

@@ -354,6 +354,36 @@ export function AudiencePage() {
           </div>
         )}
 
+        {/* Quick tag chips — shown when tags exist and filter panel is closed */}
+        {!showFilter && allTags.length > 0 && allTags.length <= 12 && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {allTags.map(tag => {
+              const active = filterTags.includes(tag);
+              return (
+                <div
+                  key={tag}
+                  onClick={() => toggleTag(tag)}
+                  style={{
+                    padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                    background: active ? "rgba(196,174,255,0.18)" : "rgba(255,255,255,0.05)",
+                    border: `1px solid ${active ? "rgba(196,174,255,0.55)" : "rgba(255,255,255,0.10)"}`,
+                    color: active ? "#c4aeff" : TG.muted,
+                    transition: "all 0.15s",
+                  }}
+                >
+                  {active && "✓ "}{tag}
+                </div>
+              );
+            })}
+            {filterTags.length > 0 && (
+              <div
+                onClick={clearFilters}
+                style={{ padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: "pointer", background: "rgba(255,80,80,0.10)", border: "1px solid rgba(255,80,80,0.25)", color: "#ff7070" }}
+              >✕ Сброс</div>
+            )}
+          </div>
+        )}
+
         {/* Total users card */}
         <GlassCard glow="rgba(107,168,229,0.20)" style={{ padding: "16px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>

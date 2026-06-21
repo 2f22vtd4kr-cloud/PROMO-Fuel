@@ -246,6 +246,39 @@ router.post("/campaigns/:id/duplicate", (req, res) => {
   }
 });
 
+router.get("/stats/campaign-sparklines", (_req, res) => {
+  try {
+    const db = new Database(DB_PATH, { readonly: true });
+    const rows = db.prepare(`
+      SELECT campaign_id, substr(sent_at,1,10) AS day,
+             SUM(CASE WHEN status='ok' OR status='ok_retry' THEN 1 ELSE 0 END) AS sent,
+             SUM(CASE WHEN status='failed' OR status='blocked' THEN 1 ELSE 0 END) AS failed
+      FROM sends
+      WHERE sent_at >= date('now','-7 days')
+      GROUP BY campaign_id, day
+      ORDER BY campaign_id, day
+    `).all() as { campaign_id: number; day: string; sent: number; failed: number }[];
+    db.close();
+
+    // Build a map: campaign_id → last-7-day sent array (index 0 = 7 days ago, index 6 = today)
+    const today   = new Date();
+    const days    = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(today); d.setDate(d.getDate() - (6 - i));
+      return d.toISOString().slice(0, 10);
+    });
+
+    const result: Record<number, number[]> = {};
+    for (const r of rows) {
+      if (!result[r.campaign_id]) result[r.campaign_id] = new Array(7).fill(0);
+      const idx = days.indexOf(r.day);
+      if (idx >= 0) result[r.campaign_id][idx] = r.sent;
+    }
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 router.get("/stats/daily", (_req, res) => {
   try {
     const db = new Database(DB_PATH, { readonly: true });

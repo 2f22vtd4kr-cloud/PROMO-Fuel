@@ -320,6 +320,82 @@ router.get("/group-campaigns/:id/stats", (req, res) => {
   }
 });
 
+router.post("/group-campaigns/retry-failed-sends", (req, res) => {
+  try {
+    const db = new Database(DB_PATH);
+    const { window_hours = 24 } = req.body as { window_hours?: number };
+    const since = new Date(Date.now() - window_hours * 3600 * 1000).toISOString();
+
+    // Find campaigns with failed sends in the time window
+    const failedRows = db.prepare(`
+      SELECT campaign_id, group_id, group_title
+      FROM group_sends
+      WHERE (status = 'failed' OR status = 'error')
+        AND sent_at >= ?
+      GROUP BY campaign_id, group_id
+      ORDER BY campaign_id
+    `).all(since) as { campaign_id: number; group_id: string; group_title: string | null }[];
+
+    if (failedRows.length === 0) {
+      db.close();
+      return void res.json({ ok: true, tasks_created: 0, campaigns: 0 });
+    }
+
+    // Group by campaign
+    const byCampaign = new Map<number, string[]>();
+    for (const r of failedRows) {
+      if (!byCampaign.has(r.campaign_id)) byCampaign.set(r.campaign_id, []);
+      byCampaign.get(r.campaign_id)!.push(r.group_id);
+    }
+
+    // Create a priority task per campaign with the specific failed group_ids
+    const tasks: unknown[] = [];
+    for (const [campaignId, groupIds] of byCampaign) {
+      const camp = db.prepare("SELECT id, status FROM group_campaigns WHERE id = ?").get(campaignId) as { id: number; status: string } | undefined;
+      if (!camp) continue;
+      const info = db.prepare(`
+        INSERT INTO tasks (task_type, campaign_id, payload, status, priority, max_attempts, created_at, scheduled_at)
+        VALUES ('group_broadcast', ?, ?, 'pending', 2, 3, datetime('now'), datetime('now'))
+      `).run(campaignId, JSON.stringify({ retry: true, group_ids: groupIds }));
+      tasks.push({ task_id: info.lastInsertRowid, campaign_id: campaignId, group_count: groupIds.length });
+    }
+    db.close();
+    res.status(201).json({ ok: true, tasks_created: tasks.length, campaigns: byCampaign.size, tasks });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.post("/group-campaigns/bulk-action", (req, res) => {
+  try {
+    const { action, ids } = req.body as { action: string; ids?: number[] };
+    const statusMap: Record<string, string> = { pause: "paused", resume: "running", stop: "cancelled" };
+    const newStatus = statusMap[action];
+    if (!newStatus) return void res.status(400).json({ error: "invalid action" });
+
+    const db = new Database(DB_PATH);
+    const now = new Date().toISOString();
+    let updated = 0;
+    if (ids && ids.length > 0) {
+      const placeholders = ids.map(() => "?").join(",");
+      updated = db.prepare(
+        `UPDATE group_campaigns SET status = ?, updated_at = ? WHERE id IN (${placeholders})`
+      ).run(newStatus, now, ...ids).changes;
+    } else {
+      // all running/paused campaigns
+      const filter = action === "pause" ? "running" : "paused";
+      updated = db.prepare(
+        `UPDATE group_campaigns SET status = ?, updated_at = ? WHERE status = ?`
+      ).run(newStatus, now, filter).changes;
+    }
+    const all = db.prepare("SELECT * FROM group_campaigns ORDER BY created_at DESC").all();
+    db.close();
+    res.json({ ok: true, updated, campaigns: all });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 router.post("/group-campaigns/:id/test-send", (req, res) => {
   try {
     const db = new Database(DB_PATH);

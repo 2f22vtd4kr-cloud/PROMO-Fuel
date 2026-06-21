@@ -155,8 +155,36 @@ function LogsPanel({ campaignId, isActive }: { campaignId: number; isActive: boo
   );
 }
 
-function CampaignCard({ campaign, index, onEdit, onRefresh }: {
-  campaign: Campaign; index: number; onEdit: (id: number) => void; onRefresh: () => void;
+function MiniSparkline({ values, color = "#2de897" }: { values: number[]; color?: string }) {
+  const w = 56, h = 16, n = values.length;
+  if (n < 2) return null;
+  const max = Math.max(...values, 1);
+  const pts = values.map((v, i) => {
+    const x = (i / (n - 1)) * w;
+    const y = h - (v / max) * (h - 2) - 1;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  const today = values[n - 1];
+  const area  = `${pts} ${w},${h} 0,${h}`;
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ overflow: "visible", flexShrink: 0 }}>
+      <defs>
+        <linearGradient id={`sg-${color.replace("#","")}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+      <polygon points={area} fill={`url(#sg-${color.replace("#","")})`} />
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" opacity="0.85" />
+      {today > 0 && (
+        <circle cx={w} cy={h - (today / max) * (h - 2) - 1} r="2" fill={color} />
+      )}
+    </svg>
+  );
+}
+
+function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
+  campaign: Campaign; index: number; onEdit: (id: number) => void; onRefresh: () => void; sparkline?: number[];
 }) {
   const [busy, setBusy]         = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -217,6 +245,16 @@ function CampaignCard({ campaign, index, onEdit, onRefresh }: {
           )}
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             <StatusBadge status={campaign.status} />
+            {campaign.sent_count > 0 && (() => {
+              const total = campaign.sent_count + (campaign.failed_count || 0);
+              const successRate = Math.round((campaign.sent_count / total) * 100);
+              const rateColor = successRate >= 90 ? TG.green : successRate >= 70 ? "#ffc946" : "#ff6b7a";
+              return (
+                <span style={{ fontSize: 9, fontWeight: 700, color: rateColor, background: `${rateColor}14`, border: `1px solid ${rateColor}30`, borderRadius: 8, padding: "2px 6px" }}>
+                  ✓{successRate}%
+                </span>
+              );
+            })()}
             {isDryRun && (
               <span style={{ fontSize: 9, fontWeight: 700, color: "#6ba8e5", background: "rgba(107,168,229,0.14)", border: "1px solid rgba(107,168,229,0.30)", borderRadius: 8, padding: "2px 6px", display: "flex", alignItems: "center", gap: 3 }}>
                 <FlaskConical size={8} /> Dry Run
@@ -355,10 +393,20 @@ function CampaignCard({ campaign, index, onEdit, onRefresh }: {
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)", fontSize: 10, color: TG.muted }}>
-        <div>Отправлено: <span style={{ color: TG.text }}>{campaign.sent_count.toLocaleString("ru")}</span></div>
-        <div>Цель: <span style={{ color: TG.text }}>{campaign.target_count.toLocaleString("ru")}</span></div>
-        <div>Ошибок: <span style={{ color: "#ff6b7a" }}>{(campaign.failed_count || 0).toLocaleString("ru")}</span></div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)", fontSize: 10, color: TG.muted }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <div>Отправлено: <span style={{ color: TG.text }}>{campaign.sent_count.toLocaleString("ru")}</span></div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <span>Цель: <span style={{ color: TG.text }}>{campaign.target_count.toLocaleString("ru")}</span></span>
+            <span>Ошибок: <span style={{ color: "#ff6b7a" }}>{(campaign.failed_count || 0).toLocaleString("ru")}</span></span>
+          </div>
+        </div>
+        {sparkline && sparkline.some(v => v > 0) && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+            <MiniSparkline values={sparkline} color={color === "rgba(160,190,230,0.40)" ? "#6ba8e5" : color} />
+            <span style={{ fontSize: 8, color: TG.muted, opacity: 0.6 }}>7 дней</span>
+          </div>
+        )}
       </div>
     </GlassCard>
   );
@@ -373,15 +421,21 @@ const STATUS_TABS = [
 type StatusTab = typeof STATUS_TABS[number]["key"];
 
 export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [search, setSearch]       = useState("");
-  const [tab, setTab]             = useState<StatusTab>("all");
+  const [campaigns,   setCampaigns]   = useState<Campaign[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [search,      setSearch]      = useState("");
+  const [tab,         setTab]         = useState<StatusTab>("all");
+  const [sparklines,  setSparklines]  = useState<Record<number, number[]>>({});
+  const [bulkBusy,    setBulkBusy]    = useState<"pause" | "resume" | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const cs = await api.getCampaigns();
+      const [cs, sparks] = await Promise.all([
+        api.getCampaigns(),
+        api.getCampaignSparklines().catch(() => ({} as Record<number, number[]>)),
+      ]);
       setCampaigns(cs.sort((a, b) => statusPriority(a.status) - statusPriority(b.status)));
+      setSparklines(sparks);
     } catch {} finally { setLoading(false); }
   }, []);
 
@@ -403,6 +457,23 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
   const active    = campaigns.filter(c => c.status === "running" || c.status === "sending").length;
   const scheduled = campaigns.filter(c => c.status === "scheduled").length;
   const paused    = campaigns.filter(c => c.status === "paused").length;
+
+  async function bulkPause() {
+    haptic.medium(); setBulkBusy("pause");
+    try {
+      const running = campaigns.filter(c => c.status === "running" || c.status === "sending");
+      await Promise.all(running.map(c => api.actionCampaign(c.id, "pause")));
+      haptic.success(); await load();
+    } catch { haptic.error(); } finally { setBulkBusy(null); }
+  }
+  async function bulkResume() {
+    haptic.medium(); setBulkBusy("resume");
+    try {
+      const stopped = campaigns.filter(c => c.status === "paused");
+      await Promise.all(stopped.map(c => api.actionCampaign(c.id, "resume")));
+      haptic.success(); await load();
+    } catch { haptic.error(); } finally { setBulkBusy(null); }
+  }
 
   const tabFiltered = campaigns.filter(c => {
     if (tab === "active")   return c.status === "running" || c.status === "sending" || c.status === "paused" || c.status === "scheduled";
@@ -467,10 +538,22 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
           </div>
         )}
 
-        {!loading && active > 0 && (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: TG.green, background: `${TG.green}18`, border: `1px solid ${TG.green}35`, borderRadius: 20, padding: "4px 10px", display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: TG.green, display: "inline-block", boxShadow: `0 0 6px ${TG.green}`, animation: "pulse 1.5s ease-in-out infinite" }} />{active} активных</span>
+        {!loading && (active > 0 || paused > 0) && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {active > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: TG.green, background: `${TG.green}18`, border: `1px solid ${TG.green}35`, borderRadius: 20, padding: "4px 10px", display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: TG.green, display: "inline-block", boxShadow: `0 0 6px ${TG.green}`, animation: "pulse 1.5s ease-in-out infinite" }} />{active} активных</span>}
             {scheduled > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: TG.yellow, background: `${TG.yellow}18`, border: `1px solid ${TG.yellow}35`, borderRadius: 20, padding: "4px 10px" }}>{scheduled} запланир.</span>}
+            <div style={{ marginLeft: "auto", display: "flex", gap: 5 }}>
+              {active > 1 && (
+                <button onClick={bulkPause} disabled={bulkBusy !== null} style={{ fontSize: 10, fontWeight: 700, color: "#ffc946", background: "rgba(255,201,70,0.10)", border: "1px solid rgba(255,201,70,0.28)", borderRadius: 10, padding: "4px 8px", cursor: "pointer", opacity: bulkBusy ? 0.6 : 1, display: "flex", alignItems: "center", gap: 3 }}>
+                  ⏸ Пауза всем
+                </button>
+              )}
+              {paused > 1 && (
+                <button onClick={bulkResume} disabled={bulkBusy !== null} style={{ fontSize: 10, fontWeight: 700, color: "#2de897", background: "rgba(45,232,151,0.10)", border: "1px solid rgba(45,232,151,0.28)", borderRadius: 10, padding: "4px 8px", cursor: "pointer", opacity: bulkBusy ? 0.6 : 1, display: "flex", alignItems: "center", gap: 3 }}>
+                  ▶ Старт всем
+                </button>
+              )}
+            </div>
             {paused > 0    && <span style={{ fontSize: 10, fontWeight: 700, color: "#6ba8e5", background: "rgba(107,168,229,0.18)", border: "1px solid rgba(107,168,229,0.35)", borderRadius: 20, padding: "4px 10px" }}>{paused} на паузе</span>}
           </div>
         )}
@@ -495,7 +578,7 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
                     {q ? `Ничего не найдено по «${search}»` : "Нет кампаний в этой категории"}
                   </div>
                 </GlassCard>
-              ) : filtered.map((c, index) => <CampaignCard key={c.id} campaign={c} index={index} onEdit={onEdit} onRefresh={load} />)}
+              ) : filtered.map((c, index) => <CampaignCard key={c.id} campaign={c} index={index} onEdit={onEdit} onRefresh={load} sparkline={sparklines[c.id]} />)}
             </div>
           );
         })()}
