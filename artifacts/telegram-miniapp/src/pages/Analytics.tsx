@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { TrendingUp, Users2, Target, Zap, ArrowUpRight, Trophy } from "lucide-react";
+import { TrendingUp, Users2, Target, Zap, ArrowUpRight, Trophy, RotateCcw } from "lucide-react";
 import { api, AnalyticsOverview } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
@@ -91,26 +91,39 @@ function MiniBarChart({ data, color }: { data: TrendPoint[]; color: string }) {
 function HourlySendRateChart({ data }: { data: SendRatePoint[] }) {
   const maxTotal = Math.max(...data.map(d => d.total), 1);
   const currentHour = new Date().getHours();
+  const bestHour = data.reduce((best, d, i) => d.total > (data[best]?.total ?? 0) ? i : best, 0);
+  const totalToday = data.reduce((s, d) => s + d.total, 0);
+  const totalErrors = data.reduce((s, d) => s + (d.errors ?? 0), 0);
 
   return (
     <div>
+      {totalToday > 0 && (
+        <div style={{ display: "flex", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#6ba8e5" }}>📊 Сегодня: {totalToday.toLocaleString("ru")}</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#ffc946" }}>⭐ Пик: {String(bestHour).padStart(2, "0")}:00–{String(bestHour + 1).padStart(2, "0")}:00</span>
+          {totalErrors > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: "#ff6b7a" }}>✗ Ошибок: {totalErrors}</span>}
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 60 }}>
         {data.map((d, i) => {
           const pct = (d.total / maxTotal) * 100;
           const isNow = i === currentHour;
+          const isBest = i === bestHour && d.total > 0;
           const hasErrors = d.errors > 0;
           const barColor = hasErrors
             ? `linear-gradient(180deg, rgba(255,107,107,0.9), rgba(255,107,107,0.5))`
             : isNow
               ? `linear-gradient(180deg, ${TG.green}, ${TG.green}88)`
-              : `linear-gradient(180deg, rgba(107,168,229,0.85), rgba(107,168,229,0.35))`;
+              : isBest
+                ? `linear-gradient(180deg, #ffc946, #ffc94688)`
+                : `linear-gradient(180deg, rgba(107,168,229,0.85), rgba(107,168,229,0.35))`;
           return (
             <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end" }}>
               <div style={{
                 width: "100%", minHeight: d.total > 0 ? 3 : 1, height: `${pct}%`,
                 borderRadius: "2px 2px 0 0",
                 background: barColor,
-                boxShadow: isNow ? `0 0 8px ${TG.green}60` : undefined,
+                boxShadow: isNow ? `0 0 8px ${TG.green}60` : isBest ? "0 0 8px rgba(255,201,70,0.6)" : undefined,
                 opacity: d.total === 0 ? 0.2 : 1,
                 transformOrigin: "bottom",
                 animation: `growBar 0.4s ease-out ${i * 0.02}s both`
@@ -121,7 +134,7 @@ function HourlySendRateChart({ data }: { data: SendRatePoint[] }) {
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5 }}>
         {[0, 4, 8, 12, 16, 20, 23].map(h => (
-          <span key={h} style={{ fontSize: 7, color: h === currentHour ? TG.green : "rgba(160,190,230,0.45)" }}>{String(h).padStart(2, "0")}:00</span>
+          <span key={h} style={{ fontSize: 7, color: h === currentHour ? TG.green : h === bestHour ? "#ffc946" : "rgba(160,190,230,0.45)" }}>{String(h).padStart(2, "0")}:00</span>
         ))}
       </div>
       <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
@@ -132,6 +145,10 @@ function HourlySendRateChart({ data }: { data: SendRatePoint[] }) {
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "rgba(255,107,107,0.9)" }} />
           <span style={{ fontSize: 9, color: TG.muted }}>Ошибки</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#ffc946" }} />
+          <span style={{ fontSize: 9, color: TG.muted }}>Пиковый час</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: TG.green }} />
@@ -187,6 +204,7 @@ function DonutChart({ data }: { data: typeof FUEL_MIX }) {
 }
 
 export function AnalyticsPage() {
+  const [refreshing, setRefreshing] = useState(false);
   const [overview, setOverview]   = useState<AnalyticsOverview | null>(null);
   const [trend, setTrend]         = useState<TrendPoint[]>(MOCK_TREND);
   const [topCamps, setTopCamps]   = useState<TopCampaign[]>([]);
@@ -194,7 +212,10 @@ export function AnalyticsPage() {
   const [loading, setLoading]     = useState(true);
   const BASE = import.meta.env.VITE_API_URL ?? "";
 
-  useEffect(() => {
+  const [groupSendsToday, setGroupSendsToday] = useState<{ ok: number; failed: number } | null>(null);
+
+  function loadAll(showRefresh = false) {
+    if (showRefresh) setRefreshing(true); else setLoading(true);
     Promise.all([
       api.getOverview(),
       fetch(`${BASE}/api/analytics/trend`).then(r => r.ok ? r.json().then((rows: { date: string; sent: number; opened: number }[]) =>
@@ -202,13 +223,21 @@ export function AnalyticsPage() {
       ) : MOCK_TREND).catch(() => MOCK_TREND),
       fetch(`${BASE}/api/analytics/top-campaigns?limit=5`).then(r => r.ok ? r.json() : []).catch(() => []),
       fetch(`${BASE}/api/analytics/send-rate`).then(r => r.ok ? r.json() : []).catch(() => []),
-    ]).then(([ov, tr, tc, sr]) => {
+      api.getAccountSendsToday().catch(() => [] as { account_id: string; ok: number; failed: number }[]),
+    ]).then(([ov, tr, tc, sr, gs]) => {
       setOverview(ov);
       if (Array.isArray(tr) && tr.length > 0) setTrend(tr);
       if (Array.isArray(tc)) setTopCamps(tc);
       if (Array.isArray(sr) && sr.length > 0) setSendRate(sr);
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, [BASE]);
+      if (Array.isArray(gs) && gs.length > 0) {
+        const tot = (gs as { account_id: string; ok: number; failed: number }[])
+          .reduce((acc, r) => ({ ok: acc.ok + r.ok, failed: acc.failed + r.failed }), { ok: 0, failed: 0 });
+        setGroupSendsToday(tot);
+      }
+    }).catch(() => {}).finally(() => { setLoading(false); setRefreshing(false); });
+  }
+
+  useEffect(() => { loadAll(); }, [BASE]);
 
   const ov = overview;
   const kpis = [
@@ -224,6 +253,7 @@ export function AnalyticsPage() {
         @keyframes slideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes shimmer { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
         @keyframes growBar { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
       <div style={{ display:"flex",flexDirection:"column",gap:14,padding:"14px 14px 24px" }}>
 
@@ -232,8 +262,17 @@ export function AnalyticsPage() {
           margin: "-14px -14px 0 -14px", padding: "14px 14px 14px",
           background: "linear-gradient(to bottom, rgba(6,8,16,0.95) 40%, transparent)",
           backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
-          fontSize:18,fontWeight:800,color:TG.text,letterSpacing:"-0.02em"
-        }}>Аналитика</div>
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          <span style={{ fontSize:18,fontWeight:800,color:TG.text,letterSpacing:"-0.02em" }}>Аналитика</span>
+          <button
+            onClick={() => { haptic.light(); loadAll(true); }}
+            disabled={refreshing || loading}
+            style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(107,168,229,0.10)", border: "1px solid rgba(107,168,229,0.25)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: refreshing ? 0.5 : 1 }}
+          >
+            <RotateCcw size={13} color="#6ba8e5" style={{ animation: refreshing ? "spin 0.8s linear infinite" : undefined }} />
+          </button>
+        </div>
 
         {/* KPI 2×2 */}
         <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8 }}>
@@ -260,6 +299,22 @@ export function AnalyticsPage() {
             );
           })}
         </div>
+
+        {/* Group sends today strip */}
+        {groupSendsToday && (groupSendsToday.ok + groupSendsToday.failed) > 0 && (
+          <GlassCard style={{ padding: "10px 14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: TG.muted, flex: 1 }}>📡 Групповые рассылки сегодня</div>
+              <span style={{ fontSize: 11, fontWeight: 800, color: "#2de897" }}>✓{groupSendsToday.ok}</span>
+              {groupSendsToday.failed > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: "#ff6b7a" }}>✗{groupSendsToday.failed}</span>}
+              {groupSendsToday.ok + groupSendsToday.failed > 0 && (
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#ffc946", background: "rgba(255,201,70,0.10)", border: "1px solid rgba(255,201,70,0.25)", borderRadius: 20, padding: "2px 7px" }}>
+                  {Math.round(groupSendsToday.ok / (groupSendsToday.ok + groupSendsToday.failed) * 100)}% успех
+                </span>
+              )}
+            </div>
+          </GlassCard>
+        )}
 
         {/* Trend chart */}
         <GlassCard style={{ padding:"14px 14px 10px" }}>
@@ -308,6 +363,12 @@ export function AnalyticsPage() {
                 const medals = ["🥇","🥈","🥉","4️⃣","5️⃣"];
                 const maxSent = topCamps[0]?.sent ?? 1;
                 const pct = Math.round((c.sent / maxSent) * 100);
+                const openRate: number | null = c.openRate != null ? Math.round(c.openRate) : null;
+                const barColor = openRate != null && openRate >= 20
+                  ? `linear-gradient(90deg,${TG.green},#6ba8e5)`
+                  : openRate != null && openRate >= 10
+                    ? `linear-gradient(90deg,#ffc946,#6ba8e5)`
+                    : `linear-gradient(90deg,#6ba8e5,#7c8db0)`;
                 return (
                   <div key={c.id}>
                     <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4 }}>
@@ -315,13 +376,20 @@ export function AnalyticsPage() {
                         <span style={{ fontSize:13 }}>{medals[i]}</span>
                         <span style={{ fontSize:11,color:TG.text,fontWeight:600,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",flex:1 }}>{c.name}</span>
                       </div>
-                      <div style={{ textAlign:"right",flexShrink:0,marginLeft:8 }}>
-                        <span style={{ fontSize:11,fontWeight:800,color:TG.green }}>{c.sent.toLocaleString("ru")}</span>
-                        <span style={{ fontSize:10,color:TG.muted,marginLeft:4 }}>отпр.</span>
+                      <div style={{ textAlign:"right",flexShrink:0,marginLeft:8,display:"flex",alignItems:"center",gap:8 }}>
+                        {openRate != null && openRate > 0 && (
+                          <span style={{ fontSize:9,fontWeight:700,color:openRate>=20?TG.green:openRate>=10?"#ffc946":"#7c8db0",background:`${openRate>=20?TG.green:openRate>=10?"#ffc946":"#7c8db0"}18`,borderRadius:10,padding:"1px 5px" }}>
+                            👁 {openRate}%
+                          </span>
+                        )}
+                        <div>
+                          <span style={{ fontSize:11,fontWeight:800,color:TG.green }}>{c.sent.toLocaleString("ru")}</span>
+                          <span style={{ fontSize:10,color:TG.muted,marginLeft:4 }}>отпр.</span>
+                        </div>
                       </div>
                     </div>
                     <div style={{ height:2,borderRadius:1,background:"rgba(255,255,255,0.07)" }}>
-                      <div style={{ height:"100%",width:`${pct}%`,borderRadius:1,background:`linear-gradient(90deg,${TG.green},#6ba8e5)`,opacity:0.7 }} />
+                      <div style={{ height:"100%",width:`${pct}%`,borderRadius:1,background:barColor,opacity:0.8 }} />
                     </div>
                   </div>
                 );

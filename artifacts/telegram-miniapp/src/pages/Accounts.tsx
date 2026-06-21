@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Shield, Plus, ChevronDown, ChevronUp, X, RotateCcw, Power,
-  Trash2, Key, CheckCircle, AlertCircle, Loader, Lock, Timer, XCircle,
+  Trash2, Key, CheckCircle, AlertCircle, Loader, Lock, Timer, XCircle, Copy,
 } from "lucide-react";
 import { api, SenderAccount } from "../lib/api";
 import { TG } from "../lib/theme";
@@ -307,11 +307,18 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
 // ── Account card ─────────────────────────────────────────────────────────────
 
 function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => void }) {
-  const [expanded,     setExpanded]     = useState(false);
-  const [showAuth,     setShowAuth]     = useState(false);
-  const [busy,         setBusy]         = useState(false);
-  const [editingLimit, setEditingLimit] = useState(false);
-  const [limitInput,   setLimitInput]   = useState(String(acc.daily_limit ?? 300));
+  const [expanded,      setExpanded]      = useState(false);
+  const [showAuth,      setShowAuth]      = useState(false);
+  const [busy,          setBusy]          = useState(false);
+  const [editingLimit,  setEditingLimit]  = useState(false);
+  const [limitInput,    setLimitInput]    = useState(String(acc.daily_limit ?? 300));
+  const [bannedCount,   setBannedCount]   = useState<number | null>(null);
+
+  useEffect(() => {
+    api.getBannedGroups(acc.id)
+      .then(groups => setBannedCount(groups.length))
+      .catch(() => setBannedCount(null));
+  }, [acc.id]);
 
   const isFlooded = acc.status === "flood_wait" && !!acc.flood_wait_until;
 
@@ -378,6 +385,11 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          {bannedCount !== null && bannedCount > 0 && !acc.is_banned && (
+            <span style={{ fontSize: 8, fontWeight: 700, color: "#ffc946", background: "rgba(255,201,70,0.12)", border: "1px solid rgba(255,201,70,0.28)", borderRadius: 20, padding: "2px 6px" }}>
+              ⛔{bannedCount}
+            </span>
+          )}
           {acc.is_banned ? (
             <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, color: "#ff6b7a", background: "rgba(255,107,122,0.15)", border: "1px solid rgba(255,107,122,0.35)", borderRadius: 20, padding: "2px 7px" }}>
               🚫 БАН
@@ -428,18 +440,28 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
       {expanded && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid rgba(255,255,255,0.07)", paddingTop: 12 }}>
           {/* Stats row */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
-            {[
-              { label: "Всего",  value: acc.sent_total?.toLocaleString("ru") ?? "0", color: "#6ba8e5" },
-              { label: "Ошибок", value: acc.failed_total?.toLocaleString("ru") ?? "0", color: "#ff6b7a" },
-              { label: "Статус", value: acc.status, color: statusColor },
-            ].map(s => (
-              <div key={s.label} style={{ textAlign: "center", background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "7px 4px" }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: s.color }}>{s.value}</div>
-                <div style={{ fontSize: 9, color: TG.muted, marginTop: 1 }}>{s.label}</div>
+          {(() => {
+            const sent   = acc.sent_total ?? 0;
+            const failed = acc.failed_total ?? 0;
+            const total  = sent + failed;
+            const sr     = total > 0 ? Math.round((sent / total) * 100) : null;
+            const srColor = sr === null ? TG.muted : sr >= 90 ? "#2de897" : sr >= 70 ? "#ffc946" : "#ff6b7a";
+            return (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
+                {[
+                  { label: "Всего",    value: sent.toLocaleString("ru"),   color: "#6ba8e5" },
+                  { label: "Ошибок",   value: failed.toLocaleString("ru"), color: "#ff6b7a" },
+                  { label: "Успех",    value: sr !== null ? `${sr}%` : "—", color: srColor },
+                  { label: "Статус",   value: acc.status,                  color: statusColor },
+                ].map(s => (
+                  <div key={s.label} style={{ textAlign: "center", background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "7px 4px" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: s.color }}>{s.value}</div>
+                    <div style={{ fontSize: 9, color: TG.muted, marginTop: 1 }}>{s.label}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            );
+          })()}
 
           {/* API creds + proxy indicator */}
           {(acc.api_id || acc.username || acc.proxy || (acc as any).proxies) && (
@@ -525,9 +547,12 @@ export function AccountsPage({ onClose }: { onClose?: () => void }) {
   useEffect(() => { load(); }, [load]);
   useSse(() => { load(); });
 
-  const active    = accounts.filter(a => a.is_active && a.status !== "banned").length;
-  const authed    = accounts.filter(a => !!a.session_file).length;
-  const totalSent = accounts.reduce((s, a) => s + (a.sent_today ?? 0), 0);
+  const active      = accounts.filter(a => a.is_active && a.status !== "banned").length;
+  const authed      = accounts.filter(a => !!a.session_file).length;
+  const totalSent   = accounts.reduce((s, a) => s + (a.sent_today ?? 0), 0);
+  const totalLimit  = accounts.reduce((s, a) => s + (a.daily_limit ?? 0), 0);
+  const quotaPct    = totalLimit > 0 ? Math.min(Math.round(totalSent / totalLimit * 100), 100) : 0;
+  const quotaColor  = quotaPct >= 90 ? "#ff6b7a" : quotaPct >= 70 ? "#ffc946" : "#2de897";
 
   return (
     <div style={{ height: "100%", position: "relative" }}>
@@ -573,6 +598,7 @@ export function AccountsPage({ onClose }: { onClose?: () => void }) {
 
         {/* Summary 4-col */}
         {!loading && (
+          <>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
             {[
               { label: "Всего",      value: String(accounts.length),  color: TG.text },
@@ -586,6 +612,18 @@ export function AccountsPage({ onClose }: { onClose?: () => void }) {
               </GlassCard>
             ))}
           </div>
+          {totalLimit > 0 && (
+            <GlassCard style={{ padding: "10px 14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: TG.muted }}>Общая квота за сегодня</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: quotaColor }}>{totalSent.toLocaleString("ru")} / {totalLimit.toLocaleString("ru")} · {quotaPct}%</span>
+              </div>
+              <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${quotaPct}%`, borderRadius: 2, background: `linear-gradient(90deg, ${quotaColor}, ${quotaColor}99)`, boxShadow: `0 0 6px ${quotaColor}66`, transition: "width 0.6s ease" }} />
+              </div>
+            </GlassCard>
+          )}
+          </>
         )}
 
         {loading ? (

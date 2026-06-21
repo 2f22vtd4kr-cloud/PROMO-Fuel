@@ -265,6 +265,42 @@ router.post("/accounts/:id/confirm-2fa", async (req, res) => {
   }
 });
 
+// ── Banned groups for an account (read from local DB) ────────────────────────
+
+router.get("/accounts/:id/banned-groups", (req, res) => {
+  try {
+    const db = getDb(true);
+    let rows: { group_id: string; group_title: string | null; ban_reason: string | null; banned_at: string | null }[] = [];
+    try {
+      rows = db.prepare(`
+        SELECT group_id, group_title, ban_reason, banned_at
+        FROM account_groups
+        WHERE account_id = ? AND is_banned = 1
+        ORDER BY banned_at DESC
+      `).all(Number(req.params.id)) as typeof rows;
+    } catch {}
+    db.close();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.delete("/accounts/:id/banned-groups/:groupId", (req, res) => {
+  try {
+    const db = new Database(DB_PATH);
+    db.prepare(`
+      UPDATE account_groups
+      SET is_banned = 0, ban_reason = NULL, banned_at = NULL
+      WHERE account_id = ? AND group_id = ?
+    `).run(Number(req.params.id), req.params.groupId);
+    db.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 // ── Account groups — proxy to Telethon auth server ───────────────────────────
 
 router.get("/accounts/:id/groups", async (req, res) => {

@@ -156,7 +156,20 @@ export function AudiencePage() {
 
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>Аудитория</div>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>Аудитория</div>
+            {!loading && (
+              <div style={{ fontSize: 10, color: TG.muted, marginTop: 1 }}>
+                {users.length > 0 ? (
+                  <>
+                    <span style={{ color: "#6ba8e5", fontWeight: 700 }}>{users.length}</span> пользователей
+                    {allTags.length > 0 && <> · <span style={{ color: "#c4aeff", fontWeight: 700 }}>{allTags.length}</span> тегов</>}
+                    {hasAnyFilter && <> · <span style={{ color: "#ffc946", fontWeight: 700 }}>{filtered.length}</span> в фильтре</>}
+                  </>
+                ) : "Нет данных"}
+              </div>
+            )}
+          </div>
           <div style={{ display: "flex", gap: 8 }}>
             <input ref={fileRef} type="file" accept=".csv,.json,.jsonl" style={{ display: "none" }} onChange={handleFile} />
             <GlassCard

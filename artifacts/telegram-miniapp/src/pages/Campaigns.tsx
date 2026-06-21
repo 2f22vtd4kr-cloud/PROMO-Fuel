@@ -427,6 +427,7 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
   const [tab,         setTab]         = useState<StatusTab>("all");
   const [sparklines,  setSparklines]  = useState<Record<number, number[]>>({});
   const [bulkBusy,    setBulkBusy]    = useState<"pause" | "resume" | null>(null);
+  const [sortBy,      setSortBy]      = useState<"status" | "sent" | "name">("status");
 
   const load = useCallback(async () => {
     try {
@@ -475,12 +476,18 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
     } catch { haptic.error(); } finally { setBulkBusy(null); }
   }
 
-  const tabFiltered = campaigns.filter(c => {
-    if (tab === "active")   return c.status === "running" || c.status === "sending" || c.status === "paused" || c.status === "scheduled";
-    if (tab === "draft")    return c.status === "draft";
-    if (tab === "done")     return c.status === "done" || c.status === "cancelled";
-    return true;
-  });
+  const tabFiltered = campaigns
+    .filter(c => {
+      if (tab === "active")   return c.status === "running" || c.status === "sending" || c.status === "paused" || c.status === "scheduled";
+      if (tab === "draft")    return c.status === "draft";
+      if (tab === "done")     return c.status === "done" || c.status === "cancelled";
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === "sent") return (b.sent_count ?? 0) - (a.sent_count ?? 0);
+      if (sortBy === "name") return a.name.localeCompare(b.name, "ru");
+      return statusPriority(a.status) - statusPriority(b.status);
+    });
 
   return (
     <div className="tab-content" style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
@@ -498,6 +505,16 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
               <span style={{ fontSize: 12, color: TG.green, fontWeight: 700 }}>Создать</span>
             </div>
           </GlassCard>
+        </div>
+
+        {/* Sort toggle */}
+        <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+          <span style={{ fontSize: 10, color: TG.muted, fontWeight: 600 }}>Сортировка:</span>
+          {([["status", "Статус"], ["sent", "Отправлено"], ["name", "А–Я"]] as const).map(([key, label]) => (
+            <button key={key} onClick={() => setSortBy(key)} style={{ fontSize: 10, padding: "3px 9px", borderRadius: 20, border: `1px solid ${sortBy === key ? "#6ba8e5" : "rgba(255,255,255,0.10)"}`, background: sortBy === key ? "rgba(107,168,229,0.15)" : "transparent", color: sortBy === key ? "#6ba8e5" : TG.muted, cursor: "pointer", fontWeight: 600, flexShrink: 0 }}>
+              {label}
+            </button>
+          ))}
         </div>
 
         {/* Status tabs */}
@@ -527,7 +544,7 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
               placeholder="Поиск по названию..."
               style={{
                 width: "100%", boxSizing: "border-box",
-                padding: "9px 12px 9px 34px",
+                padding: "9px 36px 9px 34px",
                 background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)",
                 borderRadius: 12, color: TG.text, fontSize: 12, outline: "none",
               }}
@@ -535,8 +552,38 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
             <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", opacity: 0.4 }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
             </svg>
+            {search && (
+              <button onClick={() => { setSearch(""); haptic.light(); }}
+                style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", alignItems: "center", justifyContent: "center", color: TG.muted }}>
+                ✕
+              </button>
+            )}
           </div>
         )}
+
+        {/* Campaign totals strip */}
+        {!loading && campaigns.length > 0 && (() => {
+          const totSent   = campaigns.reduce((s, c) => s + (c.sent_count ?? 0), 0);
+          const totFailed = campaigns.reduce((s, c) => s + (c.failed_count ?? 0), 0);
+          const totTarget = campaigns.reduce((s, c) => s + (c.target_count ?? 0), 0);
+          const totAll    = totSent + totFailed;
+          const sr        = totAll > 0 ? Math.round((totSent / totAll) * 100) : null;
+          return (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
+              {[
+                { label: "Отправлено", value: totSent.toLocaleString("ru"),   color: "#2de897" },
+                { label: "Ошибок",     value: totFailed.toLocaleString("ru"), color: "#ff6b7a" },
+                { label: "Аудитория",  value: totTarget.toLocaleString("ru"), color: "#6ba8e5" },
+                { label: "Успех",      value: sr !== null ? `${sr}%` : "—",   color: sr === null ? TG.muted : sr >= 80 ? "#2de897" : "#ffc946" },
+              ].map(s => (
+                <GlassCard key={s.label} style={{ padding: "8px 4px", textAlign: "center" }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: s.color }}>{s.value}</div>
+                  <div style={{ fontSize: 8, color: TG.muted, marginTop: 2 }}>{s.label}</div>
+                </GlassCard>
+              ))}
+            </div>
+          );
+        })()}
 
         {!loading && (active > 0 || paused > 0) && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>

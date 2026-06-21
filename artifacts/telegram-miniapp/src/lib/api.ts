@@ -116,6 +116,13 @@ export interface AccountGroup {
   refreshed_at: string;
 }
 
+export interface BannedGroup {
+  group_id: string;
+  group_title: string | null;
+  ban_reason: string | null;
+  banned_at: string | null;
+}
+
 export interface GroupSendStat {
   group_id: string;
   group_title?: string;
@@ -320,6 +327,9 @@ export const api = {
   getAccountGroups: (accountId: number) => get<AccountGroup[]>(`/accounts/${accountId}/groups`),
   refreshAccountGroups: (accountId: number) =>
     post<{ ok: boolean; count: number; groups: AccountGroup[] }>(`/accounts/${accountId}/groups/refresh`, {}),
+  getBannedGroups: (accountId: number) => get<BannedGroup[]>(`/accounts/${accountId}/banned-groups`),
+  liftGroupBan: (accountId: number, groupId: string) =>
+    del(`/accounts/${accountId}/banned-groups/${encodeURIComponent(groupId)}`),
 
   // Workers / task queue
   getWorkers: () => get<BroadcastWorker[]>("/workers"),

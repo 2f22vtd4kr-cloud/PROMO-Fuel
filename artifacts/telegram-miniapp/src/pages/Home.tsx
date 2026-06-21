@@ -16,22 +16,26 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
   const [users,          setUsers]          = useState(0);
   const [loading,        setLoading]        = useState(true);
   const [workers,        setWorkers]        = useState<WorkersSummary | null>(null);
+  const [bannedAcctCount, setBannedAcctCount] = useState(0);
+  const [lastRefreshed,  setLastRefreshed]  = useState<Date | null>(null);
 
   useEffect(() => {
-    Promise.all([api.getOverview(), api.getCampaigns(), api.getUsers(), api.getWorkersSummary(), api.getGroupCampaigns()])
-      .then(([ov, cps, us, ws, gcs]) => {
+    Promise.all([api.getOverview(), api.getCampaigns(), api.getUsers(), api.getWorkersSummary(), api.getGroupCampaigns(), api.getAccounts()])
+      .then(([ov, cps, us, ws, gcs, accts]) => {
         setOverview(ov);
         setCampaigns(cps.slice(0, 3));
         setUsers(us.length);
         setWorkers(ws);
         setGroupCampaigns(gcs.filter(g => g.status === "running").length);
+        setBannedAcctCount(accts.filter((a: { is_banned: number }) => a.is_banned === 1).length);
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setLastRefreshed(new Date()); });
     const t = setInterval(() => {
       api.getOverview().then(setOverview).catch(() => {});
       api.getWorkersSummary().then(setWorkers).catch(() => {});
       api.getGroupCampaigns().then(gcs => setGroupCampaigns(gcs.filter(g => g.status === "running").length)).catch(() => {});
+      setLastRefreshed(new Date());
     }, 30_000);
     return () => clearInterval(t);
   }, []);
@@ -119,6 +123,13 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
             </div>
           </div>
 
+          {/* Last-refresh timestamp */}
+          {lastRefreshed && (
+            <div style={{ fontSize: 9, color: TG.muted, textAlign: "right", paddingRight: 16, marginTop: -6 }}>
+              Обновлено: {lastRefreshed.toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            </div>
+          )}
+
           {/* Worker dots strip */}
           {workers && (
             workers.alive_workers === 0 ? (
@@ -151,6 +162,23 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                 )}
               </div>
             )
+          )}
+
+          {/* Banned accounts warning */}
+          {bannedAcctCount > 0 && (
+            <div
+              onClick={() => { haptic.medium(); onNavigate("workers"); }}
+              style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 14px", padding: "8px 12px", borderRadius: 12, background: "rgba(255,107,122,0.07)", border: "1px solid rgba(255,107,122,0.30)", cursor: "pointer", animation: "slideUp 0.4s ease-out" }}
+            >
+              <span style={{ fontSize: 13 }}>⛔</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#ff6b7a" }}>
+                  {bannedAcctCount === 1 ? "1 аккаунт заблокирован Telegram" : `${bannedAcctCount} аккаунта заблокированы Telegram`}
+                </div>
+                <div style={{ fontSize: 10, color: TG.muted }}>Нажми чтобы проверить аккаунты</div>
+              </div>
+              <ArrowUpRight size={14} color="#ff6b7a" />
+            </div>
           )}
 
           <div style={{ padding: "0 14px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -317,10 +345,10 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
               {campaigns.map((c, i) => {
                 const colors = ["#6ba8e5", "#2de897", "#ff9f40"];
                 const glows = ["rgba(107,168,229,0.38)", "rgba(45,232,151,0.38)", "rgba(255,159,64,0.38)"];
-                const badges = ["ТОП", "АКТИВНА", "НОВАЯ"];
                 const color = colors[i % colors.length]!;
                 const glow = glows[i % glows.length]!;
-                const badge = badges[i % badges.length]!;
+                const badge = c.status === "running" ? "АКТИВНА" : c.status === "paused" ? "ПАУЗА" : "ЧЕРНОВИК";
+                const badgeColor = c.status === "running" ? "#2de897" : c.status === "paused" ? "#ffc946" : "#7c8db0";
                 const claimed = c.sent_count;
                 const total = c.target_count || 1;
                 const pct = Math.min(100, Math.round(claimed / total * 100));
@@ -346,17 +374,22 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                       </div>
                       <span style={{
                         fontSize: 9, fontWeight: 800, letterSpacing: "0.05em",
-                        color: color, background: `${color}20`,
-                        border: `1px solid ${color}40`,
+                        color: badgeColor, background: `${badgeColor}20`,
+                        border: `1px solid ${badgeColor}40`,
                         borderRadius: 20, padding: "2px 8px", flexShrink: 0,
                       }}>{badge}</span>
                     </div>
                     <div>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
                         <span style={{ fontSize: 10, color: TG.muted }}>Использовано</span>
-                        <span style={{ fontSize: 10, color: color, fontWeight: 700 }}>
-                          {claimed.toLocaleString("ru")} / {total.toLocaleString("ru")}
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          {pct > 0 && (
+                            <span style={{ fontSize: 9, fontWeight: 700, color, background: `${color}15`, border: `1px solid ${color}35`, borderRadius: 8, padding: "1px 5px" }}>{pct}%</span>
+                          )}
+                          <span style={{ fontSize: 10, color, fontWeight: 700 }}>
+                            {claimed.toLocaleString("ru")} / {total.toLocaleString("ru")}
+                          </span>
+                        </div>
                       </div>
                       <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
                         <div style={{

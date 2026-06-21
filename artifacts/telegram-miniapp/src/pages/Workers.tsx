@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import {
   api, BroadcastWorker, Task, WorkersSummary,
-  GroupCampaign, SenderAccount, RecoverLocksResult, WorkerCrashEvent,
+  GroupCampaign, SenderAccount, RecoverLocksResult, WorkerCrashEvent, BannedGroup,
 } from "../lib/api";
 import { useSse } from "../lib/useSse";
 import { TG } from "../lib/theme";
@@ -159,9 +159,12 @@ function WorkerCard({ worker, index = 0, onDelete }: { worker: BroadcastWorker; 
         ))}
       </div>
 
-      {worker.current_task && (
-        <div style={{ marginTop: 10, fontSize: 11, color: "#6ba8e5", display: "flex", alignItems: "center", gap: 4 }}>
-          <Activity size={10} /> Задача #{worker.current_task}
+      {worker.current_task && working && (
+        <div style={{ marginTop: 10, padding: "6px 8px", borderRadius: 8, background: "rgba(107,168,229,0.08)", border: "1px solid rgba(107,168,229,0.20)", display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#6ba8e5", flexShrink: 0, animation: "pulse 1.2s ease-in-out infinite" }} />
+          <Activity size={9} color="#6ba8e5" />
+          <span style={{ fontSize: 10, color: "#6ba8e5", fontWeight: 700 }}>Задача #{worker.current_task}</span>
+          {worker.status === "working" && <span style={{ fontSize: 9, color: TG.muted, marginLeft: "auto" }}>в процессе</span>}
         </div>
       )}
       {worker.last_error && (
@@ -184,7 +187,7 @@ function WorkerCard({ worker, index = 0, onDelete }: { worker: BroadcastWorker; 
   );
 }
 
-function TaskRow({ task, onAction }: { task: Task; onAction: () => void }) {
+function TaskRow({ task, onAction, campaignName }: { task: Task; onAction: () => void; campaignName?: string }) {
   const [busy, setBusy] = useState(false);
   const color = sc(task.status);
 
@@ -195,14 +198,20 @@ function TaskRow({ task, onAction }: { task: Task; onAction: () => void }) {
     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", marginBottom: 4 }}>
       <span style={{ fontSize: 10, color, background: `${color}18`, borderRadius: 20, padding: "2px 7px", fontWeight: 700, flexShrink: 0 }}>{task.status}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, color: TG.text }}>
-          #{task.id} — кампания {task.campaign_id}
+        <div style={{ fontSize: 12, color: TG.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {campaignName
+            ? <span style={{ fontWeight: 600 }}>{campaignName}</span>
+            : <span style={{ color: TG.muted }}>кампания #{task.campaign_id}</span>
+          }
           {task.worker_id && task.status === "claimed" && <span style={{ color: "#ffc946", fontSize: 10, marginLeft: 5 }}>@ {task.worker_id}</span>}
         </div>
-        {task.scheduled_at && task.status === "pending" && (() => {
-          const diff = Math.floor((new Date(task.scheduled_at!).getTime() - Date.now()) / 1000);
-          return diff > 5 ? <div style={{ fontSize: 10, color: "#ffc946" }}>⏰ через {formatCountdown(task.scheduled_at)}</div> : null;
-        })()}
+        <div style={{ fontSize: 9, color: TG.muted }}>
+          Задача #{task.id}
+          {task.scheduled_at && task.status === "pending" && (() => {
+            const diff = Math.floor((new Date(task.scheduled_at!).getTime() - Date.now()) / 1000);
+            return diff > 5 ? <span style={{ color: "#ffc946", marginLeft: 5 }}>⏰ через {formatCountdown(task.scheduled_at)}</span> : null;
+          })()}
+        </div>
         {task.error && <div style={{ fontSize: 10, color: "#ff6b7a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.error}</div>}
       </div>
       <div style={{ fontSize: 9, color: TG.muted, flexShrink: 0 }}>{task.attempts}/{task.max_attempts}</div>
@@ -301,6 +310,34 @@ function AccountRow({ account, sendsToday }: { account: SenderAccount; sendsToda
     : (locked || st === "broadcasting" || st === "sending") ? "#ffc946"
     : "#ff6b7a";
 
+  const [expanded,     setExpanded]     = useState(false);
+  const [bannedGroups, setBannedGroups] = useState<BannedGroup[]>([]);
+  const [banLoading,   setBanLoading]   = useState(false);
+  const [liftingId,    setLiftingId]    = useState<string | null>(null);
+
+  async function loadBanned() {
+    setBanLoading(true);
+    try { setBannedGroups(await api.getBannedGroups(account.id)); } catch {}
+    finally { setBanLoading(false); }
+  }
+
+  function toggle() {
+    haptic.light();
+    if (!expanded) loadBanned();
+    setExpanded(v => !v);
+  }
+
+  async function liftBan(groupId: string) {
+    haptic.medium();
+    setLiftingId(groupId);
+    try {
+      await api.liftGroupBan(account.id, groupId);
+      setBannedGroups(prev => prev.filter(g => g.group_id !== groupId));
+      haptic.success();
+    } catch { haptic.error(); }
+    finally { setLiftingId(null); }
+  }
+
   let proxyDisplay = "—";
   try {
     const p = account.proxy || account.proxies;
@@ -312,37 +349,93 @@ function AccountRow({ account, sendsToday }: { account: SenderAccount; sendsToda
   } catch {}
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderRadius: 10, background: color === "#2de897" ? "rgba(45,232,151,0.04)" : color === "#ffc946" ? "rgba(255,201,70,0.05)" : "rgba(255,107,122,0.05)", border: `1px solid ${color}22`, marginBottom: 4 }}>
-      <div style={{ width: 7, height: 7, borderRadius: "50%", background: color, flexShrink: 0 }} />
-      <Phone size={11} color={color} style={{ flexShrink: 0 }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, color: TG.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {account.phone}
-          {account.label && <span style={{ marginLeft: 5, fontSize: 10, color: TG.muted }}>({account.label})</span>}
+    <div style={{ borderRadius: 10, background: color === "#2de897" ? "rgba(45,232,151,0.04)" : color === "#ffc946" ? "rgba(255,201,70,0.05)" : "rgba(255,107,122,0.05)", border: `1px solid ${color}22`, marginBottom: 4, overflow: "hidden" }}>
+      {/* ── Main row (tap to expand) ── */}
+      <div onClick={toggle} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", cursor: "pointer" }}>
+        <div style={{ width: 7, height: 7, borderRadius: "50%", background: color, flexShrink: 0 }} />
+        <Phone size={11} color={color} style={{ flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12, color: TG.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {account.phone}
+            {account.label && <span style={{ marginLeft: 5, fontSize: 10, color: TG.muted }}>({account.label})</span>}
+          </div>
+          <div style={{ fontSize: 10, color: TG.muted, marginTop: 1 }}>
+            {locked ? <span style={{ color: "#ffc946" }}>🔒 {account.locked_by}</span> : <span style={{ color: "#2de897" }}>свободен</span>}
+            {proxyDisplay !== "—" && (
+              <span style={{ marginLeft: 8 }}>
+                🌐 {proxyDisplay}
+                {account.proxy_index !== undefined && account.proxy_index > 0 && <span style={{ opacity: 0.6 }}> [#{account.proxy_index}]</span>}
+              </span>
+            )}
+            {account.last_used_at && <span style={{ marginLeft: 8, opacity: 0.65 }}>{timeAgo(account.last_used_at)} назад</span>}
+          </div>
         </div>
-        <div style={{ fontSize: 10, color: TG.muted, marginTop: 1 }}>
-          {locked ? <span style={{ color: "#ffc946" }}>🔒 {account.locked_by}</span> : <span style={{ color: "#2de897" }}>свободен</span>}
-          {proxyDisplay !== "—" && (
-            <span style={{ marginLeft: 8 }}>
-              🌐 {proxyDisplay}
-              {account.proxy_index !== undefined && account.proxy_index > 0 && <span style={{ opacity: 0.6 }}> [#{account.proxy_index}]</span>}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color, background: `${color}14`, border: `1px solid ${color}28`, borderRadius: 20, padding: "2px 7px" }}>
+            {account.broadcasting ? "⚡ live" : st}
+          </span>
+          {sendsToday && (sendsToday.ok + sendsToday.failed) > 0 && (
+            <span style={{ fontSize: 8, color: TG.muted }}>
+              <span style={{ color: "#2de897" }}>✓{sendsToday.ok}</span>
+              {sendsToday.failed > 0 && <span style={{ color: "#ff6b7a", marginLeft: 3 }}>✗{sendsToday.failed}</span>}
+              {" сегодня"}
             </span>
           )}
-          {account.last_used_at && <span style={{ marginLeft: 8, opacity: 0.65 }}>{timeAgo(account.last_used_at)} назад</span>}
+          <span style={{ fontSize: 8, color: TG.muted, opacity: 0.5 }}>{expanded ? "▲" : "▼"}</span>
         </div>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
-        <span style={{ fontSize: 10, fontWeight: 700, color, background: `${color}14`, border: `1px solid ${color}28`, borderRadius: 20, padding: "2px 7px" }}>
-          {account.broadcasting ? "⚡ live" : st}
-        </span>
-        {sendsToday && (sendsToday.ok + sendsToday.failed) > 0 && (
-          <span style={{ fontSize: 8, color: TG.muted }}>
-            <span style={{ color: "#2de897" }}>✓{sendsToday.ok}</span>
-            {sendsToday.failed > 0 && <span style={{ color: "#ff6b7a", marginLeft: 3 }}>✗{sendsToday.failed}</span>}
-            {" сегодня"}
-          </span>
-        )}
-      </div>
+
+      {/* ── Expanded: Banned groups panel ── */}
+      {expanded && (
+        <div style={{ borderTop: `1px solid ${color}18`, padding: "10px 12px", background: "rgba(0,0,0,0.12)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#ff6b7a", display: "flex", alignItems: "center", gap: 5 }}>
+              ⛔ Заблокированные группы
+              {bannedGroups.length > 0 && (
+                <span style={{ background: "rgba(255,107,122,0.18)", border: "1px solid rgba(255,107,122,0.35)", borderRadius: 20, padding: "1px 6px" }}>{bannedGroups.length}</span>
+              )}
+            </span>
+            <button onClick={(e) => { e.stopPropagation(); loadBanned(); }} style={{ fontSize: 9, color: "#6ba8e5", background: "rgba(107,168,229,0.10)", border: "1px solid rgba(107,168,229,0.25)", borderRadius: 8, padding: "3px 7px", cursor: "pointer" }}>
+              обновить
+            </button>
+          </div>
+
+          {banLoading && (
+            <div style={{ fontSize: 10, color: TG.muted, textAlign: "center", padding: "8px 0" }}>загрузка…</div>
+          )}
+
+          {!banLoading && bannedGroups.length === 0 && (
+            <div style={{ fontSize: 10, color: TG.muted, textAlign: "center", padding: "8px 0", opacity: 0.6 }}>
+              Нет заблокированных групп ✓
+            </div>
+          )}
+
+          {!banLoading && bannedGroups.map(g => (
+            <div key={g.group_id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "7px 8px", borderRadius: 8, background: "rgba(255,107,122,0.07)", border: "1px solid rgba(255,107,122,0.15)", marginBottom: 4 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: TG.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {g.group_title || g.group_id}
+                </div>
+                <div style={{ fontSize: 9, color: "#ff6b7a", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {g.ban_reason || "Заблокирован"}
+                </div>
+                {g.banned_at && (
+                  <div style={{ fontSize: 8, color: TG.muted, marginTop: 1 }}>
+                    {new Date(g.banned_at).toLocaleDateString("ru")}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); liftBan(g.group_id); }}
+                disabled={liftingId === g.group_id}
+                style={{ fontSize: 9, fontWeight: 700, color: "#2de897", background: "rgba(45,232,151,0.10)", border: "1px solid rgba(45,232,151,0.25)", borderRadius: 8, padding: "4px 8px", cursor: "pointer", opacity: liftingId === g.group_id ? 0.5 : 1, flexShrink: 0 }}
+              >
+                {liftingId === g.group_id ? "…" : "Разблокировать"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -360,6 +453,7 @@ export function WorkersPage() {
   const [accountStats,  setAccountStats]  = useState<Record<string, { ok: number; failed: number }>>({});
   const [loading,       setLoading]       = useState(true);
   const [taskTab,       setTaskTab]       = useState<"all" | "pending" | "claimed" | "failed">("all");
+  const [taskSearch,    setTaskSearch]    = useState("");
   const [showAccounts,  setShowAccounts]  = useState(false);
   const [sseAlive,      setSseAlive]      = useState(false);
   const [crashHistory,  setCrashHistory]  = useState<WorkerCrashEvent[]>([]);
@@ -468,7 +562,9 @@ export function WorkersPage() {
     return () => clearInterval(interval);
   }, [load]);
 
-  const filteredTasks = (taskTab === "all" ? tasks : tasks.filter(t => t.status === taskTab)).slice(0, 50);
+  const filteredTasks = (taskTab === "all" ? tasks : tasks.filter(t => t.status === taskTab))
+    .filter(t => !taskSearch.trim() || String(t.campaign_id).includes(taskSearch) || String(t.id).includes(taskSearch) || (t.error ?? "").toLowerCase().includes(taskSearch.toLowerCase()))
+    .slice(0, 50);
   const aliveWorkers  = workers.filter(w => w.is_alive);
   const deadWorkers   = workers.filter(w => !w.is_alive);
   const lockedAccounts = accounts.filter(a => a.locked_by);
@@ -701,7 +797,7 @@ export function WorkersPage() {
               <div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: TG.muted, letterSpacing: "0.07em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5 }}>
-                    <ListTodo size={11} /> Очередь задач
+                    <ListTodo size={11} /> Очередь задач {tasks.length > 0 && <span style={{ fontWeight: 700, color: "#6ba8e5", background: "rgba(107,168,229,0.12)", borderRadius: 20, padding: "1px 6px", fontSize: 9 }}>{tasks.length}</span>}
                   </div>
                   <div style={{ display: "flex", gap: 5 }}>
                     {(["all", "pending", "claimed", "failed"] as const).map(s => (
@@ -711,6 +807,21 @@ export function WorkersPage() {
                     ))}
                   </div>
                 </div>
+                {tasks.length > 5 && (
+                  <div style={{ position: "relative", marginBottom: 8 }}>
+                    <input
+                      value={taskSearch} onChange={e => setTaskSearch(e.target.value)}
+                      placeholder="🔍 Поиск по задаче, кампании, ошибке…"
+                      style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 10, padding: "8px 36px 8px 12px", fontSize: 12, color: TG.text, outline: "none", boxSizing: "border-box" }}
+                    />
+                    {taskSearch && (
+                      <button onClick={() => { setTaskSearch(""); haptic.light(); }}
+                        style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", padding: 4, color: TG.muted, fontSize: 13, display: "flex", alignItems: "center" }}>
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {tasks.length > 0 && (
                   <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
@@ -735,7 +846,7 @@ export function WorkersPage() {
                     <div style={{ fontSize: 12, color: TG.muted }}>Задач нет</div>
                   </GlassCard>
                 ) : (
-                  <div>{filteredTasks.map(t => <TaskRow key={t.id} task={t} onAction={load} />)}</div>
+                  <div>{filteredTasks.map(t => <TaskRow key={t.id} task={t} onAction={load} campaignName={scheduled.find(c => c.id === t.campaign_id)?.name} />)}</div>
                 )}
               </div>
 
