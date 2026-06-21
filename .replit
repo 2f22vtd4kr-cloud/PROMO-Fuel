@@ -39,7 +39,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python3 main.py"
+args = "python3 supervisor.py"
 
 [[workflows.workflow]]
 name = "API Server"
