@@ -138,7 +138,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u = update.effective_user
     if not u:
         return
-    await cdb.upsert_user(u.id, username=u.username, first_name=u.first_name)
+    is_new = await cdb.upsert_user(u.id, username=u.username, first_name=u.first_name)
+
+    # Notify admin when a new user joins
+    if is_new and ADMIN_ID and u.id != ADMIN_ID:
+        try:
+            name_part = f"@{u.username}" if u.username else (u.first_name or str(u.id))
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=f"🆕 *Новый пользователь*\n\n{name_part} (ID: `{u.id}`) присоединился.",
+                parse_mode="Markdown",
+            )
+        except Exception:
+            pass
 
     if u.id == ADMIN_ID:
         miniapp_url = os.getenv("MINIAPP_URL", "")
@@ -179,7 +191,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/group\\_send `id` — запустить рассылку прямо сейчас\n"
         "/broadcast `текст` — ручная рассылка всем пользователям"
     )
-    await update.message.reply_text(help_text, parse_mode="Markdown")
+    await update.effective_message.reply_text(help_text, parse_mode="Markdown")
 
 
 @admin_only
@@ -196,7 +208,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🌐 Поиск по IP", callback_data="ip_help")],
         [InlineKeyboardButton("🚀 fuel-tickets-ru", callback_data="fuel_promo")],
     ]
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "Выбери действие:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -206,6 +218,35 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
+    # ── Quick-action buttons from summary notification ───────────────
+    if query.data.startswith("cmd:"):
+        cmd = query.data.split(":", 1)[1]
+        fake_update = update
+        if cmd == "weeklyreport":
+            await weekly_report(fake_update, context)
+            return
+        elif cmd == "accounts":
+            await accounts_status(fake_update, context)
+            return
+        elif cmd == "workers":
+            await workers_status(fake_update, context)
+            return
+        elif cmd == "broadcasts":
+            await broadcasts_status(fake_update, context)
+            return
+        elif cmd == "quota":
+            await quota_report(fake_update, context)
+            return
+        elif cmd == "today":
+            await today_report(fake_update, context)
+            return
+        elif cmd == "top":
+            await top_campaigns(fake_update, context)
+            return
+        elif cmd == "upcoming":
+            await upcoming_campaigns(fake_update, context)
+            return
 
     if query.data.startswith("gc_send:"):
         camp_id = int(query.data.split(":")[1])
@@ -223,24 +264,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         (camp_id,)
                     )
                     await db.commit()
-                    await query.message.reply_text(f"✅ Рассылка *{camp['name']}* #{camp_id} запущена!", parse_mode="Markdown")
+                    await query.effective_message.reply_text(f"✅ Рассылка *{camp['name']}* #{camp_id} запущена!", parse_mode="Markdown")
                 else:
-                    await query.message.reply_text(f"❌ Кампания #{camp_id} не найдена.")
+                    await query.effective_message.reply_text(f"❌ Кампания #{camp_id} не найдена.")
         except Exception as e:
-            await query.message.reply_text(f"❌ Ошибка: {e}")
+            await query.effective_message.reply_text(f"❌ Ошибка: {e}")
 
 
 @admin_only
 async def inn_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "Использование: /inn `7707083893` или /inn `1027739468877`",
             parse_mode="Markdown"
         )
         return
 
     query_val = context.args[0].strip()
-    await update.message.reply_text(f"🔍 Ищу по ИНН/ОГРН: `{query_val}`...", parse_mode="Markdown")
+    await update.effective_message.reply_text(f"🔍 Ищу по ИНН/ОГРН: `{query_val}`...", parse_mode="Markdown")
 
     increment_user_lookups(update.effective_user.id)
 
@@ -275,7 +316,7 @@ async def inn_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🏭 *ОКВЭД:* {okved}\n\n"
                     f"_Лимит запросов сегодня: {limit_left}_"
                 )
-                await update.message.reply_text(result_text, parse_mode="Markdown")
+                await update.effective_message.reply_text(result_text, parse_mode="Markdown")
                 found = True
                 break
         except Exception as e:
@@ -283,7 +324,7 @@ async def inn_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
             continue
 
     if not found:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "🔍 Данные не найдены или исчерпан дневной лимит.\n\n"
             "📋 *Рекомендации (бесплатно):*\n"
             "• [egrul.nalog.ru](https://egrul.nalog.ru) — официальный реестр ФНС\n"
@@ -301,14 +342,14 @@ async def inn_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @admin_only
 async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "Использование: /weather `Москва`",
             parse_mode="Markdown"
         )
         return
 
     city = " ".join(context.args)
-    await update.message.reply_text(f"🌤 Получаю погоду для: {city}...")
+    await update.effective_message.reply_text(f"🌤 Получаю погоду для: {city}...")
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -317,7 +358,7 @@ async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 geo = await resp.json()
 
             if not geo.get("results"):
-                await update.message.reply_text("❌ Город не найден. Попробуй другое название.")
+                await update.effective_message.reply_text("❌ Город не найден. Попробуй другое название.")
                 return
 
             r = geo["results"][0]
@@ -357,11 +398,11 @@ async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💨 Ветер: {wind} км/ч\n\n"
                 f"_Данные: Open-Meteo (бесплатно)_"
             )
-            await update.message.reply_text(msg, parse_mode="Markdown")
+            await update.effective_message.reply_text(msg, parse_mode="Markdown")
 
     except Exception as e:
         logger.error(f"Weather error: {e}")
-        await update.message.reply_text("❌ Ошибка получения погоды. Попробуй позже.")
+        await update.effective_message.reply_text("❌ Ошибка получения погоды. Попробуй позже.")
 
     await send_promo(update)
 
@@ -401,21 +442,21 @@ async def _fetch_currency(target_message):
 
 @admin_only
 async def currency(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _fetch_currency(update.message)
+    await _fetch_currency(update.effective_message)
     await send_promo(update)
 
 
 @admin_only
 async def ip_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "Использование: /ip `8.8.8.8`",
             parse_mode="Markdown"
         )
         return
 
     ip = context.args[0].strip()
-    await update.message.reply_text(f"🔍 Получаю данные по IP: `{ip}`...", parse_mode="Markdown")
+    await update.effective_message.reply_text(f"🔍 Получаю данные по IP: `{ip}`...", parse_mode="Markdown")
 
     increment_user_lookups(update.effective_user.id)
 
@@ -428,7 +469,7 @@ async def ip_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if resp.status_code == 200:
             data = resp.json()
             if data.get("error"):
-                await update.message.reply_text(f"❌ {data.get('reason', 'IP не найден')}")
+                await update.effective_message.reply_text(f"❌ {data.get('reason', 'IP не найден')}")
             else:
                 msg = (
                     f"🌐 *Информация по IP: `{ip}`*\n\n"
@@ -441,13 +482,13 @@ async def ip_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"📍 Координаты: {data.get('latitude', 'N/A')}, {data.get('longitude', 'N/A')}\n\n"
                     f"_Данные: ipapi.co (публичные)_"
                 )
-                await update.message.reply_text(msg, parse_mode="Markdown")
+                await update.effective_message.reply_text(msg, parse_mode="Markdown")
         else:
             raise Exception(f"HTTP {resp.status_code}")
 
     except Exception as e:
         logger.error(f"IP lookup error: {e}")
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "❌ Не удалось получить данные по IP (публичные источники).\n"
             "Проверь формат: /ip 8.8.8.8"
         )
@@ -457,7 +498,7 @@ async def ip_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def checko_hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "📋 *Бесплатные ресурсы для поиска по российским компаниям:*\n\n"
         "🔹 [egrul.nalog.ru](https://egrul.nalog.ru) — официальный ЕГРЮЛ ФНС\n"
         "🔹 [Rusprofile.ru](https://rusprofile.ru) — удобный поиск без регистрации\n"
@@ -481,7 +522,7 @@ async def referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ref_link = f"https://t.me/{bot_info.username}?start=ref{user_id}"
     ref_count = db_get(f"ref_{user_id}_count", 0)
 
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         f"🔗 *Твоя реферальная ссылка:*\n`{ref_link}`\n\n"
         f"👥 Друзей привлёк: *{ref_count}*\n\n"
         f"Поделись ссылкой — помоги другу найти нужные данные!",
@@ -498,7 +539,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_keys = len(db_keys())
     username = update.effective_user.username or update.effective_user.first_name
 
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         f"📊 *Статистика для @{username}:*\n\n"
         f"🔍 Запросов сделано: *{lookups}*\n"
         f"👥 Рефералов привлечено: *{refs}*\n"
@@ -518,14 +559,14 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     supported = (".html", ".csv", ".tsv", ".jsonl", ".json")
     if not any(filename.endswith(ext) for ext in supported):
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "❌ Поддерживаются файлы: *.html*, *.csv*, *.tsv*, *.jsonl*, *.json*\n\n"
             "Отправь один из этих форматов и я сохраню данные в базу.",
             parse_mode="Markdown"
         )
         return
 
-    await update.message.reply_text(f"📤 Получаю файл: `{filename}`\nОбрабатываю...", parse_mode="Markdown")
+    await update.effective_message.reply_text(f"📤 Получаю файл: `{filename}`\nОбрабатываю...", parse_mode="Markdown")
 
     try:
         file = await context.bot.get_file(doc.file_id)
@@ -595,7 +636,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             asyncio.create_task(_auto_enrich_upload(key, phone_entries, extracted))
 
         count = len(extracted["entries"])
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"✅ *Файл загружен и обработан!*\n\n"
             f"📁 Файл: `{filename}`\n"
             f"📊 Записей сохранено: *{count}*\n"
@@ -608,25 +649,25 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Document handler error: {e}")
-        await update.message.reply_text(f"❌ Ошибка при обработке файла:\n`{str(e)[:300]}`", parse_mode="Markdown")
+        await update.effective_message.reply_text(f"❌ Ошибка при обработке файла:\n`{str(e)[:300]}`", parse_mode="Markdown")
 
 
 @admin_only
 async def get_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Использование: /getdata `ключ`", parse_mode="Markdown")
+        await update.effective_message.reply_text("Использование: /getdata `ключ`", parse_mode="Markdown")
         return
     key = context.args[0].strip()
     value = db_get(key)
     if value is None:
-        await update.message.reply_text("❌ Ключ не найден. Используй /listdata чтобы посмотреть все ключи.")
+        await update.effective_message.reply_text("❌ Ключ не найден. Используй /listdata чтобы посмотреть все ключи.")
         return
 
     text = json.dumps(value, ensure_ascii=False, indent=2)
     if len(text) > 3500:
         text = text[:3500] + "\n...(обрезано)"
 
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         f"🔑 Ключ: `{key}`\n\n```json\n{text}\n```",
         parse_mode="Markdown"
     )
@@ -638,7 +679,7 @@ async def list_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data_keys = [k for k in keys if k.startswith("upload_") or k.startswith("report_")]
 
     if not data_keys:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "📂 База загрузок пустая.\n\nОтправь файл (.html/.csv/.json) и я сохраню данные."
         )
         return
@@ -651,19 +692,19 @@ async def list_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append(f"• `{k}` — {fname} ({count} записей)")
 
     lines.append(f"\n/getdata `ключ` — посмотреть записи")
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    await update.effective_message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
 @admin_only
 async def delete_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Использование: /deldata `ключ`", parse_mode="Markdown")
+        await update.effective_message.reply_text("Использование: /deldata `ключ`", parse_mode="Markdown")
         return
     key = context.args[0].strip()
     if db_delete(key):
-        await update.message.reply_text(f"🗑 Ключ `{key}` успешно удалён.", parse_mode="Markdown")
+        await update.effective_message.reply_text(f"🗑 Ключ `{key}` успешно удалён.", parse_mode="Markdown")
     else:
-        await update.message.reply_text("❌ Ключ не найден.")
+        await update.effective_message.reply_text("❌ Ключ не найден.")
 
 
 @admin_only
@@ -674,12 +715,12 @@ async def export_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query_val = " ".join(context.args).strip().lower() if context.args else ""
 
     if not upload_keys:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "📂 База пустая. Сначала загрузи файл (.html/.csv/.json)."
         )
         return
 
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         f"📦 Формирую CSV{'  по запросу: *' + query_val + '*' if query_val else ''}...",
         parse_mode="Markdown"
     )
@@ -709,7 +750,7 @@ async def export_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if query_val else
             "❌ В базе нет записей для экспорта."
         )
-        await update.message.reply_text(msg, parse_mode="Markdown")
+        await update.effective_message.reply_text(msg, parse_mode="Markdown")
         return
 
     export_path = f"/tmp/export_{int(time.time())}.csv"
@@ -738,7 +779,7 @@ async def export_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @admin_only
 async def search_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "Использование: /search `Попова` или /search `+79161234567`\n\n"
             "Поиск по всем загруженным файлам (имя, телефон, VIN, номер)",
             parse_mode="Markdown"
@@ -746,13 +787,13 @@ async def search_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     query_val = " ".join(context.args).strip().lower()
-    await update.message.reply_text(f"🔍 Ищу: `{query_val}` по всем загрузкам...", parse_mode="Markdown")
+    await update.effective_message.reply_text(f"🔍 Ищу: `{query_val}` по всем загрузкам...", parse_mode="Markdown")
 
     all_data = db_load()
     upload_keys = [k for k in all_data if k.startswith("upload_") or k.startswith("report_")]
 
     if not upload_keys:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "📂 База пустая. Сначала загрузи файл (.html/.csv/.json)."
         )
         return
@@ -772,7 +813,7 @@ async def search_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
             break
 
     if not matches:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"❌ По запросу *{query_val}* ничего не найдено.\n\n"
             "Проверь: загружены ли файлы (/listdata)?",
             parse_mode="Markdown"
@@ -806,7 +847,7 @@ async def search_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(matches) > 20:
         lines.append(f"\n_...и ещё {len(matches) - 20} совпадений. Уточни запрос._")
 
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    await update.effective_message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
 @admin_only
@@ -818,7 +859,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.args = [text.strip()]
             await inn_lookup(update, context)
         else:
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 "📋 Отправь команду, например:\n"
                 "/inn 7707083893\n"
                 "/weather Москва\n"
@@ -831,7 +872,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @admin_only
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "Использование: /broadcast Текст сообщения\n\n"
             "Отправит сообщение всем пользователям, которые когда-либо использовали бота.",
         )
@@ -849,10 +890,10 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             continue
 
     if not user_ids:
-        await update.message.reply_text("📭 Нет пользователей в базе для рассылки.")
+        await update.effective_message.reply_text("📭 Нет пользователей в базе для рассылки.")
         return
 
-    await update.message.reply_text(f"📣 Начинаю рассылку для {len(user_ids)} пользователей...")
+    await update.effective_message.reply_text(f"📣 Начинаю рассылку для {len(user_ids)} пользователей...")
 
     sent, failed = 0, 0
     for uid in user_ids:
@@ -864,7 +905,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.warning(f"Broadcast failed for {uid}: {e}")
             failed += 1
 
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         f"✅ Рассылка завершена!\n\n"
         f"📨 Отправлено: {sent}\n"
         f"❌ Ошибок: {failed}"
@@ -908,11 +949,419 @@ async def workers_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             emoji = {"pending": "⏳", "claimed": "⚙️", "done": "✅", "failed": "❌", "cancelled": "🚫", "dead": "💀"}.get(status, "•")
             lines.append(f"  {emoji} {status}: {cnt}")
 
-        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+        await update.effective_message.reply_text("\n".join(lines), parse_mode="Markdown")
     except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка: {e}")
+        await update.effective_message.reply_text(f"❌ Ошибка: {e}")
 
 
+async def summary_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send daily stats digest on demand via /summary."""
+    import aiosqlite
+    import time as _time
+    from datetime import datetime as _dt, timezone as _tz
+    db_path = os.environ.get("DB_PATH", "campaigns.db")
+    today = _dt.now(_tz.utc).strftime("%Y-%m-%d")
+    date_str = _dt.now(_tz.utc).strftime("%d.%m.%Y")
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            db.row_factory = aiosqlite.Row
+
+            r = await (await db.execute("SELECT COUNT(*) AS n FROM users")).fetchone()
+            total_users = r["n"] if r else 0
+
+            r = await (await db.execute(
+                "SELECT COUNT(*) AS n FROM sends WHERE status='ok' AND sent_at LIKE ?",
+                (f"{today}%",)
+            )).fetchone()
+            dm_sent = r["n"] if r else 0
+
+            r = await (await db.execute(
+                "SELECT COUNT(*) AS n FROM group_send_logs WHERE status='ok' AND sent_at LIKE ?",
+                (f"{today}%",)
+            )).fetchone()
+            group_sent = r["n"] if r else 0
+
+            r = await (await db.execute(
+                "SELECT COUNT(*) AS n FROM campaigns WHERE status='running'"
+            )).fetchone()
+            active_campaigns = r["n"] if r else 0
+
+            r = await (await db.execute(
+                "SELECT COUNT(*) AS n FROM group_campaigns WHERE status='running'"
+            )).fetchone()
+            active_groups = r["n"] if r else 0
+
+            rows = await (await db.execute(
+                "SELECT worker_id, last_seen, tasks_completed, tasks_failed FROM worker_heartbeats"
+            )).fetchall()
+            now_utc = _dt.now(_tz.utc)
+            workers_total = len(rows)
+            workers_alive = 0
+            tasks_done = 0
+            tasks_failed = 0
+            for row in rows:
+                try:
+                    ts = _dt.fromisoformat(row["last_seen"])
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=_tz.utc)
+                    if (now_utc - ts).total_seconds() <= 60:
+                        workers_alive += 1
+                except Exception:
+                    pass
+                tasks_done   += row["tasks_completed"] or 0
+                tasks_failed += row["tasks_failed"]    or 0
+
+        total_sent = dm_sent + group_sent
+        w_line = f"{workers_alive} из {workers_total} активных" if workers_total else "нет данных"
+        text = (
+            f"📊 *Отчёт — {date_str}*\n\n"
+            f"📨 Отправлено сегодня:\n"
+            f"   • Личные сообщения: *{dm_sent}*\n"
+            f"   • Группы: *{group_sent}*\n"
+            f"   • Итого: *{total_sent}*\n\n"
+            f"🔥 Активных кампаний: *{active_campaigns}*\n"
+            f"📡 Групповых рассылок: *{active_groups}*\n"
+            f"👥 Пользователей в базе: *{total_users}*\n\n"
+            f"⚙️ Воркеры: *{w_line}*\n"
+            f"✅ Задач выполнено: *{tasks_done}*\n"
+            f"❌ Задач с ошибкой: *{tasks_failed}*"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📅 7 дней", callback_data="cmd:weeklyreport"),
+                InlineKeyboardButton("📊 Квота", callback_data="cmd:quota"),
+            ],
+            [
+                InlineKeyboardButton("📱 Аккаунты", callback_data="cmd:accounts"),
+                InlineKeyboardButton("📡 Воркеры", callback_data="cmd:workers"),
+            ],
+            [
+                InlineKeyboardButton("📢 Рассылки", callback_data="cmd:broadcasts"),
+                InlineKeyboardButton("🏆 Топ", callback_data="cmd:top"),
+            ],
+            [
+                InlineKeyboardButton("📅 Сегодня", callback_data="cmd:today"),
+                InlineKeyboardButton("⏰ Расписание", callback_data="cmd:upcoming"),
+            ],
+        ])
+        await update.effective_message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
+    except Exception as exc:
+        await update.effective_message.reply_text(f"❌ Ошибка: {exc}")
+
+
+async def weekly_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send a day-by-day breakdown of the last 7 days via /weeklyreport."""
+    import aiosqlite
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+    db_path = os.environ.get("DB_PATH", "campaigns.db")
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            db.row_factory = aiosqlite.Row
+            days = []
+            now_utc = _dt.now(_tz.utc)
+            total_dm = 0
+            total_grp = 0
+            for offset in range(6, -1, -1):
+                day = (now_utc - _td(days=offset)).strftime("%Y-%m-%d")
+                label = (now_utc - _td(days=offset)).strftime("%d.%m")
+                r = await (await db.execute(
+                    "SELECT COUNT(*) AS n FROM sends WHERE status='ok' AND sent_at LIKE ?",
+                    (f"{day}%",)
+                )).fetchone()
+                dm = r["n"] if r else 0
+                r = await (await db.execute(
+                    "SELECT COUNT(*) AS n FROM group_send_logs WHERE status='ok' AND sent_at LIKE ?",
+                    (f"{day}%",)
+                )).fetchone()
+                grp = r["n"] if r else 0
+                days.append((label, dm, grp))
+                total_dm += dm
+                total_grp += grp
+
+        max_total = max((d + g for _, d, g in days), default=1) or 1
+        bar_width = 12
+        lines = [f"📅 *Рассылки за 7 дней*\n"]
+        for label, dm, grp in days:
+            total = dm + grp
+            filled = int(total / max_total * bar_width)
+            bar = "█" * filled + "░" * (bar_width - filled)
+            is_today = label == now_utc.strftime("%d.%m")
+            marker = " ← сегодня" if is_today else ""
+            lines.append(f"`{label}` `{bar}` *{total}*{marker}")
+
+        lines.append(f"\n📨 DM итого: *{total_dm}* | 📡 Группы: *{total_grp}* | Всего: *{total_dm + total_grp}*")
+        await update.effective_message.reply_text("\n".join(lines), parse_mode="Markdown")
+    except Exception as exc:
+        await update.effective_message.reply_text(f"❌ Ошибка: {exc}")
+
+
+async def bot_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show all available bot commands."""
+    text = (
+        "🤖 *PROMO-Fuel — Команды бота*\n\n"
+        "📊 *Статистика и отчёты*\n"
+        "/summary — сводка за сегодня\n"
+        "/weeklyreport — график отправок за 7 дней\n"
+        "/accounts — статус аккаунтов и квоты\n"
+        "/quota — квота по аккаунтам (визуальная шкала)\n"
+        "/today — сводка за сегодня по часам\n"
+        "/top — топ-5 кампаний по отправкам\n"
+        "/upcoming — запланированные на ближайшие 24ч\n"
+        "/workers — состояние воркеров очереди\n"
+        "/broadcasts — список групповых рассылок\n\n"
+        "📋 *Управление*\n"
+        "/start — открыть Mini App\n"
+        "/help — этот список команд\n\n"
+        "💡 Полное управление кампаниями — через Mini App."
+    )
+    await update.effective_message.reply_text(text, parse_mode="Markdown")
+
+
+@admin_only
+async def upcoming_campaigns(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show campaigns scheduled to run in the next 24 hours."""
+    import aiosqlite
+    import datetime as _dt
+    db_path = os.environ.get("DB_PATH", "campaigns.db")
+    try:
+        now = _dt.datetime.utcnow()
+        cutoff = (now + _dt.timedelta(hours=24)).isoformat()
+        async with aiosqlite.connect(db_path) as db:
+            db.row_factory = aiosqlite.Row
+            rows = await (await db.execute(
+                "SELECT id, name, status, scheduled_at, target_count, sender_account_id "
+                "FROM campaigns WHERE scheduled_at IS NOT NULL AND scheduled_at > ? "
+                "AND status IN ('draft','paused') ORDER BY scheduled_at ASC LIMIT 10",
+                (now.isoformat(),)
+            )).fetchall()
+
+        if not rows:
+            await update.effective_message.reply_text(
+                "📭 Нет запланированных кампаний на ближайшие 24 часа.\n\n"
+                "Создай кампанию с расписанием в Mini App → вкладка Кампании."
+            )
+            return
+
+        lines = ["📅 *Ближайшие кампании (24ч)*\n"]
+        for r in rows:
+            try:
+                t = _dt.datetime.fromisoformat(r["scheduled_at"])
+                delta = (t - now).total_seconds()
+                hh, rem = divmod(int(delta), 3600)
+                mm = rem // 60
+                time_str = t.strftime("%d.%m %H:%M")
+                countdown = f"{hh}ч {mm}м" if hh else f"{mm}м"
+                target = f" · {r['target_count']:,} получателей" if r["target_count"] else ""
+                lines.append(
+                    f"⏰ *{r['name']}* (#{r['id']})\n"
+                    f"   🕒 {time_str} · через {countdown}{target}"
+                )
+            except Exception:
+                lines.append(f"⏰ *{r['name']}* (#{r['id']}) — {r['scheduled_at']}")
+
+        await update.effective_message.reply_text("\n\n".join(lines), parse_mode="Markdown")
+    except Exception as e:
+        await update.effective_message.reply_text(f"❌ Ошибка: {e}")
+
+
+@admin_only
+async def top_campaigns(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show top-5 campaigns by total sends."""
+    import aiosqlite
+    db_path = os.environ.get("DB_PATH", "campaigns.db")
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            db.row_factory = aiosqlite.Row
+            rows = await (await db.execute(
+                "SELECT id, name, status, sent_count, failed_count, target_count "
+                "FROM campaigns WHERE sent_count > 0 ORDER BY sent_count DESC LIMIT 5"
+            )).fetchall()
+
+        if not rows:
+            await update.effective_message.reply_text("📭 Ещё нет кампаний с отправками.\n\nЗапусти кампанию в Mini App.")
+            return
+
+        medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+        status_icon = {"running": "🟢", "paused": "🟡", "done": "✅", "draft": "⚪", "cancelled": "⛔", "sending": "🔵"}
+        lines = ["🏆 *Топ кампаний по отправкам*\n"]
+        for i, r in enumerate(rows):
+            ok = r["sent_count"] - (r["failed_count"] or 0)
+            rate = int(ok / r["sent_count"] * 100) if r["sent_count"] > 0 else 0
+            progress = ""
+            if r["target_count"] and r["target_count"] > 0:
+                done_pct = int(r["sent_count"] / r["target_count"] * 100)
+                bar_filled = int(done_pct / 10)
+                bar = "▓" * bar_filled + "░" * (10 - bar_filled)
+                progress = f"\n   [{bar}] {done_pct}%"
+            s_icon = status_icon.get(r["status"], "•")
+            lines.append(
+                f"{medals[i]} *{r['name']}* {s_icon}\n"
+                f"   📤 {r['sent_count']:,} отпр. · ✅ {rate}% успех{progress}"
+            )
+
+        await update.effective_message.reply_text("\n\n".join(lines), parse_mode="Markdown")
+    except Exception as e:
+        await update.effective_message.reply_text(f"❌ Ошибка: {e}")
+
+
+async def accounts_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show sender accounts health summary via /accounts."""
+    import aiosqlite
+    from datetime import datetime as _dt, timezone as _tz
+    db_path = os.environ.get("DB_PATH", "campaigns.db")
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            db.row_factory = aiosqlite.Row
+            rows = await (await db.execute(
+                "SELECT id, phone, status, is_banned, sent_today, daily_limit, "
+                "flood_wait_until, last_error FROM sender_accounts ORDER BY id"
+            )).fetchall()
+
+        if not rows:
+            await update.effective_message.reply_text("📭 Аккаунтов не найдено.\n\nДобавь аккаунты в Mini App → вкладка Аккаунты.")
+            return
+
+        now_utc = _dt.now(_tz.utc)
+        lines = ["📱 *Аккаунты-отправители*\n"]
+        total_sent = 0
+        total_limit = 0
+        banned_n = 0
+        flooded_n = 0
+        for r in rows:
+            icon = "⛔" if r["is_banned"] else "🟢"
+            if r["is_banned"]:
+                banned_n += 1
+            sent = r["sent_today"] or 0
+            limit = r["daily_limit"] or 300
+            total_sent += sent
+            total_limit += limit
+            pct = int(sent / limit * 100) if limit > 0 else 0
+            flood_note = ""
+            if r["flood_wait_until"]:
+                try:
+                    fw = _dt.fromisoformat(r["flood_wait_until"])
+                    if fw.tzinfo is None:
+                        fw = fw.replace(tzinfo=_tz.utc)
+                    if fw > now_utc:
+                        mins = int((fw - now_utc).total_seconds() / 60) + 1
+                        flood_note = f" ⏳{mins}м"
+                        flooded_n += 1
+                except Exception:
+                    pass
+            phone = str(r["phone"])[-4:] if r["phone"] else "????"
+            lines.append(f"{icon} `...{phone}` — {sent}/{limit} ({pct}%){flood_note}")
+
+        quota_pct = int(total_sent / total_limit * 100) if total_limit > 0 else 0
+        lines.append(f"\n📊 Итого: *{total_sent}* / *{total_limit}* ({quota_pct}%)")
+        if banned_n:
+            lines.append(f"⛔ Заблокировано: *{banned_n}*")
+        if flooded_n:
+            lines.append(f"⏳ FloodWait: *{flooded_n}*")
+
+        await update.effective_message.reply_text("\n".join(lines), parse_mode="Markdown")
+    except Exception as exc:
+        await update.effective_message.reply_text(f"❌ Ошибка: {exc}")
+
+
+@admin_only
+async def today_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show hourly breakdown of today's sends via /today."""
+    import aiosqlite
+    from datetime import datetime as _dt, timezone as _tz
+    db_path = os.environ.get("DB_PATH", "campaigns.db")
+    today = _dt.now(_tz.utc).strftime("%Y-%m-%d")
+    date_str = _dt.now(_tz.utc).strftime("%d.%m.%Y")
+    cur_hour = _dt.now(_tz.utc).hour
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            db.row_factory = aiosqlite.Row
+            # Hourly DM sends
+            dm_rows = await (await db.execute(
+                "SELECT strftime('%H', sent_at) AS h, COUNT(*) AS n "
+                "FROM sends WHERE status='ok' AND sent_at LIKE ? GROUP BY h",
+                (f"{today}%",)
+            )).fetchall()
+            # Hourly group sends
+            gr_rows = await (await db.execute(
+                "SELECT strftime('%H', sent_at) AS h, COUNT(*) AS n "
+                "FROM group_send_logs WHERE status='ok' AND sent_at LIKE ? GROUP BY h",
+                (f"{today}%",)
+            )).fetchall()
+
+        dm_by_h  = {int(r["h"]): r["n"] for r in dm_rows}
+        gr_by_h  = {int(r["h"]): r["n"] for r in gr_rows}
+
+        total_dm = sum(dm_by_h.values())
+        total_gr = sum(gr_by_h.values())
+        total    = total_dm + total_gr
+
+        max_val  = max((dm_by_h.get(h, 0) + gr_by_h.get(h, 0) for h in range(24)), default=1)
+        BAR_W = 8
+
+        lines = [f"📅 *Сводка по часам — {date_str}*\n"]
+        for h in range(cur_hour + 1):
+            dm = dm_by_h.get(h, 0)
+            gr = gr_by_h.get(h, 0)
+            tot = dm + gr
+            filled = round(tot / max_val * BAR_W) if max_val > 0 else 0
+            bar = "█" * filled + "░" * (BAR_W - filled)
+            marker = " ◀" if h == cur_hour else ""
+            lines.append(f"`{h:02d}ч [{bar}]` {tot}{marker}")
+
+        lines.append(f"\n📨 DM: *{total_dm}* · 📡 Группы: *{total_gr}* · Итого: *{total}*")
+        await update.effective_message.reply_text("\n".join(lines), parse_mode="Markdown")
+    except Exception as exc:
+        await update.effective_message.reply_text(f"❌ Ошибка: {exc}")
+
+
+@admin_only
+async def quota_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show per-account quota bar chart via /quota."""
+    import aiosqlite
+    from datetime import datetime as _dt, timezone as _tz
+    db_path = os.environ.get("DB_PATH", "campaigns.db")
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            db.row_factory = aiosqlite.Row
+            rows = await (await db.execute(
+                "SELECT phone, status, sent_today, daily_limit, flood_wait_until "
+                "FROM sender_accounts ORDER BY id"
+            )).fetchall()
+
+        if not rows:
+            await update.effective_message.reply_text("📭 Аккаунтов нет.")
+            return
+
+        now_utc = _dt.now(_tz.utc)
+        lines = ["📊 *Квота отправок*\n"]
+        BAR_W = 10
+        for r in rows:
+            sent  = r["sent_today"] or 0
+            limit = r["daily_limit"] or 300
+            pct   = min(100, int(sent / limit * 100)) if limit > 0 else 0
+            filled = round(pct / 100 * BAR_W)
+            bar = "█" * filled + "░" * (BAR_W - filled)
+            flood_note = ""
+            if r["flood_wait_until"]:
+                try:
+                    fw = _dt.fromisoformat(r["flood_wait_until"])
+                    if fw.tzinfo is None:
+                        fw = fw.replace(tzinfo=_tz.utc)
+                    if fw > now_utc:
+                        mins = int((fw - now_utc).total_seconds() / 60) + 1
+                        flood_note = f" ⏳{mins}м"
+                except Exception:
+                    pass
+            status_icon = "🟢" if r["status"] == "active" and not flood_note else ("⏳" if flood_note else "🔴")
+            phone = str(r["phone"])[-4:] if r["phone"] else "????"
+            lines.append(f"{status_icon} `...{phone}` `[{bar}]` {pct}%{flood_note}")
+
+        await update.effective_message.reply_text("\n".join(lines), parse_mode="Markdown")
+    except Exception as exc:
+        await update.effective_message.reply_text(f"❌ Ошибка: {exc}")
+
+
+@admin_only
 async def broadcasts_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show group broadcast campaigns status."""
     try:
@@ -928,7 +1377,7 @@ async def broadcasts_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rows = await cur.fetchall()
 
         if not rows:
-            await update.message.reply_text("📭 Нет групповых рассылок.\n\nСоздай их в Mini App → вкладка Группы.")
+            await update.effective_message.reply_text("📭 Нет групповых рассылок.\n\nСоздай их в Mini App → вкладка Группы.")
             return
 
         lines = ["📡 *Групповые рассылки*\n"]
@@ -957,9 +1406,9 @@ async def broadcasts_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ])
 
         reply_markup = InlineKeyboardMarkup(keyboard_rows) if keyboard_rows else None
-        await update.message.reply_text("\n".join(lines), parse_mode="Markdown", reply_markup=reply_markup)
+        await update.effective_message.reply_text("\n".join(lines), parse_mode="Markdown", reply_markup=reply_markup)
     except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка: {e}")
+        await update.effective_message.reply_text(f"❌ Ошибка: {e}")
 
 
 @admin_only
@@ -967,7 +1416,7 @@ async def group_send_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Immediately push a group campaign task. Usage: /group_send <id>"""
     args = context.args or []
     if not args or not args[0].isdigit():
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "Использование: `/group_send <id>`\n\nСписок кампаний: /broadcasts",
             parse_mode="Markdown"
         )
@@ -981,7 +1430,7 @@ async def group_send_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cur = await db.execute("SELECT id, name, status FROM group_campaigns WHERE id = ?", (camp_id,))
             camp = await cur.fetchone()
         if not camp:
-            await update.message.reply_text(f"❌ Кампания #{camp_id} не найдена.")
+            await update.effective_message.reply_text(f"❌ Кампания #{camp_id} не найдена.")
             return
 
         # Insert task
@@ -994,7 +1443,7 @@ async def group_send_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await db.commit()
             task_id = cur.lastrowid
 
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"✅ Задача #{task_id} поставлена в очередь\n"
             f"Кампания: *{camp['name']}* (#{camp_id})\n"
             f"Статус кампании: {camp['status']}\n\n"
@@ -1002,7 +1451,7 @@ async def group_send_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
     except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка: {e}")
+        await update.effective_message.reply_text(f"❌ Ошибка: {e}")
 
 
 _enrich_task = None
@@ -1137,32 +1586,32 @@ async def enrich(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if subcmd == "auth":
         if not TELETHON_API_ID or not TELETHON_API_HASH or not TELETHON_PHONE:
-            await update.message.reply_text("❌ TELETHON_API_ID / API_HASH / PHONE не настроены в Secrets.")
+            await update.effective_message.reply_text("❌ TELETHON_API_ID / API_HASH / PHONE не настроены в Secrets.")
             return
-        await update.message.reply_text("🔐 Подключаюсь к Telegram и отправляю код...")
+        await update.effective_message.reply_text("🔐 Подключаюсь к Telegram и отправляю код...")
         try:
             client = TelegramClient("telethon_session", int(TELETHON_API_ID), TELETHON_API_HASH)
             await client.connect()
             if await client.is_user_authorized():
-                await update.message.reply_text("✅ Уже авторизован! Можешь запускать /enrich start")
+                await update.effective_message.reply_text("✅ Уже авторизован! Можешь запускать /enrich start")
                 await client.disconnect()
                 return
             await client.send_code_request(TELETHON_PHONE)
             _pending_auth = True
             db_set("_telethon_auth_pending", True)
             await client.disconnect()
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 "📲 Код отправлен на твой номер в Telegram.\n\n"
                 "Отправь его боту командой:\n`/enrich code XXXXX`",
                 parse_mode="Markdown"
             )
         except Exception as e:
-            await update.message.reply_text(f"❌ Ошибка авторизации:\n`{str(e)[:300]}`", parse_mode="Markdown")
+            await update.effective_message.reply_text(f"❌ Ошибка авторизации:\n`{str(e)[:300]}`", parse_mode="Markdown")
 
     elif subcmd == "code":
         code = context.args[1] if len(context.args) > 1 else ""
         if not code:
-            await update.message.reply_text("Использование: /enrich code 12345")
+            await update.effective_message.reply_text("Использование: /enrich code 12345")
             return
         try:
             client = TelegramClient("telethon_session", int(TELETHON_API_ID), TELETHON_API_HASH)
@@ -1170,7 +1619,7 @@ async def enrich(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await client.sign_in(TELETHON_PHONE, code)
             except SessionPasswordNeededError:
-                await update.message.reply_text(
+                await update.effective_message.reply_text(
                     "🔒 Включена 2FA. Отправь пароль:\n`/enrich 2fa ТВОЙпароль`",
                     parse_mode="Markdown"
                 )
@@ -1178,14 +1627,14 @@ async def enrich(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             await client.disconnect()
             db_delete("_telethon_auth_pending")
-            await update.message.reply_text("✅ Авторизация успешна! Теперь запусти /enrich start")
+            await update.effective_message.reply_text("✅ Авторизация успешна! Теперь запусти /enrich start")
         except Exception as e:
-            await update.message.reply_text(f"❌ Неверный код или ошибка:\n`{str(e)[:300]}`", parse_mode="Markdown")
+            await update.effective_message.reply_text(f"❌ Неверный код или ошибка:\n`{str(e)[:300]}`", parse_mode="Markdown")
 
     elif subcmd == "2fa":
         password = context.args[1] if len(context.args) > 1 else ""
         if not password:
-            await update.message.reply_text("Использование: /enrich 2fa пароль")
+            await update.effective_message.reply_text("Использование: /enrich 2fa пароль")
             return
         try:
             client = TelegramClient("telethon_session", int(TELETHON_API_ID), TELETHON_API_HASH)
@@ -1193,20 +1642,20 @@ async def enrich(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await client.sign_in(password=password)
             await client.disconnect()
             db_delete("_telethon_auth_pending")
-            await update.message.reply_text("✅ 2FA принята! Теперь запусти /enrich start")
+            await update.effective_message.reply_text("✅ 2FA принята! Теперь запусти /enrich start")
         except Exception as e:
-            await update.message.reply_text(f"❌ Ошибка 2FA:\n`{str(e)[:300]}`", parse_mode="Markdown")
+            await update.effective_message.reply_text(f"❌ Ошибка 2FA:\n`{str(e)[:300]}`", parse_mode="Markdown")
 
     elif subcmd == "start":
         if _enrich_running:
-            await update.message.reply_text("⚙️ Обогащение уже идёт. Используй /enrich stop чтобы остановить.")
+            await update.effective_message.reply_text("⚙️ Обогащение уже идёт. Используй /enrich stop чтобы остановить.")
             return
         all_data = db_load()
         upload_keys = [k for k in all_data if k.startswith("upload_") or k.startswith("report_")]
         if not upload_keys:
-            await update.message.reply_text("📂 Нет загруженных файлов. Сначала загрузи файл.")
+            await update.effective_message.reply_text("📂 Нет загруженных файлов. Сначала загрузи файл.")
             return
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"🚀 Запускаю обогащение по {len(upload_keys)} файлам...\n"
             "Буду искать Telegram-аккаунты для российских номеров.\n"
             "Уведомлю по завершении.",
@@ -1217,10 +1666,10 @@ async def enrich(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif subcmd == "stop":
         if not _enrich_running:
-            await update.message.reply_text("ℹ️ Обогащение не запущено.")
+            await update.effective_message.reply_text("ℹ️ Обогащение не запущено.")
             return
         _enrich_running = False
-        await update.message.reply_text("⏹ Обогащение остановлено.")
+        await update.effective_message.reply_text("⏹ Обогащение остановлено.")
 
     elif subcmd == "status":
         all_data = db_load()
@@ -1237,7 +1686,7 @@ async def enrich(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if "telegram" in e
         )
         status_str = "🟢 Запущено" if _enrich_running else "🔴 Остановлено"
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"📊 *Статус обогащения:*\n\n"
             f"Состояние: {status_str}\n"
             f"Всего записей: {total_entries}\n"
@@ -1250,7 +1699,7 @@ async def enrich(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     else:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "📋 *Команды /enrich:*\n\n"
             "`/enrich auth` — авторизоваться в Telegram (первый раз)\n"
             "`/enrich code 12345` — ввести код\n"
@@ -1276,7 +1725,7 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ── /campaign create <name> <text...> ──────────────────────────────────
     if subcmd == "create":
         if len(args) < 3:
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 "Использование: `/campaign create имя Текст сообщения`\n\n"
                 "Поддерживает переменные: `{name}` `{username}`",
                 parse_mode="Markdown"
@@ -1286,10 +1735,10 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = " ".join(args[2:])
         existing = await cdb.get_campaign(name)
         if existing:
-            await update.message.reply_text(f"❌ Кампания «{name}» уже существует.")
+            await update.effective_message.reply_text(f"❌ Кампания «{name}» уже существует.")
             return
         cid = await cdb.create_campaign(name, text)
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"✅ Кампания *«{name}»* создана (ID {cid})\n\n"
             f"📝 Текст:\n_{text}_\n\n"
             f"Команды:\n"
@@ -1303,7 +1752,7 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif subcmd == "list":
         campaigns = await cdb.list_campaigns()
         if not campaigns:
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 "📭 Нет кампаний. Создай командой:\n`/campaign create имя Текст`",
                 parse_mode="Markdown"
             )
@@ -1318,12 +1767,12 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"   ✅ {c['sent_count']} отправлено  ❌ {c['failed_count']} ошибок  "
                 f"👥 {c['target_count']} получателей"
             )
-        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+        await update.effective_message.reply_text("\n".join(lines), parse_mode="Markdown")
 
     # ── /campaign send <name> [tag] ────────────────────────────────────────
     elif subcmd in ("send", "dryrun"):
         if len(args) < 2:
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 f"Использование: `/campaign {subcmd} имя [тег]`",
                 parse_mode="Markdown"
             )
@@ -1332,10 +1781,10 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tag = args[2] if len(args) > 2 else None
         c = await cdb.get_campaign(name)
         if not c:
-            await update.message.reply_text(f"❌ Кампания «{name}» не найдена.")
+            await update.effective_message.reply_text(f"❌ Кампания «{name}» не найдена.")
             return
         if c["status"] == "running":
-            await update.message.reply_text("⚙️ Кампания уже запущена.")
+            await update.effective_message.reply_text("⚙️ Кампания уже запущена.")
             return
 
         dry = subcmd == "dryrun"
@@ -1346,7 +1795,7 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         users = await cdb.get_users_by_tag(tag) if tag else await cdb.get_all_users()
         if not users:
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 "📭 Нет пользователей в базе.\n\n"
                 "Пользователи появляются когда они пишут боту (/start).\n"
                 "Можно добавить вручную: `/campaign adduser <chat_id>`",
@@ -1354,7 +1803,7 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"{'🔍 DRY RUN — ' if dry else ''}🚀 *Запускаю кампанию «{name}»*\n\n"
             f"👥 Получателей: {len(users)}"
             + (f"\n🏷 Тег: {tag}" if tag else "") +
@@ -1373,14 +1822,14 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
             campaigns = await cdb.list_campaigns()
             running = [c for c in campaigns if c["status"] in ("running", "paused")]
             if not running:
-                await update.message.reply_text("ℹ️ Нет активных кампаний.")
+                await update.effective_message.reply_text("ℹ️ Нет активных кампаний.")
                 return
         else:
             state = cs.get_state(active_id)
             c = await cdb.get_campaign_by_id(active_id)
             pct = int(state["sent"] / state["total"] * 100) if state["total"] else 0
             bar = "█" * (pct // 10) + "░" * (10 - pct // 10)
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 f"📊 *Кампания «{c['name']}»*\n\n"
                 f"Статус: {STATUS_EMOJI.get(state['status'], '❓')} {state['status']}\n"
                 f"Прогресс: `[{bar}]` {pct}%\n"
@@ -1398,13 +1847,13 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if active_id and cs.pause_campaign(active_id):
             c = await cdb.get_campaign_by_id(active_id)
             await cdb.update_campaign_status(active_id, "paused")
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 f"⏸ Кампания «{c['name']}» поставлена на паузу.\n"
                 "`/campaign resume` — продолжить",
                 parse_mode="Markdown"
             )
         else:
-            await update.message.reply_text("ℹ️ Нет активной кампании для паузы.")
+            await update.effective_message.reply_text("ℹ️ Нет активной кампании для паузы.")
 
     # ── /campaign resume ───────────────────────────────────────────────────
     elif subcmd == "resume":
@@ -1413,9 +1862,9 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 cs.resume_campaign(cid)
                 c = await cdb.get_campaign_by_id(cid)
                 await cdb.update_campaign_status(cid, "running")
-                await update.message.reply_text(f"▶️ Кампания «{c['name']}» возобновлена.")
+                await update.effective_message.reply_text(f"▶️ Кампания «{c['name']}» возобновлена.")
                 return
-        await update.message.reply_text("ℹ️ Нет приостановленной кампании.")
+        await update.effective_message.reply_text("ℹ️ Нет приостановленной кампании.")
 
     # ── /campaign cancel ───────────────────────────────────────────────────
     elif subcmd == "cancel":
@@ -1424,38 +1873,38 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if state["status"] in ("running", "paused"):
                 cs.cancel_campaign(cid)
                 c = await cdb.get_campaign_by_id(cid)
-                await update.message.reply_text(f"⏹ Кампания «{c['name']}» отменена.")
+                await update.effective_message.reply_text(f"⏹ Кампания «{c['name']}» отменена.")
                 return
-        await update.message.reply_text("ℹ️ Нет активной кампании для отмены.")
+        await update.effective_message.reply_text("ℹ️ Нет активной кампании для отмены.")
 
     # ── /campaign delete <name> ────────────────────────────────────────────
     elif subcmd == "delete":
         if len(args) < 2:
-            await update.message.reply_text("Использование: `/campaign delete имя`", parse_mode="Markdown")
+            await update.effective_message.reply_text("Использование: `/campaign delete имя`", parse_mode="Markdown")
             return
         name = args[1]
         if await cdb.delete_campaign(name):
-            await update.message.reply_text(f"🗑 Кампания «{name}» удалена.")
+            await update.effective_message.reply_text(f"🗑 Кампания «{name}» удалена.")
         else:
-            await update.message.reply_text(f"❌ Не удалось удалить (не найдена или запущена).")
+            await update.effective_message.reply_text(f"❌ Не удалось удалить (не найдена или запущена).")
 
     # ── /campaign adduser <chat_id> [tag] ──────────────────────────────────
     elif subcmd == "adduser":
         if len(args) < 2:
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 "Использование: `/campaign adduser <chat_id> [тег]`", parse_mode="Markdown"
             )
             return
         try:
             uid = int(args[1])
         except ValueError:
-            await update.message.reply_text("❌ chat_id должен быть числом.")
+            await update.effective_message.reply_text("❌ chat_id должен быть числом.")
             return
         tag = args[2] if len(args) > 2 else None
         await cdb.upsert_user(uid)
         if tag:
             await cdb.tag_user(uid, tag)
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"✅ Пользователь `{uid}` добавлен в базу кампаний."
             + (f"\n🏷 Тег: `{tag}`" if tag else ""),
             parse_mode="Markdown"
@@ -1466,7 +1915,7 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tag = args[1] if len(args) > 1 else None
         users = await cdb.get_users_by_tag(tag) if tag else await cdb.get_all_users()
         if not users:
-            await update.message.reply_text("📭 Нет пользователей в базе.")
+            await update.effective_message.reply_text("📭 Нет пользователей в базе.")
             return
         lines = [f"👥 *Пользователи в базе:* {len(users)}\n"]
         for u in users[:30]:
@@ -1475,14 +1924,14 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lines.append(f"• `{u['chat_id']}` {uname} — теги: _{tags_str}_")
         if len(users) > 30:
             lines.append(f"\n_...и ещё {len(users) - 30}_")
-        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+        await update.effective_message.reply_text("\n".join(lines), parse_mode="Markdown")
 
     # ── /campaign schedule <name> <YYYY-MM-DD HH:MM> [tag] ────────────────
     elif subcmd == "schedule":
         # args: ["schedule", "name", "2026-06-16", "09:00"] or
         #       ["schedule", "name", "2026-06-16", "09:00", "tag"]
         if len(args) < 4:
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 "Использование:\n"
                 "`/campaign schedule имя ГГГГ-ММ-ДД ЧЧ:ММ [тег]`\n\n"
                 "Примеры:\n"
@@ -1499,10 +1948,10 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             scheduled_dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
             if scheduled_dt <= datetime.now():
-                await update.message.reply_text("❌ Дата в прошлом. Укажи будущее время.")
+                await update.effective_message.reply_text("❌ Дата в прошлом. Укажи будущее время.")
                 return
         except ValueError:
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 "❌ Неверный формат даты.\n"
                 "Используй: `ГГГГ-ММ-ДД ЧЧ:ММ` — например `2026-06-16 09:00`",
                 parse_mode="Markdown"
@@ -1511,10 +1960,10 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         c = await cdb.get_campaign(name)
         if not c:
-            await update.message.reply_text(f"❌ Кампания «{name}» не найдена.")
+            await update.effective_message.reply_text(f"❌ Кампания «{name}» не найдена.")
             return
         if c["status"] == "running":
-            await update.message.reply_text("❌ Кампания уже запущена.")
+            await update.effective_message.reply_text("❌ Кампания уже запущена.")
             return
 
         scheduled_iso = scheduled_dt.isoformat()
@@ -1524,7 +1973,7 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         users = await cdb.get_users_by_tag(tag) if tag else await cdb.get_all_users()
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"📅 *Кампания «{name}» запланирована!*\n\n"
             f"🕐 Запуск: `{date_str} {time_str}`\n"
             f"👥 Получателей: {len(users)}"
@@ -1536,21 +1985,21 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ── /campaign unschedule <name> ────────────────────────────────────────
     elif subcmd == "unschedule":
         if len(args) < 2:
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 "Использование: `/campaign unschedule имя`", parse_mode="Markdown"
             )
             return
         name = args[1]
         if await cdb.unschedule_campaign(name):
-            await update.message.reply_text(f"🗑 Расписание кампании «{name}» отменено. Статус → draft.")
+            await update.effective_message.reply_text(f"🗑 Расписание кампании «{name}» отменено. Статус → draft.")
         else:
-            await update.message.reply_text(f"❌ Кампания «{name}» не найдена или не запланирована.")
+            await update.effective_message.reply_text(f"❌ Кампания «{name}» не найдена или не запланирована.")
 
     # ── /campaign scheduled ────────────────────────────────────────────────
     elif subcmd == "scheduled":
         scheduled = await cdb.get_scheduled_campaigns()
         if not scheduled:
-            await update.message.reply_text("📭 Нет запланированных кампаний.")
+            await update.effective_message.reply_text("📭 Нет запланированных кампаний.")
             return
         lines = ["📅 *Запланированные кампании:*\n"]
         for c in scheduled:
@@ -1565,20 +2014,20 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"\n   👥 {len(users)} получателей"
             )
         lines.append("\n`/campaign unschedule имя` — отменить")
-        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+        await update.effective_message.reply_text("\n".join(lines), parse_mode="Markdown")
 
     # ── /campaign logs <name> ──────────────────────────────────────────────
     elif subcmd == "logs":
         if len(args) < 2:
-            await update.message.reply_text("Использование: `/campaign logs имя`", parse_mode="Markdown")
+            await update.effective_message.reply_text("Использование: `/campaign logs имя`", parse_mode="Markdown")
             return
         c = await cdb.get_campaign(args[1])
         if not c:
-            await update.message.reply_text(f"❌ Кампания «{args[1]}» не найдена.")
+            await update.effective_message.reply_text(f"❌ Кампания «{args[1]}» не найдена.")
             return
         sends = await cdb.get_campaign_sends(c["id"], limit=25)
         if not sends:
-            await update.message.reply_text("📭 Нет записей отправки.")
+            await update.effective_message.reply_text("📭 Нет записей отправки.")
             return
         lines = [f"📋 *Лог кампании «{c['name']}»* (последние {len(sends)})\n"]
         for s in sends:
@@ -1586,11 +2035,11 @@ async def campaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
             name = f"@{s['username']}" if s.get("username") else s.get("first_name") or str(s["chat_id"])
             err = f" — _{s['error']}_" if s.get("error") else ""
             lines.append(f"{icon} `{s['chat_id']}` {name}{err}")
-        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+        await update.effective_message.reply_text("\n".join(lines), parse_mode="Markdown")
 
     # ── help ───────────────────────────────────────────────────────────────
     else:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "📣 *Система кампаний:*\n\n"
             "*Создание и запуск:*\n"
             "`/campaign create имя Текст` — создать\n"
@@ -1623,6 +2072,18 @@ def main():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("summary", summary_report))
+    app.add_handler(CommandHandler("report", summary_report))
+    app.add_handler(CommandHandler("stats", summary_report))
+    app.add_handler(CommandHandler("weeklyreport", weekly_report))
+    app.add_handler(CommandHandler("accounts", accounts_status))
+    app.add_handler(CommandHandler("workers", workers_status))
+    app.add_handler(CommandHandler("broadcasts", broadcasts_status))
+    app.add_handler(CommandHandler("quota", quota_report))
+    app.add_handler(CommandHandler("today", today_report))
+    app.add_handler(CommandHandler("top", top_campaigns))
+    app.add_handler(CommandHandler("upcoming", upcoming_campaigns))
+    app.add_handler(CommandHandler("help", bot_help))
     app.add_handler(CallbackQueryHandler(button_handler))
 
     asyncio.get_event_loop().run_until_complete(cdb.init_db())
@@ -1637,6 +2098,26 @@ def main():
     asyncio.get_event_loop().run_until_complete(_reset_stuck())
 
     async def post_init(application):
+        # Register bot commands with BotFather
+        try:
+            from telegram import BotCommand
+            await application.bot.set_my_commands([
+                BotCommand("start",       "Открыть Mini App"),
+                BotCommand("summary",     "Сводка за сегодня"),
+                BotCommand("weeklyreport","График отправок за 7 дней"),
+                BotCommand("accounts",    "Статус аккаунтов и квоты"),
+                BotCommand("workers",     "Состояние воркеров"),
+                BotCommand("broadcasts",   "Групповые рассылки"),
+                BotCommand("quota",       "Квота отправок по аккаунтам"),
+                BotCommand("today",       "Детальная сводка за сегодня по часам"),
+                BotCommand("top",         "Топ-5 кампаний по отправкам"),
+                BotCommand("upcoming",    "Запланированные кампании на 24ч"),
+                BotCommand("help",        "Список всех команд"),
+            ])
+            logger.info("✅ Bot commands registered with BotFather")
+        except Exception as _e:
+            logger.warning(f"⚠️  setMyCommands failed: {_e}")
+
         cs.start_scheduler(application.bot)
         try:
             from broadcastscheduler import start_broadcast_scheduler

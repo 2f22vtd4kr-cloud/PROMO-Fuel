@@ -187,9 +187,14 @@ async def init_db():
                 pass  # column already exists
 
 
-async def upsert_user(chat_id: int, username: str = None, first_name: str = None):
+async def upsert_user(chat_id: int, username: str = None, first_name: str = None) -> bool:
+    """Upsert a user record. Returns True if the user is new (first /start)."""
     now = datetime.now().isoformat()
     async with aiosqlite.connect(DB_PATH) as db:
+        r = await (await db.execute(
+            "SELECT 1 FROM users WHERE chat_id = ?", (chat_id,)
+        )).fetchone()
+        is_new = r is None
         await db.execute("""
             INSERT INTO users (chat_id, username, first_name, first_seen, last_seen)
             VALUES (?, ?, ?, ?, ?)
@@ -199,6 +204,7 @@ async def upsert_user(chat_id: int, username: str = None, first_name: str = None
                 first_name = COALESCE(excluded.first_name, first_name)
         """, (chat_id, username, first_name, now, now))
         await db.commit()
+        return is_new
 
 
 async def get_all_users():

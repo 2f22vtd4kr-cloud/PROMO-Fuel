@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { CheckCircle, Calendar, Sparkles, X, Eye, Timer, FlaskConical, Shuffle } from "lucide-react";
-import { api, Campaign } from "../lib/api";
+import { CheckCircle, Calendar, Sparkles, X, Eye, Timer, FlaskConical, Shuffle, BookOpen } from "lucide-react";
+import { api, Campaign, MessageTemplate } from "../lib/api";
 import { TG, BLUR, BLUR_HEAVY } from "../lib/theme";
 import { FullSpinner } from "../components/Spinner";
 import { haptic } from "../lib/haptics";
@@ -109,11 +109,31 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
   const [audienceTags, setAudienceTags] = useState<string[]>([]);
   const [selectedTag, setSelectedTag]   = useState<string>("");
   const [audienceCount, setAudienceCount] = useState<number | null>(null);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [templates, setTemplates]       = useState<MessageTemplate[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
 
   useEffect(() => {
     api.getAudienceTags().then(setAudienceTags).catch(() => {});
     api.getAudienceCount().then(r => setAudienceCount(r.count)).catch(() => {});
   }, []);
+
+  function openTemplates() {
+    haptic.light();
+    setShowTemplates(true);
+    if (templates.length === 0) {
+      setLoadingTemplates(true);
+      api.getTemplates().then(setTemplates).catch(() => {}).finally(() => setLoadingTemplates(false));
+    }
+  }
+
+  function applyTemplate(t: MessageTemplate) {
+    haptic.success();
+    setText(t.text);
+    if (!name.trim()) setName(t.name);
+    setShowTemplates(false);
+    api.useTemplate(t.id).catch(() => {});
+  }
 
   useEffect(() => {
     setAudienceCount(null);
@@ -308,7 +328,21 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
         {/* Text — single or A/B */}
         {!abMode ? (
           <div style={{ marginBottom: 18 }}>
-            <FieldLabel hint={`${charCount}`}>Текст сообщения</FieldLabel>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <label style={{ fontSize: 10, color: TG.muted, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em" }}>Текст сообщения</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 11, color: TG.muted }}>{charCount}</span>
+                <button onClick={openTemplates} className="tap" style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  padding: "4px 10px", borderRadius: 10, fontSize: 11, fontWeight: 700,
+                  border: "1px solid rgba(196,174,255,0.30)",
+                  background: "rgba(196,174,255,0.09)",
+                  color: "#c4aeff",
+                }}>
+                  <BookOpen size={11} /> Шаблоны
+                </button>
+              </div>
+            </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
               {vars.map(v => (
                 <button key={v} onClick={() => { haptic.select(); setText(t => t + v); }} className="tap" style={{
@@ -547,6 +581,27 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
           )}
         </div>
 
+        {/* Save as template */}
+        {text.trim().length > 20 && !isEdit && (
+          <div style={{ marginBottom: 14 }}>
+            <button onClick={async () => {
+              haptic.select();
+              try {
+                await api.createTemplate({ name: name.trim() || "Без названия", text: text.trim() });
+                haptic.success();
+              } catch { haptic.error(); }
+            }} className="tap" style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "8px 14px", borderRadius: 12, fontSize: 11, fontWeight: 700,
+              border: "1px solid rgba(196,174,255,0.25)",
+              background: "rgba(196,174,255,0.07)",
+              color: "#c4aeff", width: "100%", justifyContent: "center",
+            }}>
+              <BookOpen size={12} /> Сохранить как шаблон
+            </button>
+          </div>
+        )}
+
         {/* Notes */}
         <div style={{ marginBottom: 22 }}>
           <FieldLabel>Заметки</FieldLabel>
@@ -596,6 +651,87 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
 
         <div style={{ height: 24 }} />
       </div>
+
+      {/* Templates slide-up modal */}
+      {showTemplates && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 200,
+          background: "rgba(0,0,0,0.55)",
+          backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
+          display: "flex", flexDirection: "column", justifyContent: "flex-end",
+        }} onClick={() => setShowTemplates(false)}>
+          <div style={{
+            background: "linear-gradient(180deg,rgba(15,20,40,0.98),rgba(8,12,24,0.99))",
+            borderRadius: "24px 24px 0 0",
+            border: "1px solid rgba(255,255,255,0.10)",
+            borderBottom: "none",
+            maxHeight: "80vh",
+            display: "flex", flexDirection: "column",
+            boxShadow: "0 -20px 60px rgba(0,0,0,0.5)",
+          }} onClick={e => e.stopPropagation()}>
+            {/* Handle + header */}
+            <div style={{ padding: "12px 16px 0", flexShrink: 0 }}>
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.16)", margin: "0 auto 14px" }} />
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <BookOpen size={15} color="#c4aeff" />
+                  <span style={{ fontSize: 15, fontWeight: 800, color: TG.text }}>Шаблоны сообщений</span>
+                </div>
+                <button onClick={() => setShowTemplates(false)} className="tap" style={{
+                  background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)",
+                  borderRadius: 9, padding: 7, display: "flex", color: TG.muted,
+                }}>
+                  <X size={15} />
+                </button>
+              </div>
+              <div style={{ height: 1, background: "rgba(255,255,255,0.07)", marginBottom: 12 }} />
+            </div>
+
+            {/* Template list */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px", WebkitOverflowScrolling: "touch" }}>
+              {loadingTemplates ? (
+                <div style={{ textAlign: "center", padding: "32px 0", color: TG.muted, fontSize: 13 }}>Загрузка шаблонов...</div>
+              ) : templates.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "32px 0", color: TG.muted, fontSize: 13 }}>Шаблоны не найдены</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {templates.map(t => {
+                    const preview = t.text.replace(/\{[^}]+\}/g, m => m).slice(0, 100) + (t.text.length > 100 ? "…" : "");
+                    const tags: string[] = (() => { try { return JSON.parse(t.tags); } catch { return []; } })();
+                    return (
+                      <button key={t.id} onClick={() => applyTemplate(t)} className="tap" style={{
+                        width: "100%", textAlign: "left",
+                        padding: "12px 14px",
+                        background: "rgba(196,174,255,0.06)",
+                        border: "1px solid rgba(196,174,255,0.15)",
+                        borderRadius: 16,
+                        backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
+                        cursor: "pointer",
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                          <span style={{ fontSize: 18 }}>{t.icon}</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: TG.text, flex: 1 }}>{t.name}</span>
+                          {t.use_count > 0 && (
+                            <span style={{ fontSize: 10, color: TG.muted, background: "rgba(255,255,255,0.07)", borderRadius: 10, padding: "2px 7px" }}>×{t.use_count}</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 12, color: TG.muted, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{preview}</div>
+                        {tags.length > 0 && (
+                          <div style={{ display: "flex", gap: 5, marginTop: 8, flexWrap: "wrap" }}>
+                            {tags.map(tag => (
+                              <span key={tag} style={{ fontSize: 10, color: "#c4aeff", background: "rgba(196,174,255,0.10)", borderRadius: 8, padding: "2px 7px", border: "1px solid rgba(196,174,255,0.18)" }}>#{tag}</span>
+                            ))}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

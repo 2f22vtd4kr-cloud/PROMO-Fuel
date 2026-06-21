@@ -229,4 +229,107 @@ router.get("/analytics/send-rate", (_req, res) => {
   }
 });
 
+router.get("/analytics/digest", (_req, res) => {
+  try {
+    const db   = getDb();
+    const today = new Date().toISOString().slice(0, 10);
+
+    const totalUsers = (db.prepare("SELECT COUNT(*) as n FROM users").get() as { n: number }).n;
+
+    let dmSentToday = 0;
+    try { dmSentToday = (db.prepare("SELECT COUNT(*) as n FROM sends WHERE status='ok' AND sent_at LIKE ?").get(`${today}%`) as { n: number }).n; } catch {}
+
+    let groupSentToday = 0;
+    try { groupSentToday = (db.prepare("SELECT COUNT(*) as n FROM group_send_logs WHERE status='ok' AND sent_at LIKE ?").get(`${today}%`) as { n: number }).n; } catch {}
+
+    const activeCampaigns = (db.prepare("SELECT COUNT(*) as n FROM campaigns WHERE status='running'").get() as { n: number }).n;
+
+    let activeGroupCampaigns = 0;
+    try { activeGroupCampaigns = (db.prepare("SELECT COUNT(*) as n FROM group_campaigns WHERE status='running'").get() as { n: number }).n; } catch {}
+
+    const heartbeats = db.prepare("SELECT worker_id, last_seen, tasks_completed, tasks_failed FROM worker_heartbeats").all() as { worker_id: string; last_seen: string; tasks_completed: number; tasks_failed: number }[];
+    const nowMs = Date.now();
+    let workersAlive = 0;
+    let tasksDone = 0;
+    let tasksFailed = 0;
+    for (const w of heartbeats) {
+      try { if (nowMs - new Date(w.last_seen).getTime() <= 60_000) workersAlive++; } catch {}
+      tasksDone   += w.tasks_completed || 0;
+      tasksFailed += w.tasks_failed    || 0;
+    }
+
+    const t7  = new Date(nowMs - 7 * 86400_000).toISOString().slice(0, 10) + "T00:00:00";
+    const t14 = new Date(nowMs - 14 * 86400_000).toISOString().slice(0, 10) + "T00:00:00";
+    const t7end = new Date().toISOString();
+
+    let dmSent7 = 0, dmSent14prev = 0, groupSent7 = 0, groupSent14prev = 0;
+    try { dmSent7 = (db.prepare("SELECT COUNT(*) as n FROM sends WHERE status='ok' AND sent_at >= ? AND sent_at < ?").get(t7, t7end) as { n: number }).n; } catch {}
+    try { dmSent14prev = (db.prepare("SELECT COUNT(*) as n FROM sends WHERE status='ok' AND sent_at >= ? AND sent_at < ?").get(t14, t7) as { n: number }).n; } catch {}
+    try { groupSent7 = (db.prepare("SELECT COUNT(*) as n FROM group_send_logs WHERE status='ok' AND sent_at >= ? AND sent_at < ?").get(t7, t7end) as { n: number }).n; } catch {}
+    try { groupSent14prev = (db.prepare("SELECT COUNT(*) as n FROM group_send_logs WHERE status='ok' AND sent_at >= ? AND sent_at < ?").get(t14, t7) as { n: number }).n; } catch {}
+
+    const totalSent7     = dmSent7 + groupSent7;
+    const totalSent14prev = dmSent14prev + groupSent14prev;
+    const weekDelta = totalSent14prev > 0
+      ? parseFloat(((totalSent7 - totalSent14prev) / totalSent14prev * 100).toFixed(1))
+      : totalSent7 > 0 ? 100 : 0;
+
+    db.close();
+    res.json({
+      date: today,
+      total_users: totalUsers,
+      dm_sent_today: dmSentToday,
+      group_sent_today: groupSentToday,
+      total_sent_today: dmSentToday + groupSentToday,
+      active_campaigns: activeCampaigns,
+      active_group_campaigns: activeGroupCampaigns,
+      workers_alive: workersAlive,
+      workers_total: heartbeats.length,
+      tasks_done: tasksDone,
+      tasks_failed: tasksFailed,
+      sent_last_7_days: totalSent7,
+      sent_prev_7_days: totalSent14prev,
+      week_delta_pct: weekDelta,
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.get("/analytics/account-health", (_req, res) => {
+  try {
+    const db  = getDb();
+    const today = new Date().toISOString().slice(0, 10);
+    const accounts = db.prepare("SELECT id, phone, status, daily_limit, flood_wait_until FROM sender_accounts").all() as {
+      id: number; phone: string; status: string; daily_limit: number | null; flood_wait_until: string | null;
+    }[];
+    const results = accounts.map(a => {
+      let sentToday = 0;
+      try { sentToday = (db.prepare("SELECT COUNT(*) as n FROM sends WHERE account_id=? AND sent_at LIKE ?").get(a.id, `${today}%`) as { n: number }).n; } catch {}
+      const limit = a.daily_limit ?? 50;
+      const pct   = Math.min(100, Math.round(sentToday / limit * 100));
+      const floodSec = a.flood_wait_until
+        ? Math.max(0, Math.round((new Date(a.flood_wait_until).getTime() - Date.now()) / 1000))
+        : 0;
+      return {
+        id: a.id,
+        phone: a.phone,
+        status: a.status,
+        sent_today: sentToday,
+        daily_limit: limit,
+        quota_pct: pct,
+        flood_wait_sec: floodSec,
+        healthy: a.status === "active" && floodSec === 0 && pct < 95,
+      };
+    });
+    db.close();
+    const healthy   = results.filter(r => r.healthy).length;
+    const flooding  = results.filter(r => r.flood_wait_sec > 0).length;
+    const inactive  = results.filter(r => r.status !== "active").length;
+    res.json({ accounts: results, summary: { total: results.length, healthy, flooding, inactive } });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 export default router;

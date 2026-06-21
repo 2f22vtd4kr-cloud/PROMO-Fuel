@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { Bell, Megaphone, BarChart2, ArrowUpRight, Gift, Users2, TrendingUp, Shield, Flame, Fuel, Radio, Cpu } from "lucide-react";
-import { api, Campaign, AnalyticsOverview, WorkersSummary } from "../lib/api";
+import { Bell, Megaphone, BarChart2, ArrowUpRight, Gift, Users2, TrendingUp, Shield, Flame, Radio, Cpu } from "lucide-react";
+import { api, Campaign, AnalyticsOverview, WorkersSummary, DailyDigest } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
 import { haptic } from "../lib/haptics";
@@ -11,28 +11,39 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
   onNavigate: (tab: string) => void;
 }) {
   const [overview,       setOverview]       = useState<AnalyticsOverview | null>(null);
+  const [digest,         setDigest]         = useState<DailyDigest | null>(null);
   const [campaigns,      setCampaigns]      = useState<Campaign[]>([]);
   const [groupCampaigns, setGroupCampaigns] = useState(0);
   const [users,          setUsers]          = useState(0);
   const [loading,        setLoading]        = useState(true);
   const [workers,        setWorkers]        = useState<WorkersSummary | null>(null);
   const [bannedAcctCount, setBannedAcctCount] = useState(0);
+  const [quotaPct,        setQuotaPct]        = useState<number | null>(null);
+  const [floodedCount,    setFloodedCount]    = useState(0);
   const [lastRefreshed,  setLastRefreshed]  = useState<Date | null>(null);
+  const [upcomingCamps,  setUpcomingCamps]  = useState<{ id: number; name: string; scheduled_at: string; target_count: number }[]>([]);
 
   useEffect(() => {
-    Promise.all([api.getOverview(), api.getCampaigns(), api.getUsers(), api.getWorkersSummary(), api.getGroupCampaigns(), api.getAccounts()])
-      .then(([ov, cps, us, ws, gcs, accts]) => {
+    Promise.all([api.getOverview(), api.getCampaigns(), api.getUsers(), api.getWorkersSummary(), api.getGroupCampaigns(), api.getAccounts(), api.getDailyDigest(), api.getUpcomingCampaigns()])
+      .then(([ov, cps, us, ws, gcs, accts, dg, upcoming]) => {
         setOverview(ov);
+        setDigest(dg);
         setCampaigns(cps.slice(0, 3));
         setUsers(us.length);
         setWorkers(ws);
         setGroupCampaigns(gcs.filter(g => g.status === "running").length);
         setBannedAcctCount(accts.filter((a: { is_banned: number }) => a.is_banned === 1).length);
+        const totalSent  = accts.reduce((s: number, a: { sent_today: number }) => s + (a.sent_today || 0), 0);
+        const totalLimit = accts.reduce((s: number, a: { daily_limit: number }) => s + (a.daily_limit || 300), 0);
+        setQuotaPct(totalLimit > 0 ? Math.min(100, Math.round(totalSent / totalLimit * 100)) : null);
+        setFloodedCount(accts.filter((a: { flood_wait_until: string | null }) => !!a.flood_wait_until).length);
+        setUpcomingCamps(Array.isArray(upcoming) ? upcoming : []);
       })
       .catch(() => {})
       .finally(() => { setLoading(false); setLastRefreshed(new Date()); });
     const t = setInterval(() => {
       api.getOverview().then(setOverview).catch(() => {});
+      api.getDailyDigest().then(setDigest).catch(() => {});
       api.getWorkersSummary().then(setWorkers).catch(() => {});
       api.getGroupCampaigns().then(gcs => setGroupCampaigns(gcs.filter(g => g.status === "running").length)).catch(() => {});
       setLastRefreshed(new Date());
@@ -40,11 +51,16 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
     return () => clearInterval(t);
   }, []);
 
+  const todaySent = digest ? digest.total_sent_today : null;
+  const weekDelta = digest ? digest.week_delta_pct : null;
+
   const stats = [
     {
       label: "Отправлено",
       value: overview ? (overview.totalSent >= 1000 ? `${(overview.totalSent / 1000).toFixed(0)}K` : String(overview.totalSent)) : "—",
-      sub: overview && overview.sentDelta > 0 ? `+${overview.sentDelta}% сегодня` : "за всё время",
+      sub: todaySent !== null
+        ? (todaySent > 0 ? `+${todaySent} сегодня` : "за всё время")
+        : (overview && overview.sentDelta > 0 ? `+${overview.sentDelta}% сегодня` : "за всё время"),
       color: TG.green,
       glow: TG.greenGlow,
       icon: Gift,
@@ -181,6 +197,60 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
             </div>
           )}
 
+          {/* Account quota bar — shown when at least one account exists */}
+          {quotaPct !== null && (
+            <div
+              onClick={() => { haptic.light(); onNavigate("accounts"); }}
+              style={{ margin: "0 14px", padding: "8px 12px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", cursor: "pointer", animation: "slideUp 0.4s ease-out" }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: TG.muted }}>📊 Квота отправок</span>
+                  {floodedCount > 0 && (
+                    <span style={{ fontSize: 9, color: "#ffc946", background: "rgba(255,201,70,0.12)", border: "1px solid rgba(255,201,70,0.25)", borderRadius: 8, padding: "1px 5px" }}>⏳ {floodedCount} flood</span>
+                  )}
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 700, color: quotaPct >= 90 ? "#ff6b7a" : quotaPct >= 70 ? "#ffc946" : "#2de897" }}>{quotaPct}%</span>
+              </div>
+              <div style={{ height: 3, borderRadius: 2, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
+                <div style={{ height: "100%", borderRadius: 2, width: `${quotaPct}%`, background: quotaPct >= 90 ? "linear-gradient(90deg,#ff6b7a,#ff9f7a)" : quotaPct >= 70 ? "linear-gradient(90deg,#ffc946,#ffdd86)" : "linear-gradient(90deg,#2de897,#6ba8e5)", transition: "width 0.6s ease" }} />
+              </div>
+            </div>
+          )}
+
+          {/* Upcoming scheduled campaigns widget */}
+          {upcomingCamps.length > 0 && (
+            <div
+              onClick={() => { haptic.light(); onNavigate("campaigns"); }}
+              style={{ margin: "0 14px", padding: "9px 12px", borderRadius: 12, background: "rgba(196,174,255,0.06)", border: "1px solid rgba(196,174,255,0.18)", cursor: "pointer", animation: "slideUp 0.4s ease-out 0.05s both" }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#c4aeff" }}>⏰ Запланировано</span>
+                <span style={{ fontSize: 9, color: "rgba(196,174,255,0.6)" }}>{upcomingCamps.length} кампаний · 24ч</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {upcomingCamps.slice(0, 2).map(c => {
+                  const t = new Date(c.scheduled_at);
+                  const now = Date.now();
+                  const delta = t.getTime() - now;
+                  const hh = Math.floor(delta / 3600000);
+                  const mm = Math.floor((delta % 3600000) / 60000);
+                  const timeStr = t.toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
+                  const countdown = hh > 0 ? `${hh}ч ${mm}м` : `${mm}м`;
+                  return (
+                    <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 11, color: TG.text, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", maxWidth: "60%" }}>{c.name}</span>
+                      <span style={{ fontSize: 10, color: "rgba(196,174,255,0.8)", flexShrink: 0 }}>{timeStr} · {countdown}</span>
+                    </div>
+                  );
+                })}
+                {upcomingCamps.length > 2 && (
+                  <span style={{ fontSize: 9, color: "rgba(196,174,255,0.5)" }}>+{upcomingCamps.length - 2} ещё...</span>
+                )}
+              </div>
+            </div>
+          )}
+
           <div style={{ padding: "0 14px", display: "flex", flexDirection: "column", gap: 14 }}>
             {/* Fuel gauge / conversion ring — shown only when campaigns are active */}
             {!loading && overview && overview.activeCampaigns > 0 && (
@@ -227,20 +297,31 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                 <div style={{ fontSize: 10, color: TG.muted, marginTop: 3, fontWeight: 500 }}>{s.label}</div>
                 <div style={{ fontSize: 10, color: s.color, marginTop: 2, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <span>{s.sub}</span>
-                  <svg width="27" height="16" viewBox="0 0 27 16">
-                    {sparklineHeights.map((h, idx) => (
-                      <rect
-                        key={idx}
-                        x={idx * 4}
-                        y={16 - h}
-                        width="3"
-                        height={h}
-                        fill={s.color}
-                        opacity={idx === sparklineHeights.length - 1 ? 1 : 0.4}
-                        rx="1"
-                      />
-                    ))}
-                  </svg>
+                  {i === 0 && weekDelta !== null && weekDelta !== 0 ? (
+                    <span style={{
+                      fontSize: 9, fontWeight: 800, borderRadius: 20, padding: "1px 6px",
+                      background: weekDelta > 0 ? "rgba(45,232,151,0.14)" : "rgba(255,107,107,0.14)",
+                      border: `1px solid ${weekDelta > 0 ? "rgba(45,232,151,0.35)" : "rgba(255,107,107,0.35)"}`,
+                      color: weekDelta > 0 ? "#2de897" : "#ff6b7a",
+                    }}>
+                      {weekDelta > 0 ? "+" : ""}{weekDelta}% нед.
+                    </span>
+                  ) : (
+                    <svg width="27" height="16" viewBox="0 0 27 16">
+                      {sparklineHeights.map((h, idx) => (
+                        <rect
+                          key={idx}
+                          x={idx * 4}
+                          y={16 - h}
+                          width="3"
+                          height={h}
+                          fill={s.color}
+                          opacity={idx === sparklineHeights.length - 1 ? 1 : 0.4}
+                          rx="1"
+                        />
+                      ))}
+                    </svg>
+                  )}
                 </div>
               </GlassCard>
             );

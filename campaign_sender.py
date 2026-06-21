@@ -24,6 +24,39 @@ _telethon_clients: dict = {}
 
 DAILY_SEND_CAP = int(os.getenv("DAILY_SEND_CAP", "500"))
 
+# Milestone tracking: campaign_id -> set of pct milestones already notified
+_milestone_notified: dict[int, set] = {}
+_MILESTONES = (25, 50, 75)
+
+logger = logging.getLogger(__name__)
+
+
+async def _fire_milestone(bot: Bot, campaign_id: int, campaign_name: str,
+                          notify_chat_id: int, sent: int, total: int) -> None:
+    """Send a progress notification when the campaign crosses a milestone %."""
+    if total <= 0 or notify_chat_id <= 0:
+        return
+    pct_done = int(sent / total * 100)
+    notified = _milestone_notified.setdefault(campaign_id, set())
+    for milestone in _MILESTONES:
+        if pct_done >= milestone and milestone not in notified:
+            notified.add(milestone)
+            icon = {25: "🌔", 50: "🌕", 75: "🌖"}.get(milestone, "📊")
+            bar_filled = milestone // 10
+            bar = "█" * bar_filled + "░" * (10 - bar_filled)
+            try:
+                await bot.send_message(
+                    chat_id=notify_chat_id,
+                    text=(
+                        f"{icon} *Кампания «{campaign_name}»* — {milestone}%\n\n"
+                        f"`{bar}` {milestone}%\n"
+                        f"✅ Отправлено: *{sent}* из *{total}*"
+                    ),
+                    parse_mode="Markdown",
+                )
+            except Exception:
+                pass
+
 
 def resolve_spintax(text: str) -> str:
     """Resolve {option1|option2|option3} spintax patterns randomly."""
@@ -61,8 +94,6 @@ async def human_delay(sent_count: int) -> None:
 
     await asyncio.sleep(base + extra)
 
-
-logger = logging.getLogger(__name__)
 
 # Active campaign state
 _active: dict = {}  # campaign_id -> state dict
@@ -296,6 +327,7 @@ async def send_campaign(bot: Bot, campaign_id: int, notify_chat_id: int, tag: st
                     await db.increment_campaign_counts(campaign_id, sent=1)
                     await db.mark_user_as_promo_targeted(chat_id)
                     await db.account_record_send(sender_account_id, success=True)
+                    await _fire_milestone(bot, campaign_id, campaign["name"], notify_chat_id, state["sent"], state["total"])
                     await asyncio.sleep(delay)
 
                 except TelFloodWait as e:
@@ -338,6 +370,7 @@ async def send_campaign(bot: Bot, campaign_id: int, notify_chat_id: int, tag: st
                     await db.log_send(campaign_id, chat_id, "ok", account_id=sender_account_id)
                     await db.increment_campaign_counts(campaign_id, sent=1)
                     await db.mark_user_as_promo_targeted(chat_id)
+                    await _fire_milestone(bot, campaign_id, campaign["name"], notify_chat_id, state["sent"], state["total"])
                     await asyncio.sleep(delay)
 
                 except Forbidden:
@@ -361,6 +394,7 @@ async def send_campaign(bot: Bot, campaign_id: int, notify_chat_id: int, tag: st
                             await db.log_send(campaign_id, chat_id, "ok_retry", account_id=sender_account_id)
                             await db.increment_campaign_counts(campaign_id, sent=1)
                             await db.mark_user_as_promo_targeted(chat_id)
+                            await _fire_milestone(bot, campaign_id, campaign["name"], notify_chat_id, state["sent"], state["total"])
                         except Exception as e2:
                             state["failed"] += 1
                             await db.log_send(campaign_id, chat_id, "failed", str(e2)[:200], account_id=sender_account_id)

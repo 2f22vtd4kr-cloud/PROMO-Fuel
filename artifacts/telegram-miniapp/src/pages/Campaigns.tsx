@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Pause, Play, MoreHorizontal, Clock, Copy, Trash2, Settings, ChevronDown, CheckCircle2, XCircle, SkipForward, FlaskConical, Loader2, Timer } from "lucide-react";
+import { Plus, Pause, Play, MoreHorizontal, Clock, Copy, Trash2, Settings, ChevronDown, CheckCircle2, XCircle, SkipForward, FlaskConical, Loader2, Timer, RotateCcw } from "lucide-react";
 import { api, Campaign, SendLog } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard, StatusBadge } from "../components/GlassCard";
@@ -190,6 +190,8 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showText, setShowText] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesVal, setNotesVal] = useState(campaign.notes || "");
 
   const isActive   = campaign.status === "running" || campaign.status === "sending";
   const isPaused   = campaign.status === "paused";
@@ -216,6 +218,14 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
     haptic.medium(); setBusy(true);
     try { await api.actionCampaign(campaign.id, "running"); haptic.success(); onRefresh(); }
     catch { haptic.error(); } finally { setBusy(false); }
+  }
+  async function restartCampaign() {
+    haptic.medium(); setBusy(true);
+    try {
+      await api.actionCampaign(campaign.id, "draft");
+      await api.actionCampaign(campaign.id, "running");
+      haptic.success(); onRefresh();
+    } catch { haptic.error(); } finally { setBusy(false); }
   }
   async function duplicate() {
     haptic.medium(); setMenuOpen(false);
@@ -287,6 +297,12 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
               <span style={{ fontSize: 10, fontWeight: 700, color: TG.green }}>Запустить</span>
             </div>
           )}
+          {isDone && (
+            <div onClick={restartCampaign} style={{ height: 28, borderRadius: 9, background: "rgba(107,168,229,0.15)", border: "1px solid rgba(107,168,229,0.35)", display: "flex", alignItems: "center", justifyContent: "center", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1, padding: "0 10px", gap: 5 }}>
+              <RotateCcw size={11} color="#6ba8e5" />
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#6ba8e5" }}>Повтор</span>
+            </div>
+          )}
           {isEditable && (
             <div onClick={() => { haptic.light(); onEdit(campaign.id); }} style={{ width: 28, height: 28, borderRadius: 9, background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
               <Settings size={12} color={TG.muted} />
@@ -347,11 +363,27 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
         );
       })()}
 
-      {/* Notes */}
-      {campaign.notes && (
-        <div style={{ marginTop: 8, padding: "8px 10px", background: "rgba(255,200,50,0.07)", border: "1px solid rgba(255,200,50,0.18)", borderRadius: 9, fontSize: 11, color: TG.muted, lineHeight: 1.45, wordBreak: "break-word", display: "flex", alignItems: "flex-start", gap: 6 }}>
+      {/* Notes — tap to edit */}
+      {editingNotes ? (
+        <div style={{ marginTop: 8 }}>
+          <textarea
+            autoFocus
+            value={notesVal}
+            onChange={e => setNotesVal(e.target.value)}
+            onBlur={async () => {
+              setEditingNotes(false);
+              try { await api.patchCampaignNotes(campaign.id, notesVal); haptic.success(); onRefresh(); } catch { haptic.error(); }
+            }}
+            style={{ width: "100%", minHeight: 56, borderRadius: 9, background: "rgba(255,200,50,0.06)", border: "1px solid rgba(255,200,50,0.28)", color: TG.text, fontSize: 11, padding: "8px 10px", resize: "vertical", boxSizing: "border-box", outline: "none", fontFamily: "inherit", lineHeight: 1.45 }}
+            placeholder="Заметка к кампании..."
+          />
+        </div>
+      ) : (
+        <div
+          onClick={() => { haptic.light(); setEditingNotes(true); }}
+          style={{ marginTop: 8, padding: "8px 10px", background: "rgba(255,200,50,0.07)", border: "1px solid rgba(255,200,50,0.18)", borderRadius: 9, fontSize: 11, color: campaign.notes ? TG.muted : "rgba(255,200,50,0.35)", lineHeight: 1.45, wordBreak: "break-word", display: "flex", alignItems: "flex-start", gap: 6, cursor: "text", minHeight: 32 }}>
           <span style={{ fontSize: 12, flexShrink: 0 }}>📝</span>
-          <span>{campaign.notes}</span>
+          <span>{campaign.notes || "Добавить заметку..."}</span>
         </div>
       )}
 

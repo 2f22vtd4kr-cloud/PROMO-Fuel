@@ -418,9 +418,10 @@ async def main_loop(
                         f"\n↩️ Пропущено (уже отправлено): {resumed_n}"
                         if resumed_n else ""
                     )
+                    camp_name = result.get("campaign_name") or f"#{campaign_id}"
                     asyncio.create_task(_notify_owner(
                         f"✅ *Рассылка завершена*\n"
-                        f"Кампания #{campaign_id} · Задача #{task_id}\n"
+                        f"«{camp_name}» · Задача #{task_id}\n"
                         f"📨 Отправлено: {sent_n}  ❌ Ошибок: {failed_n}"
                         + resume_note
                     ))

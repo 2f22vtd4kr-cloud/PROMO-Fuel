@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { TrendingUp, Users2, Target, Zap, ArrowUpRight, Trophy, RotateCcw } from "lucide-react";
-import { api, AnalyticsOverview } from "../lib/api";
+import { api, AnalyticsOverview, DailyDigest } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
 import { haptic } from "../lib/haptics";
@@ -206,6 +206,7 @@ function DonutChart({ data }: { data: typeof FUEL_MIX }) {
 export function AnalyticsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [overview, setOverview]   = useState<AnalyticsOverview | null>(null);
+  const [digest, setDigest]       = useState<DailyDigest | null>(null);
   const [trend, setTrend]         = useState<TrendPoint[]>(MOCK_TREND);
   const [topCamps, setTopCamps]   = useState<TopCampaign[]>([]);
   const [sendRate, setSendRate]   = useState<SendRatePoint[]>([]);
@@ -222,8 +223,10 @@ export function AnalyticsPage() {
       api.getAnalyticsTopCampaigns(5).catch(() => []),
       api.getAnalyticsSendRate().catch(() => []),
       api.getAccountSendsToday().catch(() => [] as { account_id: string; ok: number; failed: number }[]),
-    ]).then(([ov, tr, tc, sr, gs]) => {
+      api.getDailyDigest().catch(() => null),
+    ]).then(([ov, tr, tc, sr, gs, dg]) => {
       setOverview(ov);
+      if (dg) setDigest(dg as DailyDigest);
       if (Array.isArray(tr) && tr.length > 0) setTrend(tr);
       if (Array.isArray(tc)) setTopCamps(tc as TopCampaign[]);
       if (Array.isArray(sr) && sr.length > 0) setSendRate(sr as SendRatePoint[]);
@@ -297,6 +300,48 @@ export function AnalyticsPage() {
             );
           })}
         </div>
+
+        {/* Week digest summary banner */}
+        {digest && (
+          <GlassCard style={{ padding: "12px 14px", animation: "slideUp 0.4s ease-out 0.32s both" }}>
+            <div style={{ position: "absolute", top: 0, left: "10%", right: "10%", height: 1, background: "linear-gradient(90deg, transparent, #6ba8e5, transparent)" }} />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: TG.muted }}>📊 Сводка за 7 дней</span>
+              {digest.week_delta_pct !== 0 && (
+                <span style={{
+                  fontSize: 10, fontWeight: 800, borderRadius: 20, padding: "2px 8px",
+                  background: digest.week_delta_pct > 0 ? "rgba(45,232,151,0.12)" : "rgba(255,107,107,0.12)",
+                  border: `1px solid ${digest.week_delta_pct > 0 ? "rgba(45,232,151,0.3)" : "rgba(255,107,107,0.3)"}`,
+                  color: digest.week_delta_pct > 0 ? "#2de897" : "#ff6b7a",
+                }}>
+                  {digest.week_delta_pct > 0 ? "+" : ""}{digest.week_delta_pct}% к прошлой неделе
+                </span>
+              )}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
+              {[
+                { label: "Отправлено", value: digest.sent_last_7_days.toLocaleString("ru"), color: "#6ba8e5" },
+                { label: "Сегодня",    value: digest.total_sent_today.toLocaleString("ru"), color: "#2de897" },
+                { label: "DM",         value: digest.dm_sent_today.toLocaleString("ru"),    color: "#c4aeff" },
+                { label: "Группы",     value: digest.group_sent_today.toLocaleString("ru"), color: "#ffc946" },
+              ].map(item => (
+                <div key={item.label} style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: item.color }}>{item.value}</div>
+                  <div style={{ fontSize: 9, color: TG.muted, marginTop: 2 }}>{item.label}</div>
+                </div>
+              ))}
+            </div>
+            {(digest.tasks_done > 0 || digest.tasks_failed > 0) && (
+              <div style={{ display: "flex", gap: 8, marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                <span style={{ fontSize: 10, color: "#2de897" }}>✓ {digest.tasks_done} задач</span>
+                {digest.tasks_failed > 0 && <span style={{ fontSize: 10, color: "#ff6b7a" }}>✗ {digest.tasks_failed} ошибок</span>}
+                <span style={{ fontSize: 10, color: TG.muted, marginLeft: "auto" }}>
+                  {digest.workers_alive}/{digest.workers_total} воркеров
+                </span>
+              </div>
+            )}
+          </GlassCard>
+        )}
 
         {/* Group sends today strip */}
         {groupSendsToday && (groupSendsToday.ok + groupSendsToday.failed) > 0 && (

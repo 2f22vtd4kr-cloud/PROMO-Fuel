@@ -162,6 +162,17 @@ export interface DailyStat {
   failed: number;
 }
 
+export interface MessageTemplate {
+  id: number;
+  name: string;
+  icon: string;
+  text: string;
+  tags: string;
+  use_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SenderAccount {
   id: number;
   phone: string;
@@ -294,6 +305,23 @@ export interface WorkersSummary {
   tasks_dead: number;
 }
 
+export interface DailyDigest {
+  date: string;
+  total_users: number;
+  dm_sent_today: number;
+  group_sent_today: number;
+  total_sent_today: number;
+  active_campaigns: number;
+  active_group_campaigns: number;
+  workers_alive: number;
+  workers_total: number;
+  tasks_done: number;
+  tasks_failed: number;
+  sent_last_7_days: number;
+  sent_prev_7_days: number;
+  week_delta_pct: number;
+}
+
 // ── Control-plane types (apiserver.py / FastAPI) ───────────────────────────────
 
 export interface AuthSession {
@@ -303,6 +331,17 @@ export interface AuthSession {
   awaiting_2fa: boolean;
   started_at: string;
   expires_in: number;
+}
+
+export interface AccountHealth {
+  id: number;
+  phone: string;
+  status: string;
+  sent_today: number;
+  daily_limit: number;
+  quota_pct: number;
+  flood_wait_sec: number;
+  healthy: boolean;
 }
 
 export interface QueueStats {
@@ -362,6 +401,7 @@ export interface SignInResult {
 
 export const api = {
   getCampaigns: (status?: string) => get<Campaign[]>(`/campaigns${status ? `?status=${status}` : ""}`),
+  getUpcomingCampaigns: (hours = 24) => get<{ id: number; name: string; status: string; scheduled_at: string; target_count: number }[]>(`/campaigns/upcoming?hours=${hours}`),
   getCampaign:  (id: number) => get<Campaign>(`/campaigns/${id}`),
   createCampaign: (data: { name: string; text_template: string; scheduled_at?: string }) =>
     post<Campaign>("/campaigns", data),
@@ -383,6 +423,8 @@ export const api = {
   sendNowGroupCampaign: (id: number) => post<{ ok: boolean; task: unknown }>(`/group-campaigns/${id}/send-now`, {}),
   testSendGroupCampaign:(id: number, groupId: string) => post<{ ok: boolean; task: unknown }>(`/group-campaigns/${id}/test-send`, { group_id: groupId }),
   getGroupCampaignStats:(id: number) => get<{ by_group: GroupSendStat[]; daily: DailyStat[] }>(`/group-campaigns/${id}/stats`),
+  getCampaignStats:     (id: number) => get<{ campaign: { id: number; name: string; status: string }; total: number; ok: number; failed: number; today: number; success_rate: number; hourly: { h: string; n: number }[] }>(`/campaigns/${id}/stats`),
+  patchCampaignNotes:   (id: number, notes: string) => fetch(`/api/campaigns/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ notes }) }).then(r => r.json()),
   retryFailedSends:     (windowHours?: number) =>
     post<{ ok: boolean; tasks_created: number; campaigns: number }>("/group-campaigns/retry-failed-sends", { window_hours: windowHours ?? 24 }),
   bulkGroupCampaignAction: (action: "pause" | "resume" | "stop", ids?: number[]) =>
@@ -435,13 +477,21 @@ export const api = {
   getCampaignSparklines:  () => get<Record<number, number[]>>("/stats/campaign-sparklines"),
   getAccountSendsToday:   () => get<{ account_id: string; ok: number; failed: number }[]>("/accounts/sends-today"),
 
+  getAccountHealth:         () => get<{ accounts: AccountHealth[]; summary: { total: number; healthy: number; flooding: number; inactive: number } }>("/analytics/account-health"),
   getAnalyticsTrend:        () => get<{ date: string; sent: number; opened: number }[]>("/analytics/trend"),
   getAnalyticsTopCampaigns: (limit = 5) => get<unknown[]>(`/analytics/top-campaigns?limit=${limit}`),
   getAnalyticsSendRate:     () => get<unknown[]>("/analytics/send-rate"),
 
+  getTemplates:   () => get<MessageTemplate[]>("/templates"),
+  useTemplate:    (id: number) => post<MessageTemplate>(`/templates/${id}/use`, {}),
+  createTemplate: (data: { name: string; icon?: string; text: string; tags?: string[] }) =>
+    post<MessageTemplate>("/templates", data),
+  deleteTemplate: (id: number) => del(`/templates/${id}`),
+
   resetAccountDaily: (id: number) => post<{ ok: boolean }>(`/accounts/${id}/reset-daily`, {}),
 
-  getOverview: () => get<AnalyticsOverview>("/analytics/summary"),
+  getOverview:     () => get<AnalyticsOverview>("/analytics/summary"),
+  getDailyDigest:  () => get<DailyDigest>("/analytics/digest"),
   getUsers:    () => get<User[]>("/users"),
   importUsers: (users: { chat_id: number; username?: string; first_name?: string; tags?: string }[]) =>
     post<{ ok: boolean; imported: number; skipped: number; total: number }>("/users/import", { users }),

@@ -38,11 +38,12 @@ import dataclasses
 import logging
 import os
 import signal
+import sqlite3
 import subprocess
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Sequence
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -93,6 +94,294 @@ def _notify_owner_sync(text: str) -> None:
                 pass
         except Exception:
             pass
+
+
+# ── Daily summary notification ─────────────────────────────────────────────────
+
+_DAILY_SUMMARY_HOUR = int(os.getenv("DAILY_SUMMARY_HOUR", "9"))    # 09:00 UTC by default
+_DAILY_SUMMARY_MIN  = int(os.getenv("DAILY_SUMMARY_MIN",  "0"))
+
+
+def _collect_daily_stats(db_path: str) -> dict:
+    """Query SQLite for stats used in the daily digest."""
+    stats: dict = {
+        "total_users": 0,
+        "dm_sent_today": 0,
+        "group_sent_today": 0,
+        "active_campaigns": 0,
+        "active_group_campaigns": 0,
+        "workers_alive": 0,
+        "workers_total": 0,
+        "tasks_done": 0,
+        "tasks_failed": 0,
+    }
+    try:
+        conn = sqlite3.connect(db_path, timeout=10)
+        conn.row_factory = sqlite3.Row
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        with conn:
+            r = conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()
+            stats["total_users"] = r["n"] if r else 0
+
+            r = conn.execute(
+                "SELECT COUNT(*) AS n FROM sends WHERE status='ok' AND sent_at LIKE ?",
+                (f"{today}%",)
+            ).fetchone()
+            stats["dm_sent_today"] = r["n"] if r else 0
+
+            r = conn.execute(
+                "SELECT COUNT(*) AS n FROM group_send_logs WHERE status='ok' AND sent_at LIKE ?",
+                (f"{today}%",)
+            ).fetchone()
+            stats["group_sent_today"] = r["n"] if r else 0
+
+            r = conn.execute(
+                "SELECT COUNT(*) AS n FROM campaigns WHERE status='running'"
+            ).fetchone()
+            stats["active_campaigns"] = r["n"] if r else 0
+
+            r = conn.execute(
+                "SELECT COUNT(*) AS n FROM group_campaigns WHERE status='running'"
+            ).fetchone()
+            stats["active_group_campaigns"] = r["n"] if r else 0
+
+            rows = conn.execute(
+                "SELECT worker_id, last_seen, tasks_completed, tasks_failed FROM worker_heartbeats"
+            ).fetchall()
+            now_utc = datetime.now(timezone.utc)
+            stats["workers_total"] = len(rows)
+            alive = 0
+            for r in rows:
+                try:
+                    ls = r["last_seen"]
+                    if ls:
+                        ts = datetime.fromisoformat(ls)
+                        if ts.tzinfo is None:
+                            ts = ts.replace(tzinfo=timezone.utc)
+                        if (now_utc - ts).total_seconds() <= 60:
+                            alive += 1
+                except Exception:
+                    pass
+            stats["workers_alive"] = alive
+            stats["tasks_done"]    = sum(r["tasks_completed"] or 0 for r in rows)
+            stats["tasks_failed"]  = sum(r["tasks_failed"]    or 0 for r in rows)
+        conn.close()
+    except Exception as exc:
+        logger.warning("[daily-summary] DB query error: %s", exc)
+    return stats
+
+
+def _format_daily_summary(stats: dict) -> str:
+    today = datetime.now(timezone.utc).strftime("%d.%m.%Y")
+    total_sent = stats["dm_sent_today"] + stats["group_sent_today"]
+    workers_line = (
+        f"{stats['workers_alive']} из {stats['workers_total']} активных"
+        if stats["workers_total"] else "нет данных"
+    )
+    return (
+        f"📊 *Ежедневный отчёт — {today}*\n\n"
+        f"📨 Отправлено сегодня:\n"
+        f"   • Личные сообщения: *{stats['dm_sent_today']}*\n"
+        f"   • Группы: *{stats['group_sent_today']}*\n"
+        f"   • Итого: *{total_sent}*\n\n"
+        f"🔥 Активных кампаний: *{stats['active_campaigns']}*\n"
+        f"📡 Групповых рассылок: *{stats['active_group_campaigns']}*\n"
+        f"👥 Пользователей в базе: *{stats['total_users']}*\n\n"
+        f"⚙️ Воркеры: *{workers_line}*\n"
+        f"✅ Задач выполнено: *{stats['tasks_done']}*\n"
+        f"❌ Задач с ошибкой: *{stats['tasks_failed']}*"
+    )
+
+
+_WEEKLY_SUMMARY_WEEKDAY = int(os.getenv("WEEKLY_SUMMARY_WEEKDAY", "6"))  # 6 = Sunday
+_WEEKLY_SUMMARY_HOUR   = int(os.getenv("WEEKLY_SUMMARY_HOUR", "19"))    # 19:00 UTC
+
+
+def _format_weekly_summary(stats: dict, db_path: str) -> str:
+    """Build a 7-day aggregated report for Sunday evenings."""
+    today = datetime.now(timezone.utc).strftime("%d.%m.%Y")
+    try:
+        conn = sqlite3.connect(db_path, timeout=10)
+        conn.row_factory = sqlite3.Row
+        t7   = (datetime.now(timezone.utc).date().isoformat()) + "T00:00:00"
+        t_start = datetime.now(timezone.utc)
+        t_start = t_start.replace(hour=0, minute=0, second=0, microsecond=0)
+        t7_str  = (t_start.replace(day=t_start.day - 6) if t_start.day > 6 else t_start).isoformat()
+
+        from datetime import timedelta as _td
+        week_ago = (datetime.now(timezone.utc) - _td(days=7)).isoformat()
+        now_iso  = datetime.now(timezone.utc).isoformat()
+
+        with conn:
+            r = conn.execute(
+                "SELECT COUNT(*) AS n FROM sends WHERE status='ok' AND sent_at >= ?",
+                (week_ago,)
+            ).fetchone()
+            dm_week = r["n"] if r else 0
+
+            r = conn.execute(
+                "SELECT COUNT(*) AS n FROM group_send_logs WHERE status='ok' AND sent_at >= ?",
+                (week_ago,)
+            ).fetchone()
+            group_week = r["n"] if r else 0
+
+            r = conn.execute(
+                "SELECT COUNT(*) AS n FROM sends WHERE status='error' AND sent_at >= ?",
+                (week_ago,)
+            ).fetchone()
+            dm_errors = r["n"] if r else 0
+
+            r = conn.execute(
+                "SELECT COUNT(*) AS n FROM group_send_logs WHERE status='error' AND sent_at >= ?",
+                (week_ago,)
+            ).fetchone()
+            group_errors = r["n"] if r else 0
+
+            r = conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()
+            total_users = r["n"] if r else 0
+
+            r = conn.execute(
+                "SELECT COUNT(*) AS n FROM users WHERE first_seen >= ?",
+                (week_ago,)
+            ).fetchone()
+            new_users = r["n"] if r else 0
+        conn.close()
+    except Exception as exc:
+        logger.warning("[weekly-summary] DB error: %s", exc)
+        return f"📈 *Еженедельный отчёт — {today}*\n\n❌ Ошибка сбора данных: {exc}"
+
+    total_sent  = dm_week + group_week
+    total_err   = dm_errors + group_errors
+    success_pct = round(total_sent / (total_sent + total_err) * 100, 1) if (total_sent + total_err) > 0 else 100.0
+
+    w_alive = stats.get("workers_alive", 0)
+    w_total = stats.get("workers_total", 0)
+    w_line  = f"{w_alive} из {w_total} активных" if w_total else "нет данных"
+
+    return (
+        f"📈 *Еженедельный отчёт — {today}*\n\n"
+        f"📨 Отправлено за 7 дней:\n"
+        f"   • Личные сообщения: *{dm_week}*\n"
+        f"   • Группы: *{group_week}*\n"
+        f"   • Итого: *{total_sent}*\n"
+        f"   • Ошибок: *{total_err}* ({success_pct}% успешно)\n\n"
+        f"👥 Пользователей в базе: *{total_users}*\n"
+        f"🆕 Новых за 7 дней: *{new_users}*\n\n"
+        f"⚙️ Воркеры: *{w_line}*\n"
+        f"✅ Задач выполнено: *{stats.get('tasks_done', 0)}*\n"
+        f"❌ Задач с ошибкой: *{stats.get('tasks_failed', 0)}*"
+    )
+
+
+def _check_slow_sends(db_path: str, last_hour_key: str) -> str:
+    """Return an alert message if active campaigns sent 0 in the last hour, else ''."""
+    try:
+        conn = sqlite3.connect(db_path, timeout=5)
+        conn.row_factory = sqlite3.Row
+        now = datetime.now(timezone.utc)
+        hour_ago = (now.replace(minute=0, second=0, microsecond=0)).isoformat()
+
+        r = conn.execute("SELECT COUNT(*) AS n FROM campaigns WHERE status='running'").fetchone()
+        active_dm = r["n"] if r else 0
+        r = conn.execute("SELECT COUNT(*) AS n FROM group_campaigns WHERE status='running'").fetchone()
+        active_grp = r["n"] if r else 0
+        conn.close()
+
+        if active_dm + active_grp == 0:
+            return ""  # no active campaigns — nothing to check
+
+        # Check if any sends happened in the last hour
+        conn = sqlite3.connect(db_path, timeout=5)
+        r = conn.execute(
+            "SELECT COUNT(*) AS n FROM sends WHERE status='ok' AND sent_at >= ?",
+            (hour_ago,)
+        ).fetchone()
+        dm_recent = r["n"] if r else 0
+        try:
+            r = conn.execute(
+                "SELECT COUNT(*) AS n FROM group_send_logs WHERE status='ok' AND sent_at >= ?",
+                (hour_ago,)
+            ).fetchone()
+            grp_recent = r["n"] if r else 0
+        except Exception:
+            grp_recent = 0
+        conn.close()
+
+        cur_hour = now.strftime("%Y-%m-%dT%H")
+        if cur_hour == last_hour_key:
+            return ""  # already alerted this hour
+
+        if dm_recent + grp_recent == 0:
+            return (
+                f"🐢 *Тихий час* — нет отправок за последний час\n\n"
+                f"Активных DM-кампаний: *{active_dm}*\n"
+                f"Активных групповых: *{active_grp}*\n\n"
+                f"Проверь воркеры и аккаунты."
+            )
+    except Exception as exc:
+        logger.debug("[slow-sends] Check failed: %s", exc)
+    return ""
+
+
+def _daily_summary_thread(db_path: str, shutdown_event: threading.Event) -> None:
+    """Background thread: fires daily digest + Sunday weekly digest + slow-sends alert."""
+    logger.info(
+        "[daily-summary] Scheduler started — daily at %02d:%02d UTC, weekly on weekday %d at %02d:00 UTC",
+        _DAILY_SUMMARY_HOUR, _DAILY_SUMMARY_MIN,
+        _WEEKLY_SUMMARY_WEEKDAY, _WEEKLY_SUMMARY_HOUR,
+    )
+    _last_sent_date: str = ""
+    _last_sent_week: str = ""
+    _slow_sends_alerted_hour: str = ""
+    _slow_sends_check_interval = 30 * 60  # 30 minutes
+    _last_slow_check = 0.0
+
+    while not shutdown_event.is_set():
+        now = datetime.now(timezone.utc)
+        date_key = now.strftime("%Y-%m-%d")
+        week_key = now.strftime("%Y-W%W")
+
+        if (now.hour == _DAILY_SUMMARY_HOUR and now.minute == _DAILY_SUMMARY_MIN
+                and date_key != _last_sent_date):
+            try:
+                stats = _collect_daily_stats(db_path)
+                text  = _format_daily_summary(stats)
+                _notify_owner_sync(text)
+                _last_sent_date = date_key
+                logger.info("[daily-summary] Daily digest sent for %s", date_key)
+            except Exception as exc:
+                logger.warning("[daily-summary] Failed to send daily digest: %s", exc)
+            shutdown_event.wait(61)
+            continue
+
+        if (now.weekday() == _WEEKLY_SUMMARY_WEEKDAY
+                and now.hour == _WEEKLY_SUMMARY_HOUR
+                and now.minute < 5
+                and week_key != _last_sent_week):
+            try:
+                stats = _collect_daily_stats(db_path)
+                text  = _format_weekly_summary(stats, db_path)
+                _notify_owner_sync(text)
+                _last_sent_week = week_key
+                logger.info("[weekly-summary] Weekly digest sent for %s", week_key)
+            except Exception as exc:
+                logger.warning("[weekly-summary] Failed to send weekly digest: %s", exc)
+            shutdown_event.wait(61)
+            continue
+
+        # Slow-sends alert — check every 30 min during business hours (06:00–22:00 UTC)
+        if 6 <= now.hour <= 22 and time.monotonic() - _last_slow_check >= _slow_sends_check_interval:
+            try:
+                alert = _check_slow_sends(db_path, _slow_sends_alerted_hour)
+                if alert:
+                    _notify_owner_sync(alert)
+                    _slow_sends_alerted_hour = now.strftime("%Y-%m-%dT%H")
+                    logger.info("[slow-sends] Alert sent for hour %s", _slow_sends_alerted_hour)
+            except Exception as exc:
+                logger.debug("[slow-sends] Error: %s", exc)
+            _last_slow_check = time.monotonic()
+
+        shutdown_event.wait(30)
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -568,6 +857,15 @@ def run(args: argparse.Namespace) -> None:  # noqa: C901
     # Spawn everything before the blocking PTB main loop takes over.
     _manager.start_all()
     _manager.start()
+
+    # ── Daily summary digest thread ────────────────────────────────────────
+    _daily_t = threading.Thread(
+        target=_daily_summary_thread,
+        args=(env_state.db_path, _shutdown_event),
+        name="daily-summary",
+        daemon=True,
+    )
+    _daily_t.start()
 
     logger.info(
         "[supervisor] Fleet launched: %d subprocess(es) running",

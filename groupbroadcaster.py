@@ -52,6 +52,8 @@ logger = logging.getLogger(__name__)
 
 DB_PATH      = os.getenv("DB_PATH", "campaigns.db")
 SESSIONS_DIR = os.getenv("SESSION_DIR", "./sessions")
+_BOT_TOKEN   = os.getenv("TELEGRAM_TOKEN", "")
+_OWNER_IDS   = [int(x) for x in os.getenv("OWNER_IDS", os.getenv("VITE_OWNER_IDS", "")).split(",") if x.strip().lstrip("-").isdigit()]
 
 # Per-account file locks — prevent concurrent Telethon sessions on the same .session file
 _account_locks: dict[int, FileLock] = {}
@@ -63,6 +65,39 @@ _telethon_clients: dict[int, TelegramClient] = {}
 _proxy_failures: dict[str, tuple[int, float]] = {}
 _PROXY_FAIL_WINDOW = 300   # seconds — reset count after 5 min without new failures
 _PROXY_FAIL_SKIP   = 5     # skip proxy after this many failures within the window
+
+# Track which campaigns have already emitted the 80% quota warning this session
+_quota_warned: set[int] = set()
+
+
+async def _notify_quota_warning(campaign_name: str, campaign_id: int, sent: int, daily_limit: int) -> None:
+    """Fire-and-forget notification to owner when 80% of daily limit is reached."""
+    if not _BOT_TOKEN or not _OWNER_IDS:
+        return
+    if campaign_id in _quota_warned:
+        return
+    _quota_warned.add(campaign_id)
+    pct = int(sent / daily_limit * 100)
+    text = (
+        f"⚠️ *Квота на исходе* — «{campaign_name}»\n\n"
+        f"Отправлено: *{sent}* из *{daily_limit}* ({pct}%)\n"
+        f"Осталось: *{daily_limit - sent}* сообщений на сегодня."
+    )
+    try:
+        import aiohttp  # noqa: PLC0415
+        url = f"https://api.telegram.org/bot{_BOT_TOKEN}/sendMessage"
+        async with aiohttp.ClientSession() as session:
+            for uid in _OWNER_IDS:
+                try:
+                    await session.post(
+                        url,
+                        json={"chat_id": uid, "text": text, "parse_mode": "Markdown"},
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    )
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
 
 # ── Account file locking ──────────────────────────────────────────────────────
@@ -571,12 +606,13 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
     """
     campaign_id = task["campaign_id"]
     task_id     = task["id"]
-    results     = {"ok": True, "sent": 0, "failed": 0, "errors": [], "resumed": 0}
+    results     = {"ok": True, "sent": 0, "failed": 0, "errors": [], "resumed": 0, "campaign_name": ""}
     account_id: int | None = None
 
     campaign = await _get_campaign(campaign_id)
     if not campaign:
-        return {"ok": False, "sent": 0, "failed": 0, "errors": ["Campaign not found"]}
+        return {"ok": False, "sent": 0, "failed": 0, "errors": ["Campaign not found"], "campaign_name": ""}
+    results["campaign_name"] = campaign.get("name", f"#{campaign_id}")
 
     task_payload: dict = {}
     try:
@@ -756,6 +792,14 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
                 results["sent"] += 1
                 sent_count += 1
                 logger.info("[broadcaster] ✓ #%d → %s", task_id, group_title)
+                # Fire 80% daily-quota warning (once per campaign per process)
+                if daily_limit > 0 and campaign_id not in _quota_warned:
+                    warn_at = int(daily_limit * 0.8)
+                    if results["sent"] >= warn_at:
+                        asyncio.create_task(_notify_quota_warning(
+                            campaign.get("name", f"#{campaign_id}") if campaign else f"#{campaign_id}",
+                            campaign_id, results["sent"], daily_limit,
+                        ))
                 # Persist cursor: on the next claim of this task_id (after a
                 # crash/SIGTERM), _load_send_cursor will query group_send_logs
                 # and skip this group.  _persist_task_cursor writes a lightweight

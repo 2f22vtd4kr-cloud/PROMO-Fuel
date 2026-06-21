@@ -50,6 +50,24 @@ router.post("/campaigns", (req, res) => {
   }
 });
 
+router.get("/campaigns/upcoming", (req, res) => {
+  try {
+    const db    = getDb();
+    const hours = parseInt((req.query.hours as string) || "24");
+    const now   = new Date().toISOString();
+    const cutoff = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+    const rows  = db.prepare(
+      "SELECT id, name, status, scheduled_at, target_count, sender_account_id FROM campaigns " +
+      "WHERE scheduled_at IS NOT NULL AND scheduled_at > ? AND scheduled_at < ? " +
+      "AND status IN ('draft','paused') ORDER BY scheduled_at ASC LIMIT 10"
+    ).all(now, cutoff) as { id: number; name: string; status: string; scheduled_at: string; target_count: number; sender_account_id: number | null }[];
+    db.close();
+    res.json(rows);
+  } catch (err) {
+    res.json([]);
+  }
+});
+
 router.get("/campaigns/:id", (req, res) => {
   try {
     const db = getDb();
@@ -59,6 +77,27 @@ router.get("/campaigns/:id", (req, res) => {
     res.json(row);
   } catch (err) {
     res.status(404).json({});
+  }
+});
+
+router.patch("/campaigns/:id", (req, res) => {
+  try {
+    const db = new Database(DB_PATH);
+    const id = parseInt(req.params.id);
+    const body = req.body as Record<string, unknown>;
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    if (body.notes !== undefined) { fields.push("notes = ?"); values.push(body.notes ?? null); }
+    if (body.name !== undefined) { fields.push("name = ?"); values.push(body.name); }
+    if (fields.length === 0) return void res.status(400).json({ error: "nothing to patch" });
+    values.push(id);
+    db.prepare(`UPDATE campaigns SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+    const row = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(id);
+    db.close();
+    if (!row) return void res.status(404).json({});
+    res.json(row);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
   }
 });
 
@@ -379,6 +418,30 @@ router.post("/campaigns/:id/test-send", (req, res) => {
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
+});
+
+router.get("/campaigns/:id/stats", (req, res) => {
+  try {
+    const db  = getDb();
+    const id  = parseInt(req.params.id);
+    const camp = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(id) as any;
+    if (!camp) { db.close(); return void res.status(404).json({ error: "not found" }); }
+    const today = new Date().toISOString().slice(0, 10);
+    const total   = db.prepare("SELECT COUNT(*) as n FROM sends WHERE campaign_id = ?").get(id) as { n: number };
+    const ok      = db.prepare("SELECT COUNT(*) as n FROM sends WHERE campaign_id = ? AND status = 'ok'").get(id) as { n: number };
+    const failed  = db.prepare("SELECT COUNT(*) as n FROM sends WHERE campaign_id = ? AND status != 'ok'").get(id) as { n: number };
+    const today_n = db.prepare("SELECT COUNT(*) as n FROM sends WHERE campaign_id = ? AND sent_at LIKE ?").get(id, `${today}%`) as { n: number };
+    const hourly  = db.prepare(
+      "SELECT strftime('%H', sent_at) as h, COUNT(*) as n FROM sends WHERE campaign_id = ? AND status = 'ok' GROUP BY h ORDER BY h"
+    ).all(id) as { h: string; n: number }[];
+    db.close();
+    res.json({
+      campaign: { id: camp.id, name: camp.name, status: camp.status },
+      total: total.n, ok: ok.n, failed: failed.n, today: today_n.n,
+      success_rate: total.n > 0 ? Math.round(ok.n / total.n * 100) : 0,
+      hourly,
+    });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
 });
 
 export default router;
