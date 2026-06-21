@@ -66,6 +66,34 @@ BACKOFF_CAP          = 120.0  # maximum back-off sleep
 POLL_INTERVAL        = 3.0    # seconds between process health polls
 SIGTERM_TIMEOUT      = 20     # seconds to wait for graceful child shutdown
 
+# ── Telegram owner notifications ───────────────────────────────────────────────
+
+_BOT_TOKEN  = os.getenv("TELEGRAM_TOKEN", os.getenv("TELEGRAM_BOT_TOKEN", ""))
+_OWNER_IDS  = [
+    int(x) for x in
+    os.getenv("OWNER_IDS", os.getenv("VITE_OWNER_IDS", "")).split(",")
+    if x.strip().lstrip("-").isdigit()
+]
+_NOTIFY_LOCK = threading.Lock()
+_NOTIFIED_DEAD: set[str] = set()   # process names already notified as dead
+
+
+def _notify_owner_sync(text: str) -> None:
+    """Fire-and-forget Telegram message to all owner IDs (synchronous, stdlib only)."""
+    if not _BOT_TOKEN or not _OWNER_IDS:
+        return
+    import json as _json
+    import urllib.request as _req
+    url = f"https://api.telegram.org/bot{_BOT_TOKEN}/sendMessage"
+    for uid in _OWNER_IDS:
+        try:
+            body = _json.dumps({"chat_id": uid, "text": text, "parse_mode": "Markdown"}).encode()
+            req  = _req.Request(url, data=body, headers={"Content-Type": "application/json"})
+            with _req.urlopen(req, timeout=10):
+                pass
+        except Exception:
+            pass
+
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -297,6 +325,19 @@ class ManagedProcess:
                 "[supervisor] 💀 %s crashed %d times in %ds — marking DEAD, not restarting",
                 self.name, n, CRASH_WINDOW_SECONDS,
             )
+            with _NOTIFY_LOCK:
+                if self.name not in _NOTIFIED_DEAD:
+                    _NOTIFIED_DEAD.add(self.name)
+                    threading.Thread(
+                        target=_notify_owner_sync,
+                        args=(
+                            f"☠️ *Воркер упал насмерть*\n"
+                            f"Процесс: `{self.name}`\n"
+                            f"Упал {n} раз за {CRASH_WINDOW_SECONDS//60} мин — перезапуск остановлен.\n"
+                            f"Код выхода: `{self.exit_code()}`",
+                        ),
+                        daemon=True,
+                    ).start()
             return
 
         # Exponential back-off: 5s, 10s, 20s, 40s, 80s → cap 120s
@@ -306,6 +347,17 @@ class ManagedProcess:
             "restarting in %.0fs",
             self.name, self.exit_code(), n, self.backoff,
         )
+        if n == 1:
+            threading.Thread(
+                target=_notify_owner_sync,
+                args=(
+                    f"⚠️ *Воркер упал*\n"
+                    f"Процесс: `{self.name}`\n"
+                    f"Падение #{n} — перезапуск через {self.backoff:.0f}с.\n"
+                    f"Код выхода: `{self.exit_code()}`",
+                ),
+                daemon=True,
+            ).start()
 
     def terminate(self, timeout: float = SIGTERM_TIMEOUT) -> None:
         """Send SIGTERM; escalate to SIGKILL if the process won't stop."""
