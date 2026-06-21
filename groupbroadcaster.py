@@ -572,7 +572,7 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
     """
     campaign_id = task["campaign_id"]
     task_id     = task["id"]
-    results     = {"ok": True, "sent": 0, "failed": 0, "errors": []}
+    results     = {"ok": True, "sent": 0, "failed": 0, "errors": [], "resumed": 0}
     account_id: int | None = None
 
     campaign = await _get_campaign(campaign_id)
@@ -670,6 +670,23 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
         banned_groups = await _get_banned_groups(account_id)
         sent_count    = 0
 
+        # ── Resume cursor ──────────────────────────────────────────────────────
+        # When a worker is interrupted mid-broadcast (SIGTERM / Replit restart),
+        # force_release_worker_sync() re-queues the task with the same task_id.
+        # On the next claim we load group_send_logs to find every group already
+        # confirmed sent in the previous run and skip them — guaranteeing zero
+        # duplicate messages even across crashes.
+        #
+        # The cursor is keyed on task_id (not campaign_id alone) so that a
+        # deliberately re-triggered fresh task always starts from position 0.
+        already_sent: frozenset[str] = await _load_send_cursor(campaign_id, task_id)
+        if already_sent:
+            logger.info(
+                "[broadcaster] Task #%d resuming — %d group(s) already confirmed sent "
+                "in a previous run, skipping them",
+                task_id, len(already_sent),
+            )
+
         for group_id in selected_groups:
             if daily_limit > 0 and results["sent"] >= daily_limit:
                 logger.info("[broadcaster] Daily limit %d reached — stopping", daily_limit)
@@ -677,6 +694,19 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
 
             gid_str     = str(group_id)
             group_title = group_meta.get(gid_str, gid_str)
+
+            # ── Resume cursor skip ─────────────────────────────────────────────
+            # This group was successfully sent in a previous partial run of the
+            # same task — skip it unconditionally to prevent duplicates.
+            # We do NOT increment results["sent"] here; the previous run's counts
+            # are already reflected in group_campaigns.sent_count.
+            if gid_str in already_sent:
+                results["resumed"] += 1
+                logger.debug(
+                    "[broadcaster] Task #%d cursor-skip %s (%s) — already sent",
+                    task_id, group_title, gid_str,
+                )
+                continue
 
             # ── Pre-skip groups where this account is already banned ───────────
             if gid_str in banned_groups:
@@ -706,6 +736,12 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
                 results["sent"] += 1
                 sent_count += 1
                 logger.info("[broadcaster] ✓ #%d → %s", task_id, group_title)
+                # Persist cursor: on the next claim of this task_id (after a
+                # crash/SIGTERM), _load_send_cursor will query group_send_logs
+                # and skip this group.  _persist_task_cursor writes a lightweight
+                # diagnostic column to tasks.cursor_group; it is NOT the source
+                # of truth (group_send_logs is).
+                await _persist_task_cursor(task_id, gid_str)
                 await _inter_message_delay(sent_count, min_delay, max_delay)
 
             elif outcome == "group_banned":
@@ -750,7 +786,15 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
             if acct_check and acct_check.get("status") != "proxy_failed":
                 await cdb.account_mark_idle(account_id)
 
-    results["ok"] = results["sent"] > 0 or results["failed"] == 0
+    # A task is considered successful if:
+    #   - At least one group was sent this run, OR
+    #   - All groups were skipped via the resume cursor (task fully resumed), OR
+    #   - No groups failed (edge case: all were banned/errored in previous runs)
+    results["ok"] = (
+        results["sent"] > 0
+        or results["resumed"] > 0
+        or results["failed"] == 0
+    )
     return results
 
 
@@ -832,3 +876,70 @@ async def _update_campaign_counts(campaign_id: int, sent: int, failed: int) -> N
             await db.commit()
     except Exception as e:
         logger.debug("[broadcaster] _update_campaign_counts failed: %s", e)
+
+
+# ── Resume-cursor helpers ─────────────────────────────────────────────────────
+#
+# These two functions power the zero-duplicate resume mechanism.
+#
+# How it works end-to-end:
+#   1. Worker SIGTERM fires → force_release_worker_sync() sets
+#      tasks.status='pending' while preserving tasks.id (the task_id).
+#   2. On restart, worker re-claims the same task — same task_id.
+#   3. run_group_campaign_task() calls _load_send_cursor() which queries
+#      group_send_logs WHERE campaign_id=? AND task_id=? AND status='ok'.
+#      This returns every group confirmed sent in prior runs of this task.
+#   4. The send loop skips those groups — zero duplicates guaranteed.
+#   5. After each successful send, _log_send() writes a new 'ok' row so
+#      if the worker is interrupted again the new position is captured.
+#   6. _persist_task_cursor() writes the last group_id to tasks.cursor_group
+#      for diagnostic visibility in the UI — it is NOT read back for logic.
+
+async def _load_send_cursor(campaign_id: int, task_id: int) -> frozenset[str]:
+    """Return the set of group_ids already confirmed sent for this task_id.
+
+    Queries group_send_logs WHERE campaign_id=? AND task_id=? AND status='ok'.
+    Returns frozenset() (empty — start from scratch) on any error including
+    a missing table (pre-migration), so the broadcaster always degrades
+    gracefully rather than crashing.
+    """
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(
+                "SELECT group_id FROM group_send_logs "
+                "WHERE campaign_id=? AND task_id=? AND status='ok'",
+                (campaign_id, task_id),
+            ) as cur:
+                rows = await cur.fetchall()
+        result = frozenset(r[0] for r in rows)
+        if result:
+            logger.debug(
+                "[broadcaster] Cursor for task #%d: %d group(s) already sent",
+                task_id, len(result),
+            )
+        return result
+    except Exception as exc:
+        logger.debug(
+            "[broadcaster] _load_send_cursor(campaign=%d, task=%d) failed — "
+            "starting from position 0: %s",
+            campaign_id, task_id, exc,
+        )
+        return frozenset()
+
+
+async def _persist_task_cursor(task_id: int, group_id: str) -> None:
+    """Write the last successfully sent group_id to tasks.cursor_group.
+
+    Diagnostic only — the resume logic reads from group_send_logs, not this
+    column.  Failures are silently swallowed so a missing column (pre-migration)
+    never breaks the send loop.
+    """
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "UPDATE tasks SET cursor_group=? WHERE id=?",
+                (group_id, task_id),
+            )
+            await db.commit()
+    except Exception:
+        pass

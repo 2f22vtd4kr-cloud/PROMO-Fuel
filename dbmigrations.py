@@ -504,6 +504,9 @@ def run_migrations(db_path: str = DB_PATH) -> None:  # noqa: C901 — long but l
         ("max_attempts", "INTEGER NOT NULL DEFAULT 3"),
         ("scheduled_at", "TEXT"),
         ("error",        "TEXT"),
+        # Resume-cursor: last group_id confirmed sent; diagnostic only —
+        # the authoritative cursor is rebuilt from group_send_logs at task start.
+        ("cursor_group", "TEXT"),
     ])
 
     # broadcast_workers — widen current_task to TEXT for UUID task IDs
@@ -513,6 +516,43 @@ def run_migrations(db_path: str = DB_PATH) -> None:  # noqa: C901 — long but l
     ])
 
     logger.info("[migrations] Step 5 — additive column migrations OK")
+
+    # ── Step 5.5: group_send_logs ─────────────────────────────────────────────
+    #
+    # groupbroadcaster._log_send() writes to THIS table (not group_campaign_sends).
+    # The (campaign_id, task_id, status) covering index powers the resume-cursor
+    # query at task start: which groups were already successfully sent in a
+    # previous partial run of the same task_id?
+    #
+    # Without this table, _log_send() calls fail silently (the exception is caught
+    # and only logged at DEBUG level), meaning zero send history is ever persisted.
+
+    logger.info("[migrations] Step 5.5 — group_send_logs (broadcaster send log)")
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS group_send_logs (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            campaign_id INTEGER NOT NULL,
+            group_id    TEXT    NOT NULL,
+            group_title TEXT,
+            account_id  INTEGER,
+            task_id     INTEGER,
+            status      TEXT    NOT NULL,
+            error       TEXT,
+            sent_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- Covering index for the resume-cursor query:
+        --   SELECT group_id FROM group_send_logs
+        --   WHERE campaign_id=? AND task_id=? AND status='ok'
+        CREATE INDEX IF NOT EXISTS idx_gsl_cursor
+            ON group_send_logs(campaign_id, task_id, status);
+
+        -- Chronological lookup by campaign for the send-log UI
+        CREATE INDEX IF NOT EXISTS idx_gsl_campaign_time
+            ON group_send_logs(campaign_id, sent_at);
+    """)
+    conn.commit()
+    logger.info("[migrations] Step 5.5 — group_send_logs OK")
 
     # ── Step 6: All indexes ───────────────────────────────────────────────────
     #

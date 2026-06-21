@@ -396,22 +396,28 @@ async def main_loop(
             # ── Execute task ───────────────────────────────────────────────────
             try:
                 result   = await run_group_campaign_task(task, worker_id=WORKER_ID)
-                sent_n   = result.get("sent",   0)
-                failed_n = result.get("failed", 0)
+                sent_n    = result.get("sent",    0)
+                failed_n  = result.get("failed",  0)
+                resumed_n = result.get("resumed", 0)   # groups skipped via resume cursor
 
-                if result.get("ok") or sent_n > 0:
+                if result.get("ok") or sent_n > 0 or resumed_n > 0:
                     await _task_queue.complete_task(task_id, campaign_id)
                     tasks_completed += 1
                     _heartbeat.record_done()
                     _update_heartbeat_table("idle", tasks_completed, tasks_failed)
                     logger.info(
-                        "[%s] ✓ Task #%d done — sent=%d  failed=%d",
-                        WORKER_ID, task_id, sent_n, failed_n,
+                        "[%s] ✓ Task #%d done — sent=%d  failed=%d  resumed=%d",
+                        WORKER_ID, task_id, sent_n, failed_n, resumed_n,
+                    )
+                    resume_note = (
+                        f"\n↩️ Пропущено (уже отправлено): {resumed_n}"
+                        if resumed_n else ""
                     )
                     asyncio.create_task(_notify_owner(
                         f"✅ *Рассылка завершена*\n"
                         f"Кампания #{campaign_id} · Задача #{task_id}\n"
                         f"📨 Отправлено: {sent_n}  ❌ Ошибок: {failed_n}"
+                        + resume_note
                     ))
                 else:
                     errors = "; ".join(result.get("errors", []))[:300]

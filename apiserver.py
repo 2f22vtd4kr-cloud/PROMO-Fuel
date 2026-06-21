@@ -944,6 +944,51 @@ async def system_snapshot() -> dict:
     }
 
 
+@admin_router.post("/vacuum")
+async def trigger_vacuum() -> dict:
+    """Trigger an immediate VACUUM + WAL checkpoint on all SQLite databases.
+
+    Normally the vacuum runs automatically once per day via the broadcast
+    scheduler.  Call this endpoint after a bulk delete or schema migration
+    to reclaim free pages immediately without waiting for the next cycle.
+
+    Both `campaigns.db` and `tasks.db` are vacuumed in sequence.
+    Runs in a thread-pool executor so the event loop is never blocked.
+    Protected by the same Bearer token as all other /api/admin/* routes.
+    """
+    import time as _time
+
+    def _do_vacuum(db_file: str) -> dict:
+        conn = sqlite3.connect(db_file, timeout=60)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=60000")
+        t0 = _time.monotonic()
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.execute("VACUUM")
+        conn.close()
+        return {"db": db_file, "elapsed_ms": round((_time.monotonic() - t0) * 1000)}
+
+    started   = _time.time()
+    loop      = asyncio.get_event_loop()
+    results_v : list[dict] = []
+
+    for db_file in [DB_PATH, os.getenv("TASKS_DB_PATH", "tasks.db")]:
+        if os.path.exists(db_file):
+            try:
+                res = await loop.run_in_executor(None, _do_vacuum, db_file)
+                results_v.append({**res, "ok": True})
+            except Exception as exc:
+                results_v.append({"db": db_file, "ok": False, "error": str(exc)})
+
+    total_ms = round((_time.time() - started) * 1000)
+    return {
+        "ok":          all(r["ok"] for r in results_v),
+        "databases":   results_v,
+        "total_ms":    total_ms,
+        "message":     f"VACUUM complete on {len(results_v)} database(s) in {total_ms}ms",
+    }
+
+
 # ── Health check ──────────────────────────────────────────────────────────────
 
 @app.get("/health")
