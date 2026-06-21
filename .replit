@@ -24,15 +24,7 @@ args = "Telegram Bot"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "API Server"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "Telegram Mini App"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "CRM Platform"
 
 [[workflows.workflow]]
 name = "Telegram Bot"
@@ -46,17 +38,6 @@ task = "shell.exec"
 args = "python3 supervisor.py"
 
 [[workflows.workflow]]
-name = "API Server"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "bash scripts/start-api.sh"
-
-[[workflows.workflow]]
 name = "Telegram Mini App"
 author = "agent"
 
@@ -67,18 +48,6 @@ outputType = "console"
 task = "shell.exec"
 args = "pnpm --filter @workspace/telegram-miniapp run dev"
 waitForPort = 3000
-
-[[workflows.workflow]]
-name = "CRM Platform"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/crm-platform run dev"
-waitForPort = 3001
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
