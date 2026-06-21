@@ -2,6 +2,8 @@
 
 # compiled output
 dist
+!artifacts/telegram-miniapp/dist
+!artifacts/api-server/dist
 tmp
 out-tsc
 *.tsbuildinfo
