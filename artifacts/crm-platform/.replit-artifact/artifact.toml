@@ -1,31 +1,17 @@
-kind = "web"
-previewPath = "/crm-platform/"
-title = "RUProbe CRM — Marketing Hub"
+kind = "design"
+previewPath = "/__crm/"
+title = "CRM Canvas"
 version = "1.0.0"
 id = "artifacts/crm-platform"
-router = "path"
-
-[[integratedSkills]]
-name = "react-vite"
-version = "1.0.0"
 
 [[services]]
 name = "web"
-paths = [ "/crm-platform/" ]
+paths = [ "/__crm/" ]
 localPort = 23873
 
 [services.development]
 run = "pnpm --filter @workspace/crm-platform run dev"
 
-[services.production]
-build = [ "pnpm", "--filter", "@workspace/crm-platform", "run", "build" ]
-publicDir = "artifacts/crm-platform/dist/public"
-serve = "static"
-
-[[services.production.rewrites]]
-from = "/*"
-to = "/index.html"
-
 [services.env]
 PORT = "23873"
-BASE_PATH = "/crm-platform/"
+BASE_PATH = "/__crm/"
