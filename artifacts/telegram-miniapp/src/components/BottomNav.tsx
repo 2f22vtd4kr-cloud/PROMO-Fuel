@@ -3,15 +3,18 @@ import type { Tab } from "../App";
 import { TG } from "../lib/theme";
 import { haptic } from "../lib/haptics";
 import { useI18n } from "../lib/i18n";
+import { LangSwitcher } from "./LangSwitcher";
 
 export function BottomNav({
   active,
   onNav,
   onNavigate,
+  onManual,
 }: {
   active: Tab;
   onNav: (t: Tab) => void;
   onNavigate?: (t: string) => void;
+  onManual?: () => void;
 }) {
   const { t } = useI18n();
 
@@ -36,7 +39,7 @@ export function BottomNav({
       paddingLeft: 8, paddingRight: 8, paddingTop: 6,
       position: "relative",
     }}>
-      {/* Floating glass pill — scrollable */}
+      {/* Floating glass pill */}
       <div style={{
         position: "relative",
         background: "linear-gradient(145deg,rgba(255,255,255,0.10) 0%,rgba(255,255,255,0.04) 60%,rgba(255,255,255,0.08) 100%)",
@@ -45,13 +48,8 @@ export function BottomNav({
         borderRadius: 28,
         border: "1px solid rgba(255,255,255,0.17)",
         boxShadow: "0 2px 0 rgba(255,255,255,0.14) inset, 0 -1px 0 rgba(0,0,0,0.15) inset, 0 16px 48px rgba(0,0,0,0.42), 0 4px 12px rgba(0,0,0,0.22)",
-        overflowX: "auto",
-        overflowY: "hidden",
-        WebkitOverflowScrolling: "touch",
-        scrollbarWidth: "none",
-        padding: "4px 4px",
+        overflow: "hidden",
       }}>
-        {/* Hide WebKit scrollbar */}
         <style>{`
           .bottom-nav-scroll::-webkit-scrollbar { display: none; }
           @keyframes navPop {
@@ -64,7 +62,7 @@ export function BottomNav({
           }
         `}</style>
 
-        {/* Top specular highlight — above scroll content */}
+        {/* Top specular highlight */}
         <div style={{
           position: "absolute", top: 0, left: 0, right: 0, height: 1,
           background: "linear-gradient(90deg, transparent 2%, rgba(255,255,255,0.58) 25%, rgba(255,255,255,0.72) 50%, rgba(255,255,255,0.58) 75%, transparent 98%)",
@@ -77,115 +75,152 @@ export function BottomNav({
           pointerEvents: "none", zIndex: 1,
         }} />
 
-        {/* Scrollable row */}
+        {/* Scrollable nav items — paddingRight reserves space for the right controls */}
         <div
           className="bottom-nav-scroll"
           style={{
-            display: "flex",
-            width: "max-content",
-            gap: 0,
+            overflowX: "auto",
+            overflowY: "hidden",
+            WebkitOverflowScrolling: "touch",
+            scrollbarWidth: "none",
+            paddingRight: 100,
           }}
         >
-          {ITEMS.map(({ id, kind, icon: Icon, label, color, glow }) => {
-            const isActive = kind === "tab" && active === (id as Tab);
+          <div style={{ display: "flex", width: "max-content", padding: "4px 4px" }}>
+            {ITEMS.map(({ id, kind, icon: Icon, label, color, glow }) => {
+              const isActive = kind === "tab" && active === (id as Tab);
 
-            function handleClick() {
-              if (kind === "action") {
-                haptic.medium();
-                onNavigate?.(id);
-              } else {
-                if (!isActive) haptic.select();
-                else haptic.light();
-                onNav(id as Tab);
+              function handleClick() {
+                if (kind === "action") {
+                  haptic.medium();
+                  onNavigate?.(id);
+                } else {
+                  if (!isActive) haptic.select();
+                  else haptic.light();
+                  onNav(id as Tab);
+                }
               }
-            }
 
-            return (
-              <button
-                key={id}
-                onClick={handleClick}
-                style={{
-                  width: 78,
-                  flexShrink: 0,
-                  display: "flex", flexDirection: "column",
-                  alignItems: "center", justifyContent: "center",
-                  gap: 4,
-                  padding: "10px 4px 9px",
-                  border: "none", background: "none",
-                  position: "relative", zIndex: 2,
-                  cursor: "pointer",
-                  minHeight: 66,
-                }}
-              >
-                {/* Active bubble */}
-                {isActive && (
-                  <div style={{
-                    position: "absolute",
-                    inset: "3px 4px",
-                    borderRadius: 20,
-                    background: `linear-gradient(145deg,${color}22 0%,${color}10 100%)`,
-                    border: `1px solid ${color}35`,
-                    backdropFilter: "blur(12px)",
-                    WebkitBackdropFilter: "blur(12px)",
-                    boxShadow: `0 0 28px ${glow}40, inset 0 1px 0 ${color}28`,
-                    animation: "navPop 0.36s cubic-bezier(0.16,1,0.3,1) both",
-                  }} />
-                )}
+              return (
+                <button
+                  key={id}
+                  onClick={handleClick}
+                  style={{
+                    width: 78,
+                    flexShrink: 0,
+                    display: "flex", flexDirection: "column",
+                    alignItems: "center", justifyContent: "center",
+                    gap: 4,
+                    padding: "10px 4px 9px",
+                    border: "none", background: "none",
+                    position: "relative", zIndex: 2,
+                    cursor: "pointer",
+                    minHeight: 66,
+                  }}
+                >
+                  {/* Active bubble */}
+                  {isActive && (
+                    <div style={{
+                      position: "absolute",
+                      inset: "3px 4px",
+                      borderRadius: 20,
+                      background: `linear-gradient(145deg,${color}22 0%,${color}10 100%)`,
+                      border: `1px solid ${color}35`,
+                      backdropFilter: "blur(12px)",
+                      WebkitBackdropFilter: "blur(12px)",
+                      boxShadow: `0 0 28px ${glow}40, inset 0 1px 0 ${color}28`,
+                      animation: "navPop 0.36s cubic-bezier(0.16,1,0.3,1) both",
+                    }} />
+                  )}
 
-                {/* Auth action pulse ring */}
-                {kind === "action" && (
-                  <div style={{
-                    position: "absolute", inset: "3px 4px",
-                    borderRadius: 20,
-                    border: `1px solid ${color}20`,
-                    animation: "authPulse 3s ease-in-out infinite",
-                  }} />
-                )}
+                  {/* Auth action pulse ring */}
+                  {kind === "action" && (
+                    <div style={{
+                      position: "absolute", inset: "3px 4px",
+                      borderRadius: 20,
+                      border: `1px solid ${color}20`,
+                      animation: "authPulse 3s ease-in-out infinite",
+                    }} />
+                  )}
 
-                {/* Icon */}
-                <div style={{ position: "relative", zIndex: 1 }}>
-                  <Icon
-                    size={isActive ? 26 : 22}
-                    color={isActive ? color : kind === "action" ? `${color}90` : "rgba(160,190,230,0.72)"}
-                    strokeWidth={isActive ? 2.3 : kind === "action" ? 2.0 : 1.6}
-                    style={{
-                      transition: "color 0.22s, stroke-width 0.22s, filter 0.22s",
-                      filter: isActive
-                        ? `drop-shadow(0 0 9px ${glow})`
-                        : kind === "action"
-                        ? `drop-shadow(0 0 5px ${color}60)`
-                        : "none",
-                    }}
-                  />
-                </div>
+                  {/* Icon */}
+                  <div style={{ position: "relative", zIndex: 1 }}>
+                    <Icon
+                      size={isActive ? 26 : 22}
+                      color={isActive ? color : kind === "action" ? `${color}90` : "rgba(160,190,230,0.72)"}
+                      strokeWidth={isActive ? 2.3 : kind === "action" ? 2.0 : 1.6}
+                      style={{
+                        transition: "color 0.22s, stroke-width 0.22s, filter 0.22s",
+                        filter: isActive
+                          ? `drop-shadow(0 0 9px ${glow})`
+                          : kind === "action"
+                          ? `drop-shadow(0 0 5px ${color}60)`
+                          : "none",
+                      }}
+                    />
+                  </div>
 
-                {/* Label */}
-                <span style={{
-                  fontSize: 9.5,
-                  fontWeight: isActive ? 800 : kind === "action" ? 600 : 400,
-                  letterSpacing: "0.04em",
-                  color: isActive ? color : kind === "action" ? `${color}90` : "rgba(160,190,230,0.65)",
-                  textTransform: "uppercase",
-                  transition: "color 0.22s",
-                  position: "relative", zIndex: 1,
-                  whiteSpace: "nowrap",
-                }}>
-                  {label}
-                </span>
+                  {/* Label */}
+                  <span style={{
+                    fontSize: 9.5,
+                    fontWeight: isActive ? 800 : kind === "action" ? 600 : 400,
+                    letterSpacing: "0.04em",
+                    color: isActive ? color : kind === "action" ? `${color}90` : "rgba(160,190,230,0.65)",
+                    textTransform: "uppercase",
+                    transition: "color 0.22s",
+                    position: "relative", zIndex: 1,
+                    whiteSpace: "nowrap",
+                  }}>
+                    {label}
+                  </span>
 
-                {/* Active dot */}
-                {isActive && (
-                  <div style={{
-                    position: "absolute", bottom: 3, left: "50%",
-                    transform: "translateX(-50%)",
-                    width: 4, height: 4, borderRadius: "50%",
-                    background: color,
-                    boxShadow: `0 0 10px 2px ${glow}`,
-                  }} />
-                )}
-              </button>
-            );
-          })}
+                  {/* Active dot */}
+                  {isActive && (
+                    <div style={{
+                      position: "absolute", bottom: 3, left: "50%",
+                      transform: "translateX(-50%)",
+                      width: 4, height: 4, borderRadius: "50%",
+                      background: color,
+                      boxShadow: `0 0 10px 2px ${glow}`,
+                    }} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Fixed right controls — always visible, doesn't scroll */}
+        <div style={{
+          position: "absolute", right: 0, top: 0, bottom: 0,
+          width: 100,
+          display: "flex", alignItems: "center", justifyContent: "flex-end",
+          gap: 5,
+          paddingRight: 10,
+          paddingLeft: 8,
+          background: "linear-gradient(to right, transparent 0%, rgba(10,14,26,0.92) 30%)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          zIndex: 8,
+          borderRadius: "0 28px 28px 0",
+          pointerEvents: "auto",
+        }}>
+          <LangSwitcher />
+          {onManual && (
+            <button
+              onClick={() => { haptic.light(); onManual(); }}
+              style={{
+                width: 28, height: 28, borderRadius: 9,
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                color: "rgba(255,255,255,0.45)",
+                fontSize: 13, fontWeight: 700,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >?</button>
+          )}
         </div>
       </div>
     </div>

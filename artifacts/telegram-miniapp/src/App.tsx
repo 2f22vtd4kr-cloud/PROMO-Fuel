@@ -14,7 +14,6 @@ import { AccountLoginPage }         from "./pages/AccountLogin";
 import { ManualPage }              from "./pages/Manual";
 import { LockScreen, getStoredSecret } from "./pages/LockScreen";
 import { BottomNav }                from "./components/BottomNav";
-import { LangSwitcher }             from "./components/LangSwitcher";
 import { ConsumerApp }              from "./ConsumerApp";
 import { getOwnerRole }             from "./lib/twa";
 import { I18nProvider }             from "./lib/i18n";
@@ -128,32 +127,10 @@ function OwnerApp() {
         <ManualPage onClose={() => setShowManual(false)} />
       )}
 
-      {/* ── Top-right controls: lang switcher + help ───────────────── */}
-      {!anyOverlay && (
-        <div style={{
-          position: "absolute", top: 14, right: 16, zIndex: 10,
-          display: "flex", alignItems: "center", gap: 6,
-        }}>
-          <LangSwitcher />
-          <button
-            onClick={() => setShowManual(true)}
-            style={{
-              width: 32, height: 32, borderRadius: 10,
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              color: "rgba(255,255,255,0.45)",
-              fontSize: 15, fontWeight: 700,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer",
-            }}
-          >?</button>
-        </div>
-      )}
-
-      {/* ── Bottom nav — hidden when overlay is open ──────────────── */}
+      {/* ── Bottom nav (with lang switcher + help built in) ──────────── */}
       {!anyOverlay && (
         <div style={{ position: "relative", zIndex: 2 }}>
-          <BottomNav active={tab} onNav={setTab} onNavigate={handleNavigate} />
+          <BottomNav active={tab} onNav={setTab} onNavigate={handleNavigate} onManual={() => setShowManual(true)} />
         </div>
       )}
     </div>
