@@ -1016,7 +1016,7 @@ if __name__ == "__main__":
     )
     uvicorn.run(
         "apiserver:app",
-        host="0.0.0.0",
+        host="127.0.0.1",
         port=API_PORT,
         reload=False,
         log_level="info",
