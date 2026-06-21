@@ -95,16 +95,6 @@ app.use("/api", router);
 // ── Background watchdog: campaign completion + worker crash notifications ──
 startWatchdog();
 
-// ── Serve CRM platform SPA at /crm-platform/ in production ──
-const CRM_DIST = join(process.cwd(), "artifacts", "crm-platform", "dist", "public");
-if (existsSync(CRM_DIST)) {
-  app.use("/crm-platform", express.static(CRM_DIST));
-  app.get("/crm-platform/*path", (_req, res) => {
-    res.sendFile(join(CRM_DIST, "index.html"));
-  });
-  logger.info({ path: CRM_DIST }, "Serving CRM platform static files");
-}
-
 // ── Serve telegram-miniapp SPA in production ──
 const FRONTEND_DIST = join(process.cwd(), "artifacts", "telegram-miniapp", "dist");
 if (existsSync(FRONTEND_DIST)) {

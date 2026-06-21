@@ -51,8 +51,4 @@ pnpm --filter @workspace/api-server run build
 echo "Building Telegram Mini App..."
 pnpm --filter @workspace/telegram-miniapp run build
 
-# Step 5: Build the CRM Platform
-echo "Building CRM Platform..."
-pnpm --filter @workspace/crm-platform run build
-
 echo "=== Build complete ==="
