@@ -8,8 +8,22 @@ echo "Starting API server..."
 BSQ="$WORKSPACE_ROOT/node_modules/.pnpm/better-sqlite3@12.10.1/node_modules/better-sqlite3"
 NATIVE="$BSQ/build/Release/better_sqlite3.node"
 
+NODE_MODULE_VERSION=$(node -e "console.log(process.versions.modules)")
+NEED_REBUILD=false
+
 if [ ! -f "$NATIVE" ]; then
-  echo "Building better-sqlite3 native module..."
+  NEED_REBUILD=true
+  echo "Building better-sqlite3 native module (binary missing)..."
+else
+  COMPILED_NMV=$(node -e "try { require('$NATIVE'); console.log(process.versions.modules); } catch(e) { const m = e.message.match(/NODE_MODULE_VERSION (\\d+)/); console.log(m ? m[1] : '0'); }" 2>/dev/null || echo "0")
+  if [ "$COMPILED_NMV" != "$NODE_MODULE_VERSION" ]; then
+    NEED_REBUILD=true
+    echo "Building better-sqlite3 native module (version mismatch: compiled=$COMPILED_NMV, required=$NODE_MODULE_VERSION)..."
+    rm -f "$NATIVE" "$BSQ/build/Release/sqlite3.o"
+  fi
+fi
+
+if [ "$NEED_REBUILD" = "true" ]; then
   mkdir -p "$BSQ/build/Release"
   NODE_EXEC=$(node -e "console.log(process.execPath)")
   NODE_INC="$(dirname $(dirname "$NODE_EXEC"))/include/node"
