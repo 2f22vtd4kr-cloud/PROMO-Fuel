@@ -51,6 +51,20 @@ logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
     datefmt="%H:%M:%S",
 )
+
+# ── Rotating file handler — prevents worker.log from exhausting disk space ────
+os.makedirs("logs", exist_ok=True)
+_worker_fh = _log_handlers.RotatingFileHandler(
+    "logs/worker.log",
+    maxBytes=5_000_000,   # 5 MB per file
+    backupCount=3,        # keep worker.log, worker.log.1, .2, .3
+    encoding="utf-8",
+)
+_worker_fh.setFormatter(
+    logging.Formatter("%(asctime)s [%(name)s] %(levelname)s %(message)s")
+)
+logging.getLogger().addHandler(_worker_fh)
+
 logger = logging.getLogger("worker")
 
 _parser = argparse.ArgumentParser(description="PROMO-Fuel Group Broadcast Worker")
@@ -436,6 +450,35 @@ async def main_loop(
                 tasks_failed += 1
                 _heartbeat.record_failed(err_str)
                 _update_heartbeat_table("idle", tasks_completed, tasks_failed)
+
+                # ── Explicitly unlock the account so it is never permanently stuck ──
+                # fail_task re-queues the task but does NOT reset the account row.
+                # A crash mid-broadcast would leave auth_status='broadcasting' and
+                # locked_by set, preventing any future worker from claiming this account.
+                if account_id is not None:
+                    try:
+                        conn = _db_conn()
+                        conn.execute(
+                            "UPDATE sender_accounts "
+                            "SET locked_by=NULL, locked_at=NULL, broadcasting=0, "
+                            "auth_status='idle', "
+                            "status=CASE WHEN status IN ('banned','proxy_failed') "
+                            "           THEN status ELSE 'idle' END "
+                            "WHERE id=? AND locked_by=?",
+                            (account_id, WORKER_ID),
+                        )
+                        conn.commit()
+                        conn.close()
+                        logger.info(
+                            "[%s] Account #%d forcibly unlocked after unhandled crash",
+                            WORKER_ID, account_id,
+                        )
+                    except Exception as unlock_err:
+                        logger.warning(
+                            "[%s] Failed to unlock account #%d after crash: %s",
+                            WORKER_ID, account_id, unlock_err,
+                        )
+
                 asyncio.create_task(_notify_owner(
                     f"💥 *Критическая ошибка воркера*\n"
                     f"Воркер: `{WORKER_ID}`\n"

@@ -181,21 +181,31 @@ async def _scheduler_loop() -> None:
 
 
 def start_broadcast_scheduler() -> None:
-    """Launch the scheduler as a background asyncio task."""
-    global _scheduler_task
+    """Launch the scheduler and daily vacuum as background asyncio tasks."""
+    global _scheduler_task, _vacuum_task
     if _scheduler_task is None or _scheduler_task.done():
         _scheduler_task = asyncio.create_task(_scheduler_loop())
-        logger.info("[broadcastscheduler] Background task created")
+        logger.info("[broadcastscheduler] Background scheduler task created")
     else:
-        logger.debug("[broadcastscheduler] Already running")
+        logger.debug("[broadcastscheduler] Scheduler already running")
+
+    if _vacuum_task is None or _vacuum_task.done():
+        _vacuum_task = asyncio.create_task(_vacuum_loop())
+        logger.info("[broadcastscheduler] Daily vacuum task created (interval=%ds)", VACUUM_INTERVAL_SECONDS)
+    else:
+        logger.debug("[broadcastscheduler] Vacuum already running")
 
 
 def stop_broadcast_scheduler() -> None:
-    global _scheduler_task
+    global _scheduler_task, _vacuum_task
     if _scheduler_task and not _scheduler_task.done():
         _scheduler_task.cancel()
         _scheduler_task = None
-        logger.info("[broadcastscheduler] Stopped")
+        logger.info("[broadcastscheduler] Scheduler stopped")
+    if _vacuum_task and not _vacuum_task.done():
+        _vacuum_task.cancel()
+        _vacuum_task = None
+        logger.info("[broadcastscheduler] Vacuum task stopped")
 
 
 # ── Standalone entry point ────────────────────────────────────────────────────

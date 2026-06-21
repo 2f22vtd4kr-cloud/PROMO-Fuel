@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import logging.handlers as _log_handlers
 import os
 import time
 from contextlib import asynccontextmanager
@@ -62,6 +63,19 @@ from utils.proxy import parse_proxies, proxy_label, proxy_to_telethon
 from utils.supervisor import get_worker_statuses, reap_dead_workers
 
 logger = logging.getLogger(__name__)
+
+# ── Rotating file handler — prevents apiserver.log from exhausting disk space ─
+os.makedirs("logs", exist_ok=True)
+_api_fh = _log_handlers.RotatingFileHandler(
+    "logs/apiserver.log",
+    maxBytes=5_000_000,   # 5 MB per file
+    backupCount=3,        # keep apiserver.log, apiserver.log.1, .2, .3
+    encoding="utf-8",
+)
+_api_fh.setFormatter(
+    logging.Formatter("%(asctime)s [%(name)s] %(levelname)s %(message)s")
+)
+logging.getLogger().addHandler(_api_fh)
 
 # ── Environment ───────────────────────────────────────────────────────────────
 DB_PATH     = os.getenv("DB_PATH",          "campaigns.db")
