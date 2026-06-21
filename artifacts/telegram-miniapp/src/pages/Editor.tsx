@@ -167,7 +167,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
       const payload: Partial<Campaign> = {
         name: name.trim(), text_template: text.trim(),
         notes: notes.trim() || undefined,
-        scheduled_at: isoScheduled ?? null,
+        scheduled_at: isoScheduled,
         send_delay_seconds: Math.max(1, parseInt(delay) || 15),
         dry_run: dryRun ? 1 : 0,
         scheduled_tag: selectedTag || null,

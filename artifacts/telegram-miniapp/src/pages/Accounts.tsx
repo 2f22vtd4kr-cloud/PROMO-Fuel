@@ -343,7 +343,7 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
   async function resetDaily() {
     haptic.medium(); setBusy(true);
     try {
-      await fetch(`${import.meta.env.VITE_API_URL ?? ""}/api/accounts/${acc.id}/reset-daily`, { method: "POST" });
+      await api.resetAccountDaily(acc.id);
       haptic.success(); onRefresh();
     } catch { haptic.error(); } finally { setBusy(false); }
   }

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import Database from "better-sqlite3";
 import { DB_PATH } from "../lib/db-path";
+import { AUTH_SERVER_URL } from "../lib/auth-server-url";
 
 function getDb(readonly = true) {
   return new Database(DB_PATH, { readonly });
@@ -181,10 +182,8 @@ router.get("/accounts/:id/logs", (req, res) => {
 });
 
 
-const AUTH_SERVER = "http://127.0.0.1:8082";
-
 async function proxyToAuthServer(path: string, body: unknown): Promise<{ status: number; data: unknown }> {
-  const r = await fetch(`${AUTH_SERVER}${path}`, {
+  const r = await fetch(`${AUTH_SERVER_URL}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -195,7 +194,7 @@ async function proxyToAuthServer(path: string, body: unknown): Promise<{ status:
 }
 
 async function getFromAuthServer(path: string): Promise<{ status: number; data: unknown }> {
-  const r = await fetch(`${AUTH_SERVER}${path}`, {
+  const r = await fetch(`${AUTH_SERVER_URL}${path}`, {
     method: "GET",
     headers: { "Content-Type": "application/json" },
     signal: AbortSignal.timeout(30_000),

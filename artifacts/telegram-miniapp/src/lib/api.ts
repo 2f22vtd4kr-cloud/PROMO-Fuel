@@ -431,6 +431,12 @@ export const api = {
   getCampaignSparklines:  () => get<Record<number, number[]>>("/stats/campaign-sparklines"),
   getAccountSendsToday:   () => get<{ account_id: string; ok: number; failed: number }[]>("/accounts/sends-today"),
 
+  getAnalyticsTrend:        () => get<{ date: string; sent: number; opened: number }[]>("/analytics/trend"),
+  getAnalyticsTopCampaigns: (limit = 5) => get<unknown[]>(`/analytics/top-campaigns?limit=${limit}`),
+  getAnalyticsSendRate:     () => get<unknown[]>("/analytics/send-rate"),
+
+  resetAccountDaily: (id: number) => post<{ ok: boolean }>(`/accounts/${id}/reset-daily`, {}),
+
   getOverview: () => get<AnalyticsOverview>("/analytics/summary"),
   getUsers:    () => get<User[]>("/users"),
   importUsers: (users: { chat_id: number; username?: string; first_name?: string; tags?: string }[]) =>

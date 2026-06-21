@@ -210,25 +210,23 @@ export function AnalyticsPage() {
   const [topCamps, setTopCamps]   = useState<TopCampaign[]>([]);
   const [sendRate, setSendRate]   = useState<SendRatePoint[]>([]);
   const [loading, setLoading]     = useState(true);
-  const BASE = import.meta.env.VITE_API_URL ?? "";
-
   const [groupSendsToday, setGroupSendsToday] = useState<{ ok: number; failed: number } | null>(null);
 
   function loadAll(showRefresh = false) {
     if (showRefresh) setRefreshing(true); else setLoading(true);
     Promise.all([
       api.getOverview(),
-      fetch(`${BASE}/api/analytics/trend`).then(r => r.ok ? r.json().then((rows: { date: string; sent: number; opened: number }[]) =>
-        rows.map(r => ({ d: r.date, sent: r.sent, conv: r.opened }))
-      ) : MOCK_TREND).catch(() => MOCK_TREND),
-      fetch(`${BASE}/api/analytics/top-campaigns?limit=5`).then(r => r.ok ? r.json() : []).catch(() => []),
-      fetch(`${BASE}/api/analytics/send-rate`).then(r => r.ok ? r.json() : []).catch(() => []),
+      api.getAnalyticsTrend()
+        .then(rows => rows.map(r => ({ d: r.date, sent: r.sent, conv: r.opened })))
+        .catch(() => MOCK_TREND),
+      api.getAnalyticsTopCampaigns(5).catch(() => []),
+      api.getAnalyticsSendRate().catch(() => []),
       api.getAccountSendsToday().catch(() => [] as { account_id: string; ok: number; failed: number }[]),
     ]).then(([ov, tr, tc, sr, gs]) => {
       setOverview(ov);
       if (Array.isArray(tr) && tr.length > 0) setTrend(tr);
-      if (Array.isArray(tc)) setTopCamps(tc);
-      if (Array.isArray(sr) && sr.length > 0) setSendRate(sr);
+      if (Array.isArray(tc)) setTopCamps(tc as TopCampaign[]);
+      if (Array.isArray(sr) && sr.length > 0) setSendRate(sr as SendRatePoint[]);
       if (Array.isArray(gs) && gs.length > 0) {
         const tot = (gs as { account_id: string; ok: number; failed: number }[])
           .reduce((acc, r) => ({ ok: acc.ok + r.ok, failed: acc.failed + r.failed }), { ok: 0, failed: 0 });
@@ -237,7 +235,7 @@ export function AnalyticsPage() {
     }).catch(() => {}).finally(() => { setLoading(false); setRefreshing(false); });
   }
 
-  useEffect(() => { loadAll(); }, [BASE]);
+  useEffect(() => { loadAll(); }, []);
 
   const ov = overview;
   const kpis = [

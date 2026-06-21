@@ -651,4 +651,4 @@ if __name__ == "__main__":
     )
     target = sys.argv[1] if len(sys.argv) > 1 else DB_PATH
     run_migrations(target)
-    print("Migrations complete.")
+    logger.info("Migrations complete.")

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import Database from "better-sqlite3";
 import { DB_PATH } from "../lib/db-path";
+import { AUTH_SERVER_URL } from "../lib/auth-server-url";
 
 function getDb(readonly = true) {
   return new Database(DB_PATH, { readonly });
@@ -76,7 +77,7 @@ router.get("/accounts/:id/groups", (req, res) => {
 router.post("/accounts/:id/groups/refresh", async (req, res) => {
   const accountId = parseInt(req.params.id);
   try {
-    const resp = await fetch(`http://127.0.0.1:8082/groups/${accountId}/refresh`, {
+    const resp = await fetch(`${AUTH_SERVER_URL}/groups/${accountId}/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
