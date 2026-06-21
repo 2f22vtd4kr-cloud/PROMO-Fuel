@@ -32,4 +32,11 @@ if [ ! -f "$NATIVE" ]; then
   echo "better-sqlite3 built OK"
 fi
 
+# Build the API server if dist is missing or stale
+if [ ! -f "$(pwd)/artifacts/api-server/dist/index.mjs" ]; then
+  echo "Building API server..."
+  cd "$(pwd)/artifacts/api-server" && NODE_ENV=development node build.mjs
+  cd "$(pwd)"
+fi
+
 exec node --enable-source-maps "$(pwd)/artifacts/api-server/dist/index.mjs"
