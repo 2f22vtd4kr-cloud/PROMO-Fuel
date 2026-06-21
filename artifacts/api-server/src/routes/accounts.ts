@@ -320,6 +320,63 @@ router.post("/accounts/:id/groups/refresh", async (req, res) => {
   }
 });
 
+// ── Per-account rate-limit window status ──────────────────────────────────────
+
+router.get("/accounts/:id/rate-limit", (req, res) => {
+  try {
+    const db = getDb(true);
+    const accountId = parseInt(req.params.id);
+
+    // Check account exists
+    const acc = db.prepare("SELECT id FROM sender_accounts WHERE id = ?").get(accountId);
+    if (!acc) { db.close(); return void res.status(404).json({ error: "Account not found" }); }
+
+    const windowSeconds = parseInt(process.env.ACCOUNT_RATE_LIMIT_WIN ?? "60");
+    const windowMax     = parseInt(process.env.ACCOUNT_RATE_LIMIT_MAX ?? "20");
+
+    let windowStart: string | null = null;
+    let count = 0;
+
+    try {
+      const row = db.prepare(
+        "SELECT window_start, count FROM account_rate_limits WHERE account_id = ?"
+      ).get(accountId) as { window_start: string; count: number } | undefined;
+
+      if (row) {
+        const startMs = new Date(row.window_start).getTime();
+        const nowMs   = Date.now();
+        const elapsed = (nowMs - startMs) / 1000;
+
+        if (elapsed < windowSeconds) {
+          windowStart = row.window_start;
+          count       = row.count;
+        }
+        // If window expired, count stays 0 (fresh window)
+      }
+    } catch {
+      // table may not exist yet — return zeroed stats
+    }
+
+    db.close();
+
+    const resetsAt = windowStart
+      ? new Date(new Date(windowStart).getTime() + windowSeconds * 1000).toISOString()
+      : null;
+
+    res.json({
+      account_id:      accountId,
+      window_seconds:  windowSeconds,
+      window_max:      windowMax,
+      count,
+      remaining:       Math.max(0, windowMax - count),
+      window_start:    windowStart,
+      resets_at:       resetsAt,
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 router.get("/accounts/sends-today", (_req, res) => {
   try {
     const db = getDb(true);
