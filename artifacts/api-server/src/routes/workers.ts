@@ -46,6 +46,14 @@ function ensureTables() {
       created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
       scheduled_at  TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS worker_crash_history (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      worker_id   TEXT NOT NULL,
+      crashed_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      restart_num INTEGER NOT NULL DEFAULT 1,
+      error       TEXT
+    );
   `);
   db.close();
 }
@@ -53,6 +61,44 @@ function ensureTables() {
 ensureTables();
 
 const router: IRouter = Router();
+
+// ── Worker crash history ────────────────────────────────────────────────────
+
+router.get("/workers/crash-history", (_req, res) => {
+  try {
+    const db   = getDb();
+    const rows = db.prepare(
+      `SELECT wch.*, bw.last_error as worker_last_error
+       FROM worker_crash_history wch
+       LEFT JOIN broadcast_workers bw ON bw.worker_id = wch.worker_id
+       ORDER BY wch.crashed_at DESC LIMIT 50`
+    ).all() as Record<string, unknown>[];
+    db.close();
+    res.json(rows);
+  } catch {
+    res.json([]);
+  }
+});
+
+router.post("/workers/:id/log-crash", (req, res) => {
+  try {
+    const db   = new Database(DB_PATH);
+    const body = req.body as { error?: string; restart_num?: number };
+    db.prepare(
+      `INSERT INTO worker_crash_history (worker_id, crashed_at, restart_num, error)
+       VALUES (?, ?, ?, ?)`
+    ).run(
+      req.params.id,
+      new Date().toISOString(),
+      body.restart_num ?? 1,
+      body.error ?? null
+    );
+    db.close();
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
 
 // ── Worker health ──────────────────────────────────────────────────────────
 

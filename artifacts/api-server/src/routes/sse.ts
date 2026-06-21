@@ -21,6 +21,11 @@ let lastHeartbeatSnap     = "";
 let lastTaskSnap          = "";
 let lastGroupSendsSnap    = "";
 
+// Track per-worker alive state for crash detection
+const workerAliveState = new Map<string, boolean>();
+// Track restart counter per worker for crash history
+const workerRestartNum = new Map<string, number>();
+
 function pollDb() {
   try {
     const db = new Database(DB_PATH, { readonly: true });
@@ -73,10 +78,45 @@ function pollDb() {
         const age = lh ? Math.floor((now - new Date(lh).getTime()) / 1000) : 9999;
         return { ...w, age_seconds: age, is_alive: age < 60 };
       });
-      const wSnap = JSON.stringify(workers);
+
+      // ── Crash detection: alive→dead transition ──────────────────────────
+      try {
+        const writerDb = new Database(DB_PATH);
+        for (const w of workers) {
+          const wid   = w["worker_id"] as string;
+          const alive = w["is_alive"] as boolean;
+          const prev  = workerAliveState.get(wid);
+          if (prev === true && !alive) {
+            const restartNum = (workerRestartNum.get(wid) ?? 0) + 1;
+            workerRestartNum.set(wid, restartNum);
+            writerDb.prepare(
+              `INSERT INTO worker_crash_history (worker_id, crashed_at, restart_num, error)
+               VALUES (?, ?, ?, ?)`
+            ).run(wid, new Date().toISOString(), restartNum, (w["last_error"] as string | null) ?? null);
+          }
+          workerAliveState.set(wid, alive);
+        }
+        writerDb.close();
+      } catch {}
+
+      // Enrich workers with crash_count from crash history
+      const crashCounts = new Map<string, number>();
+      try {
+        const counts = db.prepare(
+          `SELECT worker_id, COUNT(*) as cnt FROM worker_crash_history GROUP BY worker_id`
+        ).all() as { worker_id: string; cnt: number }[];
+        for (const c of counts) crashCounts.set(c.worker_id, c.cnt);
+      } catch {}
+
+      const enriched = workers.map(w => ({
+        ...w,
+        crash_count: crashCounts.get(w["worker_id"] as string) ?? 0,
+      }));
+
+      const wSnap = JSON.stringify(enriched);
       if (wSnap !== lastWorkerSnap) {
         lastWorkerSnap = wSnap;
-        broadcastEvent("workers", workers);
+        broadcastEvent("workers", enriched);
       }
     } catch {}
 
@@ -114,8 +154,12 @@ function pollDb() {
     // ── Recent group sends (live log feed) ────────────────────────────────────
     try {
       const groupSends = db.prepare(
-        `SELECT id, campaign_id, group_id, group_title, status, error, sent_at
-         FROM group_sends ORDER BY id DESC LIMIT 40`
+        `SELECT gs.id, gs.campaign_id, gs.group_id, gs.group_title, gs.account_id,
+                gs.status, gs.error, gs.sent_at,
+                sa.phone as account_phone, sa.label as account_label
+         FROM group_sends gs
+         LEFT JOIN sender_accounts sa ON sa.id = gs.account_id
+         ORDER BY gs.id DESC LIMIT 40`
       ).all();
       const gsSnap = JSON.stringify(groupSends);
       if (gsSnap !== lastGroupSendsSnap) {

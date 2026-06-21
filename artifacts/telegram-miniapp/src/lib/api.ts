@@ -88,10 +88,20 @@ export interface GroupCampaignLog {
   group_id: string;
   group_title?: string;
   account_id?: number;
+  account_phone?: string;
+  account_label?: string;
   task_id?: number;
   status: string;
   error?: string;
   sent_at: string;
+}
+
+export interface WorkerCrashEvent {
+  id: number;
+  worker_id: string;
+  crashed_at: string;
+  restart_num: number;
+  error?: string;
 }
 
 export interface AccountGroup {
@@ -225,6 +235,7 @@ export interface BroadcastWorker {
   last_error?: string;
   heartbeat_age_seconds?: number;
   is_alive?: boolean;
+  crash_count?: number;
 }
 
 export interface Task {
@@ -310,6 +321,7 @@ export const api = {
   getWorkers: () => get<BroadcastWorker[]>("/workers"),
   getWorkersSummary: () => get<WorkersSummary>("/workers-summary"),
   getWorkerHeartbeats: () => get<WorkerHeartbeat[]>("/worker-heartbeats"),
+  getWorkerCrashHistory: () => get<WorkerCrashEvent[]>("/workers/crash-history"),
   deleteWorker: (workerId: string) => del(`/workers/${encodeURIComponent(workerId)}`),
   spawnWorker: (workerId?: string) =>
     post<{ ok: boolean; worker_id: string; pid: number | null }>("/workers/spawn", { worker_id: workerId }),

@@ -49,6 +49,90 @@ function NextSendCountdown({ iso }: { iso: string }) {
   );
 }
 
+// ── Live Send Feed component ──────────────────────────────────────────────────
+
+function LiveSendFeed({ sends }: { sends: GroupCampaignLog[] }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const prevLenRef = useRef(0);
+
+  useEffect(() => {
+    if (sends.length > prevLenRef.current && !collapsed && scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+    prevLenRef.current = sends.length;
+  }, [sends.length, collapsed]);
+
+  if (sends.length === 0) return null;
+
+  const okCount     = sends.filter(s => s.status === "ok" || s.status === "sent").length;
+  const errorCount  = sends.filter(s => s.status === "error" || s.status === "failed").length;
+
+  return (
+    <GlassCard glow="rgba(45,232,151,0.12)" style={{ padding: "10px 12px", border: "1px solid rgba(45,232,151,0.22)", background: "rgba(45,232,151,0.04)" }}>
+      {/* Header */}
+      <div
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
+        onClick={() => { haptic.light(); setCollapsed(v => !v); }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ position: "relative", width: 8, height: 8, flexShrink: 0 }}>
+            <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#2de897", animation: "hb-ring 1.8s ease-out infinite" }} />
+            <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#2de897" }} />
+          </div>
+          <span style={{ fontSize: 12, fontWeight: 800, color: "#2de897" }}>Live-лента отправок</span>
+          <span style={{ fontSize: 10, color: TG.muted }}>({sends.length})</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {okCount > 0 && (
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#2de897", background: "rgba(45,232,151,0.10)", borderRadius: 10, padding: "1px 6px" }}>✓ {okCount}</span>
+          )}
+          {errorCount > 0 && (
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#ff6b7a", background: "rgba(255,107,122,0.10)", borderRadius: 10, padding: "1px 6px" }}>✗ {errorCount}</span>
+          )}
+          {collapsed ? <ChevronDown size={14} color={TG.muted} /> : <ChevronUp size={14} color={TG.muted} />}
+        </div>
+      </div>
+
+      {/* Feed rows */}
+      {!collapsed && (
+        <div
+          ref={scrollRef}
+          style={{ marginTop: 10, maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}
+        >
+          {sends.map(s => {
+            const isOk    = s.status === "ok" || s.status === "sent";
+            const dotColor = isOk ? "#2de897" : "#ff6b7a";
+            const acct    = s.account_label || s.account_phone || (s.account_id ? `#${s.account_id}` : "—");
+            return (
+              <div key={s.id} style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "5px 6px", borderRadius: 8, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ marginTop: 4, width: 5, height: 5, borderRadius: "50%", flexShrink: 0, background: dotColor, boxShadow: isOk ? "0 0 5px rgba(45,232,151,0.5)" : "0 0 5px rgba(255,107,122,0.5)" }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: TG.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "50%" }}>
+                      {s.group_title || s.group_id}
+                    </span>
+                    <span style={{ fontSize: 9, color: TG.muted }}>•</span>
+                    <span style={{ fontSize: 10, color: "#6ba8e5" }}>{acct}</span>
+                    <span style={{ marginLeft: "auto", fontSize: 9, color: TG.muted, whiteSpace: "nowrap" }}>
+                      {s.sent_at ? timeAgo(s.sent_at) + " назад" : "—"}
+                    </span>
+                  </div>
+                  {!isOk && s.error && (
+                    <div style={{ fontSize: 9, color: "rgba(255,107,122,0.75)", fontFamily: "monospace", marginTop: 2, wordBreak: "break-all" }}>
+                      {s.error.length > 70 ? s.error.slice(0, 70) + "…" : s.error}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </GlassCard>
+  );
+}
+
 type ExpandTab = "logs" | "stats";
 
 function GroupCampaignCard({
@@ -498,6 +582,9 @@ export function GroupBroadcastsPage({
             ))}
           </div>
         )}
+
+        {/* ── Global live send feed ───────────────────────────────── */}
+        <LiveSendFeed sends={liveSends} />
 
         {loading ? (
           <div style={{ textAlign: "center", padding: "40px 0" }}>

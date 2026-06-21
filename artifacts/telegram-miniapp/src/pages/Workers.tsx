@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Cpu, RefreshCw, Trash2, AlertTriangle, CheckCircle,
-  Activity, ListTodo, Calendar, Plus, Shield, Phone, Zap,
+  Activity, ListTodo, Calendar, Plus, Shield, Phone, Zap, RotateCcw,
 } from "lucide-react";
 import {
   api, BroadcastWorker, Task, WorkersSummary,
-  GroupCampaign, SenderAccount, RecoverLocksResult,
+  GroupCampaign, SenderAccount, RecoverLocksResult, WorkerCrashEvent,
 } from "../lib/api";
 import { useSse } from "../lib/useSse";
 import { TG } from "../lib/theme";
@@ -338,6 +338,8 @@ function AccountRow({ account }: { account: SenderAccount }) {
   );
 }
 
+const MAX_CRASHES = 5; // must match worker.py MAX_CRASHES
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function WorkersPage() {
@@ -350,23 +352,26 @@ export function WorkersPage() {
   const [taskTab,      setTaskTab]      = useState<"all" | "pending" | "claimed" | "failed">("all");
   const [showAccounts, setShowAccounts] = useState(false);
   const [sseAlive,     setSseAlive]     = useState(false);
+  const [crashHistory, setCrashHistory] = useState<WorkerCrashEvent[]>([]);
   const lastSseRef = useRef(0);   // monotonic ms of last received SSE event
   const SSE_DEAD_MS = 20_000;     // treat SSE as dead if no event for 20s
 
   // ── Full REST load (initial + fallback) ──────────────────────────────────
   const load = useCallback(async () => {
     try {
-      const [w, t, s, gc, accts] = await Promise.all([
+      const [w, t, s, gc, accts, crashes] = await Promise.all([
         api.getWorkers(),
         api.getTasks(),
         api.getWorkersSummary(),
         api.getGroupCampaigns(),
         api.getAccounts(),
+        api.getWorkerCrashHistory(),
       ]);
       setWorkers(w);
       setTasks(t);
       setSummary(s);
       setAccounts(accts);
+      setCrashHistory(crashes);
       setScheduled(
         gc.filter(c => c.status === "running" || c.status === "paused")
           .sort((a, b) => {
@@ -502,28 +507,79 @@ export function WorkersPage() {
           {/* ── Crash-loop alert banner ─────────────────────────── */}
           {!loading && deadWorkers.length > 0 && (
             <GlassCard glow="rgba(255,107,122,0.18)" style={{ padding: "12px 14px", border: "1px solid rgba(255,107,122,0.30)", background: "rgba(255,107,122,0.07)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                 <AlertTriangle size={14} color="#ff6b7a" />
                 <span style={{ fontSize: 12, fontWeight: 800, color: "#ff6b7a" }}>
                   {deadWorkers.length === 1 ? "Воркер упал" : `${deadWorkers.length} воркера упали`} — аварийное завершение
                 </span>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {deadWorkers.map(w => (
-                  <div key={w.worker_id} style={{ padding: "8px 10px", borderRadius: 10, background: "rgba(255,107,122,0.10)", border: "1px solid rgba(255,107,122,0.20)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: w.last_error ? 4 : 0 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#ff6b7a" }}>{w.worker_id}</span>
-                      <div style={{ display: "flex", gap: 6 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {deadWorkers.map(w => {
+                  const wCrashes = crashHistory.filter(c => c.worker_id === w.worker_id);
+                  const crashCount = w.crash_count ?? wCrashes.length;
+                  const pct = Math.min((crashCount / MAX_CRASHES) * 100, 100);
+                  const barColor = pct >= 80 ? "#ff6b7a" : pct >= 60 ? "#ffc946" : "#6ba8e5";
+                  const rateLimitTripped = crashCount >= MAX_CRASHES;
+                  return (
+                    <div key={w.worker_id} style={{ padding: "10px 12px", borderRadius: 10, background: "rgba(255,107,122,0.10)", border: "1px solid rgba(255,107,122,0.20)" }}>
+                      {/* Header row */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <RotateCcw size={11} color="#ff6b7a" />
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "#ff6b7a" }}>{w.worker_id}</span>
+                        </div>
                         <RestartWorkerButton workerId={w.worker_id} onRestarted={load} />
                       </div>
-                    </div>
-                    {w.last_error && (
-                      <div style={{ fontSize: 10, color: "rgba(255,107,122,0.85)", fontFamily: "monospace", wordBreak: "break-word", marginTop: 2 }}>
-                        {w.last_error.length > 120 ? w.last_error.slice(0, 120) + "…" : w.last_error}
+
+                      {/* Rate-limit indicator */}
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                          <span style={{ fontSize: 10, color: TG.muted }}>Рестартов</span>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: barColor }}>
+                            {crashCount} / {MAX_CRASHES}
+                            {rateLimitTripped && <span style={{ marginLeft: 4, color: "#ff6b7a" }}>⚠ лимит исчерпан</span>}
+                            {!rateLimitTripped && pct >= 60 && <span style={{ marginLeft: 4, color: "#ffc946" }}>⚡ почти лимит</span>}
+                          </span>
+                        </div>
+                        <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${pct}%`, borderRadius: 2, background: barColor, transition: "width 0.5s ease, background 0.3s ease", boxShadow: pct >= 80 ? `0 0 8px ${barColor}80` : "none" }} />
+                        </div>
                       </div>
-                    )}
-                  </div>
-                ))}
+
+                      {/* Last error */}
+                      {w.last_error && (
+                        <div style={{ fontSize: 10, color: "rgba(255,107,122,0.80)", fontFamily: "monospace", wordBreak: "break-word", marginBottom: wCrashes.length > 0 ? 8 : 0, padding: "4px 6px", background: "rgba(0,0,0,0.20)", borderRadius: 6 }}>
+                          {w.last_error.length > 140 ? w.last_error.slice(0, 140) + "…" : w.last_error}
+                        </div>
+                      )}
+
+                      {/* Crash history timeline */}
+                      {wCrashes.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: TG.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 5 }}>История рестартов</div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                            {wCrashes.slice(0, 5).map((c, idx) => (
+                              <div key={c.id} style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                                <div style={{ marginTop: 3, width: 5, height: 5, borderRadius: "50%", flexShrink: 0, background: idx === 0 ? "#ff6b7a" : "rgba(255,107,122,0.40)", boxShadow: idx === 0 ? "0 0 6px rgba(255,107,122,0.5)" : "none" }} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 10, color: TG.textSecondary }}>
+                                    <span style={{ color: idx === 0 ? "#ffc946" : TG.muted }}>{timeAgo(c.crashed_at)} назад</span>
+                                    <span style={{ marginLeft: 6, color: "#ff6b7a", opacity: 0.7 }}>#{c.restart_num}</span>
+                                    {c.error && (
+                                      <span style={{ display: "block", fontSize: 9, fontFamily: "monospace", color: "rgba(255,107,122,0.60)", marginTop: 1, wordBreak: "break-all" }}>
+                                        {c.error.length > 80 ? c.error.slice(0, 80) + "…" : c.error}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </GlassCard>
           )}
