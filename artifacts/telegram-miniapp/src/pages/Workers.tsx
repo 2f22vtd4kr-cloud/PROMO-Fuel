@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Cpu, RefreshCw, Trash2, AlertTriangle, CheckCircle,
-  Activity, ListTodo, Calendar, Plus, Shield, Phone, Zap, RotateCcw,
+  Activity, ListTodo, Calendar, Plus, Shield, Phone, Zap, RotateCcw, Timer,
 } from "lucide-react";
 import {
   api, BroadcastWorker, Task, WorkersSummary,
@@ -440,6 +440,77 @@ function AccountRow({ account, sendsToday }: { account: SenderAccount; sendsToda
   );
 }
 
+// ── Rate-limit summary strip ──────────────────────────────────────────────────
+
+type RLData = { account_id: number; count: number; window_max: number; remaining: number };
+
+function RateLimitSummaryStrip({ accounts }: { accounts: SenderAccount[] }) {
+  const [rateLimits, setRateLimits] = useState<Record<number, RLData>>({});
+  const accountsRef = useRef<SenderAccount[]>([]);
+  const activeAccounts = accounts.filter(a => a.is_active && a.status !== "banned");
+  accountsRef.current = activeAccounts;
+
+  const fetchAll = useCallback(async () => {
+    const accts = accountsRef.current;
+    if (!accts.length) return;
+    const results = await Promise.allSettled(accts.map(a => api.getAccountRateLimit(a.id)));
+    const map: Record<number, RLData> = {};
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled") map[accts[i].id] = r.value;
+    });
+    setRateLimits(map);
+  }, []);
+
+  useEffect(() => {
+    fetchAll();
+    const poll = setInterval(fetchAll, 15_000);
+    return () => clearInterval(poll);
+  }, [fetchAll]);
+
+  if (!activeAccounts.length) return null;
+
+  return (
+    <GlassCard style={{ padding: "12px 14px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+        <Timer size={12} color="#6ba8e5" />
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#6ba8e5" }}>Скорость / мин — все аккаунты</span>
+        <span style={{ marginLeft: "auto", fontSize: 9, color: TG.muted }}>обновл. 15с</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+        {activeAccounts.map(a => {
+          const rl    = rateLimits[a.id];
+          const count = rl?.count ?? 0;
+          const max   = rl?.window_max ?? 20;
+          const pct   = Math.min(100, (count / max) * 100);
+          const rem   = rl ? rl.remaining / rl.window_max : 1;
+          const color = !rl || count === 0
+            ? "#7c8db0"
+            : rem > 0.5 ? "#2de897" : rem > 0.25 ? "#ffc946" : "#ff6b7a";
+          return (
+            <div key={a.id} style={{
+              borderRadius: 8, padding: "7px 9px",
+              background: count > 0 ? `${color}0d` : "rgba(255,255,255,0.03)",
+              border: `1px solid ${count > 0 ? color + "25" : "rgba(255,255,255,0.07)"}`,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                <span style={{ fontSize: 10, color: TG.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "65%" }}>
+                  {a.label || a.phone.slice(-8)}
+                </span>
+                <span style={{ fontSize: 10, fontWeight: 700, color, flexShrink: 0 }}>
+                  {!rl ? "…" : `${count}/${max}`}
+                </span>
+              </div>
+              <div style={{ height: 2, borderRadius: 1, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 1, transition: "width 0.6s ease" }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </GlassCard>
+  );
+}
+
 const MAX_CRASHES = 5; // must match worker.py MAX_CRASHES
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -619,6 +690,9 @@ export function WorkersPage() {
               ))}
             </div>
           )}
+
+          {/* ── Rate-limit summary strip ────────────────────────── */}
+          {accounts.length > 0 && <RateLimitSummaryStrip accounts={accounts} />}
 
           {/* ── Crash-loop alert banner ─────────────────────────── */}
           {!loading && deadWorkers.length > 0 && (

@@ -551,8 +551,8 @@ function Slide14Workers() {
       <div style={cardStyle(PURPLE)}>
         <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 10 }}>Статусы воркера</div>
         {[
-          ["🟢", "running",  GREEN,   "Воркер активен, обрабатывает задачи"],
-          ["🟡", "idle",     AMBER,   "Воркер запущен, ждёт задач"],
+          ["🟢", "running",  GREEN,    "Воркер активен, обрабатывает задачи"],
+          ["🟡", "idle",     AMBER,    "Воркер запущен, ждёт задач"],
           ["🔴", "crashed",  "#ef4444","Аварийное завершение — см. логи"],
           ["⚫", "stopped",  "#6b7280","Воркер остановлен вручную"],
         ].map(([dot, key, col, desc]) => (
@@ -572,6 +572,14 @@ function Slide14Workers() {
           ⏹️ Остановить воркер — безопасная остановка{"\n"}
           📋 Копировать команду запуска из UI{"\n"}
           📈 Просмотр статистики: задач выполнено / ошибок
+        </div>
+      </div>
+      <div style={{ ...cardStyle(GREEN), marginTop: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: GREEN, marginBottom: 6 }}>⏱️ Панель скорости аккаунтов</div>
+        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", lineHeight: 1.6 }}>
+          Под суммарными плитками — виджет <b style={{ color: "#fff" }}>«Скорость / мин — все аккаунты»</b>: 
+          сетка мини-полосок для каждого активного аккаунта. Обновляется каждые 15 с.
+          Цвет: 🟢 свободно · 🟡 умеренно · 🔴 лимит почти исчерпан.
         </div>
       </div>
     </SlideShell>
@@ -617,31 +625,42 @@ function Slide16RateLimit() {
   return (
     <SlideShell>
       {sectionTitle("⏱️", "Лимиты отправки", ACCENT)}
-      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginBottom: 16, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginBottom: 14, lineHeight: 1.5 }}>
         Система контролирует скорость отправки для каждого аккаунта, чтобы не превышать лимиты Telegram.
       </div>
-      <div style={{ ...cardStyle(ACCENT), fontFamily: "monospace", fontSize: 12 }}>
-        <div style={{ color: "rgba(255,255,255,0.4)", marginBottom: 6 }}>GET /api/twa/accounts/:id/rate-limit</div>
-        <div style={{ color: GREEN }}>&#123;</div>
-        <div style={{ paddingLeft: 14, color: "rgba(255,255,255,0.8)", lineHeight: 1.8 }}>
-          <div><span style={{ color: PINK }}>"account_id"</span>: <span style={{ color: AMBER }}>42</span>,</div>
-          <div><span style={{ color: PINK }}>"window_seconds"</span>: <span style={{ color: AMBER }}>60</span>,</div>
-          <div><span style={{ color: PINK }}>"window_max"</span>: <span style={{ color: AMBER }}>20</span>,</div>
-          <div><span style={{ color: PINK }}>"count"</span>: <span style={{ color: AMBER }}>7</span>,</div>
-          <div><span style={{ color: PINK }}>"remaining"</span>: <span style={{ color: GREEN }}>13</span>,</div>
-          <div><span style={{ color: PINK }}>"resets_at"</span>: <span style={{ color: ACCENT }}>"2026-06-21T…"</span></div>
-        </div>
-        <div style={{ color: GREEN }}>&#125;</div>
-      </div>
-      <div style={cardStyle(PURPLE)}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 8 }}>Параметры лимитов</div>
+
+      {/* Visual gauges description */}
+      <div style={cardStyle(ACCENT)}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 8 }}>📊 Визуальные индикаторы</div>
         {[
-          ["ACCOUNT_RATE_LIMIT_MAX", "20", "Сообщений за окно"],
-          ["ACCOUNT_RATE_LIMIT_WIN", "60", "Секунд в окне"],
+          { where: "Аккаунты → карточка", what: "Раздел «Скорость / мин»: прогресс-бар + счётчик X/Y + обратный отсчёт ↺Nс до сброса окна" },
+          { where: "Воркеры → вверху", what: "Сетка «Скорость / мин — все аккаунты»: мини-полоска на каждый активный аккаунт, обновл. 15 с" },
+        ].map(g => (
+          <div key={g.where} style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: ACCENT }}>{g.where}</div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginTop: 2, lineHeight: 1.5 }}>{g.what}</div>
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          {[["🟢", ">50%", GREEN], ["🟡", "25–50%", AMBER], ["🔴", "<25%", "#ef4444"]].map(([dot, label, col]) => (
+            <div key={label} style={{ flex: 1, textAlign: "center", borderRadius: 8, padding: "6px 4px", background: `${col as string}14`, border: `1px solid ${col as string}28` }}>
+              <div style={{ fontSize: 16 }}>{dot}</div>
+              <div style={{ fontSize: 10, color: col as string, fontWeight: 700 }}>{label}</div>
+              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.4)" }}>остаток</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={cardStyle(PURPLE)}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 8 }}>Параметры лимитов</div>
+        {[
+          ["ACCOUNT_RATE_LIMIT_MAX", "20", "Сообщений за скользящее окно"],
+          ["ACCOUNT_RATE_LIMIT_WIN", "60", "Длина окна в секундах"],
         ].map(([key, val, desc]) => (
           <div key={key} style={{ marginBottom: 8 }}>
             <div style={{ fontSize: 11, color: PURPLE, fontFamily: "monospace", marginBottom: 2 }}>{key}={val}</div>
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{desc}</div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{desc}</div>
           </div>
         ))}
       </div>
