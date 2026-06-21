@@ -1,13 +1,13 @@
 #!/bin/bash
-# Production entry point for PROMO-Fuel (VM deployment — always running)
+# Production entry point for PROMO-Fuel (autoscale deployment)
 #
 # Starts two services:
-#   1. python3 supervisor.py  — DB migrations, PTB bot (long-polling), broadcast
-#                               workers, Telethon auth FastAPI (port 8083) — background
+#   1. python3 supervisor.py  — DB migrations, PTB bot, broadcast workers,
+#                               Telethon auth FastAPI (port 8083) — background
 #   2. Node.js Express        — serves built Mini App static files + /api/*
 #                               routes, proxies Telethon auth to 8083 — foreground
 #
-# Replit VM routes public traffic to PORT (default 8080).
+# Replit autoscale routes public traffic to PORT (default 8080).
 
 set -e
 
