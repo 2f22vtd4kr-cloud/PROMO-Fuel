@@ -15,3 +15,4 @@
 - [aiosqlite context manager](aiosqlite-ctx.md) — never use `async with await aiosqlite.connect()` (double-starts background thread → RuntimeError); use `@asynccontextmanager` wrapper or bare `async with aiosqlite.connect() as conn:`.
 - [Resume-cursor architecture](resume-cursor-arch.md) — group_send_logs (task_id join key) drives zero-duplicate resume; group_send_logs table was missing from dbmigrations (silent bug); task_id preserved by force_release_worker_sync.
 - [Crash-alert rate limiter](crash-alert-cooldown.md) — utils/alert_cooldown.py; SQLite alert_cooldowns table; 15-min window per worker for task_crash, 30-min for crash_loop; fail-open; reset() on clean task completion.
+- [Pre-flight account check](preflight-arch.md) — utils/preflight.py; run_account_preflight(client, account) called after _initial_connect in groupbroadcaster; get_me() catches ban/session-revoke; 15-min in-memory cache; fail-open on transient errors.

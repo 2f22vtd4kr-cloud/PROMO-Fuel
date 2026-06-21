@@ -442,6 +442,10 @@ def run_migrations(db_path: str = DB_PATH) -> None:  # noqa: C901 — long but l
         ("broadcasting",        "INTEGER NOT NULL DEFAULT 0"),
         # Anti-flood
         ("flood_wait_until",    "TEXT"),
+        # Pre-flight health check timestamps and result
+        ("preflight_ok_at",    "TEXT"),        # last successful pre-flight (NULL = never ok)
+        ("last_preflight_at",  "TEXT"),        # last check attempt (success or failure)
+        ("preflight_status",   "TEXT"),        # 'ok' | 'session_invalid' | 'banned' | NULL
     ])
 
     # users

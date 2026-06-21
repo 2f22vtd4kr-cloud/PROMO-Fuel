@@ -46,6 +46,7 @@ import campaign_db as cdb
 from utils.proxy import parse_proxies, proxy_to_telethon, proxy_label
 from utils.spintax import resolve as resolve_spintax
 from utils.ratelimiter import PerAccountRateLimiter
+from utils.preflight import run_account_preflight, invalidate_cache as preflight_invalidate
 
 logger = logging.getLogger(__name__)
 
@@ -505,6 +506,7 @@ async def _try_send(
 
         except UserDeactivatedBanError:
             await cdb.account_flag_banned(account["id"], "UserDeactivatedBanError")
+            preflight_invalidate(account["id"])  # evict cache — account is now banned
             return "abort_task", f"Account {account['id']} banned/deactivated"
 
         except (ChatWriteForbiddenError, UserBannedInChannelError) as e:
@@ -640,6 +642,25 @@ async def run_group_campaign_task(task: dict, worker_id: str = "worker") -> dict
             "[broadcaster] Task #%d using %s (worker %r acct %d)",
             task_id, proxy_label(active_proxy), worker_id, account_id,
         )
+
+        # ── Pre-flight health check ────────────────────────────────────────────
+        # Verify session validity using the already-live connection (no extra
+        # TCP handshake).  get_me() catches: session revoked server-side,
+        # account deactivated/banned by Telegram.
+        # On hard failure: account is marked INACTIVE in the DB immediately,
+        # and the task exits cleanly — the finally block releases the FileLock
+        # and marks the account idle.  The task is then re-queued (up to
+        # max_attempts) so the operator can reassign a healthy account.
+        preflight = await run_account_preflight(client, account)
+        if not preflight.ok:
+            logger.warning(
+                "[broadcaster] Task #%d — account %d marked INACTIVE after "
+                "pre-flight, aborting cleanly: %s",
+                task_id, account_id, preflight.reason,
+            )
+            results["ok"]    = False
+            results["errors"].append(f"Pre-flight: {preflight.reason}")
+            return results  # finally: FileLock released, broadcasting cleared, account→idle
 
         # Mutable refs so _try_send can update client/proxy/index in-place on rotation
         client_ref = [client]
