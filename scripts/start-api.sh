@@ -1,9 +1,11 @@
 #!/bin/bash
 set -e
 
+WORKSPACE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
 echo "Starting API server..."
 
-BSQ="$(pwd)/node_modules/.pnpm/better-sqlite3@12.10.1/node_modules/better-sqlite3"
+BSQ="$WORKSPACE_ROOT/node_modules/.pnpm/better-sqlite3@12.10.1/node_modules/better-sqlite3"
 NATIVE="$BSQ/build/Release/better_sqlite3.node"
 
 if [ ! -f "$NATIVE" ]; then
@@ -32,11 +34,11 @@ if [ ! -f "$NATIVE" ]; then
   echo "better-sqlite3 built OK"
 fi
 
-# Build the API server if dist is missing or stale
-if [ ! -f "$(pwd)/artifacts/api-server/dist/index.mjs" ]; then
+API_DIST="$WORKSPACE_ROOT/artifacts/api-server/dist/index.mjs"
+
+if [ ! -f "$API_DIST" ]; then
   echo "Building API server..."
-  cd "$(pwd)/artifacts/api-server" && NODE_ENV=development node build.mjs
-  cd "$(pwd)"
+  cd "$WORKSPACE_ROOT/artifacts/api-server" && NODE_ENV=development node build.mjs
 fi
 
-exec node --enable-source-maps "$(pwd)/artifacts/api-server/dist/index.mjs"
+exec node --enable-source-maps "$API_DIST"
