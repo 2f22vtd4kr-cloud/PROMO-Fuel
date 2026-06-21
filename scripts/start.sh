@@ -1,13 +1,13 @@
 #!/bin/bash
-# Production entry point for PROMO-Fuel
+# Production entry point for PROMO-Fuel (VM deployment — always running)
 #
 # Starts two services:
-#   1. python3 supervisor.py  — DB migrations, PTB bot, broadcast workers,
-#                               Telethon auth FastAPI (port 8083) — background
+#   1. python3 supervisor.py  — DB migrations, PTB bot (long-polling), broadcast
+#                               workers, Telethon auth FastAPI (port 8083) — background
 #   2. Node.js Express        — serves built Mini App static files + /api/*
 #                               routes, proxies Telethon auth to 8083 — foreground
 #
-# Replit autoscale routes public traffic to PORT (default 8080).
+# Replit VM routes public traffic to PORT (default 8080).
 
 set -e
 
@@ -23,11 +23,15 @@ python3 -c "import aiosqlite, filelock, fastapi, telethon, uvicorn" 2>/dev/null 
 
 # Start Python supervisor in background:
 #   - runs DB migrations
-#   - spawns PTB Telegram bot
+#   - spawns PTB Telegram bot (long-polling — requires always-running VM)
 #   - spawns broadcast worker processes
 #   - starts Telethon auth FastAPI on port 8083
 echo "Starting Python supervisor (background)..."
 python3 supervisor.py &
+SUPERVISOR_PID=$!
+
+# Graceful shutdown: forward SIGTERM to supervisor before Node exits
+trap "echo 'Shutting down supervisor...'; kill $SUPERVISOR_PID 2>/dev/null; wait $SUPERVISOR_PID 2>/dev/null" EXIT SIGTERM SIGINT
 
 # Start Node.js Express server in the foreground on ${PORT:-8080}.
 # Express serves the built Mini App HTML/JS/CSS and all /api/* routes.
