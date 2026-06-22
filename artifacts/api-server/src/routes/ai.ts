@@ -504,6 +504,7 @@ Safe limits: 15-60s delay between sends; 50-100 msg/day per account (warm-up: st
 - API: GET /api/verifications/pending — list challenges; POST /api/verifications/click — click button; POST /api/verifications/reply — send text answer
 - When a user asks "any pending captchas?" query /api/verifications/pending to check (or advise them to go to the Verify tab)
 - **Push Alerts**: when a new captcha is detected the system sends a Telegram bot message to ADMIN_TELEGRAM_ID (env var). Requires TELEGRAM_TOKEN + ADMIN_TELEGRAM_ID to be set. Rate-limited: max one alert per account per 60 seconds. Optionally set MINIAPP_URL for a deep link in the alert.
+- **/captcha bot command**: typing /captcha in the bot chat shows the pending captcha count and (when MINIAPP_URL is set) a one-tap WebApp button that opens the Verification Hub directly at the #verify hash. The Mini App reads the URL hash on load and auto-jumps to the Verify tab.
 - To check if push alerts are configured: verify TELEGRAM_TOKEN and ADMIN_TELEGRAM_ID environment variables are set
 
 ## Key Endpoints (for your reference)

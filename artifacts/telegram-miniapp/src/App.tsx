@@ -50,7 +50,13 @@ function AppContent() {
 }
 
 function OwnerApp() {
-  const [tab,              setTab]             = useState<Tab>("home");
+  const [tab,              setTab]             = useState<Tab>(() => {
+    try {
+      const hash = window.location.hash.toLowerCase().replace(/^#/, "");
+      if (hash === "verify" || hash === "captcha") return "verify";
+    } catch {}
+    return "home";
+  });
   const [editCampaignId,   setEditId]          = useState<number | null>(null);
   const [showEditor,       setShowEditor]      = useState(false);
   const [editGroupId,      setEditGroupId]     = useState<number | null>(null);

@@ -505,12 +505,12 @@ function Slide13({ lang }: SL) {
         </div>
         <div style={{ background:`${AMBER}12`, border:`1px solid ${AMBER}30`, borderRadius:12,
           padding:"12px 14px", fontFamily:"monospace", fontSize:11, lineHeight:1.7,
-          color:"rgba(255,255,255,0.75)" }}>
+          color:"rgba(255,255,255,0.75)", wordBreak:"break-word", overflowX:"hidden" }}>
           🛡️ <strong style={{ color:AMBER }}>Captcha Alert</strong><br />
           Account: <span style={{ color:TEAL }}>`+38099…`</span><br />
           Group: SomeGroup<br />
           Type: 🔘 Button<br />
-          🔗 https://your-app.replit.app<br /><br />
+          🔗 your-app.replit.app<br /><br />
           <span style={{ color:"rgba(255,255,255,0.45)" }}>{L(lang,"Open the Verification Hub in PROMO-Fuel to solve.","Відкрийте Центр верифікації у PROMO-Fuel для вирішення.")}</span>
         </div>
       </div>
@@ -524,9 +524,9 @@ function Slide13({ lang }: SL) {
       <Row icon="👤" color={BLUE} label="ADMIN_TELEGRAM_ID"
         desc={L(lang,"Your personal Telegram user ID — alerts go here (use @userinfobot to find it)","Ваш особистий Telegram user ID — сповіщення надходять сюди (знайдіть через @userinfobot)")} />
       <Row icon="🔗" color={PURPLE} label="MINIAPP_URL (optional)"
-        desc={L(lang,"Your deployed Mini App URL — added as a clickable deep-link in every alert","URL вашого розгорнутого Mini App — додається як посилання в кожне сповіщення")} />
+        desc={L(lang,"Your deployed Mini App URL — added as a one-tap deep-link in every alert","URL вашого розгорнутого Mini App — додається як кнопка в кожне сповіщення")} />
 
-      <div style={{ ...card(RED), marginTop:4 }}>
+      <div style={{ ...card(RED), marginTop:4, marginBottom:8 }}>
         <div style={{ fontSize:11, fontWeight:700, color:RED, marginBottom:5 }}>
           ⚡ {L(lang,"Rate limiting","Обмеження частоти")}
         </div>
@@ -535,6 +535,28 @@ function Slide13({ lang }: SL) {
             "Maximum one alert per account per 60 seconds — prevents flooding when many captchas arrive at once. The Hub UI still shows all challenges in real time.",
             "Максимум одне сповіщення на акаунт на 60 секунд — запобігає спаму, коли багато капч надходить одночасно. Інтерфейс Хабу все одно показує всі виклики в реальному часі."
           )}
+        </div>
+      </div>
+
+      <div style={{ background:`${TEAL}10`, border:`1px solid ${TEAL}30`, borderRadius:14, padding:"12px 14px" }}>
+        <div style={{ fontSize:11, fontWeight:800, color:TEAL, marginBottom:6, display:"flex", alignItems:"center", gap:6 }}>
+          <span>🤖</span>
+          {L(lang,"/captcha Bot Command","Команда /captcha бота")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", lineHeight:1.55, marginBottom:8 }}>
+          {L(lang,
+            "When MINIAPP_URL is set, send /captcha in your bot chat. It replies with the pending count plus a one-tap 🛡️ button that opens the Verification Hub directly — no navigation needed.",
+            "Якщо MINIAPP_URL встановлено, відправте /captcha у чаті бота. Бот відповість з кількістю очікуючих капч і кнопкою 🛡️, яка одразу відкриє Центр верифікації — без зайвих кроків."
+          )}
+        </div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          <div style={{ background:`${TEAL}18`, border:`1px solid ${TEAL}35`, borderRadius:9,
+            padding:"4px 10px", fontSize:10, fontWeight:700, color:TEAL, fontFamily:"monospace" }}>
+            /captcha
+          </div>
+          <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", alignSelf:"center" }}>
+            {L(lang,"→ shows pending count + WebApp button","→ показує кількість + кнопку WebApp")}
+          </div>
         </div>
       </div>
     </Shell>
@@ -558,7 +580,7 @@ const KEYWORDS_VERIF: string[] = [
   "bulk join workflow broadcast groups sequence steps",
   "best practices tips residential proxy aged accounts",
   "FAQ questions answers troubleshoot dismiss stale auto-solve",
-  "push alerts notifications telegram bot token admin ID MINIAPP_URL rate limit",
+  "push alerts notifications telegram bot token admin ID MINIAPP_URL rate limit /captcha command deep link",
 ];
 
 const SLIDES_V: Array<(p: SL) => React.ReactElement> = [

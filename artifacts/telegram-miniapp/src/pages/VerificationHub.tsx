@@ -443,7 +443,7 @@ export function VerificationHubPage() {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px 16px", scrollbarWidth: "none" }}>
+      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "12px 14px 16px", scrollbarWidth: "none" }}>
 
         <style>{`
           @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

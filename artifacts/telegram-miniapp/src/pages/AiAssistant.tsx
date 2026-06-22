@@ -108,6 +108,7 @@ const SUGGESTIONS: Record<string, string[]> = {
     "Статус воркерів",
     "Є очікуючі капчі?",
     "Як налаштувати push-сповіщення для капч?",
+    "Як використовувати команду /captcha?",
   ],
   en: [
     "Platform summary",
@@ -117,6 +118,7 @@ const SUGGESTIONS: Record<string, string[]> = {
     "Worker status",
     "Any pending captchas?",
     "How to set up captcha push alerts?",
+    "How to use the /captcha command?",
   ],
 };
 
@@ -551,8 +553,8 @@ export function AiAssistantPage() {
   const GREETING: Message = {
     role: "model",
     text: lang === "ua"
-      ? "Привіт! Я PROMO-Fuel System Copilot. Можу допомогти з управлінням акаунтами, проксі SOCKS5, кампаніями та моніторингом платформи. Можу виконувати дії — призупиняти кампанії, оновлювати проксі, видаляти заблоковані акаунти. Є вкладка **Captcha** для вирішення капч вручну — з push-сповіщеннями у Telegram, коли надходять нові виклики. Перед виконанням дій завжди буде запит на підтвердження."
-      : "Hi! I'm PROMO-Fuel System Copilot. I can help with account management, SOCKS5 proxies, campaigns, and platform monitoring. I can take actions — pause campaigns, update proxies, delete restricted accounts. There's a **Verify** tab for solving captchas manually — with Telegram push alerts when new challenges arrive. Every action requires your approval before execution.",
+      ? "Привіт! Я PROMO-Fuel System Copilot. Можу допомогти з управлінням акаунтами, проксі SOCKS5, кампаніями та моніторингом платформи. Можу виконувати дії — призупиняти кампанії, оновлювати проксі, видаляти заблоковані акаунти. Є вкладка **Captcha** для вирішення капч вручну — з push-сповіщеннями та командою **/captcha** у боті, яка одразу відкриває Хаб з кількістю очікуючих капч. Перед виконанням дій завжди буде запит на підтвердження."
+      : "Hi! I'm PROMO-Fuel System Copilot. I can help with account management, SOCKS5 proxies, campaigns, and platform monitoring. I can take actions — pause campaigns, update proxies, delete restricted accounts. There's a **Verify** tab for solving captchas manually — with push alerts and a **/captcha** bot command that opens the Hub directly showing the pending count. Every action requires your approval before execution.",
     ts: new Date(),
   };
 

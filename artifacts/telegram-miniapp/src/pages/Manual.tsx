@@ -2014,6 +2014,8 @@ function SlideVerificationHub({ lang }: SL) {
             L(lang,"Set TELEGRAM_TOKEN + ADMIN_TELEGRAM_ID → bot messages you when a captcha arrives","Встановіть TELEGRAM_TOKEN + ADMIN_TELEGRAM_ID → бот надсилає вам повідомлення при капчі")],
           ["⏱️", "#2dd4bf", L(lang,"60 s rate-limit per account","60 с ліміт на акаунт"),
             L(lang,"Multiple captchas on the same account don't spam — one alert/minute maximum","Кілька капч від одного акаунта не спамлять — максимум одне сповіщення/хвилину")],
+          ["🤖", "#10d88a", L(lang,"/captcha command","Команда /captcha"),
+            L(lang,"Send /captcha in bot chat → shows pending count + WebApp button that opens the Hub directly","Надішліть /captcha у чаті бота → кількість очікуючих + кнопка WebApp, що відкриває Хаб одразу")],
         ].map(([icon,color,title,desc]) => (
           <div key={title as string} style={{ display:"flex", gap:10, alignItems:"flex-start",
             background:`${color as string}0f`, border:`1px solid ${color as string}28`,

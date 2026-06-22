@@ -254,6 +254,56 @@ async def fuel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @admin_only
+async def captcha_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Open the Verification Hub in the Mini App + show pending captcha count."""
+    miniapp_url = os.getenv("MINIAPP_URL", "").rstrip("/")
+
+    # Count pending challenges
+    pending_count = 0
+    try:
+        import sqlite3 as _sq
+        _conn = _sq.connect(os.getenv("DB_PATH", "campaigns.db"), timeout=5)
+        _row = _conn.execute(
+            "SELECT COUNT(*) FROM pending_verifications WHERE status='pending'"
+        ).fetchone()
+        pending_count = _row[0] if _row else 0
+        _conn.close()
+    except Exception:
+        pass
+
+    if pending_count > 0:
+        status_line = (
+            f"⚠️ *{pending_count} очікуюч{'ий' if pending_count == 1 else 'их'} "
+            f"капча-виклик{'' if pending_count == 1 else 'ів'}*"
+        )
+    else:
+        status_line = "✅ Активних капч немає"
+
+    text = (
+        f"🛡️ *Центр верифікації*\n\n"
+        f"{status_line}\n\n"
+        f"Відкрийте вкладку Captcha, щоб переглянути та вирішити виклики\\."
+    )
+
+    if miniapp_url:
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(
+                "🛡️ Відкрити Центр верифікації",
+                web_app=WebAppInfo(url=f"{miniapp_url}#verify"),
+            )
+        ]])
+        await update.effective_message.reply_text(
+            text, parse_mode="MarkdownV2", reply_markup=keyboard
+        )
+    else:
+        fallback = (
+            f"🛡️ *Центр верифікації*\n\n{status_line}\n\n"
+            "⚠️ `MINIAPP_URL` не налаштовано\\. Відкрийте Mini App вручну\\."
+        )
+        await update.effective_message.reply_text(fallback, parse_mode="MarkdownV2")
+
+
+@admin_only
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🔎 Поиск по ИНН", callback_data="inn_help")],
@@ -2138,6 +2188,7 @@ def main():
     app.add_handler(CommandHandler("weeklyreport",weekly_report))
     app.add_handler(CommandHandler("accounts",    accounts_status))
     app.add_handler(CommandHandler("workers",     workers_status))
+    app.add_handler(CommandHandler("captcha",     captcha_command))
     app.add_handler(CommandHandler("broadcasts",  broadcasts_status))
     app.add_handler(CommandHandler("quota",       quota_report))
     app.add_handler(CommandHandler("today",       today_report))
@@ -2173,6 +2224,7 @@ def main():
                 BotCommand("today",       "Детальне зведення за сьогодні по годинах"),
                 BotCommand("top",         "Топ-5 кампаній за відправками"),
                 BotCommand("upcoming",    "Заплановані кампанії на 24г"),
+                BotCommand("captcha",     "🛡️ Відкрити Центр верифікації капч"),
                 BotCommand("help",        "Список усіх команд"),
             ])
             logger.info("✅ Bot commands registered with BotFather")
