@@ -95,7 +95,7 @@ function Slide1({ lang }: SL) {
         {L(lang,"User Manual","Посібник користувача")}
       </div>
       <div style={{ fontSize:12, color:"rgba(255,255,255,0.38)", marginBottom:30 }}>
-        {L(lang,"Complete system reference · 25 pages","Повний опис системи · 25 сторінок")}
+        {L(lang,"Complete system reference · 27 pages","Повний опис системи · 27 сторінок")}
       </div>
       <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"center", marginBottom:24 }}>
         {topics.map(([ic,lb]) => (
@@ -718,6 +718,58 @@ function Slide13({ lang }: SL) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SLIDE — Bulk Account Import (inserted after Slide13)
+// ═══════════════════════════════════════════════════════════════
+function SlideAccountsBulk({ lang }: SL) {
+  return (
+    <Shell>
+      {title("📦", L(lang,"Bulk Account Import","Масовий імпорт акаунтів"), PURPLE)}
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)", marginBottom:14, lineHeight:1.5 }}>
+        {L(lang,
+          "Import dozens of session files at once with a single ZIP archive — no manual entry needed.",
+          "Завантажте десятки сесійних файлів одразу через ZIP-архів — без ручного вводу."
+        )}
+      </div>
+      <div style={card(PURPLE)}>
+        <div style={{ fontSize:13, fontWeight:700, color:"#fff", marginBottom:10 }}>
+          {L(lang,"Archive format","Формат архіву")}
+        </div>
+        {[
+          [L(lang,"session files","файли сесій"),    L(lang,"*.session  — Telethon sessions","*.session  — Telethon-сесії")],
+          [L(lang,"proxy list","список проксі"),     "proxies.txt  — socks5://user:pass@host:port"],
+          [L(lang,"credentials","облікові дані"),    "credentials.json  — {phone, api_id, api_hash}"],
+        ].map(([k, v]) => (
+          <div key={k as string} style={{ display:"flex", gap:8, marginBottom:6, alignItems:"baseline" }}>
+            <span style={{ fontSize:11, fontWeight:700, color:PURPLE, minWidth:90 }}>{k}</span>
+            <span style={{ fontSize:11, color:"rgba(255,255,255,0.5)", fontFamily:"monospace" }}>{v}</span>
+          </div>
+        ))}
+      </div>
+      <div style={card(GREEN)}>
+        <div style={{ fontSize:13, fontWeight:700, color:"#fff", marginBottom:8 }}>
+          {L(lang,"How to use","Як використовувати")}
+        </div>
+        {[
+          [1, GREEN,  L(lang,"Accounts tab → 📦 Bulk","Вкладка «Акаунти» → 📦 Bulk")],
+          [2, ACCENT, L(lang,"Upload ZIP archive","Завантажте ZIP-архів")],
+          [3, AMBER,  L(lang,"Paste proxy list (optional)","Вставте список проксі (опційно)")],
+          [4, GREEN,  L(lang,"Click Import — done!","Натисніть «Імпорт» — готово!")],
+        ].map(([n,c,d]) => step(n as number, c as string, d as string, ""))}
+      </div>
+      <div style={{ ...card(AMBER), marginTop:2 }}>
+        <div style={{ fontSize:12, color:AMBER, fontWeight:700, marginBottom:4 }}>💡</div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.6)", lineHeight:1.5 }}>
+          {L(lang,
+            "Proxies are matched to sessions in order. Duplicate phones are automatically skipped.",
+            "Проксі призначаються сесіям по порядку. Дублікати телефонів пропускаються автоматично."
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // SLIDE 14 — Account Authorization
 // ═══════════════════════════════════════════════════════════════
 function Slide14({ lang }: SL) {
@@ -754,6 +806,66 @@ function Slide14({ lang }: SL) {
           {L(lang,
             "Use only your own accounts. New accounts have very low sending limits for the first 2–4 weeks of activity.",
             "Використовуйте лише власні акаунти. Нові акаунти мають дуже низькі ліміти відправки перші 2–4 тижні активності."
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SLIDE — Proxy Health Check (inserted after Slide14)
+// ═══════════════════════════════════════════════════════════════
+function SlideProxyHealth({ lang }: SL) {
+  return (
+    <Shell>
+      {title("🔌", L(lang,"Proxy Health Check","Перевірка проксі"), GREEN)}
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)", marginBottom:14, lineHeight:1.5 }}>
+        {L(lang,
+          "Ping each account's SOCKS5 proxy to verify it can reach Telegram's servers before you start a campaign.",
+          "Перевіряйте SOCKS5-проксі кожного акаунта — чи можуть вони дістатися серверів Telegram до початку розсилки."
+        )}
+      </div>
+      <div style={card(GREEN)}>
+        <div style={{ fontSize:13, fontWeight:700, color:"#fff", marginBottom:10 }}>
+          {L(lang,"Ping badge","Бейдж Ping")}
+        </div>
+        {[
+          ["🔌 Ping",           L(lang,"Idle — tap to test the proxy","В очікуванні — натисніть для перевірки")],
+          ["⏳ …",              L(lang,"Handshaking with Telegram DC2","Підключення до Telegram DC2")],
+          [`⚡ <ms>ms`,         L(lang,"Live — colour shows latency","Живий — колір відображає затримку")],
+          ["✗ dead",            L(lang,"Cannot reach Telegram — replace proxy","Немає доступу до Telegram — замінити проксі")],
+          ["no proxy",          L(lang,"No SOCKS5 proxy configured","SOCKS5-проксі не налаштовано")],
+        ].map(([badge, desc]) => (
+          <div key={badge as string} style={{ display:"flex", gap:10, alignItems:"baseline", marginBottom:7 }}>
+            <code style={{ fontSize:11, color:GREEN, fontFamily:"monospace", minWidth:78 }}>{badge as string}</code>
+            <span style={{ fontSize:12, color:"rgba(255,255,255,0.5)" }}>{desc as string}</span>
+          </div>
+        ))}
+      </div>
+      <div style={card(ACCENT)}>
+        <div style={{ fontSize:13, fontWeight:700, color:"#fff", marginBottom:8 }}>
+          {L(lang,"Latency colour guide","Кольорова шкала затримки")}
+        </div>
+        {[
+          ["< 200 ms", "#2de897", L(lang,"Excellent","Відмінно")],
+          ["200–500 ms", "#ffc946", L(lang,"Acceptable","Прийнятно")],
+          ["> 500 ms",  "#ff6b7a", L(lang,"Slow — consider replacing","Повільно — варто замінити")],
+        ].map(([range, col, label]) => (
+          <div key={range as string} style={{ display:"flex", gap:10, alignItems:"center", marginBottom:6 }}>
+            <span style={{ fontSize:13, fontWeight:800, color:col as string, minWidth:72 }}>{range as string}</span>
+            <span style={{ fontSize:12, color:"rgba(255,255,255,0.5)" }}>{label as string}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ ...card(PINK), marginTop:2 }}>
+        <div style={{ fontSize:12, color:PINK, fontWeight:700, marginBottom:4 }}>
+          {L(lang,"Tip","Порада")}
+        </div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.6)", lineHeight:1.5 }}>
+          {L(lang,
+            "Tap the badge again after a test to reset it and re-ping.",
+            "Натисніть бейдж ще раз після перевірки, щоб скинути результат і перевірити знову."
           )}
         </div>
       </div>
@@ -1357,8 +1469,9 @@ function Slide25({ lang }: SL) {
 // ═══════════════════════════════════════════════════════════════
 const SLIDES: Array<(p: SL) => React.ReactElement> = [
   Slide1,Slide2,Slide3,Slide4,Slide5,Slide6,Slide7,Slide8,Slide9,
-  Slide10,Slide11,Slide12,Slide13,Slide14,Slide15,Slide16,Slide17,
-  Slide18,Slide19,Slide20,Slide21,Slide22,Slide23,Slide24,Slide25,
+  Slide10,Slide11,Slide12,Slide13,SlideAccountsBulk,Slide14,SlideProxyHealth,
+  Slide15,Slide16,Slide17,Slide18,Slide19,Slide20,Slide21,Slide22,
+  Slide23,Slide24,Slide25,
 ];
 const TOTAL = SLIDES.length;
 
@@ -1367,8 +1480,8 @@ const TITLES: Record<Lang, string[]> = {
     "Cover","System Overview","Dashboard","Quick Actions","DM Campaigns",
     "Campaign Editor","Groups","Group Broadcasts","Campaign Settings",
     "Step-by-Step Walkthrough","Analytics","Audience","Sender Accounts",
-    "Account Authorization","Workers","Task Queue","Rate Limits",
-    "Best Practices","Architecture","Telegram Protocols",
+    "Bulk Account Import","Account Authorization","Proxy Health Check","Workers",
+    "Task Queue","Rate Limits","Best Practices","Architecture","Telegram Protocols",
     "Sessions & Security","Spintax Engine","Process Internals",
     "Database & API","Launch Checklist",
   ],
@@ -1376,10 +1489,10 @@ const TITLES: Record<Lang, string[]> = {
     "Обкладинка","Огляд системи","Дашборд","Швидкі дії","DM-розсилки",
     "Редактор кампанії","Групи","Групові розсилки","Налаштування кампанії",
     "Покрокове керівництво","Статистика","Аудиторія","Sender-акаунти",
-    "Авторизація акаунта","Воркери","Черга задач","Ліміти відправки",
-    "Поради та рекомендації","Архітектура","Протоколи Telegram",
-    "Сесії та безпека","Рушій спінтаксу","Внутрішня будова процесів",
-    "База даних та API","Чеклист запуску",
+    "Масовий імпорт акаунтів","Авторизація акаунта","Перевірка проксі","Воркери",
+    "Черга задач","Ліміти відправки","Поради та рекомендації","Архітектура",
+    "Протоколи Telegram","Сесії та безпека","Рушій спінтаксу",
+    "Внутрішня будова процесів","База даних та API","Чеклист запуску",
   ],
 };
 

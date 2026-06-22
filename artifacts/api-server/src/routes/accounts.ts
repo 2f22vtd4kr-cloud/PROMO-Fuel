@@ -421,6 +421,58 @@ router.post("/accounts/bulk-import", upload.single("file"), (req, res) => {
   }
 });
 
+// GET /api/accounts/proxy-check?ids=1,2,3  (omit ids → all accounts with a proxy)
+router.get("/accounts/proxy-check", async (req, res) => {
+  const CHECK_SCRIPT = join(process.cwd(), "scripts", "check_proxy.py");
+  const PYTHON = process.env.PYTHONLIBS_PATH
+    ? join(process.env.PYTHONLIBS_PATH, "bin", "python3")
+    : "/home/runner/workspace/.pythonlibs/bin/python3";
+
+  try {
+    const db = getDb(true);
+    let accounts: { id: number; phone: string; proxy: string | null }[];
+    const rawIds = req.query.ids as string | undefined;
+    if (rawIds) {
+      const ids = rawIds.split(",").map(Number).filter(n => !isNaN(n));
+      accounts = ids.map(id => {
+        const row = db.prepare("SELECT id, phone, proxy FROM sender_accounts WHERE id = ?").get(id) as
+          { id: number; phone: string; proxy: string | null } | undefined;
+        return row ?? null;
+      }).filter(Boolean) as { id: number; phone: string; proxy: string | null }[];
+    } else {
+      accounts = db.prepare(
+        "SELECT id, phone, proxy FROM sender_accounts WHERE proxy IS NOT NULL AND proxy != '' ORDER BY id"
+      ).all() as { id: number; phone: string; proxy: string | null }[];
+    }
+    db.close();
+
+    const results = await Promise.all(
+      accounts.map(async acc => {
+        const proxyLine = (acc.proxy ?? "").split("\n").find(l => l.trim().startsWith("socks5://")) ?? "";
+        if (!proxyLine.trim()) {
+          return { id: acc.id, phone: acc.phone, proxy: null, alive: null, latency_ms: null, error: "No SOCKS5 proxy configured" };
+        }
+        return new Promise<{ id: number; phone: string; proxy: string; alive: boolean; latency_ms: number | null; error: string | null }>(resolve => {
+          const child = spawnSync(PYTHON, [CHECK_SCRIPT, proxyLine.trim()], {
+            encoding: "utf8",
+            timeout: 12_000,
+          });
+          try {
+            const parsed = JSON.parse(child.stdout || "{}") as { alive: boolean; latency_ms: number | null; error: string | null };
+            resolve({ id: acc.id, phone: acc.phone, proxy: proxyLine.trim(), ...parsed });
+          } catch {
+            resolve({ id: acc.id, phone: acc.phone, proxy: proxyLine.trim(), alive: false, latency_ms: null, error: child.stderr?.trim() || "parse error" });
+          }
+        });
+      })
+    );
+
+    res.json({ results });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 router.get("/accounts/sends-today", (_req, res) => {
   try {
     const db = getDb(true);

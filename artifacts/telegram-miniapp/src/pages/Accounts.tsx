@@ -396,6 +396,74 @@ function RateLimitGauge({ accountId }: { accountId: number }) {
 
 // ── Account card ─────────────────────────────────────────────────────────────
 
+type ProxyResult = { alive: boolean | null; latency_ms: number | null; error: string | null };
+
+function ProxyPingBadge({ accountId, proxy }: { accountId: number; proxy: string | null }) {
+  const [state,  setState]  = useState<"idle" | "checking" | "done">("idle");
+  const [result, setResult] = useState<ProxyResult | null>(null);
+
+  async function ping() {
+    setState("checking");
+    try {
+      const { results } = await api.checkProxies([accountId]);
+      setResult(results[0] ?? null);
+    } catch {
+      setResult({ alive: false, latency_ms: null, error: "Network error" });
+    }
+    setState("done");
+  }
+
+  if (!proxy || !proxy.includes("socks5://")) {
+    return (
+      <span style={{ fontSize: 9, color: "rgba(255,255,255,0.22)", background: "rgba(255,255,255,0.04)",
+        border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, padding: "2px 7px" }}>
+        no proxy
+      </span>
+    );
+  }
+
+  if (state === "idle") {
+    return (
+      <button onClick={e => { e.stopPropagation(); ping(); }} style={{
+        fontSize: 9, fontWeight: 700, color: "#c4aeff",
+        background: "rgba(196,174,255,0.10)", border: "1px solid rgba(196,174,255,0.25)",
+        borderRadius: 6, padding: "2px 7px", cursor: "pointer",
+      }}>🔌 Ping</button>
+    );
+  }
+
+  if (state === "checking") {
+    return (
+      <span style={{ fontSize: 9, color: "#c4aeff", background: "rgba(196,174,255,0.10)",
+        border: "1px solid rgba(196,174,255,0.22)", borderRadius: 6, padding: "2px 8px" }}>
+        ⏳ …
+      </span>
+    );
+  }
+
+  if (!result || result.alive === false) {
+    return (
+      <button onClick={e => { e.stopPropagation(); setState("idle"); setResult(null); }} title={result?.error ?? "failed"}
+        style={{ fontSize: 9, fontWeight: 700, color: "#ff6b7a",
+          background: "rgba(255,107,122,0.12)", border: "1px solid rgba(255,107,122,0.28)",
+          borderRadius: 6, padding: "2px 7px", cursor: "pointer" }}>
+        ✗ dead
+      </button>
+    );
+  }
+
+  const ms = result.latency_ms ?? 0;
+  const col = ms < 200 ? "#2de897" : ms < 500 ? "#ffc946" : "#ff6b7a";
+  return (
+    <button onClick={e => { e.stopPropagation(); setState("idle"); setResult(null); }}
+      style={{ fontSize: 9, fontWeight: 700, color: col,
+        background: `${col}12`, border: `1px solid ${col}33`,
+        borderRadius: 6, padding: "2px 8px", cursor: "pointer" }}>
+      ⚡{ms}ms
+    </button>
+  );
+}
+
 function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => void }) {
   const { t, lang } = useI18n();
   const [expanded,      setExpanded]      = useState(false);
@@ -574,6 +642,7 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
                   </span>
                 ) : null;
               })()}
+              <ProxyPingBadge accountId={acc.id} proxy={acc.proxy ?? (acc as any).proxies ?? null} />
             </div>
           )}
 
