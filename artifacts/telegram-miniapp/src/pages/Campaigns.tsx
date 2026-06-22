@@ -560,7 +560,7 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
         </div>
 
         {/* Status tabs */}
-        <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", overflowY: "hidden", paddingBottom: 2, marginRight: -14, paddingRight: 14 }}>
           {STATUS_TABS.map(st => {
             const isActive = st.key === tab;
             const cnt = st.key === "all" ? campaigns.length

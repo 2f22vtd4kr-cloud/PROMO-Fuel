@@ -1239,17 +1239,18 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
         </div>
       )}
 
-    <div className="tab-content" style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+    <div className="tab-content" style={{ height: "100%", overflowY: "auto", overflowX: "hidden", WebkitOverflowScrolling: "touch" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingTop: 14, paddingLeft: 14, paddingRight: 14, paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 140px)" }}>
 
+        {/* ── Row 1: Title + Add button ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
             {onClose && (
-              <div onClick={() => { haptic.light(); onClose(); }} style={{ cursor: "pointer", color: TG.muted, padding: 4 }}>
+              <div onClick={() => { haptic.light(); onClose(); }} style={{ cursor: "pointer", color: TG.muted, padding: 4, flexShrink: 0 }}>
                 <X size={18} />
               </div>
             )}
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>{t.nav.accounts}</div>
               {accounts.length > 0 && (() => {
                 const unhealthy = healthCounts.banned + healthCounts.session_invalid + healthCounts.proxy_failed;
@@ -1267,74 +1268,74 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
               })()}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 6 }}>
+          <GlassCard style={{ padding: "8px 12px", borderRadius: 14, cursor: "pointer", flexShrink: 0 }} onClick={() => { haptic.medium(); setShowForm(s => !s); }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <Plus size={14} color="#ff7eb3" />
+              <span style={{ fontSize: 12, color: "#ff7eb3", fontWeight: 700 }}>Додати</span>
+            </div>
+          </GlassCard>
+        </div>
+
+        {/* ── Row 2: Action buttons — wrap freely, never overflow ── */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <GlassCard
+            style={{ padding: "7px 10px", borderRadius: 12, cursor: "pointer" }}
+            onClick={async () => { haptic.medium(); try { await api.resetDailyCounts(); haptic.success(); load(); } catch { haptic.error(); } }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <RotateCcw size={12} color={TG.muted} />
+              <span style={{ fontSize: 11, color: TG.muted, fontWeight: 600 }}>Сброс</span>
+            </div>
+          </GlassCard>
+          {sessionInvalidIds.length > 0 && (
             <GlassCard
-              style={{ padding: "8px 10px", borderRadius: 14, cursor: "pointer" }}
-              onClick={async () => { haptic.medium(); try { await api.resetDailyCounts(); haptic.success(); load(); } catch { haptic.error(); } }}
+              style={{ padding: "7px 10px", borderRadius: 12, cursor: valAllState === "running" ? "not-allowed" : "pointer", opacity: valAllState === "running" ? 0.7 : 1 }}
+              onClick={validateAllInvalid}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <RotateCcw size={13} color={TG.muted} />
-                <span style={{ fontSize: 11, color: TG.muted, fontWeight: 600 }}>Сброс</span>
+                <span style={{ fontSize: 12 }}>{valAllState === "running" ? "⏳" : "🔬"}</span>
+                <span style={{ fontSize: 11, color: "#ff6b7a", fontWeight: 700 }}>Validate ({sessionInvalidIds.length})</span>
               </div>
             </GlassCard>
-            {sessionInvalidIds.length > 0 && (
-              <GlassCard
-                style={{ padding: "8px 10px", borderRadius: 14, cursor: valAllState === "running" ? "not-allowed" : "pointer", opacity: valAllState === "running" ? 0.7 : 1 }}
-                onClick={validateAllInvalid}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <span style={{ fontSize: 13 }}>{valAllState === "running" ? "⏳" : "🔬"}</span>
-                  <span style={{ fontSize: 11, color: "#ff6b7a", fontWeight: 700 }}>
-                    Validate ({sessionInvalidIds.length})
-                  </span>
-                </div>
-              </GlassCard>
-            )}
-            {allActiveSessionIds.length > 0 && (
-              <GlassCard
-                style={{ padding: "8px 10px", borderRadius: 14, cursor: valAllState === "running" ? "not-allowed" : "pointer", opacity: valAllState === "running" ? 0.7 : 1 }}
-                onClick={revalidateAllActive}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <span style={{ fontSize: 13 }}>{valAllState === "running" ? "⏳" : "🔄"}</span>
-                  <span style={{ fontSize: 11, color: "#c4aeff", fontWeight: 700 }}>Reval All</span>
-                </div>
-              </GlassCard>
-            )}
-            <GlassCard style={{ padding: "8px 10px", borderRadius: 14, cursor: "pointer" }} onClick={() => { haptic.medium(); setShowBulkProxy(true); setBulkProxyDone(null); }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <span style={{ fontSize: 13 }}>🌐</span>
-                <span style={{ fontSize: 11, color: "#6ba8e5", fontWeight: 700 }}>{lang === "ua" ? "Проксі" : "Proxy"}</span>
-              </div>
-            </GlassCard>
+          )}
+          {allActiveSessionIds.length > 0 && (
             <GlassCard
-              style={{ padding: "8px 10px", borderRadius: 14, cursor: "pointer" }}
-              onClick={() => { haptic.light(); window.open(api.getAccountsCsvUrl(), "_blank"); }}
+              style={{ padding: "7px 10px", borderRadius: 12, cursor: valAllState === "running" ? "not-allowed" : "pointer", opacity: valAllState === "running" ? 0.7 : 1 }}
+              onClick={revalidateAllActive}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <span style={{ fontSize: 13 }}>📥</span>
-                <span style={{ fontSize: 11, color: TG.muted, fontWeight: 600 }}>CSV</span>
+                <span style={{ fontSize: 12 }}>{valAllState === "running" ? "⏳" : "🔄"}</span>
+                <span style={{ fontSize: 11, color: "#c4aeff", fontWeight: 700 }}>Reval All</span>
               </div>
             </GlassCard>
-            <GlassCard style={{ padding: "8px 10px", borderRadius: 14, cursor: pingAllRunning ? "not-allowed" : "pointer", opacity: pingAllRunning ? 0.7 : 1 }} onClick={pingAll}>
-              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <span style={{ fontSize: 13 }}>{pingAllRunning ? "⏳" : "🔌"}</span>
-                <span style={{ fontSize: 11, color: "#c4aeff", fontWeight: 700 }}>Ping All</span>
-              </div>
-            </GlassCard>
-            <GlassCard style={{ padding: "8px 10px", borderRadius: 14, cursor: "pointer" }} onClick={() => { haptic.medium(); setShowBulk(s => !s); }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <span style={{ fontSize: 14 }}>📦</span>
-                <span style={{ fontSize: 11, color: "#2de897", fontWeight: 700 }}>Bulk</span>
-              </div>
-            </GlassCard>
-            <GlassCard style={{ padding: "8px 12px", borderRadius: 14, cursor: "pointer" }} onClick={() => { haptic.medium(); setShowForm(s => !s); }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <Plus size={14} color="#ff7eb3" />
-                <span style={{ fontSize: 12, color: "#ff7eb3", fontWeight: 700 }}>Додати</span>
-              </div>
-            </GlassCard>
-          </div>
+          )}
+          <GlassCard style={{ padding: "7px 10px", borderRadius: 12, cursor: "pointer" }} onClick={() => { haptic.medium(); setShowBulkProxy(true); setBulkProxyDone(null); }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ fontSize: 12 }}>🌐</span>
+              <span style={{ fontSize: 11, color: "#6ba8e5", fontWeight: 700 }}>{lang === "ua" ? "Проксі" : "Proxy"}</span>
+            </div>
+          </GlassCard>
+          <GlassCard
+            style={{ padding: "7px 10px", borderRadius: 12, cursor: "pointer" }}
+            onClick={() => { haptic.light(); window.open(api.getAccountsCsvUrl(), "_blank"); }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ fontSize: 12 }}>📥</span>
+              <span style={{ fontSize: 11, color: TG.muted, fontWeight: 600 }}>CSV</span>
+            </div>
+          </GlassCard>
+          <GlassCard style={{ padding: "7px 10px", borderRadius: 12, cursor: pingAllRunning ? "not-allowed" : "pointer", opacity: pingAllRunning ? 0.7 : 1 }} onClick={pingAll}>
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ fontSize: 12 }}>{pingAllRunning ? "⏳" : "🔌"}</span>
+              <span style={{ fontSize: 11, color: "#c4aeff", fontWeight: 700 }}>Ping All</span>
+            </div>
+          </GlassCard>
+          <GlassCard style={{ padding: "7px 10px", borderRadius: 12, cursor: "pointer" }} onClick={() => { haptic.medium(); setShowBulk(s => !s); }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ fontSize: 12 }}>📦</span>
+              <span style={{ fontSize: 11, color: "#2de897", fontWeight: 700 }}>Bulk</span>
+            </div>
+          </GlassCard>
         </div>
 
         {/* Summary 4-col */}

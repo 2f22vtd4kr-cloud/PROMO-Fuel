@@ -386,7 +386,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
           <div style={{ fontSize: 12, fontWeight: 700, color: TG.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>
             {lang === "ua" ? "Швидкі дії" : "Quick Actions"}
           </div>
-          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", overflowY: "hidden", paddingBottom: 4, marginRight: -14, paddingRight: 14 }}>
             {quickActions.map((a) => {
               const Icon = a.icon;
               return (
