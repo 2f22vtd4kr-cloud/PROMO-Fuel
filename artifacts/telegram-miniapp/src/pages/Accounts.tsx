@@ -7,6 +7,7 @@ import {
 import { api, SenderAccount } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard, StatusBadge } from "../components/GlassCard";
+import { ConfirmModal } from "../components/ConfirmModal";
 import { useSse } from "../lib/useSse";
 import { haptic } from "../lib/haptics";
 
@@ -532,15 +533,18 @@ function AccountCard({ acc, onRefresh, pingResult }: { acc: SenderAccount; onRef
     catch { haptic.error(); } finally { setBusy(false); setEditingLimit(false); }
   }
 
+  const [showConfirm, setShowConfirm] = useState(false);
+
   async function deleteAcc() {
     haptic.warning(); setBusy(true);
-    try { await api.deleteAccount(acc.id); haptic.success(); onRefresh(); }
+    try { await api.deleteAccount(acc.id); haptic.success(); onRefresh(); setShowConfirm(false); }
     catch { haptic.error(); setBusy(false); }
   }
 
   const authorized = !!acc.session_file;
 
   return (
+  <>
     <GlassCard style={{ padding: "14px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -697,13 +701,25 @@ function AccountCard({ acc, onRefresh, pingResult }: { acc: SenderAccount; onRef
             <button onClick={resetDaily} disabled={busy} style={{ flex: 1, padding: "9px 6px", borderRadius: 12, background: "rgba(107,168,229,0.12)", border: "1px solid rgba(107,168,229,0.3)", fontSize: 11, fontWeight: 700, color: "#6ba8e5", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
               <RotateCcw size={11} />{t.accounts.resetLimit}
             </button>
-            <button onClick={deleteAcc} disabled={busy} style={{ width: 36, padding: "9px 6px", borderRadius: 12, background: "rgba(255,107,122,0.10)", border: "1px solid rgba(255,107,122,0.25)", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <button onClick={() => { haptic.light(); setShowConfirm(true); }} disabled={busy} style={{ width: 36, padding: "9px 6px", borderRadius: 12, background: "rgba(255,107,122,0.10)", border: "1px solid rgba(255,107,122,0.25)", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Trash2 size={12} color="#ff6b7a" />
             </button>
           </div>
         </div>
       )}
     </GlassCard>
+
+    {showConfirm && (
+      <ConfirmModal
+        title="Удалить аккаунт?"
+        description={`"${acc.label || acc.phone}" будет удалён без возможности восстановления.`}
+        confirmLabel="Да, удалить"
+        busy={busy}
+        onConfirm={deleteAcc}
+        onCancel={() => setShowConfirm(false)}
+      />
+    )}
+  </>
   );
 }
 

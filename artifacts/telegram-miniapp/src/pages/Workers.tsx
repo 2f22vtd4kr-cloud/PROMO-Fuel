@@ -11,6 +11,7 @@ import {
 import { useSse } from "../lib/useSse";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
+import { ConfirmModal } from "../components/ConfirmModal";
 import { haptic } from "../lib/haptics";
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
@@ -109,7 +110,8 @@ function RestartWorkerButton({ workerId, onRestarted }: { workerId: string; onRe
 
 function WorkerCard({ worker, index = 0, onDelete, accounts = [], accountStats = {} }: { worker: BroadcastWorker; index?: number; onDelete: () => void; accounts?: SenderAccount[]; accountStats?: Record<string, { ok: number; failed: number }> }) {
   const { t } = useI18n();
-  const [busy, setBusy] = useState(false);
+  const [busy,        setBusy]        = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const alive   = worker.is_alive ?? false;
   const working = alive && worker.status === "working";
   const color   = alive ? sc(worker.status) : "#ff6b7a";
@@ -121,11 +123,12 @@ function WorkerCard({ worker, index = 0, onDelete, accounts = [], accountStats =
 
   async function remove() {
     haptic.warning(); setBusy(true);
-    try { await api.deleteWorker(worker.worker_id); haptic.success(); onDelete(); }
+    try { await api.deleteWorker(worker.worker_id); haptic.success(); onDelete(); setShowConfirm(false); }
     catch { haptic.error(); setBusy(false); }
   }
 
   return (
+  <>
     <GlassCard glow={`${color}28`} style={{ padding: 14, animation: `slideUp 0.35s ease-out calc(${index} * 0.06s) both` }}>
       <div style={{ position: "absolute", top: 0, left: "10%", right: "10%", height: "1px", background: `linear-gradient(90deg,transparent,${topAccentColor},transparent)`, zIndex: 4 }} />
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
@@ -145,7 +148,7 @@ function WorkerCard({ worker, index = 0, onDelete, accounts = [], accountStats =
             {alive ? worker.status : "dead"}
           </span>
           {(!alive || worker.status === "stopped") && (
-            <button onClick={remove} disabled={busy} style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(255,107,122,0.10)", border: "1px solid rgba(255,107,122,0.22)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", opacity: busy ? 0.4 : 1 }}>
+            <button onClick={() => { haptic.light(); setShowConfirm(true); }} disabled={busy} style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(255,107,122,0.10)", border: "1px solid rgba(255,107,122,0.22)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", opacity: busy ? 0.4 : 1 }}>
               <Trash2 size={12} color="#ff6b7a" />
             </button>
           )}
@@ -201,6 +204,18 @@ function WorkerCard({ worker, index = 0, onDelete, accounts = [], accountStats =
         </div>
       )}
     </GlassCard>
+
+    {showConfirm && (
+      <ConfirmModal
+        title={`Удалить воркер?`}
+        description={`"${worker.worker_id}" будет удалён без возможности восстановления.`}
+        confirmLabel="Да, удалить"
+        busy={busy}
+        onConfirm={remove}
+        onCancel={() => setShowConfirm(false)}
+      />
+    )}
+  </>
   );
 }
 
@@ -682,6 +697,9 @@ export function WorkersPage() {
   const deadWorkers   = workers.filter(w => !w.is_alive);
   const lockedAccounts = accounts.filter(a => a.locked_by);
 
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
+  const [bulkDelBusy,     setBulkDelBusy]     = useState(false);
+
   return (
     <>
       <style>{`
@@ -983,12 +1001,29 @@ export function WorkersPage() {
 
               {/* ── Bulk cleanup ────────────────────────────────────── */}
               {deadWorkers.length > 0 && (
-                <button
-                  onClick={async () => { haptic.warning(); await Promise.all(deadWorkers.map(w => api.deleteWorker(w.worker_id))); haptic.success(); load(); }}
-                  style={{ width: "100%", padding: "9px", background: "rgba(255,107,122,0.07)", border: "1px solid rgba(255,107,122,0.22)", borderRadius: 10, color: "#ff6b7a", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-                >
-                  🧹 Удалить остановленные ({deadWorkers.length})
-                </button>
+                <>
+                  <button
+                    onClick={() => { haptic.light(); setShowBulkConfirm(true); }}
+                    style={{ width: "100%", padding: "9px", background: "rgba(255,107,122,0.07)", border: "1px solid rgba(255,107,122,0.22)", borderRadius: 10, color: "#ff6b7a", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    🧹 Удалить остановленные ({deadWorkers.length})
+                  </button>
+                  {showBulkConfirm && (
+                    <ConfirmModal
+                      title="Удалить все остановленные?"
+                      description={`${deadWorkers.length} воркер(ов) будут удалены без возможности восстановления.`}
+                      confirmLabel="Да, удалить все"
+                      busy={bulkDelBusy}
+                      onConfirm={async () => {
+                        haptic.warning(); setBulkDelBusy(true);
+                        try { await Promise.all(deadWorkers.map(w => api.deleteWorker(w.worker_id))); haptic.success(); load(); setShowBulkConfirm(false); }
+                        catch { haptic.error(); }
+                        setBulkDelBusy(false);
+                      }}
+                      onCancel={() => setShowBulkConfirm(false)}
+                    />
+                  )}
+                </>
               )}
 
               {/* ── How to run hint ─────────────────────────────────── */}
