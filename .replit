@@ -46,7 +46,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd artifacts/telegram-miniapp && ../../node_modules/.pnpm/node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0"
+args = "cd artifacts/telegram-miniapp && /home/runner/workspace/node_modules/.pnpm/node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0"
 waitForPort = 5000
 
 [agent]
@@ -69,10 +69,6 @@ externalPort = 3001
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
 
 [[ports]]
 localPort = 8081
