@@ -20913,7 +20913,7 @@ var require_application = __commonJS({
     var finalhandler = require_finalhandler();
     var debug = require_src()("express:application");
     var View = require_view();
-    var http = __require("node:http");
+    var http2 = __require("node:http");
     var methods = require_utils3().methods;
     var compileETag = require_utils3().compileETag;
     var compileQueryParser = require_utils3().compileQueryParser;
@@ -21146,7 +21146,7 @@ var require_application = __commonJS({
       tryRender(view, renderOptions, done);
     };
     app2.listen = function listen() {
-      var server = http.createServer(this);
+      var server = http2.createServer(this);
       var args = slice.call(arguments);
       if (typeof args[args.length - 1] === "function") {
         var done = args[args.length - 1] = once(args[args.length - 1]);
@@ -21921,12 +21921,12 @@ var require_request = __commonJS({
     var accepts = require_accepts();
     var isIP = __require("node:net").isIP;
     var typeis = require_type_is();
-    var http = __require("node:http");
+    var http2 = __require("node:http");
     var fresh = require_fresh();
     var parseRange = require_range_parser();
     var parse = require_parseurl();
     var proxyaddr = require_proxy_addr();
-    var req = Object.create(http.IncomingMessage.prototype);
+    var req = Object.create(http2.IncomingMessage.prototype);
     module.exports = req;
     req.get = req.header = function header(name) {
       if (!name) {
@@ -23020,7 +23020,7 @@ var require_response = __commonJS({
     var deprecate = require_depd()("express");
     var encodeUrl = require_encodeurl();
     var escapeHtml2 = require_escape_html();
-    var http = __require("node:http");
+    var http2 = __require("node:http");
     var onFinished = require_on_finished();
     var mime = require_mime_types();
     var path2 = __require("node:path");
@@ -23036,7 +23036,7 @@ var require_response = __commonJS({
     var resolve = path2.resolve;
     var vary = require_vary();
     var { Buffer: Buffer2 } = __require("node:buffer");
-    var res = Object.create(http.ServerResponse.prototype);
+    var res = Object.create(http2.ServerResponse.prototype);
     module.exports = res;
     res.status = function status(code) {
       if (!Number.isInteger(code)) {
@@ -45140,6 +45140,7 @@ var import_express14 = __toESM(require_express2(), 1);
 var import_cors = __toESM(require_lib3(), 1);
 var import_pino_http = __toESM(require_logger(), 1);
 import crypto from "crypto";
+import http from "http";
 import { existsSync as existsSync3 } from "fs";
 import { join as join2 } from "path";
 
@@ -53379,6 +53380,30 @@ app.use("/api/twa", (req, res, next) => {
     return void res.status(403).json({ error: "Forbidden: invalid TWA initData" });
   }
   next();
+});
+var PYTHON_PORT = parseInt(process.env["PYTHON_API_PORT"] ?? "8083");
+app.use("/api/verifications", (req, res) => {
+  const targetPath = `/api/verifications${req.path === "/" ? "" : req.path}`;
+  const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+  const options = {
+    hostname: "127.0.0.1",
+    port: PYTHON_PORT,
+    path: targetPath + qs,
+    method: req.method,
+    headers: { ...req.headers, host: `127.0.0.1:${PYTHON_PORT}` }
+  };
+  const proxyReq = http.request(options, (proxyRes) => {
+    res.status(proxyRes.statusCode ?? 200);
+    for (const [k, v] of Object.entries(proxyRes.headers)) {
+      if (v !== void 0) res.setHeader(k, v);
+    }
+    proxyRes.pipe(res, { end: true });
+  });
+  proxyReq.on("error", (err) => {
+    logger.error({ err }, "verifications proxy error");
+    if (!res.headersSent) res.status(502).json({ error: "Python API unavailable", detail: err.message });
+  });
+  req.pipe(proxyReq, { end: true });
 });
 if (API_SECRET) {
   app.use("/api", (req, res, next) => {
