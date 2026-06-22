@@ -6,6 +6,7 @@ import { TG, BLUR, BLUR_HEAVY } from "../lib/theme";
 import { FullSpinner } from "../components/Spinner";
 import { haptic } from "../lib/haptics";
 import { getStoredSecret } from "./LockScreen";
+import { spintaxStats } from "../lib/spintax";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
@@ -243,6 +244,11 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
     if (!showPreview) return [];
     return [0, 1, 2].map(i => resolveSpintax(text, i));
   }, [text, showPreview]);
+
+  const aiStats = useMemo(() => {
+    if (!aiEngine || aiError) return null;
+    return spintaxStats(text);
+  }, [text, aiEngine, aiError]);
 
   const isEdit = campaignId !== null;
   const charCount = text.length;
@@ -537,6 +543,44 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
                         <Wand2 size={11} />
                         {lang === "ua" ? "Ще раз" : "Regenerate"}
                       </button>
+                    </div>
+                  )}
+
+                  {/* Quality stats badge */}
+                  {aiStats && (
+                    <div style={{
+                      marginBottom: 10, display: "flex", gap: 6, flexWrap: "wrap",
+                    }}>
+                      <div style={{
+                        display: "flex", alignItems: "center", gap: 5,
+                        padding: "5px 10px", borderRadius: 9,
+                        background: "rgba(196,174,255,0.10)", border: "1px solid rgba(196,174,255,0.25)",
+                        fontSize: 11, fontWeight: 700, color: "#c4aeff",
+                      }}>
+                        🔀 {aiStats.groups} {lang === "ua" ? "груп" : "groups"}
+                      </div>
+                      <div style={{
+                        display: "flex", alignItems: "center", gap: 5,
+                        padding: "5px 10px", borderRadius: 9,
+                        background: "rgba(255,201,70,0.09)", border: "1px solid rgba(255,201,70,0.25)",
+                        fontSize: 11, fontWeight: 700, color: TG.yellow,
+                      }}>
+                        ✨ ~{aiStats.estimated >= 1000
+                          ? `${(aiStats.estimated / 1000).toFixed(0)}k`
+                          : aiStats.estimated} {lang === "ua" ? "варіацій" : "combos"}
+                      </div>
+                      <div style={{
+                        display: "flex", alignItems: "center", gap: 5,
+                        padding: "5px 10px", borderRadius: 9,
+                        background: aiStats.valid ? "rgba(45,232,151,0.08)" : "rgba(255,107,122,0.09)",
+                        border: `1px solid ${aiStats.valid ? "rgba(45,232,151,0.25)" : "rgba(255,107,122,0.25)"}`,
+                        fontSize: 11, fontWeight: 700,
+                        color: aiStats.valid ? TG.green : TG.red,
+                      }}>
+                        {aiStats.valid
+                          ? (lang === "ua" ? "✓ Валідний" : "✓ Valid")
+                          : (lang === "ua" ? "✗ Помилка дужок" : "✗ Bracket error")}
+                      </div>
                     </div>
                   )}
 

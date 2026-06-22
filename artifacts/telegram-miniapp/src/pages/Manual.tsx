@@ -1929,6 +1929,37 @@ function SlideAiSpintax({ lang }: SL) {
         ))}
       </div>
 
+      <div style={{ ...card(BLUE), marginTop:8 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:BLUE, marginBottom:6 }}>
+          📊 {L(lang,"Quality Badge","Бейдж якості")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.58)", lineHeight:1.6, marginBottom:8 }}>
+          {L(lang,
+            "After generation (or any edit to the template), a quality bar appears automatically inside the AI panel showing three stats:",
+            "Після генерації (або будь-якого редагування шаблону) у панелі AI автоматично з'являється рядок якості з трьома показниками:",
+          )}
+        </div>
+        {[
+          { icon:"🔀", color:PURPLE, label:L(lang,"N groups","N груп"),       desc:L(lang,"Total number of {…} variation groups in the template.","Загальна кількість груп варіацій {…} у шаблоні.") },
+          { icon:"✨", color:AMBER,  label:L(lang,"~N combos","~N варіацій"), desc:L(lang,"Estimated unique message permutations — product of all group option counts.","Орієнтовна кількість унікальних перестановок повідомлень — добуток варіантів усіх груп.") },
+          { icon:"✓",  color:GREEN,  label:L(lang,"Valid / ✗ Bracket error","Валідний / ✗ Помилка дужок"), desc:L(lang,"Live bracket-balance check — catches unclosed or mismatched { }.","Перевірка балансу дужок у реальному часі — виявляє незакриті або зайві { }.") },
+        ].map(s => (
+          <div key={s.icon} style={{ display:"flex", gap:8, marginBottom:6, alignItems:"flex-start" }}>
+            <span style={{ fontSize:13, minWidth:20, flexShrink:0, textAlign:"center" }}>{s.icon}</span>
+            <div>
+              <span style={{ fontSize:11, fontWeight:800, color:s.color }}>{s.label} </span>
+              <span style={{ fontSize:11, color:"rgba(255,255,255,0.45)", lineHeight:1.45 }}>{s.desc}</span>
+            </div>
+          </div>
+        ))}
+        <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:4, lineHeight:1.5 }}>
+          {L(lang,
+            "The badge updates live as you edit the template. Aim for ≥6 groups and ≥100 combos for strong anti-detection coverage.",
+            "Бейдж оновлюється в реальному часі при редагуванні шаблону. Прагніть до ≥6 груп і ≥100 варіацій для надійного захисту від виявлення.",
+          )}
+        </div>
+      </div>
+
       <div style={{ ...card(AMBER), marginTop:8 }}>
         <div style={{ fontSize:12, fontWeight:700, color:AMBER, marginBottom:6 }}>
           💡 {L(lang,"Pro Tips","Поради")}

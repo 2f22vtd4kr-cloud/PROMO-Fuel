@@ -48,3 +48,40 @@ export function validate(text: string): { ok: boolean; error?: string } {
   if (depth !== 0) return { ok: false, error: `Незакрытых скобок: ${depth}` };
   return { ok: true };
 }
+
+export interface SpintaxStats {
+  groups: number;    // total number of {…} groups anywhere in the text
+  estimated: number; // estimated unique message permutations (may slightly over-count nested groups)
+  valid: boolean;    // brackets are balanced
+}
+
+/**
+ * Counts {…} groups and estimates unique message permutations.
+ * Works by iteratively resolving innermost groups and multiplying option counts.
+ * Caps at 99 999 for display purposes.
+ */
+export function spintaxStats(text: string): SpintaxStats {
+  const v = validate(text);
+
+  // Count all { occurrences = number of groups
+  let groups = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "{") groups++;
+  }
+
+  if (!v.ok || groups === 0) return { groups, estimated: 1, valid: v.ok };
+
+  // Estimate combos: iteratively expand innermost {a|b|c} groups
+  let combos = 1;
+  let temp = text;
+  let iters = 0;
+  while (/\{[^{}]*\}/.test(temp) && iters < 30) {
+    temp = temp.replace(/\{([^{}]+)\}/g, (_, inner) => {
+      combos *= inner.split("|").length;
+      return "\x00"; // neutral placeholder
+    });
+    iters++;
+  }
+
+  return { groups, estimated: Math.min(combos, 99_999), valid: true };
+}
