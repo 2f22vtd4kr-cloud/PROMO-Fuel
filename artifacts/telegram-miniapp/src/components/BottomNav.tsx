@@ -1,4 +1,4 @@
-import { LayoutGrid, Megaphone, BarChart2, Users2, Radio, Cpu, LayoutDashboard, Key, Sparkles } from "lucide-react";
+import { LayoutGrid, Megaphone, BarChart2, Users2, Radio, Cpu, LayoutDashboard, Key, Sparkles, BookOpen } from "lucide-react";
 import type { Tab } from "../App";
 import { TG } from "../lib/theme";
 import { haptic } from "../lib/haptics";
@@ -211,16 +211,19 @@ export function BottomNav({
             <button
               onClick={() => { haptic.light(); onManual(); }}
               style={{
-                width: 28, height: 28, borderRadius: 9,
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                color: "rgba(255,255,255,0.45)",
-                fontSize: 14,
+                width: 28, height: 28, borderRadius: 8,
+                background: "linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
+                border: "1px solid rgba(255,255,255,0.10)",
+                boxShadow: "0 1px 0 rgba(255,255,255,0.10) inset",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 cursor: "pointer",
                 flexShrink: 0,
+                backdropFilter: "blur(12px)",
+                WebkitBackdropFilter: "blur(12px)",
               }}
-            >📚</button>
+            >
+              <BookOpen size={13} color="rgba(149,196,245,0.55)" strokeWidth={1.8} />
+            </button>
           )}
         </div>
       </div>

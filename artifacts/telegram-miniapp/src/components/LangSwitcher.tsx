@@ -10,11 +10,13 @@ export function LangSwitcher() {
   return (
     <div style={{
       display: "flex",
-      gap: 2,
-      background: "rgba(255,255,255,0.05)",
+      gap: 0,
+      background: "rgba(255,255,255,0.06)",
       border: "1px solid rgba(255,255,255,0.10)",
-      borderRadius: 10,
-      padding: "3px 4px",
+      borderRadius: 8,
+      padding: 2,
+      backdropFilter: "blur(12px)",
+      WebkitBackdropFilter: "blur(12px)",
     }}>
       {LANGS.map(l => {
         const active = l === lang;
@@ -25,18 +27,23 @@ export function LangSwitcher() {
             style={{
               border: "none",
               background: active
-                ? "rgba(107,168,229,0.22)"
+                ? "linear-gradient(145deg, rgba(107,168,229,0.30) 0%, rgba(107,168,229,0.15) 100%)"
                 : "transparent",
-              borderRadius: 7,
-              padding: "3px 7px",
+              boxShadow: active
+                ? "0 1px 0 rgba(255,255,255,0.14) inset, 0 0 10px rgba(107,168,229,0.18)"
+                : "none",
+              borderRadius: 6,
+              padding: "3px 6px",
               fontSize: 9,
-              fontWeight: active ? 800 : 500,
-              color: active ? "#95c4f5" : "rgba(160,190,230,0.50)",
+              fontWeight: active ? 700 : 400,
+              color: active ? "#95c4f5" : "rgba(160,190,230,0.40)",
               cursor: "pointer",
-              letterSpacing: "0.05em",
+              letterSpacing: "0.06em",
               textTransform: "uppercase",
-              transition: "background 0.18s, color 0.18s",
+              transition: "all 0.18s ease",
               outline: "none",
+              minWidth: 24,
+              textAlign: "center",
             }}
           >
             {l.toUpperCase()}
