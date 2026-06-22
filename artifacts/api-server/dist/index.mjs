@@ -18703,7 +18703,7 @@ var require_view = __commonJS({
     var dirname = path2.dirname;
     var basename = path2.basename;
     var extname = path2.extname;
-    var join2 = path2.join;
+    var join3 = path2.join;
     var resolve = path2.resolve;
     module.exports = View;
     function View(name, options) {
@@ -18765,12 +18765,12 @@ var require_view = __commonJS({
     };
     View.prototype.resolve = function resolve2(dir, file) {
       var ext = this.ext;
-      var path3 = join2(dir, file);
+      var path3 = join3(dir, file);
       var stat = tryStat(path3);
       if (stat && stat.isFile()) {
         return path3;
       }
-      path3 = join2(dir, basename(file, ext), "index" + ext);
+      path3 = join3(dir, basename(file, ext), "index" + ext);
       stat = tryStat(path3);
       if (stat && stat.isFile()) {
         return path3;
@@ -22475,7 +22475,7 @@ var require_send = __commonJS({
     var Stream = __require("stream");
     var util2 = __require("util");
     var extname = path2.extname;
-    var join2 = path2.join;
+    var join3 = path2.join;
     var normalize = path2.normalize;
     var resolve = path2.resolve;
     var sep = path2.sep;
@@ -22647,7 +22647,7 @@ var require_send = __commonJS({
           return res;
         }
         parts = path3.split(sep);
-        path3 = normalize(join2(root, path3));
+        path3 = normalize(join3(root, path3));
       } else {
         if (UP_PATH_REGEXP.test(path3)) {
           debug('malicious path "%s"', path3);
@@ -22780,7 +22780,7 @@ var require_send = __commonJS({
           if (err) return self2.onStatError(err);
           return self2.error(404);
         }
-        var p = join2(path3, self2._index[i]);
+        var p = join3(path3, self2._index[i]);
         debug('stat "%s"', p);
         fs.stat(p, function(err2, stat) {
           if (err2) return next(err2);
@@ -25904,7 +25904,7 @@ var require_thread_stream = __commonJS({
     var { version } = require_package();
     var { EventEmitter } = __require("events");
     var { Worker } = __require("worker_threads");
-    var { join: join2 } = __require("path");
+    var { join: join3 } = __require("path");
     var { pathToFileURL } = __require("url");
     var { wait } = require_wait();
     var {
@@ -25940,7 +25940,7 @@ var require_thread_stream = __commonJS({
     function createWorker(stream, opts) {
       const { filename, workerData } = opts;
       const bundlerOverrides = "__bundlerPathsOverrides" in globalThis ? globalThis.__bundlerPathsOverrides : {};
-      const toExecute = bundlerOverrides["thread-stream-worker"] || join2(__dirname, "lib", "worker.js");
+      const toExecute = bundlerOverrides["thread-stream-worker"] || join3(__dirname, "lib", "worker.js");
       const worker = new Worker(toExecute, {
         ...opts.workerOpts,
         trackUnmanagedFds: false,
@@ -26326,7 +26326,7 @@ var require_transport = __commonJS({
     "use strict";
     var { createRequire } = __require("module");
     var getCallers = require_caller();
-    var { join: join2, isAbsolute, sep } = __require("node:path");
+    var { join: join3, isAbsolute, sep } = __require("node:path");
     var sleep = require_atomic_sleep();
     var onExit = require_on_exit_leak_free();
     var ThreadStream = require_thread_stream();
@@ -26389,7 +26389,7 @@ var require_transport = __commonJS({
         throw new Error("only one of target or targets can be specified");
       }
       if (targets) {
-        target = bundlerOverrides["pino-worker"] || join2(__dirname, "worker.js");
+        target = bundlerOverrides["pino-worker"] || join3(__dirname, "worker.js");
         options.targets = targets.filter((dest) => dest.target).map((dest) => {
           return {
             ...dest,
@@ -26407,7 +26407,7 @@ var require_transport = __commonJS({
           });
         });
       } else if (pipeline) {
-        target = bundlerOverrides["pino-worker"] || join2(__dirname, "worker.js");
+        target = bundlerOverrides["pino-worker"] || join3(__dirname, "worker.js");
         options.pipelines = [pipeline.map((dest) => {
           return {
             ...dest,
@@ -26429,7 +26429,7 @@ var require_transport = __commonJS({
           return origin;
         }
         if (origin === "pino/file") {
-          return join2(__dirname, "..", "file.js");
+          return join3(__dirname, "..", "file.js");
         }
         let fixTarget2;
         for (const filePath of callers) {
@@ -27418,7 +27418,7 @@ var require_safe_stable_stringify = __commonJS({
               return circularValue;
             }
             let res = "";
-            let join2 = ",";
+            let join3 = ",";
             const originalIndentation = indentation;
             if (Array.isArray(value)) {
               if (value.length === 0) {
@@ -27432,7 +27432,7 @@ var require_safe_stable_stringify = __commonJS({
                 indentation += spacer;
                 res += `
 ${indentation}`;
-                join2 = `,
+                join3 = `,
 ${indentation}`;
               }
               const maximumValuesToStringify = Math.min(value.length, maximumBreadth);
@@ -27440,13 +27440,13 @@ ${indentation}`;
               for (; i < maximumValuesToStringify - 1; i++) {
                 const tmp2 = stringifyFnReplacer(String(i), value, stack, replacer, spacer, indentation);
                 res += tmp2 !== void 0 ? tmp2 : "null";
-                res += join2;
+                res += join3;
               }
               const tmp = stringifyFnReplacer(String(i), value, stack, replacer, spacer, indentation);
               res += tmp !== void 0 ? tmp : "null";
               if (value.length - 1 > maximumBreadth) {
                 const removedKeys = value.length - maximumBreadth - 1;
-                res += `${join2}"... ${getItemCount(removedKeys)} not stringified"`;
+                res += `${join3}"... ${getItemCount(removedKeys)} not stringified"`;
               }
               if (spacer !== "") {
                 res += `
@@ -27467,7 +27467,7 @@ ${originalIndentation}`;
             let separator = "";
             if (spacer !== "") {
               indentation += spacer;
-              join2 = `,
+              join3 = `,
 ${indentation}`;
               whitespace = " ";
             }
@@ -27481,13 +27481,13 @@ ${indentation}`;
               const tmp = stringifyFnReplacer(key2, value, stack, replacer, spacer, indentation);
               if (tmp !== void 0) {
                 res += `${separator}${strEscape(key2)}:${whitespace}${tmp}`;
-                separator = join2;
+                separator = join3;
               }
             }
             if (keyLength > maximumBreadth) {
               const removedKeys = keyLength - maximumBreadth;
               res += `${separator}"...":${whitespace}"${getItemCount(removedKeys)} not stringified"`;
-              separator = join2;
+              separator = join3;
             }
             if (spacer !== "" && separator.length > 1) {
               res = `
@@ -27528,7 +27528,7 @@ ${originalIndentation}`;
             }
             const originalIndentation = indentation;
             let res = "";
-            let join2 = ",";
+            let join3 = ",";
             if (Array.isArray(value)) {
               if (value.length === 0) {
                 return "[]";
@@ -27541,7 +27541,7 @@ ${originalIndentation}`;
                 indentation += spacer;
                 res += `
 ${indentation}`;
-                join2 = `,
+                join3 = `,
 ${indentation}`;
               }
               const maximumValuesToStringify = Math.min(value.length, maximumBreadth);
@@ -27549,13 +27549,13 @@ ${indentation}`;
               for (; i < maximumValuesToStringify - 1; i++) {
                 const tmp2 = stringifyArrayReplacer(String(i), value[i], stack, replacer, spacer, indentation);
                 res += tmp2 !== void 0 ? tmp2 : "null";
-                res += join2;
+                res += join3;
               }
               const tmp = stringifyArrayReplacer(String(i), value[i], stack, replacer, spacer, indentation);
               res += tmp !== void 0 ? tmp : "null";
               if (value.length - 1 > maximumBreadth) {
                 const removedKeys = value.length - maximumBreadth - 1;
-                res += `${join2}"... ${getItemCount(removedKeys)} not stringified"`;
+                res += `${join3}"... ${getItemCount(removedKeys)} not stringified"`;
               }
               if (spacer !== "") {
                 res += `
@@ -27568,7 +27568,7 @@ ${originalIndentation}`;
             let whitespace = "";
             if (spacer !== "") {
               indentation += spacer;
-              join2 = `,
+              join3 = `,
 ${indentation}`;
               whitespace = " ";
             }
@@ -27577,7 +27577,7 @@ ${indentation}`;
               const tmp = stringifyArrayReplacer(key2, value[key2], stack, replacer, spacer, indentation);
               if (tmp !== void 0) {
                 res += `${separator}${strEscape(key2)}:${whitespace}${tmp}`;
-                separator = join2;
+                separator = join3;
               }
             }
             if (spacer !== "" && separator.length > 1) {
@@ -27635,20 +27635,20 @@ ${originalIndentation}`;
               indentation += spacer;
               let res2 = `
 ${indentation}`;
-              const join3 = `,
+              const join4 = `,
 ${indentation}`;
               const maximumValuesToStringify = Math.min(value.length, maximumBreadth);
               let i = 0;
               for (; i < maximumValuesToStringify - 1; i++) {
                 const tmp2 = stringifyIndent(String(i), value[i], stack, spacer, indentation);
                 res2 += tmp2 !== void 0 ? tmp2 : "null";
-                res2 += join3;
+                res2 += join4;
               }
               const tmp = stringifyIndent(String(i), value[i], stack, spacer, indentation);
               res2 += tmp !== void 0 ? tmp : "null";
               if (value.length - 1 > maximumBreadth) {
                 const removedKeys = value.length - maximumBreadth - 1;
-                res2 += `${join3}"... ${getItemCount(removedKeys)} not stringified"`;
+                res2 += `${join4}"... ${getItemCount(removedKeys)} not stringified"`;
               }
               res2 += `
 ${originalIndentation}`;
@@ -27664,16 +27664,16 @@ ${originalIndentation}`;
               return '"[Object]"';
             }
             indentation += spacer;
-            const join2 = `,
+            const join3 = `,
 ${indentation}`;
             let res = "";
             let separator = "";
             let maximumPropertiesToStringify = Math.min(keyLength, maximumBreadth);
             if (isTypedArrayWithEntries(value)) {
-              res += stringifyTypedArray(value, join2, maximumBreadth);
+              res += stringifyTypedArray(value, join3, maximumBreadth);
               keys = keys.slice(value.length);
               maximumPropertiesToStringify -= value.length;
-              separator = join2;
+              separator = join3;
             }
             if (deterministic) {
               keys = sort(keys, comparator);
@@ -27684,13 +27684,13 @@ ${indentation}`;
               const tmp = stringifyIndent(key2, value[key2], stack, spacer, indentation);
               if (tmp !== void 0) {
                 res += `${separator}${strEscape(key2)}: ${tmp}`;
-                separator = join2;
+                separator = join3;
               }
             }
             if (keyLength > maximumBreadth) {
               const removedKeys = keyLength - maximumBreadth;
               res += `${separator}"...": "${getItemCount(removedKeys)} not stringified"`;
-              separator = join2;
+              separator = join3;
             }
             if (separator !== "") {
               res = `
@@ -28020,7 +28020,7 @@ var require_pino = __commonJS({
       }
     }
     globalThis.__bundlerPathsOverrides = { ...globalThis.__bundlerPathsOverrides || {}, "thread-stream-worker": pinoBundlerAbsolutePath("./thread-stream-worker.mjs"), "pino-worker": pinoBundlerAbsolutePath("./pino-worker.mjs"), "pino/file": pinoBundlerAbsolutePath("./pino-file.mjs"), "pino-pretty": pinoBundlerAbsolutePath("./pino-pretty.mjs") };
-    var os = __require("node:os");
+    var os2 = __require("node:os");
     var stdSerializers = require_pino_std_serializers();
     var caller = require_caller();
     var redaction = require_redaction();
@@ -28067,7 +28067,7 @@ var require_pino = __commonJS({
     } = symbols;
     var { epochTime, nullTime } = time;
     var { pid } = process;
-    var hostname = os.hostname();
+    var hostname = os2.hostname();
     var defaultErrorSerializer = stdSerializers.err;
     var defaultOptions = {
       level: "info",
@@ -41568,7 +41568,7 @@ var require_make_middleware = __commonJS({
 var require_disk = __commonJS({
   "../../node_modules/.pnpm/multer@2.2.0/node_modules/multer/storage/disk.js"(exports, module) {
     var fs = __require("fs");
-    var os = __require("os");
+    var os2 = __require("os");
     var path2 = __require("path");
     var crypto2 = __require("crypto");
     function getFilename(req, file, cb) {
@@ -41577,7 +41577,7 @@ var require_disk = __commonJS({
       });
     }
     function getDestination(req, file, cb) {
-      cb(null, os.tmpdir());
+      cb(null, os2.tmpdir());
     }
     function DiskStorage(opts) {
       this.getFilename = opts.filename || getFilename;
@@ -41757,7 +41757,7 @@ var require_buffer_list = __commonJS({
         }
       }, {
         key: "join",
-        value: function join2(s) {
+        value: function join3(s) {
           if (this.length === 0) return "";
           var p = this.head;
           var ret = "" + p.data;
@@ -45119,7 +45119,7 @@ var require_multer = __commonJS({
       }
       return makeMiddleware(setup.bind(this));
     };
-    function multer2(options) {
+    function multer3(options) {
       if (options === void 0) {
         return new Multer({});
       }
@@ -45128,7 +45128,7 @@ var require_multer = __commonJS({
       }
       throw new TypeError("Expected object for argument options");
     }
-    module.exports = multer2;
+    module.exports = multer3;
     module.exports.diskStorage = diskStorage;
     module.exports.memoryStorage = memoryStorage;
     module.exports.MulterError = MulterError;
@@ -45140,8 +45140,8 @@ var import_express13 = __toESM(require_express2(), 1);
 var import_cors = __toESM(require_lib3(), 1);
 var import_pino_http = __toESM(require_logger(), 1);
 import crypto from "crypto";
-import { existsSync as existsSync2 } from "fs";
-import { join } from "path";
+import { existsSync as existsSync3 } from "fs";
+import { join as join2 } from "path";
 
 // src/routes/index.ts
 var import_express12 = __toESM(require_express2(), 1);
@@ -49527,7 +49527,7 @@ router3.post("/campaigns", (req, res) => {
     const { name, text_template, sender_account_id, send_delay_seconds, scheduled_at, scheduled_tag, ab_text_b } = req.body;
     if (!name || !text_template) return void res.status(400).json({ error: "name and text_template required" });
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    for (const [col, def] of [["sender_account_id", "INTEGER"], ["send_delay_seconds", "INTEGER DEFAULT 15"], ["ab_text_b", "TEXT"]]) {
+    for (const [col, def] of [["sender_account_id", "INTEGER"], ["send_delay_seconds", "INTEGER DEFAULT 3600"], ["ab_text_b", "TEXT"]]) {
       try {
         db.exec(`ALTER TABLE campaigns ADD COLUMN ${col} ${def}`);
       } catch {
@@ -49536,7 +49536,7 @@ router3.post("/campaigns", (req, res) => {
     const info = db.prepare(
       `INSERT INTO campaigns (name, text_template, status, created_at, sent_count, failed_count, target_count, dry_run, sender_account_id, send_delay_seconds, scheduled_at, scheduled_tag, ab_text_b)
        VALUES (?, ?, 'draft', ?, 0, 0, 0, 0, ?, ?, ?, ?, ?)`
-    ).run(name, text_template, now, sender_account_id ?? null, send_delay_seconds ?? 15, scheduled_at ?? null, scheduled_tag ?? null, ab_text_b ?? null);
+    ).run(name, text_template, now, sender_account_id ?? null, send_delay_seconds ?? 3600, scheduled_at ?? null, scheduled_tag ?? null, ab_text_b ?? null);
     const row = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(info.lastInsertRowid);
     db.close();
     res.status(201).json(row);
@@ -49678,7 +49678,7 @@ router3.post("/campaigns/:id/duplicate", (req, res) => {
     const result = db.prepare(
       `INSERT INTO campaigns (name, text_template, status, created_at, sent_count, failed_count, target_count, dry_run, sender_account_id, send_delay_seconds)
        VALUES (?, ?, 'draft', ?, 0, 0, 0, ?, ?, ?)`
-    ).run(`\u041A\u043E\u043F\u0438\u044F: ${src.name}`, src.text_template, now, src.dry_run ?? 0, src.sender_account_id ?? null, src.send_delay_seconds ?? 15);
+    ).run(`\u041A\u043E\u043F\u0438\u044F: ${src.name}`, src.text_template, now, src.dry_run ?? 0, src.sender_account_id ?? null, src.send_delay_seconds ?? 3600);
     const row = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(result.lastInsertRowid);
     db.close();
     res.status(201).json(row);
@@ -50432,6 +50432,15 @@ import Database5 from "better-sqlite3";
 var AUTH_SERVER_URL = process.env["AUTH_SERVER_URL"] ?? "http://127.0.0.1:8082";
 
 // src/routes/accounts.ts
+var import_multer = __toESM(require_multer(), 1);
+import { spawnSync } from "child_process";
+import { unlinkSync, mkdirSync, existsSync as existsSync2 } from "fs";
+import { join } from "path";
+import os from "os";
+var upload = (0, import_multer.default)({ dest: os.tmpdir() });
+var SESSIONS_DIR = join(process.cwd(), "sessions");
+var BULK_SCRIPT = join(process.cwd(), "scripts", "bulk_import_sessions.py");
+if (!existsSync2(SESSIONS_DIR)) mkdirSync(SESSIONS_DIR, { recursive: true });
 function getDb4(readonly = true) {
   return new Database5(DB_PATH, { readonly });
 }
@@ -50781,6 +50790,40 @@ router6.get("/accounts/:id/rate-limit", (req, res) => {
     res.status(500).json({ error: String(err) });
   }
 });
+router6.post("/accounts/bulk-import", upload.single("file"), (req, res) => {
+  const file = req.file;
+  if (!file) return void res.status(400).json({ error: "\u041D\u0435 \u0432\u0438\u0431\u0440\u0430\u043D\u043E ZIP-\u0444\u0430\u0439\u043B" });
+  const rawProxies = req.body?.proxies ?? "";
+  try {
+    const result = spawnSync("python3", [BULK_SCRIPT, file.path, SESSIONS_DIR, DB_PATH], {
+      input: rawProxies,
+      encoding: "utf8",
+      timeout: 9e4
+    });
+    try {
+      unlinkSync(file.path);
+    } catch {
+    }
+    if (result.status !== 0 || result.error) {
+      return void res.status(500).json({
+        error: result.stderr?.trim() || result.error?.message || "\u041F\u043E\u043C\u0438\u043B\u043A\u0430 \u0456\u043C\u043F\u043E\u0440\u0442\u0443"
+      });
+    }
+    let data;
+    try {
+      data = JSON.parse(result.stdout);
+    } catch {
+      return void res.status(500).json({ error: "\u041D\u0435\u0432\u0430\u043B\u0456\u0434\u043D\u0430 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u044C \u0441\u043A\u0440\u0438\u043F\u0442\u0430", raw: result.stdout });
+    }
+    res.json(data);
+  } catch (err) {
+    try {
+      unlinkSync(file.path);
+    } catch {
+    }
+    res.status(500).json({ error: String(err) });
+  }
+});
 router6.get("/accounts/sends-today", (_req, res) => {
   try {
     const db = getDb4(true);
@@ -50999,15 +51042,15 @@ var audience_default = router8;
 
 // src/routes/upload.ts
 var import_express9 = __toESM(require_express2(), 1);
-var import_multer = __toESM(require_multer(), 1);
+var import_multer2 = __toESM(require_multer(), 1);
 import Database8 from "better-sqlite3";
 var router9 = (0, import_express9.Router)();
-var upload = (0, import_multer.default)({
-  storage: import_multer.default.memoryStorage(),
+var upload2 = (0, import_multer2.default)({
+  storage: import_multer2.default.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }
 });
 var ALLOWED_EXT = [".html", ".csv", ".tsv", ".json", ".jsonl"];
-router9.post("/upload", upload.single("file"), (req, res) => {
+router9.post("/upload", upload2.single("file"), (req, res) => {
   if (!req.file) return void res.status(400).json({ error: "No file uploaded" });
   const rawName = req.file.originalname;
   const decodedName = (() => {
@@ -52251,9 +52294,9 @@ if (API_SECRET) {
 }
 app.use("/api", routes_default);
 startWatchdog();
-var WORKSPACE_ROOT = join(import.meta.dirname, "../../..");
-var FRONTEND_DIST = join(WORKSPACE_ROOT, "artifacts", "telegram-miniapp", "dist");
-if (existsSync2(FRONTEND_DIST)) {
+var WORKSPACE_ROOT = join2(import.meta.dirname, "../../..");
+var FRONTEND_DIST = join2(WORKSPACE_ROOT, "artifacts", "telegram-miniapp", "dist");
+if (existsSync3(FRONTEND_DIST)) {
   app.use(import_express13.default.static(FRONTEND_DIST, {
     setHeaders(res, filePath) {
       if (filePath.endsWith(".html")) {
@@ -52267,7 +52310,7 @@ if (existsSync2(FRONTEND_DIST)) {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
-    res.sendFile(join(FRONTEND_DIST, "index.html"));
+    res.sendFile(join2(FRONTEND_DIST, "index.html"));
   });
   logger.info({ path: FRONTEND_DIST }, "Serving frontend static files");
 }

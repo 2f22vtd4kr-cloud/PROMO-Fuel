@@ -627,6 +627,208 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
   );
 }
 
+// ── Bulk Import Panel ─────────────────────────────────────────────────────────
+
+type BulkResult = {
+  total_extracted_sessions: number;
+  total_valid_proxies_parsed: number;
+  saved: number;
+  skipped: number;
+  errors: string[];
+  message: string;
+};
+
+function BulkImportPanel({ onDone }: { onDone: () => void }) {
+  const [zipFile,  setZipFile]  = useState<File | null>(null);
+  const [proxies,  setProxies]  = useState("");
+  const [status,   setStatus]   = useState<"idle" | "running" | "done" | "error">("idle");
+  const [result,   setResult]   = useState<BulkResult | null>(null);
+  const [errMsg,   setErrMsg]   = useState("");
+  const [dragging, setDragging] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!f.name.endsWith(".zip")) { haptic.error(); setErrMsg("Дозволено лише .zip файли"); return; }
+    setZipFile(f); setErrMsg(""); setResult(null); setStatus("idle");
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault(); setDragging(false);
+    const f = e.dataTransfer.files[0];
+    if (!f) return;
+    if (!f.name.endsWith(".zip")) { haptic.error(); setErrMsg("Дозволено лише .zip файли"); return; }
+    setZipFile(f); setErrMsg(""); setResult(null); setStatus("idle");
+  }
+
+  async function execute() {
+    if (!zipFile) { setErrMsg("Виберіть .zip архів"); return; }
+    if (!proxies.trim()) { setErrMsg("Введіть хоча б один SOCKS5 проксі"); return; }
+    haptic.medium(); setStatus("running"); setErrMsg(""); setResult(null);
+    try {
+      const res = await api.bulkImportAccounts(zipFile, proxies);
+      if (res.status === "error") {
+        setErrMsg(res.error ?? "Невідома помилка"); setStatus("error"); haptic.error(); return;
+      }
+      setResult(res.data ?? null); setStatus("done"); haptic.success();
+    } catch (e: unknown) {
+      setErrMsg((e as Error).message ?? "Помилка"); setStatus("error"); haptic.error();
+    }
+  }
+
+  const busy = status === "running";
+  const savePct = result ? Math.round((result.saved / Math.max(result.total_extracted_sessions, 1)) * 100) : 0;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: "20px 16px 32px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: "linear-gradient(145deg,rgba(45,232,151,0.25),rgba(45,232,151,0.1))", border: "1px solid rgba(45,232,151,0.35)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>📦</div>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: TG.text }}>Масове завантаження</div>
+            <div style={{ fontSize: 11, color: TG.muted }}>Bulk Account Import (.zip)</div>
+          </div>
+        </div>
+        <div onClick={() => { haptic.light(); onDone(); }} style={{ cursor: "pointer", color: TG.muted, padding: 6 }}>
+          <X size={18} />
+        </div>
+      </div>
+
+      {/* Step 1 — ZIP file drop zone */}
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: TG.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+          1. Архів акаунтів (.zip)
+        </div>
+        <div
+          onDragOver={e => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+          onClick={() => fileRef.current?.click()}
+          style={{
+            borderRadius: 16, border: `2px dashed ${dragging ? "rgba(45,232,151,0.7)" : zipFile ? "rgba(45,232,151,0.4)" : "rgba(255,255,255,0.15)"}`,
+            background: dragging ? "rgba(45,232,151,0.06)" : zipFile ? "rgba(45,232,151,0.04)" : "rgba(255,255,255,0.03)",
+            padding: "28px 16px", textAlign: "center", cursor: "pointer",
+            transition: "border-color 0.2s, background 0.2s",
+          }}
+        >
+          <input ref={fileRef} type="file" accept=".zip" style={{ display: "none" }} onChange={onFileChange} />
+          {zipFile ? (
+            <>
+              <div style={{ fontSize: 30, marginBottom: 6 }}>📁</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#2de897" }}>{zipFile.name}</div>
+              <div style={{ fontSize: 11, color: TG.muted, marginTop: 3 }}>{(zipFile.size / 1024).toFixed(1)} KB</div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 32, marginBottom: 6 }}>📁</div>
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>Перетягніть .zip або натисніть для вибору</div>
+              <div style={{ fontSize: 11, color: TG.muted, marginTop: 4 }}>Повинен містити пари &#123;name&#125;.session + &#123;name&#125;.json</div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Step 2 — Proxy list */}
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: TG.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+          2. Список SOCKS5 проксі (один на рядок)
+        </div>
+        <textarea
+          value={proxies}
+          onChange={e => setProxies(e.target.value)}
+          rows={5}
+          placeholder={"socks5://user1:pass1@host1:1080\nsocks5://user2:pass2@host2:1080"}
+          style={{
+            width: "100%", borderRadius: 14, background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,255,255,0.1)",
+            color: TG.text, padding: "12px 13px", fontFamily: "monospace", fontSize: 11,
+            outline: "none", resize: "vertical", boxSizing: "border-box",
+            lineHeight: 1.6,
+          }}
+        />
+      </div>
+
+      {/* Error message */}
+      {errMsg && (
+        <div style={{ borderRadius: 10, background: "rgba(255,107,122,0.08)", border: "1px solid rgba(255,107,122,0.25)", padding: "10px 12px", fontSize: 12, color: "#ff6b7a", lineHeight: 1.5 }}>
+          ⚠️ {errMsg}
+        </div>
+      )}
+
+      {/* Execute button */}
+      <button
+        onClick={execute}
+        disabled={busy}
+        style={{
+          width: "100%", padding: "14px", borderRadius: 16,
+          background: busy ? "rgba(45,232,151,0.15)" : "linear-gradient(135deg,rgba(45,232,151,0.45),rgba(45,232,151,0.25))",
+          border: "1px solid rgba(45,232,151,0.4)", color: "#2de897",
+          fontSize: 14, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          opacity: busy ? 0.7 : 1, transition: "all 0.2s",
+        }}
+      >
+        {busy ? (
+          <><div style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid rgba(45,232,151,0.4)", borderTopColor: "#2de897", animation: "spin 0.8s linear infinite" }} />Обробка архіву…</>
+        ) : (
+          <>⚡ Запустити імпорт / Execute Import</>
+        )}
+      </button>
+
+      {/* Result */}
+      {status === "done" && result && (
+        <div style={{ borderRadius: 14, background: "rgba(45,232,151,0.06)", border: "1px solid rgba(45,232,151,0.25)", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <CheckCircle size={18} color="#2de897" />
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#2de897" }}>{result.message}</div>
+          </div>
+
+          {/* Progress bar */}
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: TG.muted, marginBottom: 6 }}>
+              <span>Ініціалізація</span>
+              <span>{result.saved}/{result.total_extracted_sessions} · {savePct}%</span>
+            </div>
+            <div style={{ height: 6, borderRadius: 3, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${savePct}%`, borderRadius: 3, background: "linear-gradient(90deg,#2de897,#2de89799)", boxShadow: "0 0 8px rgba(45,232,151,0.5)", transition: "width 0.6s ease" }} />
+            </div>
+          </div>
+
+          {/* Stats row */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+            {[
+              { label: "Сесій знайдено",  value: String(result.total_extracted_sessions), color: TG.text },
+              { label: "Збережено",       value: String(result.saved),                    color: "#2de897" },
+              { label: "Проксі",          value: String(result.total_valid_proxies_parsed), color: "#6ba8e5" },
+            ].map(s => (
+              <div key={s.label} style={{ textAlign: "center", borderRadius: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", padding: "8px 6px" }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: s.color }}>{s.value}</div>
+                <div style={{ fontSize: 9, color: TG.muted, marginTop: 2 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Errors if any */}
+          {result.errors.length > 0 && (
+            <div style={{ borderRadius: 10, background: "rgba(255,201,70,0.07)", border: "1px solid rgba(255,201,70,0.2)", padding: "8px 12px" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#ffc946", marginBottom: 4 }}>⚠️ Пропущено ({result.skipped}):</div>
+              {result.errors.map((e, i) => (
+                <div key={i} style={{ fontSize: 10, color: TG.muted, lineHeight: 1.6 }}>· {e}</div>
+              ))}
+            </div>
+          )}
+
+          <button onClick={() => { haptic.medium(); onDone(); }}
+            style={{ padding: "10px", borderRadius: 12, background: "#2de897", border: "none", fontSize: 12, fontWeight: 700, color: "#07090f", cursor: "pointer" }}>
+            Готово — оновити список акаунтів
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function AccountsPage({ onClose }: { onClose?: () => void }) {
@@ -634,6 +836,7 @@ export function AccountsPage({ onClose }: { onClose?: () => void }) {
   const [accounts, setAccounts] = useState<SenderAccount[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
 
   const load = useCallback(async () => {
     try { setAccounts(await api.getAccounts()); } catch {} finally { setLoading(false); }
@@ -659,6 +862,12 @@ export function AccountsPage({ onClose }: { onClose?: () => void }) {
           </div>
         </div>
       )}
+      {/* Bulk import overlay */}
+      {showBulk && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 200, background: "#07090f", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+          <BulkImportPanel onDone={() => { setShowBulk(false); load(); }} />
+        </div>
+      )}
 
     <div className="tab-content" style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingTop: 14, paddingLeft: 14, paddingRight: 14, paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 140px)" }}>
@@ -682,10 +891,16 @@ export function AccountsPage({ onClose }: { onClose?: () => void }) {
                 <span style={{ fontSize: 11, color: TG.muted, fontWeight: 600 }}>Сброс</span>
               </div>
             </GlassCard>
+            <GlassCard style={{ padding: "8px 10px", borderRadius: 14, cursor: "pointer" }} onClick={() => { haptic.medium(); setShowBulk(s => !s); }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ fontSize: 14 }}>📦</span>
+                <span style={{ fontSize: 11, color: "#2de897", fontWeight: 700 }}>Bulk</span>
+              </div>
+            </GlassCard>
             <GlassCard style={{ padding: "8px 12px", borderRadius: 14, cursor: "pointer" }} onClick={() => { haptic.medium(); setShowForm(s => !s); }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <Plus size={14} color="#ff7eb3" />
-                <span style={{ fontSize: 12, color: "#ff7eb3", fontWeight: 700 }}>Добавить</span>
+                <span style={{ fontSize: 12, color: "#ff7eb3", fontWeight: 700 }}>Додати</span>
               </div>
             </GlassCard>
           </div>

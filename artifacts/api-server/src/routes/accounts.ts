@@ -2,6 +2,16 @@ import { Router, type IRouter } from "express";
 import Database from "better-sqlite3";
 import { DB_PATH } from "../lib/db-path";
 import { AUTH_SERVER_URL } from "../lib/auth-server-url";
+import multer from "multer";
+import { spawnSync } from "child_process";
+import { unlinkSync, mkdirSync, existsSync } from "fs";
+import { join } from "path";
+import os from "os";
+
+const upload = multer({ dest: os.tmpdir() });
+const SESSIONS_DIR = join(process.cwd(), "sessions");
+const BULK_SCRIPT  = join(process.cwd(), "scripts", "bulk_import_sessions.py");
+if (!existsSync(SESSIONS_DIR)) mkdirSync(SESSIONS_DIR, { recursive: true });
 
 function getDb(readonly = true) {
   return new Database(DB_PATH, { readonly });
@@ -373,6 +383,40 @@ router.get("/accounts/:id/rate-limit", (req, res) => {
       resets_at:       resetsAt,
     });
   } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ── Bulk session import — POST /accounts/bulk-import ─────────────────────────
+
+router.post("/accounts/bulk-import", upload.single("file"), (req, res) => {
+  const file = req.file;
+  if (!file) return void res.status(400).json({ error: "Не вибрано ZIP-файл" });
+
+  const rawProxies = (req.body?.proxies as string) ?? "";
+
+  try {
+    const result = spawnSync("python3", [BULK_SCRIPT, file.path, SESSIONS_DIR, DB_PATH], {
+      input:    rawProxies,
+      encoding: "utf8",
+      timeout:  90_000,
+    });
+
+    try { unlinkSync(file.path); } catch { /* ignore */ }
+
+    if (result.status !== 0 || result.error) {
+      return void res.status(500).json({
+        error: result.stderr?.trim() || result.error?.message || "Помилка імпорту",
+      });
+    }
+
+    let data: unknown;
+    try { data = JSON.parse(result.stdout); }
+    catch { return void res.status(500).json({ error: "Невалідна відповідь скрипта", raw: result.stdout }); }
+
+    res.json(data);
+  } catch (err) {
+    try { unlinkSync(file.path); } catch { /* ignore */ }
     res.status(500).json({ error: String(err) });
   }
 });

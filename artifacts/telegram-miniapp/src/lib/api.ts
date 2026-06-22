@@ -430,6 +430,26 @@ export const api = {
   bulkGroupCampaignAction: (action: "pause" | "resume" | "stop", ids?: number[]) =>
     post<{ ok: boolean; updated: number; campaigns: GroupCampaign[] }>("/group-campaigns/bulk-action", { action, ids }),
 
+  bulkImportAccounts: async (file: File, proxies: string): Promise<{
+    status: string;
+    data?: { total_extracted_sessions: number; total_valid_proxies_parsed: number; saved: number; skipped: number; errors: string[]; message: string };
+    error?: string;
+  }> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("proxies", proxies);
+    const r = await fetch(`${API_BASE}/api/accounts/bulk-import`, {
+      method: "POST",
+      headers: { ...authHeaders() },
+      body: fd,
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ error: r.statusText })) as { error?: string };
+      throw new Error(err.error ?? "Import failed");
+    }
+    return r.json();
+  },
+
   getAccounts:    () => get<SenderAccount[]>("/accounts"),
   getAccount:     (id: number) => get<SenderAccount>(`/accounts/${id}`),
   patchAccount:   (id: number, data: Partial<SenderAccount>) => put<SenderAccount>(`/accounts/${id}`, data),
