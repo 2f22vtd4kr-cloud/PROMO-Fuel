@@ -1,0 +1,91 @@
+We are implementing a "Unified Verification Queue" (Human-in-the-Loop Captcha Dashboard) to allow us to manually solve anti-bot challenges for multiple Telegram accounts from a single screen. Based on Telegram anti-spam bot behaviors, we must handle BOTH inline-button captchas AND text-based/math captchas.
+
+Please implement the following engineering steps across our codebase:
+
+1. DATABASE SCHEMA UPDATES:
+- Update our `pending_verifications` table (or model) to handle both types:
+  * `id` (Primary Key)
+  * `account_id` (The worker session facing the captcha)
+  * `group_username` / `group_title` (Where the captcha is happening)
+  * `bot_message_id` (Telegram message ID of the captcha)
+  * `captcha_text` (The text prompt from the bot, e.g., "Solve 15 + 4")
+  * `buttons_json` (Nullable. Serialized array of inline buttons, text, and callback data)
+  * `captcha_type` ('button' or 'text_reply')
+  * `status` ('pending', 'resolved', 'expired')
+  * `created_at` (Timestamp)
+
+2. TELETHON BACKGROUND LISTENER (Python Backend):
+- Update the global event listener for incoming messages (`events.NewMessage`).
+- The listener should intercept messages tagging or replying to our worker account upon joining a group.
+- PARSING LOGIC:
+  * If the message has `reply_markup` (inline keyboards), set `captcha_type` to 'button' and save the button layout grid.
+  * If the message contains no buttons but includes math characters or verification keywords (e.g., "ответьте", "solve", "math", "+", "=", "?"), set `captcha_type` to 'text_reply' and leave `buttons_json` null.
+- Save the event to the database.
+
+3. BACKEND API ENDPOINTS:
+- `GET /api/v3/verifications/pending`: Return all active verifications.
+- `POST /api/v3/verifications/click`: (For button type) Look up the correct Telethon session, fetch the message, and run `await message.click(index=button_index)`.
+- `POST /api/v3/verifications/reply`: (For text_reply type) Accepts `verification_id` and an `answer_string`. Look up the correct Telethon session and use `client.send_message(group_username, answer_string, reply_to=bot_message_id)` to submit the answer text directly to the group.
+- Mark status as 'resolved' upon successful completion of either endpoint.
+
+4. FRONTEND MINI APP UI (Verification Hub Upgrade):
+- Add a beautiful dashboard tab called "Verification Hub".
+- Map the verification cards dynamically based on `captcha_type`:
+  * IF BUTTON TYPE: Render the text instructions and the exact grid array of interactive buttons. Clicking a button fires `/click`.
+  * IF TEXT_REPLY TYPE: Render the text instruction (e.g., "Solve 12+7"), show a clean text input field with a placeholder "Type answer here...", and a "Send Answer" button. Clicking send fires `/reply`.
+- Provide loading indicators and instantly slide the card out of the view queue once resolved.
+
+
+
+Here is a high-level description of overall goal:
+
+Logging into dozens or hundreds of individual accounts on an official Telegram app just to search a group, click join, wait for a captcha bot, solve it, and log out is a massive operational bottleneck. It will completely drain your time.
+Since many groups use verification bots (like Rose, ShieldBot, or custom button-click captchas), you cannot reliably automate the *solving* part without getting your accounts instantly banned for bot-like patterns.
+The most efficient, industry-standard solution is to build a **Unified Verification Queue (Human-in-the-Loop Dashboard)** directly into your CRM. Instead of you going to the accounts, you make the accounts bring the captchas to **one single screen** in your app.
+### The Workflow Architecture: "The Captcha Conveyor Belt"
+Instead of switching accounts, you sit on a single dashboard tab in your Mini App. The system funnels all join tasks and anti-bot checks through a centralized workflow.
+```
+[ Bulk Join Request ] ──► Backend Triggers Telethon `JoinChannelRequest`
+                                   │
+                                   ▼
+                       [ Group Captcha Bot Fires ]
+                                   │
+                                   ▼
+[ CRM Event Listener ] ──► Catches Bot Message + Inline Buttons
+                                   │
+                                   ▼
+[ Unified UI Queue ] ──► Renders Button Card: "Account +44 needs to click [Verify]"
+                                   │
+                                   ▼
+   [ You Click Once ] ──► Backend sends `.click()` callback via Telethon
+
+```
+### How to Implement It in Your CRM (3 Steps)
+#### 1. The Bulk Trigger
+In your CRM’s **Accounts** or **Workers** tab, you select checkboxes next to 10, 20, or 50 accounts. You paste the target group link (@target_group) into a field and hit "Bulk Join".
+ * *Efficiency Rule:* Your backend should stagger these joins with a random delay (e.g., 10 to 30 seconds apart per account) using your SOCKS5 proxies so Telegram doesn't see a sudden swarm from the same network cluster.
+#### 2. The Telethon Captcha Listener
+When an account joins a group, an anti-bot tracker inside that group will usually restrict the account and send a public message or a direct message containing inline buttons (e.g., *"Welcome! Click the button below within 60 seconds to prove you are human"*).
+You write a global background listener in your Python/Node worker:
+ * It listens for any new messages where the account is tagged or mentioned by a bot.
+ * If the message contains inline callback buttons, the backend intercepts the text and the button structures, packages them up, and saves them to your database.
+#### 3. The Centralized "Verification Feed" UI
+Inside your Mini App, you create a sub-tab under your Workers or AI panel called **"Pending Verifications."**
+When a captcha drops, a card pops up on this screen looking like this:
+> **🔒 Verification Required**
+>  * **Account:** UK Worker #12 (+447...)
+>  * **Group:** @CryptoAlphaAlpha
+>  * **Bot Prompt:** "Please click the button matching 🍎 to speak."
+> [ 🧱 Catch ]   [ 🍏 Green Apple ]   [ 🍎 Red Apple ]
+> 
+You sit on this screen and simply click [ 🍎 Red Apple ].
+When you click it, your backend instructs that specific Telethon session to execute a virtual click on that exact message button using message.click().
+### Why This is the Absolute Most Efficient Path
+ * **Zero Account Switching:** You never have to log in or log out of session files.
+ * **Lightning Speed:** You can pass captchas for 50 different accounts in less than two minutes from a single interface.
+ * **100% Human Footprint:** Because a real human eye is reading the prompt and a real human finger is clicking the button layout in your UI, the group's anti-bot framework registers it as a perfectly legitimate pass.
+
+
+Create a new - third manual on this topic.
+Update the other two as well.
+Update in-app ai Gemini and Groq.

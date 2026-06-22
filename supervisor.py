@@ -937,6 +937,10 @@ def _child_env(db_path: str, api_port: int) -> dict[str, str]:
     env["API_SERVER_PORT"]  = str(api_port)
     # Children must not try to spawn their own worker supervisors
     env["WORKER_COUNT"]     = "0"
+    # Ensure .pythonlibs packages are visible to child processes
+    pythonlibs = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".pythonlibs", "lib", "python3.12", "site-packages")
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{pythonlibs}:{existing}" if existing else pythonlibs
     return env
 
 
