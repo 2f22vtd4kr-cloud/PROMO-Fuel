@@ -53128,8 +53128,9 @@ var import_express14 = __toESM(require_express2(), 1);
 var router14 = (0, import_express14.Router)();
 var SMSPOOL_STOCK_URL = "https://api.smspool.net/country/retrieve_all";
 var SMSPOOL_BALANCE_URL = "https://api.smspool.net/request/balance";
-var SMSPOOL_SERVICE_URL = "https://api.smspool.net/service/retrieve_all";
+var SMSPOOL_PRICE_URL = "https://api.smspool.net/request/price";
 var CACHE_TTL_MS = 6e4;
+var TELEGRAM_SERVICE_ID = "907";
 var _cache = /* @__PURE__ */ new Map();
 var _serviceCache = /* @__PURE__ */ new Map();
 router14.get("/config", (_req, res) => {
@@ -53168,7 +53169,7 @@ router14.get("/balance", async (req, res) => {
 });
 router14.get("/countries", async (req, res) => {
   const apiKey = String(req.query["api_key"] ?? process.env["SMSPOOL_API_KEY"] ?? "").trim();
-  const service = String(req.query["service"] ?? "11").trim();
+  const service = String(req.query["service"] ?? TELEGRAM_SERVICE_ID).trim();
   if (!apiKey) {
     return void res.status(400).json({ error: "api_key is required" });
   }
@@ -53219,7 +53220,7 @@ router14.get("/countries", async (req, res) => {
 router14.get("/service-stock", async (req, res) => {
   const apiKey = String(req.query["api_key"] ?? process.env["SMSPOOL_API_KEY"] ?? "").trim();
   const country = String(req.query["country"] ?? "").trim();
-  const service = String(req.query["service"] ?? "11").trim();
+  const service = String(req.query["service"] ?? TELEGRAM_SERVICE_ID).trim();
   if (!apiKey) return void res.status(400).json({ error: "api_key is required" });
   if (!country) return void res.status(400).json({ error: "country is required" });
   const cacheKey = `${apiKey}:${country}:${service}`;
@@ -53228,13 +53229,11 @@ router14.get("/service-stock", async (req, res) => {
     return void res.json({ ...cached.data, cached: true });
   }
   try {
-    const body = new URLSearchParams({ key: apiKey, country });
-    const resp = await fetch(SMSPOOL_SERVICE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: body.toString(),
-      signal: AbortSignal.timeout(12e3)
-    });
+    const url = new URL(SMSPOOL_PRICE_URL);
+    url.searchParams.set("key", apiKey);
+    url.searchParams.set("service", service);
+    url.searchParams.set("country", country);
+    const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(12e3) });
     if (!resp.ok) {
       return void res.status(502).json({ error: `SMSPool returned HTTP ${resp.status}` });
     }
@@ -53246,25 +53245,17 @@ router14.get("/service-stock", async (req, res) => {
         return void res.status(401).json({ error: msgs });
       }
     }
-    const items = Array.isArray(raw) ? raw : [];
-    let telegramService = null;
-    for (const item of items) {
-      if (!item || typeof item !== "object") continue;
-      const obj = item;
-      const sid = String(obj["ID"] ?? obj["id"] ?? obj["service_id"] ?? "");
-      const sname = String(obj["name"] ?? obj["service"] ?? "").toLowerCase();
-      if (sid === service || sname.includes("telegram")) {
-        telegramService = obj;
-        break;
-      }
-    }
-    const result = telegramService ? {
-      available: true,
-      stock: Number(telegramService["stock"] ?? telegramService["quantity"] ?? telegramService["count"] ?? 0) || 0,
-      price: Number(telegramService["price"] ?? telegramService["cost"] ?? telegramService["rate"] ?? 0) || 0,
-      service_name: String(telegramService["name"] ?? "Telegram"),
+    const obj = raw && typeof raw === "object" ? raw : {};
+    const price = Number(obj["price"] ?? 0);
+    const successRate = Number(obj["success_rate"] ?? 0);
+    const result = {
+      available: price > 0,
+      stock: successRate,
+      // success_rate (0-100) used as quality indicator
+      price,
+      service_name: "Telegram",
       cached: false
-    } : { available: false, stock: 0, price: 0, service_name: "Telegram", cached: false };
+    };
     _serviceCache.set(cacheKey, { ts: Date.now(), data: result });
     return void res.json(result);
   } catch (err) {
