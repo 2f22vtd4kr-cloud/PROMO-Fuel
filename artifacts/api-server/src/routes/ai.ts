@@ -903,4 +903,90 @@ router.post("/v3/ai/execute", (req: Request, res: Response) => {
   }
 });
 
+// ── POST /api/v3/spintax/generate ─────────────────────────────────────────
+
+const SPINTAX_SYSTEM_PROMPT = `You are an expert copywriter and anti-detection automation engineer for PROMO-Fuel. Your job is to take a base message and convert it into a deeply varied, highly complex Spintax string using '{option1|option2|option3}' syntax.
+
+You must vary individual words, rewrite entire sentence phrases, shift clause ordering, and use nested spintax structures '{{nested1|nested2}|option3}' where appropriate to maximize variation combinations. Aim for at least 6-10 distinct variation groups that produce hundreds of unique message permutations.
+
+CRITICAL: Output ONLY the final valid spintax string. Do not include markdown code blocks (\`\`\`), do not include any conversational introductions or explanations, and ensure every single opening bracket '{' has a matching closing bracket '}' so it does not break the recursive parser in lib/spintax.ts.
+
+Tone guidance:
+- casual: conversational, warm, informal — use contractions, emoji-friendly phrasing
+- professional: clear, respectful, business-appropriate — formal grammar, no slang
+- direct: concise, action-oriented, no fluff — short punchy sentences, strong CTAs`;
+
+router.post("/v3/spintax/generate", async (req: Request, res: Response) => {
+  const { seed_text, tone = "casual" } = req.body as { seed_text?: string; tone?: string };
+
+  if (!seed_text || typeof seed_text !== "string" || seed_text.trim().length < 5) {
+    return void res.status(400).json({ error: "seed_text is required (min 5 chars)" });
+  }
+
+  const validTones = ["casual", "professional", "direct"];
+  const safeTone = validTones.includes(tone) ? tone : "casual";
+  const userPrompt = `Tone: ${safeTone}\n\nBase message:\n${seed_text.trim()}`;
+
+  const GEMINI_API_KEY = process.env["GEMINI_API_KEY"];
+  const GROQ_API_KEY   = process.env["GROQ_API_KEY"];
+
+  // ── Primary: Gemini 2.5 Flash ─────────────────────────────────────────
+  if (GEMINI_API_KEY) {
+    try {
+      const genai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+      const response = await genai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+        config: {
+          systemInstruction: SPINTAX_SYSTEM_PROMPT,
+          temperature: 1.0,
+          maxOutputTokens: 2048,
+        },
+      });
+      const spintax = (response.text ?? "").trim();
+      if (spintax.length > 10) {
+        return void res.json({ spintax, engine: "gemini" });
+      }
+    } catch (err) {
+      const errStr = String(err);
+      if (!errStr.includes("503") && !errStr.includes("overloaded") && !errStr.includes("UNAVAILABLE")) {
+        console.error("[spintax/gemini] Error:", errStr.slice(0, 200));
+      } else {
+        console.warn("[spintax/gemini] Transient, falling back to Groq");
+      }
+    }
+  }
+
+  // ── Fallback: Groq Llama 3.3 70B ─────────────────────────────────────
+  if (!GROQ_API_KEY) {
+    return void res.status(503).json({ error: "No AI keys configured" });
+  }
+  try {
+    const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        temperature: 1.0,
+        max_tokens: 2048,
+        messages: [
+          { role: "system", content: SPINTAX_SYSTEM_PROMPT },
+          { role: "user",   content: userPrompt },
+        ],
+      }),
+    });
+    if (!groqRes.ok) {
+      const errText = await groqRes.text();
+      console.error("[spintax/groq] HTTP error:", groqRes.status, errText.slice(0, 200));
+      return void res.status(503).json({ error: "capacity" });
+    }
+    const groqData = await groqRes.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const spintax = (groqData.choices?.[0]?.message?.content ?? "").trim();
+    return void res.json({ spintax, engine: "groq" });
+  } catch (err) {
+    console.error("[spintax/groq] Failed:", err);
+    return void res.status(503).json({ error: "capacity" });
+  }
+});
+
 export default router;

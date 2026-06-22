@@ -1,10 +1,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { useI18n } from "../lib/i18n";
-import { CheckCircle, Calendar, Sparkles, X, Eye, Timer, FlaskConical, Shuffle, BookOpen } from "lucide-react";
+import { CheckCircle, Calendar, Sparkles, X, Eye, Timer, FlaskConical, Shuffle, BookOpen, Wand2, Loader2 } from "lucide-react";
 import { api, Campaign, MessageTemplate } from "../lib/api";
 import { TG, BLUR, BLUR_HEAVY } from "../lib/theme";
 import { FullSpinner } from "../components/Spinner";
 import { haptic } from "../lib/haptics";
+import { getStoredSecret } from "./LockScreen";
+
+const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
 const DELAY_PRESETS_UA = [
   { label: "15 хв",  value: 900 },
@@ -138,10 +141,52 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
   const [templates, setTemplates]       = useState<MessageTemplate[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
 
+  // ── AI Spintax Generator ────────────────────────────────────────────────
+  const [showAiPanel, setShowAiPanel]   = useState(false);
+  const [aiSeed, setAiSeed]             = useState("");
+  const [aiTone, setAiTone]             = useState<"casual" | "professional" | "direct">("casual");
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiError, setAiError]           = useState<string | null>(null);
+  const [aiEngine, setAiEngine]         = useState<string | null>(null);
+
   useEffect(() => {
     api.getAudienceTags().then(setAudienceTags).catch(() => {});
     api.getAudienceCount().then(r => setAudienceCount(r.count)).catch(() => {});
   }, []);
+
+  async function generateSpintax() {
+    if (!aiSeed.trim() || aiGenerating) return;
+    haptic.medium();
+    setAiGenerating(true);
+    setAiError(null);
+    setAiEngine(null);
+    try {
+      const secret = getStoredSecret();
+      const res = await fetch(`${API_BASE}/api/v3/spintax/generate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
+        },
+        body: JSON.stringify({ seed_text: aiSeed.trim(), tone: aiTone }),
+      });
+      const data = await res.json() as { spintax?: string; engine?: string; error?: string };
+      if (!res.ok || !data.spintax) {
+        setAiError(data.error ?? `HTTP ${res.status}`);
+        haptic.error();
+        return;
+      }
+      setText(data.spintax);
+      setAiEngine(data.engine ?? null);
+      setShowPreview(true);
+      haptic.success();
+    } catch (e) {
+      setAiError(String(e));
+      haptic.error();
+    } finally {
+      setAiGenerating(false);
+    }
+  }
 
   function openTemplates() {
     haptic.light();
@@ -381,6 +426,127 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
                 </button>
               ))}
             </div>
+
+            {/* ── AI Spintax Generator Panel ── */}
+            <div style={{ marginBottom: 12 }}>
+              <button
+                onClick={() => { haptic.select(); setShowAiPanel(p => !p); setAiError(null); }}
+                className="tap"
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "7px 13px", borderRadius: 12, fontSize: 11, fontWeight: 800,
+                  border: `1px solid ${showAiPanel ? "rgba(196,174,255,0.50)" : "rgba(196,174,255,0.22)"}`,
+                  background: showAiPanel ? "rgba(196,174,255,0.13)" : "rgba(196,174,255,0.06)",
+                  color: showAiPanel ? "#c4aeff" : TG.muted,
+                  width: "100%", justifyContent: "center",
+                  boxShadow: showAiPanel ? "0 0 18px rgba(196,174,255,0.18)" : "none",
+                  transition: "all 0.2s",
+                }}
+              >
+                <Wand2 size={12} />
+                {lang === "ua" ? "✦ AI Спінтакс" : "✦ AI Spintax"}
+                <span style={{ fontSize: 10, opacity: 0.65, marginLeft: 2 }}>
+                  {showAiPanel ? "▲" : "▼"}
+                </span>
+              </button>
+
+              {showAiPanel && (
+                <div style={{
+                  marginTop: 8, padding: "14px 14px 16px",
+                  background: "rgba(196,174,255,0.05)",
+                  border: "1px solid rgba(196,174,255,0.20)",
+                  borderRadius: 16,
+                  backdropFilter: BLUR, WebkitBackdropFilter: BLUR,
+                }}>
+                  {/* Tone selector */}
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 9, color: TG.muted, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", marginBottom: 7 }}>
+                      {lang === "ua" ? "Тон повідомлення" : "Message tone"}
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {(["casual", "professional", "direct"] as const).map(t => {
+                        const labels: Record<string, { ua: string; en: string }> = {
+                          casual:       { ua: "Розмовний", en: "Casual" },
+                          professional: { ua: "Офіційний", en: "Professional" },
+                          direct:       { ua: "Прямий",   en: "Direct" },
+                        };
+                        const active = aiTone === t;
+                        return (
+                          <button key={t} onClick={() => { haptic.select(); setAiTone(t); }} className="tap" style={{
+                            flex: 1, padding: "6px 0", borderRadius: 10, fontSize: 11, fontWeight: 700,
+                            border: `1px solid ${active ? "rgba(196,174,255,0.50)" : "rgba(255,255,255,0.10)"}`,
+                            background: active ? "rgba(196,174,255,0.18)" : "rgba(255,255,255,0.04)",
+                            color: active ? "#c4aeff" : TG.muted,
+                            transition: "all 0.15s",
+                          }}>
+                            {lang === "ua" ? labels[t]!.ua : labels[t]!.en}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Seed text */}
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 9, color: TG.muted, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.10em", marginBottom: 7 }}>
+                      {lang === "ua" ? "Базове повідомлення" : "Base message"}
+                    </div>
+                    <GlassTextarea
+                      value={aiSeed}
+                      onChange={setAiSeed}
+                      minHeight={90}
+                      accentColor="rgba(196,174,255,"
+                      placeholder={lang === "ua"
+                        ? "Напиши звичайне повідомлення — AI перетворить його у спінтакс з сотнями варіацій…"
+                        : "Write a plain message — AI will turn it into spintax with hundreds of variations…"}
+                    />
+                  </div>
+
+                  {/* Error */}
+                  {aiError && (
+                    <div style={{ marginBottom: 10, padding: "9px 12px", background: "rgba(255,107,122,0.09)", border: "1px solid rgba(255,107,122,0.26)", borderRadius: 11, fontSize: 12, color: TG.red }}>
+                      {aiError}
+                    </div>
+                  )}
+
+                  {/* Success badge */}
+                  {aiEngine && !aiError && !aiGenerating && (
+                    <div style={{ marginBottom: 10, padding: "7px 12px", background: "rgba(45,232,151,0.08)", border: "1px solid rgba(45,232,151,0.22)", borderRadius: 11, fontSize: 11, color: TG.green, display: "flex", alignItems: "center", gap: 6 }}>
+                      <Sparkles size={11} />
+                      {lang === "ua"
+                        ? `Спінтакс згенеровано (${aiEngine}) — шаблон оновлено ↓`
+                        : `Spintax generated (${aiEngine}) — template updated ↓`}
+                    </div>
+                  )}
+
+                  {/* Generate button */}
+                  <button
+                    onClick={generateSpintax}
+                    disabled={!aiSeed.trim() || aiGenerating}
+                    className="tap"
+                    style={{
+                      width: "100%", padding: "11px 0",
+                      background: aiSeed.trim() && !aiGenerating
+                        ? "linear-gradient(135deg,rgba(196,174,255,0.30),rgba(196,174,255,0.15))"
+                        : "rgba(255,255,255,0.04)",
+                      border: `1px solid ${aiSeed.trim() && !aiGenerating ? "rgba(196,174,255,0.45)" : "rgba(255,255,255,0.08)"}`,
+                      borderRadius: 13,
+                      color: aiSeed.trim() && !aiGenerating ? "#c4aeff" : TG.muted,
+                      fontSize: 13, fontWeight: 800,
+                      cursor: aiSeed.trim() && !aiGenerating ? "pointer" : "not-allowed",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                      transition: "all 0.15s",
+                      boxShadow: aiSeed.trim() && !aiGenerating ? "0 4px 20px rgba(196,174,255,0.18)" : "none",
+                    }}
+                  >
+                    {aiGenerating
+                      ? <><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> {lang === "ua" ? "Генерація…" : "Generating…"}</>
+                      : <><Wand2 size={13} /> {lang === "ua" ? "Оптимізувати з AI" : "Optimize with AI"}</>}
+                  </button>
+                </div>
+              )}
+            </div>
+
             <GlassTextarea value={text} onChange={setText} focused={textFocus} minHeight={170}
               onFocus={() => setTextFocus(true)} onBlur={() => setTextFocus(false)}
               placeholder={lang === "ua" ? "Привіт, {first_name}! 👋\n\nПишемо тобі, тому що..." : "Hey {first_name}! 👋\n\nWe're writing to you because..."} />
