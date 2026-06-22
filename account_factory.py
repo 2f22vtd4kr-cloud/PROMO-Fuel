@@ -289,6 +289,7 @@ async def _registration_stream(
     last_name: str = "",
     bio: str = "",
     avatars: list | None = None,
+    warmup_mode: str = "all",
 ):
     """Async generator yielding SSE chunks for the full 8-step pipeline."""
     os.makedirs(SESSION_DIR, exist_ok=True)
@@ -641,28 +642,38 @@ async def _registration_stream(
                             "message": "🎉 Account generated, profiled, and added to your CRM!"})
         yield _sse("complete", {"phone": phone})
 
-        # ─── Auto-queue warmup ───────────────────────────────────────────
-        try:
-            from utils.account_warmer import start_warmup_task as _start_warmup  # noqa: PLC0415
-            _now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            async with aiosqlite.connect(DB_PATH) as _wconn:
-                await _wconn.execute("PRAGMA journal_mode=WAL")
-                async with _wconn.execute(
-                    "SELECT id FROM sender_accounts WHERE phone=?", (phone,)
-                ) as _wcur:
-                    _wrow = await _wcur.fetchone()
-                if _wrow:
-                    _acc_id = int(_wrow[0])
-                    await _wconn.execute(
-                        "UPDATE sender_accounts SET warmup_status='queued', warmup_started_at=? WHERE id=?",
-                        (_now, _acc_id),
-                    )
-                    await _wconn.commit()
-                    _start_warmup(_acc_id)
-                    yield _sse("warmup_queued", {"account_id": _acc_id,
-                                                  "message": "🔥 Warmup scheduled — account aging in background"})
-        except Exception as _we:
-            logger.warning("[factory] warmup queue failed: %s", _we)
+        # ─── Warmup (mode: none / all / ask) ─────────────────────────────
+        if warmup_mode != "none":
+            try:
+                from utils.account_warmer import start_warmup_task as _start_warmup  # noqa: PLC0415
+                _now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                async with aiosqlite.connect(DB_PATH) as _wconn:
+                    await _wconn.execute("PRAGMA journal_mode=WAL")
+                    async with _wconn.execute(
+                        "SELECT id FROM sender_accounts WHERE phone=?", (phone,)
+                    ) as _wcur:
+                        _wrow = await _wcur.fetchone()
+                    if _wrow:
+                        _acc_id = int(_wrow[0])
+                        if warmup_mode == "all":
+                            await _wconn.execute(
+                                "UPDATE sender_accounts SET warmup_status='queued', warmup_started_at=? WHERE id=?",
+                                (_now, _acc_id),
+                            )
+                            await _wconn.commit()
+                            _start_warmup(_acc_id)
+                            yield _sse("warmup_queued", {
+                                "account_id": _acc_id,
+                                "message": "🔥 Warmup scheduled — account aging in background",
+                            })
+                        elif warmup_mode == "ask":
+                            yield _sse("warmup_prompt", {
+                                "account_id": _acc_id,
+                                "phone": phone,
+                                "message": "❓ Запустити прогрів для цього акаунта?",
+                            })
+            except Exception as _we:
+                logger.warning("[factory] warmup queue failed: %s", _we)
 
     except Exception as e:
         logger.exception("Account factory pipeline failed")
@@ -685,6 +696,8 @@ async def register_account(request: Request):
     proxy_string        = str(body.get("proxy_string", "")).strip()
     two_factor_password = str(body.get("two_factor_password", "")).strip()
     quantity            = min(max(int(body.get("quantity", 1) or 1), 1), 10)
+    _wm_raw             = str(body.get("warmup_mode", "all")).strip().lower()
+    warmup_mode         = _wm_raw if _wm_raw in ("none", "all", "ask") else "all"
 
     # Profile setup params
     profile_mode = str(body.get("profile_mode", "ai")).strip() or "ai"
@@ -747,6 +760,7 @@ async def register_account(request: Request):
                 smspool_api_key, country_id, proxy_string,
                 two_factor_password, api_id, api_hash,
                 profile_mode, first_name, last_name, bio, avatars,
+                warmup_mode,
             ):
                 yield chunk
                 # Track outcome for summary

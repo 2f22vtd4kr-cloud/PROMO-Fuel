@@ -181,6 +181,11 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   }, []);
 
   // Profile Setup state
+  // Warmup mode selector
+  const [warmupMode,    setWarmupMode]    = useState<"none" | "all" | "ask">("all");
+  // Popup for "ask" mode — shown when backend emits warmup_prompt
+  const [warmupPrompt,  setWarmupPrompt]  = useState<{ accountId: number; phone: string } | null>(null);
+
   const [profileMode,        setProfileMode]        = useState<"ai" | "manual">("ai");
   const [profFirstName,      setProfFirstName]      = useState("");
   const [profLastName,       setProfLastName]       = useState("");
@@ -367,6 +372,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           ...(apiId   ? { api_id: parseInt(apiId) }   : {}),
           ...(apiHash ? { api_hash: apiHash }           : {}),
           profile_mode: profileMode,
+          warmup_mode: warmupMode,
           ...(profileMode === "manual" ? {
             first_name: profFirstName,
             last_name:  profLastName,
@@ -451,6 +457,14 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               setPollMsg(null);
               setBatchDelayMsg(null);
             }
+          } else if (event === "warmup_queued") {
+            // auto-warmup already queued — nothing extra needed in UI
+          } else if (event === "warmup_prompt") {
+            // "ask" mode — show the decision popup
+            setWarmupPrompt({
+              accountId: p.account_id as number,
+              phone:     p.phone     as string,
+            });
           } else if (event === "error") {
             setErrorMsg(p.message as string);
             if (quantity === 1) {
@@ -474,6 +488,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setSteps(initSteps());
     setPollMsg(null);
     setBatchDelayMsg(null);
+    setWarmupPrompt(null);
   }
 
   function reset() {
@@ -488,6 +503,20 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setBatchCurrent(0);
     setPreflightStatus("idle");
     setPreflightMsg(null);
+    setWarmupPrompt(null);
+  }
+
+  async function handleWarmupDecision(accountId: number, yes: boolean) {
+    setWarmupPrompt(null);
+    if (!yes) return;
+    try {
+      await fetch(`/api/factory/warmup/${accountId}/start`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+    } catch {
+      // non-critical — user can manually trigger from Accounts tab
+    }
   }
 
   const isBatch = quantity > 1;
@@ -536,7 +565,139 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
         </div>
       </div>
 
+      {/* ── Warmup Prompt Popup (ask mode) ─────────────────────────────── */}
+      {warmupPrompt && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 999,
+          background: "rgba(0,0,0,0.72)", backdropFilter: "blur(10px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "0 24px",
+        }}>
+          <div style={{
+            background: "rgba(15,18,30,0.98)", border: "1px solid rgba(255,180,0,0.35)",
+            borderRadius: 22, padding: "28px 24px", maxWidth: 360, width: "100%",
+            boxShadow: "0 0 48px rgba(255,180,0,0.18)",
+          }}>
+            <div style={{ fontSize: 40, textAlign: "center", marginBottom: 14 }}>🔥</div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", textAlign: "center", marginBottom: 8 }}>
+              {L("Start Warmup?", "Запустити прогрів?")}
+            </div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", textAlign: "center", lineHeight: 1.6, marginBottom: 6 }}>
+              {L("Account", "Акаунт")}
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#f59e0b", textAlign: "center", marginBottom: 16 }}>
+              {warmupPrompt.phone}
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.42)", textAlign: "center", lineHeight: 1.6, marginBottom: 24 }}>
+              {L(
+                "Run the 48-hour warmup? It sends organic messages to public groups to age the account and reduce ban risk.",
+                "Запустити 48-годинний прогрів? Відправляє органічні повідомлення в публічні групи — старить акаунт та знижує ризик бану."
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => void handleWarmupDecision(warmupPrompt.accountId, false)}
+                style={{
+                  flex: 1, padding: "12px 0", borderRadius: 13,
+                  background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)",
+                  color: "rgba(255,255,255,0.6)", fontSize: 13, fontWeight: 700, cursor: "pointer",
+                }}
+              >
+                {L("Skip", "Пропустити")}
+              </button>
+              <button
+                onClick={() => void handleWarmupDecision(warmupPrompt.accountId, true)}
+                style={{
+                  flex: 1, padding: "12px 0", borderRadius: 13,
+                  background: "linear-gradient(135deg, rgba(245,158,11,0.35), rgba(245,158,11,0.2))",
+                  border: "1px solid rgba(245,158,11,0.55)",
+                  color: "#f59e0b", fontSize: 13, fontWeight: 800, cursor: "pointer",
+                }}
+              >
+                🔥 {L("Start Warmup", "Почати прогрів")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ padding: "20px 18px 40px", display: "flex", flexDirection: "column", gap: 18 }}>
+
+        {/* ── Warmup Mode Selector — first card in form ── */}
+        {runState === "idle" && (
+          <div style={{
+            background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.28)",
+            borderRadius: 16, overflow: "hidden",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
+              borderBottom: "1px solid rgba(245,158,11,0.12)" }}>
+              <div style={{ fontSize: 18 }}>🔥</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#f59e0b" }}>
+                  {L("48-Hour Warmup Mode", "Режим 48-годинного прогріву")}
+                </div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>
+                  {L("Choose warmup behaviour for newly created accounts", "Оберіть режим прогріву для нових акаунтів")}
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 7 }}>
+              {([
+                {
+                  key: "none" as const,
+                  icon: "🚫",
+                  label: L("No Warmup", "Без прогріву"),
+                  desc:  L("Skip warmup entirely. Account goes straight to active status.", "Пропустити прогрів. Акаунт одразу стає активним."),
+                  color: "#ff6b7a",
+                },
+                {
+                  key: "all" as const,
+                  icon: "🔥",
+                  label: L("Warmup All", "Прогріти всі"),
+                  desc:  L("Auto-queue 48h warmup for every account after creation.", "Авто-черга 48-год прогріву для кожного акаунта після реєстрації."),
+                  color: "#f59e0b",
+                },
+                {
+                  key: "ask" as const,
+                  icon: "❓",
+                  label: L("Ask Per Account", "Питати для кожного"),
+                  desc:  L("Show a popup after each account is created — decide individually.", "Показати попап після кожного акаунта — вирішувати індивідуально."),
+                  color: "#3b82f6",
+                },
+              ] as const).map(opt => (
+                <button key={opt.key} onClick={() => setWarmupMode(opt.key)} style={{
+                  display: "flex", alignItems: "center", gap: 11,
+                  background: warmupMode === opt.key ? `${opt.color}18` : "rgba(255,255,255,0.03)",
+                  border: warmupMode === opt.key ? `1.5px solid ${opt.color}55` : "1.5px solid rgba(255,255,255,0.08)",
+                  borderRadius: 12, padding: "10px 13px", cursor: "pointer",
+                  textAlign: "left", transition: "all .15s",
+                }}>
+                  <div style={{
+                    width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+                    background: warmupMode === opt.key ? `${opt.color}22` : "rgba(255,255,255,0.05)",
+                    border: warmupMode === opt.key ? `1.5px solid ${opt.color}44` : "1px solid rgba(255,255,255,0.08)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
+                  }}>{opt.icon}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700,
+                      color: warmupMode === opt.key ? opt.color : "rgba(255,255,255,0.7)",
+                      marginBottom: 2 }}>{opt.label}</div>
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.38)", lineHeight: 1.4 }}>{opt.desc}</div>
+                  </div>
+                  <div style={{
+                    width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
+                    border: warmupMode === opt.key ? `2px solid ${opt.color}` : "2px solid rgba(255,255,255,0.18)",
+                    background: warmupMode === opt.key ? opt.color : "transparent",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 9, color: "#000",
+                  }}>
+                    {warmupMode === opt.key && "✓"}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── Config form ── */}
         {runState === "idle" && (

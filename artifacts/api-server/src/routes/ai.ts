@@ -535,7 +535,11 @@ Safe limits: 15-60s delay between sends; 50-100 msg/day per account (warm-up: st
 - **SMSPool**: smspool.net — buy with crypto/card; service ID 11 = Telegram; Ukraine/Kazakhstan cheapest
 - **Proxy**: socks5://user:pass@ip:port format; Decodo (smartproxy.com) residential/mobile; match country to phone
 - **On success**: .session file + .json metadata written; CRM row inserted with 2FA pass, session_file, proxy, auth_status='active', is_active=1
-- **Manual**: 📚 → "🏭 Account Factory" guide (12 pages) — covers SMSPool setup, proxy selection, credentials, batch mode, error types, best practices
+- **Warmup Mode Selector** (first card in the form, before API key):
+  - 🚫 **No Warmup** (\`warmup_mode: "none"\`) — skip warmup entirely; account goes straight to active
+  - 🔥 **Warmup All** (\`warmup_mode: "all"\`) — auto-queue 48h warmup for every account after creation (default)
+  - ❓ **Ask Per Account** (\`warmup_mode: "ask"\`) — a popup appears after each account is created; user decides per-account. The backend yields a \`warmup_prompt\` SSE event; user clicks "🔥 Start Warmup" or "Skip" in the modal.
+- **Manual**: 📚 → "🏭 Account Factory" guide (13 pages) — covers SMSPool setup, proxy selection, credentials, warmup modes, batch mode, error types, best practices
 
 ## Key Endpoints (for your reference)
 - GET /api/twa/campaigns — list all campaigns

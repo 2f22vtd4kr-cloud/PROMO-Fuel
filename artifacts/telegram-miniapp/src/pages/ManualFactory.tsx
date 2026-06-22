@@ -523,9 +523,73 @@ function Slide11({ lang }: SL) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SLIDE 12 — Best Practices
+// SLIDE 12 — Warmup Mode Selector
 // ═══════════════════════════════════════════════════════════════
 function Slide12({ lang }: SL) {
+  return (
+    <Shell>
+      <STitle icon="🔥" text={L(lang, "Warmup Mode Selector", "Вибір режиму прогріву")} color={ACCENT} />
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.6)", lineHeight:1.7, marginBottom:16 }}>
+        {L(lang,
+          "The first card in Account Factory lets you choose whether and how newly created accounts receive the 48-hour warmup treatment. The setting applies to the entire batch.",
+          "Перша картка у Фабриці акаунтів дозволяє вибрати, чи і як щойно створені акаунти проходять 48-годинний прогрів. Налаштування застосовується до всього пакету."
+        )}
+      </div>
+
+      {[
+        {
+          icon:"🚫", color:RED,
+          en:"No Warmup",      ua:"Без прогріву",
+          descEn:"Skip warmup entirely. Every registered account goes straight to 'active' status. Use only when accounts are already aged or you have other warmup plans.",
+          descUa:"Пропустити прогрів повністю. Кожен зареєстрований акаунт відразу отримує статус 'active'. Використовуйте лише для вже прогрітих акаунтів або коли є інші плани прогріву.",
+        },
+        {
+          icon:"🔥", color:ACCENT,
+          en:"Warmup All (default)",    ua:"Прогріти всі (за замовчуванням)",
+          descEn:"Auto-queue 48-hour warmup for every account immediately after Step 8 (Save & Add to CRM). No manual action required — the warmup badge appears on the account card.",
+          descUa:"Автоматично поставити в чергу 48-год прогрів для кожного акаунта одразу після кроку 8 (Збереження в CRM). Жодних ручних дій — значок прогріву з'являється на картці акаунта.",
+        },
+        {
+          icon:"❓", color:BLUE,
+          en:"Ask Per Account",  ua:"Питати для кожного",
+          descEn:"After each account is created, a popup appears with the phone number and two buttons: '🔥 Start Warmup' or 'Skip'. Useful in batch mode to selectively warm only some accounts.",
+          descUa:"Після кожного акаунта з'являється попап із номером телефону та двома кнопками: '🔥 Почати прогрів' або 'Пропустити'. Зручно у пакетному режимі для вибіркового прогріву.",
+        },
+      ].map(opt => (
+        <div key={opt.en} style={card(opt.color)}>
+          <div style={{ display:"flex", gap:10, alignItems:"center", marginBottom:8 }}>
+            <div style={{ width:32, height:32, borderRadius:9, background:`${opt.color}20`,
+              border:`1.5px solid ${opt.color}44`, display:"flex", alignItems:"center",
+              justifyContent:"center", fontSize:17, flexShrink:0 }}>{opt.icon}</div>
+            <div style={{ fontSize:13, fontWeight:800, color:opt.color }}>
+              {L(lang, opt.en, opt.ua)}
+            </div>
+          </div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.55)", lineHeight:1.55 }}>
+            {L(lang, opt.descEn, opt.descUa)}
+          </div>
+        </div>
+      ))}
+
+      <div style={{ ...card(TEAL), marginTop:4 }}>
+        <div style={{ fontSize:11, fontWeight:800, color:TEAL, marginBottom:6 }}>
+          💡 {L(lang,"Tip: skip warmup & manually trigger later","Порада: пропустіть прогрів та запустіть вручну пізніше")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", lineHeight:1.5 }}>
+          {L(lang,
+            "If you chose No Warmup, you can still start warmup any time from Accounts → 🔥 button on each account card.",
+            "Якщо обрано 'Без прогріву', ви завжди можете запустити прогрів з Акаунти → кнопка 🔥 на картці кожного акаунта."
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SLIDE 13 — Best Practices
+// ═══════════════════════════════════════════════════════════════
+function Slide13({ lang }: SL) {
   return (
     <Shell>
       <STitle icon="✅" text={L(lang, "Best Practices", "Найкращі практики")} color={GREEN} />
@@ -552,11 +616,11 @@ function Slide12({ lang }: SL) {
 // ═══════════════════════════════════════════════════════════════
 // SLIDE REGISTRY + MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-const SLIDES = [Slide1, Slide2, Slide3, Slide4, Slide5, Slide6, Slide7, Slide8, Slide9, Slide10, Slide11, Slide12];
-const TITLES_EN = ["Cover","What is it?","Prerequisites","SMSPool API","Decodo Proxy","API Credentials","7-Step Pipeline","Country Selection","Batch Mode","Sessions & Files","Error Handling","Best Practices"];
-const TITLES_UA = ["Обкладинка","Що це?","Передумови","SMSPool API","Decodo Проксі","API Credentials","7-кроковий конвеєр","Вибір країни","Пакетний режим","Сесії та файли","Обробка помилок","Найкращі практики"];
-const KEYWORDS_EN = ["","automated registration telethon smspool proxy","prerequisites smspool decodo credentials","smspool api key purchase number service","decodo smartproxy socks5 residential mobile","telegram api id hash my.telegram.org","pipeline steps 7 telethon sign","country ukraine kazakhstan estonia poland india","batch mode quantity multiple accounts","session json metadata file storage","error ban timeout proxy network","best practices warmup validate proxy rotate"];
-const KEYWORDS_UA = ["","автоматична реєстрація телетон смспул проксі","передумови смспул декодо credentials","смспул апі ключ купівля номер сервіс","декодо смартпроксі socks5 residential mobile","телеграм апі id hash my.telegram.org","конвеєр кроки 7 телетон вхід","країна україна казахстан естонія польща індія","пакетний режим кількість кілька акаунтів","сесія json метадані файл зберігання","помилка бан таймаут проксі мережа","найкращі практики прогрів перевірка ротація"];
+const SLIDES = [Slide1, Slide2, Slide3, Slide4, Slide5, Slide6, Slide7, Slide8, Slide9, Slide10, Slide11, Slide12, Slide13];
+const TITLES_EN = ["Cover","What is it?","Prerequisites","SMSPool API","Decodo Proxy","API Credentials","7-Step Pipeline","Country Selection","Batch Mode","Sessions & Files","Error Handling","Warmup Modes","Best Practices"];
+const TITLES_UA = ["Обкладинка","Що це?","Передумови","SMSPool API","Decodo Проксі","API Credentials","7-кроковий конвеєр","Вибір країни","Пакетний режим","Сесії та файли","Обробка помилок","Режими прогріву","Найкращі практики"];
+const KEYWORDS_EN = ["","automated registration telethon smspool proxy","prerequisites smspool decodo credentials","smspool api key purchase number service","decodo smartproxy socks5 residential mobile","telegram api id hash my.telegram.org","pipeline steps 7 telethon sign","country ukraine kazakhstan estonia poland india","batch mode quantity multiple accounts","session json metadata file storage","error ban timeout proxy network","warmup mode none all ask per account popup 48h","best practices warmup validate proxy rotate"];
+const KEYWORDS_UA = ["","автоматична реєстрація телетон смспул проксі","передумови смспул декодо credentials","смспул апі ключ купівля номер сервіс","декодо смартпроксі socks5 residential mobile","телеграм апі id hash my.telegram.org","конвеєр кроки 7 телетон вхід","країна україна казахстан естонія польща індія","пакетний режим кількість кілька акаунтів","сесія json метадані файл зберігання","помилка бан таймаут проксі мережа","режим прогріву без прогріву всі питати попап 48год","найкращі практики прогрів перевірка ротація"];
 
 export function ManualFactoryPage({ onClose }: Props) {
   const { lang } = useI18n();

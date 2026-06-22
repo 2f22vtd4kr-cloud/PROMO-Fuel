@@ -849,7 +849,7 @@ const KEYWORDS_ACCOUNTS: string[] = [
   "scaling 100 accounts pool rotation quota daily reset",
   "AI profile gemini avatar persona name bio automated step 7",
   "manual profile name bio photo upload branding operator persona",
-  "warmup scheduler organic messages groups aging ban risk step 8",
+  "warmup scheduler organic messages groups aging ban risk none all ask per account popup mode",
 ];
 // ═══════════════════════════════════════════════════════════════
 // SLIDE 12 — Account Warmup Scheduler
@@ -871,13 +871,32 @@ function Slide12({ lang }: SL) {
         </div>
       </div>
 
+      <div style={card(AMBER)}>
+        <div style={{ fontSize:12, fontWeight:800, color:AMBER, marginBottom:8 }}>
+          {L(lang,"Warmup Mode (set in Account Factory)","Режим прогріву (задається у Фабриці акаунтів)")}
+        </div>
+        {[
+          ["🚫 " + L(lang,"No Warmup","Без прогріву"),
+           L(lang,"Skip warmup entirely — account goes straight to active. Choose when accounts are already aged.","Пропустити прогрів — акаунт одразу активний. Обирайте для вже прогрітих акаунтів.")],
+          ["🔥 " + L(lang,"Warmup All (default)","Прогріти всі (за замовч.)"),
+           L(lang,"Auto-queue 48h warmup for every account right after Step 8.","Авто-черга 48-год прогріву для кожного акаунта після кроку 8.")],
+          ["❓ " + L(lang,"Ask Per Account","Питати для кожного"),
+           L(lang,"A popup appears after each account — decide individually whether to warmup or skip.","Попап після кожного акаунта — вирішуйте індивідуально: прогріти чи пропустити.")],
+        ].map(([title, desc]) => (
+          <div key={title as string} style={{ marginBottom:8, borderBottom:`1px solid rgba(255,255,255,0.05)`, paddingBottom:8 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:AMBER, marginBottom:3 }}>{title as string}</div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", lineHeight:1.4 }}>{desc as string}</div>
+          </div>
+        ))}
+      </div>
+
       <div style={card(GREEN)}>
         <div style={{ fontSize:12, fontWeight:800, color:GREEN, marginBottom:8 }}>
           {L(lang,"How it runs","Як це працює")}
         </div>
         {[
-          [L(lang,"🚀 Auto-start","🚀 Авто-старт"),
-           L(lang,"Warmup is queued automatically after Step 8 (Persist) in the Account Factory. No manual action needed.","Прогрів ставиться в чергу автоматично після Кроку 8 (Збереження) у Фабриці акаунтів. Жодних ручних дій не потрібно.")],
+          [L(lang,"🚀 Auto-start (Warmup All mode)","🚀 Авто-старт (режим «Прогріти всі»)"),
+           L(lang,"Warmup is queued automatically after Step 8 (Persist) in the Account Factory when 'Warmup All' mode is selected.","Прогрів ставиться в чергу автоматично після Кроку 8 (Збереження) у Фабриці акаунтів при виборі режиму 'Прогріти всі'.")],
           [L(lang,"⏱ Paced delays","⏱ Паузи між повідомленнями"),
            L(lang,"4–10 minute random delays between each message simulate natural human pacing. Burst-free and flood-safe.","4–10-хвилинні випадкові паузи між кожним повідомленням імітують природну поведінку людини. Без сплесків і флуду.")],
           [L(lang,"💬 35 message templates","💬 35 шаблонів повідомлень"),
