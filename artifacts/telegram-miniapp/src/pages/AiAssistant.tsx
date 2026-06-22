@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Bot, Sparkles, Cpu, Paperclip, X } from "lucide-react";
+import { Send, Bot, Sparkles, Cpu, Paperclip, X, Trash2 } from "lucide-react";
 import { getStoredSecret } from "./LockScreen";
 import { useI18n } from "../lib/i18n";
 
@@ -77,6 +77,22 @@ export function AiAssistantPage() {
   const bottomRef  = useRef<HTMLDivElement>(null);
   const inputRef   = useRef<HTMLTextAreaElement>(null);
   const fileRef    = useRef<HTMLInputElement>(null);
+
+  const GREETING: Message = {
+    role: "model",
+    text: lang === "ua"
+      ? "Привіт! Я PROMO-Fuel System Copilot. Можу допомогти з управлінням акаунтами, проксі SOCKS5 та моніторингом платформи. Запитай мене щось — наприклад, стан акаунтів або статус проксі. Також можеш прикріпити зображення для аналізу."
+      : "Hi! I'm PROMO-Fuel System Copilot. I can help with account management, SOCKS5 proxies, and platform monitoring. Ask me anything — for example, account status or proxy health. You can also attach an image for analysis.",
+  };
+
+  function resetChat() {
+    setMessages([GREETING]);
+    setHistory([]);
+    setInput("");
+    setAttached(null);
+    if (inputRef.current) inputRef.current.style.height = "auto";
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -178,7 +194,7 @@ export function AiAssistantPage() {
           }}>
             <Cpu size={18} color="#a78bfa" />
           </div>
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: "#e2e8ff", letterSpacing: "0.01em", display: "flex", alignItems: "center", gap: 6 }}>
               {lang === "ua" ? "AI Помічник" : "AI Assistant"}
               <Sparkles size={13} color="#a78bfa" style={{ opacity: 0.8 }} />
@@ -187,6 +203,33 @@ export function AiAssistantPage() {
               PROMO-Fuel System Copilot
             </div>
           </div>
+          {/* Clear chat button — only visible when there's a conversation */}
+          {messages.length > 1 && (
+            <button
+              onClick={resetChat}
+              disabled={loading}
+              title={lang === "ua" ? "Очистити чат" : "Clear chat"}
+              style={{
+                width: 34, height: 34, borderRadius: 11,
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: loading ? "not-allowed" : "pointer",
+                flexShrink: 0,
+                transition: "all 0.18s ease",
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLButtonElement).style.background = "rgba(239,68,68,0.12)";
+                (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(239,68,68,0.3)";
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.04)";
+                (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,0.1)";
+              }}
+            >
+              <Trash2 size={15} color="rgba(160,180,230,0.5)" />
+            </button>
+          )}
         </div>
       </div>
 
