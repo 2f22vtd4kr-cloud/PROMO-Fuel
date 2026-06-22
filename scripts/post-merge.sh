@@ -8,13 +8,15 @@ pip install -r requirements.txt --quiet 2>&1 || true
 pnpm install --frozen-lockfile
 
 # Fix missing .bin symlinks for vite in workspace packages
-# Search in the actual vite package location within the miniapp
-MINIAPP_VITE="$(pwd)/artifacts/telegram-miniapp/node_modules/vite/bin/vite.js"
-if [ -f "$MINIAPP_VITE" ]; then
+# vite lives in the pnpm store, not inside the miniapp's own node_modules
+PNPM_VITE="$(find "$(pwd)/node_modules/.pnpm" -name "vite.js" -path "*/vite/bin/vite.js" 2>/dev/null | head -1)"
+if [ -n "$PNPM_VITE" ]; then
   mkdir -p "$(pwd)/artifacts/telegram-miniapp/node_modules/.bin"
-  ln -sf "$MINIAPP_VITE" "$(pwd)/artifacts/telegram-miniapp/node_modules/.bin/vite"
-  chmod +x "$(pwd)/artifacts/telegram-miniapp/node_modules/.bin/vite"
-  echo "Linked vite for telegram-miniapp"
+  ln -sf "$PNPM_VITE" "$(pwd)/artifacts/telegram-miniapp/node_modules/.bin/vite"
+  chmod +x "$PNPM_VITE"
+  echo "Linked vite for telegram-miniapp: $PNPM_VITE"
+else
+  echo "WARNING: vite not found in pnpm store — run pnpm install first"
 fi
 
 # Rebuild better-sqlite3 native module if needed
