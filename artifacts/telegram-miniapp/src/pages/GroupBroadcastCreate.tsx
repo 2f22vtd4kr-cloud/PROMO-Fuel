@@ -151,7 +151,7 @@ function ProxyParserSection({
             onClick={() => setShowParsed(s => !s)}
             style={{ background: "none", border: "none", cursor: "pointer", fontSize: 10, color: "#2de897", fontWeight: 700, display: "flex", alignItems: "center", gap: 4, padding: 0 }}
           >
-            <CheckCircle size={10} />{parsed.length} распознано
+            <CheckCircle size={10} />{parsed.length} розпізнано
           </button>
         )}
       </div>
@@ -167,7 +167,7 @@ function ProxyParserSection({
 
       {hasErrors && (
         <div style={{ fontSize: 10, color: "#ff6b7a", marginTop: 4 }}>
-          Не удалось распознать ни одного прокси. Поддерживаемые форматы: socks5://user:pass@host:port, host:port:user:pass
+          Не вдалося розпізнати жодного проксі. Підтримувані формати: socks5://user:pass@host:port, host:port:user:pass
         </div>
       )}
 
@@ -196,6 +196,7 @@ function ScheduleSection({
   firstSendAt: string;
   onChangeFirstSend: (v: string) => void;
 }) {
+  const { lang } = useI18n();
   function setQuickTime(offsetMinutes: number) {
     const d = new Date(Date.now() + offsetMinutes * 60_000);
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -216,7 +217,7 @@ function ScheduleSection({
   return (
     <div>
       <div style={{ fontSize: 10, color: TG.muted, marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
-        <Calendar size={10} />Первая отправка (необяз.)
+        <Calendar size={10} />{lang === "ua" ? "Перший відправ (необов.)" : "First send (opt.)"}
       </div>
 
       <input
@@ -242,7 +243,7 @@ function ScheduleSection({
             onClick={() => { onChangeFirstSend(""); haptic.light(); }}
             style={{ fontSize: 10, padding: "4px 10px", borderRadius: 20, border: "1px solid rgba(255,107,122,0.25)", background: "rgba(255,107,122,0.07)", color: "#ff6b7a", cursor: "pointer", fontWeight: 600 }}
           >
-            Сбросить
+            {lang === "ua" ? "Скинути" : "Reset"}
           </button>
         )}
       </div>
@@ -250,7 +251,7 @@ function ScheduleSection({
       {firstSendAt && (
         <div style={{ marginTop: 6, fontSize: 10, color: "#2de897", background: "rgba(45,232,151,0.07)", border: "1px solid rgba(45,232,151,0.18)", borderRadius: 8, padding: "5px 10px", display: "flex", alignItems: "center", gap: 5 }}>
           <Calendar size={10} />
-          Первая отправка: {new Date(firstSendAt).toLocaleString("uk-UA")}
+          {lang === "ua" ? "Перший відправ:" : "First send:"} {new Date(firstSendAt).toLocaleString("uk-UA")}
         </div>
       )}
     </div>
@@ -386,10 +387,10 @@ export function GroupBroadcastCreatePage({
   }
 
   async function submit() {
-    if (!name.trim())   { setError("Введите название"); return; }
-    if (!text.trim())   { setError("Введите текст сообщения"); return; }
-    if (!accountId)     { setError("Выберите аккаунт-отправитель"); return; }
-    if (!groups.length) { setError("Выберите хотя бы одну группу"); return; }
+    if (!name.trim())   { setError(lang === "ua" ? "Введіть назву" : "Enter name"); return; }
+    if (!text.trim())   { setError(lang === "ua" ? "Введіть текст повідомлення" : "Enter message text"); return; }
+    if (!accountId)     { setError(lang === "ua" ? "Оберіть акаунт-відправник" : "Select sender account"); return; }
+    if (!groups.length) { setError(lang === "ua" ? "Оберіть хоча б одну групу" : "Select at least one group"); return; }
 
     haptic.medium(); setBusy(true); setError(null);
 
@@ -423,7 +424,7 @@ export function GroupBroadcastCreatePage({
       haptic.success();
       onDone();
     } catch (e: unknown) {
-      setError((e as Error).message ?? "Ошибка сохранения");
+      setError((e as Error).message ?? (lang === "ua" ? "Помилка збереження" : "Save error"));
       haptic.error();
     }
     setBusy(false);
@@ -505,7 +506,7 @@ export function GroupBroadcastCreatePage({
           <GlassCard style={{ padding: 16 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: TG.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                ГРУППЫ ({groups.length} выбрано)
+                {lang === "ua" ? `ГРУПИ (${groups.length} обрано)` : `GROUPS (${groups.length} selected)`}
               </div>
               <button
                 onClick={refreshGroups}
@@ -513,7 +514,7 @@ export function GroupBroadcastCreatePage({
                 style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", color: "#6ba8e5", fontSize: 11, padding: 0 }}
               >
                 <RefreshCw size={12} style={{ animation: loadingGroups ? "spin 0.8s linear infinite" : "none" }} />
-                Обновить
+                {lang === "ua" ? "Оновити" : "Refresh"}
               </button>
             </div>
 
@@ -523,7 +524,7 @@ export function GroupBroadcastCreatePage({
               </div>
             ) : acctGroups.length === 0 ? (
               <div style={{ fontSize: 12, color: TG.muted, textAlign: "center", padding: "12px 0" }}>
-                Групп не найдено. Нажмите «Обновить».
+                {lang === "ua" ? "Груп не знайдено. Натисніть «Оновити»." : "No groups found. Click «Refresh»."}
               </div>
             ) : (
               <>
@@ -532,13 +533,13 @@ export function GroupBroadcastCreatePage({
                     onClick={() => setGroups(acctGroups.map(g => g.group_id))}
                     style={{ flex: 1, padding: "5px", background: "rgba(45,232,151,0.08)", border: "1px solid rgba(45,232,151,0.25)", borderRadius: 8, fontSize: 10, color: "#2de897", fontWeight: 700, cursor: "pointer" }}
                   >
-                    Выбрать все ({acctGroups.length})
+                    {lang === "ua" ? `Обрати всі (${acctGroups.length})` : `Select all (${acctGroups.length})`}
                   </button>
                   <button
                     onClick={() => setGroups([])}
                     style={{ flex: 1, padding: "5px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 10, color: TG.muted, fontWeight: 700, cursor: "pointer" }}
                   >
-                    Снять выделение
+                    {lang === "ua" ? "Зняти виділення" : "Deselect all"}
                   </button>
                 </div>
                 <div style={{ maxHeight: 240, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
@@ -583,7 +584,7 @@ export function GroupBroadcastCreatePage({
 
           {showAdvanced && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
-              <Field value={mediaUrl} onChange={setMediaUrl} placeholder="URL медиафайла (необяз.)" />
+              <Field value={mediaUrl} onChange={setMediaUrl} placeholder={lang === "ua" ? "URL медіафайлу (необов.)" : "Media file URL (opt.)"} />
 
               {/* Proxy parser */}
               <div style={{ background: "rgba(107,168,229,0.04)", border: "1px solid rgba(107,168,229,0.14)", borderRadius: 12, padding: "12px 12px" }}>
@@ -595,7 +596,7 @@ export function GroupBroadcastCreatePage({
 
               {/* Anti-ban delays */}
               <div style={{ background: "rgba(255,107,122,0.05)", border: "1px solid rgba(255,107,122,0.15)", borderRadius: 12, padding: "10px 12px" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#ff6b7a", marginBottom: 10, letterSpacing: "0.06em" }}>⚡ АНТИ-БАН</div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#ff6b7a", marginBottom: 10, letterSpacing: "0.06em" }}>⚡ {lang === "ua" ? "АНТИ-БАН" : "ANTI-BAN"}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
                   <div>
                     <div style={{ fontSize: 10, color: TG.muted, marginBottom: 4 }}>{t.groups.minDelay}</div>
@@ -642,7 +643,7 @@ export function GroupBroadcastCreatePage({
                   <InlineButton key={i} text={b.text} url={b.url} onRemove={() => setButtons(bs => bs.filter((_, j) => j !== i))} />
                 ))}
                 <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                  <input value={btnText} onChange={e => setBtnText(e.target.value)} placeholder="Текст кнопки"
+                  <input value={btnText} onChange={e => setBtnText(e.target.value)} placeholder={lang === "ua" ? "Текст кнопки" : "Button text"}
                     style={{ flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 10, padding: "8px 10px", fontSize: 12, color: TG.text, outline: "none" }} />
                   <input value={btnUrl} onChange={e => setBtnUrl(e.target.value)} placeholder="URL"
                     style={{ flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 10, padding: "8px 10px", fontSize: 12, color: TG.text, outline: "none" }} />
@@ -652,7 +653,7 @@ export function GroupBroadcastCreatePage({
                 </div>
               </div>
 
-              <Field value={notes} onChange={setNotes} placeholder="Заметки (необяз.)" />
+              <Field value={notes} onChange={setNotes} placeholder={lang === "ua" ? "Нотатки (необов.)" : "Notes (opt.)"} />
             </div>
           )}
         </GlassCard>

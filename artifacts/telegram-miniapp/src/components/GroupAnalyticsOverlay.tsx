@@ -190,7 +190,7 @@ export function GroupAnalyticsOverlay({
                       <div style={{ width: 6, height: 6, borderRadius: "50%", background: sc, flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 11, color: TG.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
-                        {c.last_sent_at && <div style={{ fontSize: 9, color: TG.muted, marginTop: 1 }}>{timeAgo(c.last_sent_at)} назад</div>}
+                        {c.last_sent_at && <div style={{ fontSize: 9, color: TG.muted, marginTop: 1 }}>{timeAgo(c.last_sent_at)}</div>}
                       </div>
                       <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
                         <span style={{ fontSize: 10, color: "#2de897" }}>✓{c.sent}</span>
@@ -211,7 +211,7 @@ export function GroupAnalyticsOverlay({
             {data.recent_errors.length > 0 && (
               <div style={{ borderRadius: 14, background: "rgba(255,107,122,0.04)", border: "1px solid rgba(255,107,122,0.14)", overflow: "hidden" }}>
                 <div style={{ padding: "10px 12px 6px", fontSize: 9, color: "#ff6b7a", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                  Последние ошибки ({data.recent_errors.length})
+                  Останні помилки ({data.recent_errors.length})
                 </div>
                 {data.recent_errors.slice(0, 6).map((e, i) => (
                   <div key={i} style={{
@@ -228,7 +228,7 @@ export function GroupAnalyticsOverlay({
                       <div style={{ fontSize: 10, color: e.status === "banned" ? "#ffc946" : "#ff6b7a", wordBreak: "break-word" }}>
                         {e.error ?? e.status}
                       </div>
-                      <div style={{ fontSize: 9, color: TG.muted, marginTop: 1 }}>{timeAgo(e.sent_at)} назад</div>
+                      <div style={{ fontSize: 9, color: TG.muted, marginTop: 1 }}>{timeAgo(e.sent_at)}</div>
                     </div>
                   </div>
                 ))}
@@ -237,7 +237,7 @@ export function GroupAnalyticsOverlay({
 
             {data.total_sends === 0 && (
               <div style={{ textAlign: "center", padding: "24px 0", color: TG.muted, fontSize: 13 }}>
-                Нет данных для этой группы
+                Немає даних для цієї групи
               </div>
             )}
           </div>

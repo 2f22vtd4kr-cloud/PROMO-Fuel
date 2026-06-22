@@ -216,9 +216,9 @@ function WorkerCard({ worker, index = 0, onDelete, accounts = [], accountStats =
 
     {showConfirm && (
       <ConfirmModal
-        title={`Удалить воркер?`}
-        description={`"${worker.worker_id}" будет удалён без возможности восстановления.`}
-        confirmLabel="Да, удалить"
+        title={`Видалити воркер?`}
+        description={`"${worker.worker_id}" буде видалено без можливості відновлення.`}
+        confirmLabel="Так, видалити"
         busy={busy}
         onConfirm={remove}
         onCancel={() => setShowConfirm(false)}
@@ -422,14 +422,14 @@ function AccountRow({ account, sendsToday }: { account: SenderAccount; sendsToda
             {account.label && <span style={{ marginLeft: 5, fontSize: 10, color: TG.muted }}>({account.label})</span>}
           </div>
           <div style={{ fontSize: 10, color: TG.muted, marginTop: 1 }}>
-            {locked ? <span style={{ color: "#ffc946" }}>🔒 {account.locked_by}</span> : <span style={{ color: "#2de897" }}>свободен</span>}
+            {locked ? <span style={{ color: "#ffc946" }}>🔒 {account.locked_by}</span> : <span style={{ color: "#2de897" }}>вільний</span>}
             {proxyDisplay !== "—" && (
               <span style={{ marginLeft: 8 }}>
                 🌐 {proxyDisplay}
                 {account.proxy_index !== undefined && account.proxy_index > 0 && <span style={{ opacity: 0.6 }}> [#{account.proxy_index}]</span>}
               </span>
             )}
-            {account.last_used_at && <span style={{ marginLeft: 8, opacity: 0.65 }}>{timeAgo(account.last_used_at)} назад</span>}
+            {account.last_used_at && <span style={{ marginLeft: 8, opacity: 0.65 }}>{timeAgo(account.last_used_at)}</span>}
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
@@ -440,7 +440,7 @@ function AccountRow({ account, sendsToday }: { account: SenderAccount; sendsToda
             <span style={{ fontSize: 8, color: TG.muted }}>
               <span style={{ color: "#2de897" }}>✓{sendsToday.ok}</span>
               {sendsToday.failed > 0 && <span style={{ color: "#ff6b7a", marginLeft: 3 }}>✗{sendsToday.failed}</span>}
-              {" сегодня"}
+              {" сьогодні"}
             </span>
           )}
           <span style={{ fontSize: 8, color: TG.muted, opacity: 0.5 }}>{expanded ? "▲" : "▼"}</span>
@@ -452,23 +452,23 @@ function AccountRow({ account, sendsToday }: { account: SenderAccount; sendsToda
         <div style={{ borderTop: `1px solid ${color}18`, padding: "10px 12px", background: "rgba(0,0,0,0.12)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: "#ff6b7a", display: "flex", alignItems: "center", gap: 5 }}>
-              ⛔ Заблокированные группы
+              ⛔ Заблоковані групи
               {bannedGroups.length > 0 && (
                 <span style={{ background: "rgba(255,107,122,0.18)", border: "1px solid rgba(255,107,122,0.35)", borderRadius: 20, padding: "1px 6px" }}>{bannedGroups.length}</span>
               )}
             </span>
             <button onClick={(e) => { e.stopPropagation(); loadBanned(); }} style={{ fontSize: 9, color: "#6ba8e5", background: "rgba(107,168,229,0.10)", border: "1px solid rgba(107,168,229,0.25)", borderRadius: 8, padding: "3px 7px", cursor: "pointer" }}>
-              обновить
+              оновити
             </button>
           </div>
 
           {banLoading && (
-            <div style={{ fontSize: 10, color: TG.muted, textAlign: "center", padding: "8px 0" }}>загрузка…</div>
+            <div style={{ fontSize: 10, color: TG.muted, textAlign: "center", padding: "8px 0" }}>завантаження…</div>
           )}
 
           {!banLoading && bannedGroups.length === 0 && (
             <div style={{ fontSize: 10, color: TG.muted, textAlign: "center", padding: "8px 0", opacity: 0.6 }}>
-              Нет заблокированных групп ✓
+              Немає заблокованих груп ✓
             </div>
           )}
 
@@ -479,7 +479,7 @@ function AccountRow({ account, sendsToday }: { account: SenderAccount; sendsToda
                   {g.group_title || g.group_id}
                 </div>
                 <div style={{ fontSize: 9, color: "#ff6b7a", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {g.ban_reason || "Заблокирован"}
+                  {g.ban_reason || "Заблоковано"}
                 </div>
                 {g.banned_at && (
                   <div style={{ fontSize: 8, color: TG.muted, marginTop: 1 }}>
@@ -492,7 +492,7 @@ function AccountRow({ account, sendsToday }: { account: SenderAccount; sendsToda
                 disabled={liftingId === g.group_id}
                 style={{ fontSize: 9, fontWeight: 700, color: "#2de897", background: "rgba(45,232,151,0.10)", border: "1px solid rgba(45,232,151,0.25)", borderRadius: 8, padding: "4px 8px", cursor: "pointer", opacity: liftingId === g.group_id ? 0.5 : 1, flexShrink: 0 }}
               >
-                {liftingId === g.group_id ? "…" : "Разблокировать"}
+                {liftingId === g.group_id ? "…" : "Розблокувати"}
               </button>
             </div>
           ))}
@@ -535,8 +535,8 @@ function RateLimitSummaryStrip({ accounts }: { accounts: SenderAccount[] }) {
     <GlassCard style={{ padding: "12px 14px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
         <Timer size={12} color="#6ba8e5" />
-        <span style={{ fontSize: 11, fontWeight: 700, color: "#6ba8e5" }}>Скорость / мин — все аккаунты</span>
-        <span style={{ marginLeft: "auto", fontSize: 9, color: TG.muted }}>обновл. 15с</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#6ba8e5" }}>Швидкість / хв — усі акаунти</span>
+        <span style={{ marginLeft: "auto", fontSize: 9, color: TG.muted }}>оновл. 15с</span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
         {activeAccounts.map(a => {
@@ -749,7 +749,7 @@ export function WorkersPage() {
               <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>{t.nav.workers}</div>
               {aliveWorkers.length > 0 && (
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#2de897", background: "rgba(45,232,151,0.10)", borderRadius: 20, padding: "2px 9px" }}>
-                  {aliveWorkers.length} активных
+                  {aliveWorkers.length} активних
                 </span>
               )}
             </div>
@@ -788,7 +788,7 @@ export function WorkersPage() {
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                 <AlertTriangle size={14} color="#ff6b7a" />
                 <span style={{ fontSize: 12, fontWeight: 800, color: "#ff6b7a" }}>
-                  {deadWorkers.length === 1 ? "Воркер упал" : `${deadWorkers.length} воркера упали`} — аварийное завершение
+                  {deadWorkers.length === 1 ? "Воркер впав" : `${deadWorkers.length} воркери впали`} — аварійне завершення
                 </span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -812,11 +812,11 @@ export function WorkersPage() {
                       {/* Rate-limit indicator */}
                       <div style={{ marginBottom: 8 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                          <span style={{ fontSize: 10, color: TG.muted }}>Рестартов</span>
+                          <span style={{ fontSize: 10, color: TG.muted }}>Рестартів</span>
                           <span style={{ fontSize: 10, fontWeight: 700, color: barColor }}>
                             {crashCount} / {MAX_CRASHES}
-                            {rateLimitTripped && <span style={{ marginLeft: 4, color: "#ff6b7a" }}>⚠ лимит исчерпан</span>}
-                            {!rateLimitTripped && pct >= 60 && <span style={{ marginLeft: 4, color: "#ffc946" }}>⚡ почти лимит</span>}
+                            {rateLimitTripped && <span style={{ marginLeft: 4, color: "#ff6b7a" }}>⚠ ліміт вичерпано</span>}
+                            {!rateLimitTripped && pct >= 60 && <span style={{ marginLeft: 4, color: "#ffc946" }}>⚡ майже ліміт</span>}
                           </span>
                         </div>
                         <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
@@ -834,14 +834,14 @@ export function WorkersPage() {
                       {/* Crash history timeline */}
                       {wCrashes.length > 0 && (
                         <div>
-                          <div style={{ fontSize: 9, fontWeight: 700, color: TG.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 5 }}>История рестартов</div>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: TG.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 5 }}>Історія рестартів</div>
                           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                             {wCrashes.slice(0, 5).map((c, idx) => (
                               <div key={c.id} style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
                                 <div style={{ marginTop: 3, width: 5, height: 5, borderRadius: "50%", flexShrink: 0, background: idx === 0 ? "#ff6b7a" : "rgba(255,107,122,0.40)", boxShadow: idx === 0 ? "0 0 6px rgba(255,107,122,0.5)" : "none" }} />
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontSize: 10, color: TG.textSecondary }}>
-                                    <span style={{ color: idx === 0 ? "#ffc946" : TG.muted }}>{timeAgo(c.crashed_at)} назад</span>
+                                    <span style={{ color: idx === 0 ? "#ffc946" : TG.muted }}>{timeAgo(c.crashed_at)}</span>
                                     <span style={{ marginLeft: 6, color: "#ff6b7a", opacity: 0.7 }}>#{c.restart_num}</span>
                                     {c.error && (
                                       <span style={{ display: "block", fontSize: 9, fontFamily: "monospace", color: "rgba(255,107,122,0.60)", marginTop: 1, wordBreak: "break-all" }}>
@@ -947,7 +947,7 @@ export function WorkersPage() {
               {deadWorkers.length > 0 && (
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: TG.muted, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
-                    Остановленные ({deadWorkers.length})
+                    Зупинені ({deadWorkers.length})
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {deadWorkers.map((w, i) => <WorkerCard key={w.worker_id} worker={w} index={aliveWorkers.length + i} onDelete={load} />)}
@@ -964,7 +964,7 @@ export function WorkersPage() {
                   <div style={{ display: "flex", gap: 5 }}>
                     {(["all", "pending", "claimed", "failed"] as const).map(s => (
                       <button key={s} onClick={() => setTaskTab(s)} style={{ fontSize: 10, padding: "3px 8px", borderRadius: 20, border: `1px solid ${taskTab === s ? "#6ba8e5" : "rgba(255,255,255,0.11)"}`, background: taskTab === s ? "rgba(107,168,229,0.15)" : "transparent", color: taskTab === s ? "#6ba8e5" : TG.muted, cursor: "pointer", fontWeight: 600 }}>
-                        {s === "all" ? "Все" : s === "pending" ? "Ожид." : s === "claimed" ? "В работе" : "Ошибки"}
+                        {s === "all" ? "Всі" : s === "pending" ? "Черга" : s === "claimed" ? "В роботі" : "Помилки"}
                       </button>
                     ))}
                   </div>

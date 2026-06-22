@@ -12,10 +12,10 @@ import { haptic } from "../lib/haptics";
 
 function timeAgo(iso: string): string {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60)  return `${s}с назад`;
-  if (s < 3600) return `${Math.floor(s / 60)}м назад`;
-  if (s < 86400) return `${Math.floor(s / 3600)}ч назад`;
-  return `${Math.floor(s / 86400)}д назад`;
+  if (s < 60)  return `${s}с тому`;
+  if (s < 3600) return `${Math.floor(s / 60)}хв тому`;
+  if (s < 86400) return `${Math.floor(s / 3600)}г тому`;
+  return `${Math.floor(s / 86400)}д тому`;
 }
 
 function uptime(iso: string): string {
@@ -109,7 +109,7 @@ function TaskRow({ task }: { task: Task & { campaign_name?: string } }) {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 9, fontWeight: 700, color: col, background: `${col}14`, borderRadius: 6, padding: "1px 6px" }}>{task.status.toUpperCase()}</span>
-          {task.attempts > 1 && <span style={{ fontSize: 9, color: "#ffc946" }}>попыток: {task.attempts}/{task.max_attempts}</span>}
+          {task.attempts > 1 && <span style={{ fontSize: 9, color: "#ffc946" }}>спроб: {task.attempts}/{task.max_attempts}</span>}
         </div>
         {task.error && (
           <div style={{ marginTop: 4, fontSize: 9, color: "#ff6b7a", lineHeight: 1.4, wordBreak: "break-word", opacity: 0.85 }}>
@@ -169,10 +169,10 @@ function HeartbeatAge({ lastHeartbeat }: { lastHeartbeat: string | undefined }) 
       <Radio size={13} color={col} />
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: col }}>
-          {alive ? "Живой" : "Мёртвый"} — пульс {secs}с назад
+          {alive ? "Живий" : "Мертвий"} — пульс {secs}с тому
         </div>
         <div style={{ fontSize: 9, color: TG.muted, marginTop: 2 }}>
-          порог: &lt;90с = живой | последний в {lastHeartbeat ? fmtTime(lastHeartbeat) : "—"}
+          поріг: &lt;90с = живий | останній о {lastHeartbeat ? fmtTime(lastHeartbeat) : "—"}
         </div>
       </div>
       <div style={{ display: "flex", gap: 2 }}>
@@ -212,7 +212,7 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
       setData(d);
       setError("");
     } catch (e: unknown) {
-      setError((e as Error).message ?? "Ошибка загрузки");
+      setError((e as Error).message ?? "Помилка завантаження");
     } finally {
       setLoading(false);
     }
@@ -281,7 +281,7 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
             </span>
             {w?.pid && <span style={{ fontSize: 9, color: TG.muted }}>PID {w.pid}</span>}
             {w?.crash_count !== undefined && w.crash_count > 0 && (
-              <span style={{ fontSize: 9, color: "#ffc946" }}>💥 {w.crash_count} крашей</span>
+              <span style={{ fontSize: 9, color: "#ffc946" }}>💥 {w.crash_count} крашів</span>
             )}
           </div>
         </div>
@@ -289,7 +289,7 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
           <button
             onClick={() => { haptic.light(); load(); }}
             style={{ width: 30, height: 30, borderRadius: 9, background: "rgba(107,168,229,0.10)", border: "1px solid rgba(107,168,229,0.25)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
-            title="Обновить"
+            title="Оновити"
           >
             <RefreshCw size={13} color="#6ba8e5" />
           </button>
@@ -308,7 +308,7 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
         {loading && !data && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 0", gap: 10 }}>
             <div style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${TG.green}30`, borderTopColor: TG.green, animation: "spin 0.7s linear infinite" }} />
-            <span style={{ fontSize: 12, color: TG.muted }}>Загрузка данных воркера…</span>
+            <span style={{ fontSize: 12, color: TG.muted }}>Завантаження даних воркера…</span>
           </div>
         )}
 
@@ -326,11 +326,11 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
 
             {/* ── Vitals ── */}
             <div>
-              <SectionHeader icon={<Zap size={13} />} label="Показатели" />
+              <SectionHeader icon={<Zap size={13} />} label="Показники" />
               <div style={{ display: "flex", gap: 6 }}>
-                <VitalPill label="Задач выполнено" value={String(w.tasks_done)} color="#2de897" />
-                <VitalPill label="Ошибок" value={String(w.tasks_failed)} color={w.tasks_failed > 0 ? "#ff6b7a" : TG.muted} />
-                <VitalPill label="Крашей" value={String(w.crash_count ?? 0)} color={(w.crash_count ?? 0) > 0 ? "#ffc946" : TG.muted} />
+                <VitalPill label="Задач виконано" value={String(w.tasks_done)} color="#2de897" />
+                <VitalPill label="Помилок" value={String(w.tasks_failed)} color={w.tasks_failed > 0 ? "#ff6b7a" : TG.muted} />
+                <VitalPill label="Крашів" value={String(w.crash_count ?? 0)} color={(w.crash_count ?? 0) > 0 ? "#ffc946" : TG.muted} />
                 <VitalPill label="Аптайм" value={w.started_at ? uptime(w.started_at) : "—"} color="#6ba8e5" />
               </div>
             </div>
@@ -338,11 +338,11 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
             {/* ── Active task ── */}
             {w.current_task && alive && (
               <div>
-                <SectionHeader icon={<Activity size={13} />} label="Активная задача" />
+                <SectionHeader icon={<Activity size={13} />} label="Активне завдання" />
                 <div style={{ padding: "10px 14px", borderRadius: 12, background: "rgba(107,168,229,0.07)", border: "1px solid rgba(107,168,229,0.22)", display: "flex", alignItems: "center", gap: 10 }}>
                   <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#6ba8e5", animation: "pulse 1.2s ease-in-out infinite", flexShrink: 0 }} />
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#6ba8e5" }}>Задача #{w.current_task}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#6ba8e5" }}>Завдання #{w.current_task}</div>
                     <div style={{ fontSize: 9, color: TG.muted, marginTop: 2 }}>Статус: {w.status}</div>
                   </div>
                 </div>
@@ -352,7 +352,7 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
             {/* ── Last error ── */}
             {w.last_error && (
               <div>
-                <SectionHeader icon={<AlertTriangle size={13} />} label="Последняя ошибка" />
+                <SectionHeader icon={<AlertTriangle size={13} />} label="Остання помилка" />
                 <div style={{ padding: "10px 12px", borderRadius: 12, background: "rgba(255,107,122,0.07)", border: "1px solid rgba(255,107,122,0.22)", fontSize: 11, color: "#ff6b7a", fontFamily: "monospace", lineHeight: 1.5, wordBreak: "break-word" }}>
                   {w.last_error}
                 </div>
@@ -361,7 +361,7 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
 
             {/* ── Linked Telegram account ── */}
             <div>
-              <SectionHeader icon={<Shield size={13} />} label="Привязанный аккаунт" />
+              <SectionHeader icon={<Shield size={13} />} label="Прив'язаний акаунт" />
               {acc ? (
                 <div style={{ borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)", overflow: "hidden" }}>
                   {/* Account header row */}
@@ -383,7 +383,7 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
                         border: `1px solid ${acc.session_file ? "rgba(45,232,151,0.3)" : "rgba(255,201,70,0.3)"}`,
                         borderRadius: 20, padding: "2px 8px",
                       }}>
-                        {acc.session_file ? "✓ АВТОРИЗОВАН" : "НЕТ СЕССИИ"}
+                        {acc.session_file ? "✓ АВТОРИЗОВАНО" : "НЕМАЄ СЕСІЇ"}
                       </span>
                       <span style={{ fontSize: 9, color: TG.muted }}>{String(acc.status).toUpperCase()}</span>
                     </div>
@@ -393,8 +393,8 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
                   <div style={{ padding: "10px 14px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
                     {[
                       { label: "API ID", value: acc.api_id ? String(acc.api_id) : "—" },
-                      { label: "Proxy", value: acc.proxy ? "✓" : "Нет" },
-                      { label: "Активен", value: acc.is_active ? "Да" : "Нет" },
+                      { label: "Proxy", value: acc.proxy ? "✓" : "Немає" },
+                      { label: "Активний", value: acc.is_active ? "Так" : "Ні" },
                     ].map(r => (
                       <div key={r.label} style={{ textAlign: "center" }}>
                         <div style={{ fontSize: 12, fontWeight: 700, color: TG.text }}>{r.value}</div>
@@ -406,7 +406,7 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
                   {/* Quota bar */}
                   <div style={{ padding: "10px 14px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                      <span style={{ fontSize: 10, color: TG.muted }}>Дневной лимит</span>
+                      <span style={{ fontSize: 10, color: TG.muted }}>Денний ліміт</span>
                       <span style={{ fontSize: 11, fontWeight: 800, color: quotaColor }}>
                         {String(acc.sent_today ?? 0)} / {String(acc.daily_limit ?? "∞")} · {quotaPct}%
                       </span>
@@ -416,8 +416,8 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
                     </div>
                     {data.sends_today && (
                       <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-                        <span style={{ fontSize: 10, color: "#2de897" }}>✓ {data.sends_today.ok} отправлено сегодня</span>
-                        {data.sends_today.failed > 0 && <span style={{ fontSize: 10, color: "#ff6b7a" }}>✗ {data.sends_today.failed} ошибок</span>}
+                        <span style={{ fontSize: 10, color: "#2de897" }}>✓ {data.sends_today.ok} відправлено сьогодні</span>
+                        {data.sends_today.failed > 0 && <span style={{ fontSize: 10, color: "#ff6b7a" }}>✗ {data.sends_today.failed} помилок</span>}
                       </div>
                     )}
                     {(acc as any).flood_wait_until && (
@@ -429,36 +429,36 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
                 </div>
               ) : (
                 <div style={{ padding: "14px", borderRadius: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", fontSize: 12, color: TG.muted, textAlign: "center" }}>
-                  Нет привязанного аккаунта
+                  Немає прив'язаного акаунта
                 </div>
               )}
             </div>
 
             {/* ── Recent tasks (per-worker) ── */}
             <div>
-              <SectionHeader icon={<Database size={13} />} label="Задачи воркера" count={totalTasks} />
+              <SectionHeader icon={<Database size={13} />} label="Завдання воркера" count={totalTasks} />
 
               {/* mini stats */}
               {totalTasks > 0 && (
                 <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                   <div style={{ flex: 1, padding: "8px 10px", borderRadius: 10, background: "rgba(45,232,151,0.07)", border: "1px solid rgba(45,232,151,0.2)", textAlign: "center" }}>
                     <div style={{ fontSize: 14, fontWeight: 800, color: "#2de897" }}>{doneTasks}</div>
-                    <div style={{ fontSize: 9, color: TG.muted }}>Успешно</div>
+                    <div style={{ fontSize: 9, color: TG.muted }}>Успішно</div>
                   </div>
                   <div style={{ flex: 1, padding: "8px 10px", borderRadius: 10, background: "rgba(255,107,122,0.07)", border: "1px solid rgba(255,107,122,0.2)", textAlign: "center" }}>
                     <div style={{ fontSize: 14, fontWeight: 800, color: "#ff6b7a" }}>{failedTasks}</div>
-                    <div style={{ fontSize: 9, color: TG.muted }}>Ошибок</div>
+                    <div style={{ fontSize: 9, color: TG.muted }}>Помилок</div>
                   </div>
                   <div style={{ flex: 1, padding: "8px 10px", borderRadius: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)", textAlign: "center" }}>
                     <div style={{ fontSize: 14, fontWeight: 800, color: "#ffc946" }}>{totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0}%</div>
-                    <div style={{ fontSize: 9, color: TG.muted }}>Успех</div>
+                    <div style={{ fontSize: 9, color: TG.muted }}>Успіх</div>
                   </div>
                 </div>
               )}
 
               {tasks.length === 0 ? (
                 <div style={{ padding: "14px", borderRadius: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", fontSize: 12, color: TG.muted, textAlign: "center" }}>
-                  Задачи не найдены
+                  Завдань не знайдено
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
@@ -469,11 +469,11 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
 
             {/* ── Crash history ── */}
             <div>
-              <SectionHeader icon={<AlertTriangle size={13} />} label="История крашей" count={crashes.length} />
+              <SectionHeader icon={<AlertTriangle size={13} />} label="Історія крашів" count={crashes.length} />
               {crashes.length === 0 ? (
                 <div style={{ padding: "10px 14px", borderRadius: 12, background: "rgba(45,232,151,0.05)", border: "1px solid rgba(45,232,151,0.18)", display: "flex", alignItems: "center", gap: 8 }}>
                   <CheckCircle size={14} color="#2de897" />
-                  <span style={{ fontSize: 12, color: "#2de897" }}>Крашей не зафиксировано</span>
+                  <span style={{ fontSize: 12, color: "#2de897" }}>Крашів не зафіксовано</span>
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
@@ -484,19 +484,19 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
 
             {/* ── Telethon session info ── */}
             <div>
-              <SectionHeader icon={<Radio size={13} />} label="Telethon / Сессия" />
+              <SectionHeader icon={<Radio size={13} />} label="Telethon / Сесія" />
               <div style={{ borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)", overflow: "hidden" }}>
                 {[
                   { label: "Воркер ID", value: workerId, mono: true },
-                  { label: "PID процесса", value: w.pid ? `${w.pid}` : "— (мёртв)", color: alive ? TG.text : "#ff6b7a" },
-                  { label: "Запущен", value: w.started_at ? fmtDateTime(w.started_at) : "—" },
-                  { label: "Последний пульс", value: w.last_heartbeat ? fmtDateTime(w.last_heartbeat) : "—" },
-                  { label: "Возраст пульса", value: w.heartbeat_age_seconds !== undefined ? `${w.heartbeat_age_seconds}с` : "—", color: alive ? "#2de897" : "#ff6b7a" },
+                  { label: "PID процесу", value: w.pid ? `${w.pid}` : "— (мертвий)", color: alive ? TG.text : "#ff6b7a" },
+                  { label: "Запущено", value: w.started_at ? fmtDateTime(w.started_at) : "—" },
+                  { label: "Останній пульс", value: w.last_heartbeat ? fmtDateTime(w.last_heartbeat) : "—" },
+                  { label: "Вік пульсу", value: w.heartbeat_age_seconds !== undefined ? `${w.heartbeat_age_seconds}с` : "—", color: alive ? "#2de897" : "#ff6b7a" },
                   { label: "Статус", value: alive ? w.status : "dead", color },
-                  { label: "Задач выполнено", value: String(w.tasks_done), color: "#2de897" },
-                  { label: "Задач с ошибкой", value: String(w.tasks_failed), color: w.tasks_failed > 0 ? "#ff6b7a" : TG.muted },
-                  { label: "Крашей всего", value: String(w.crash_count ?? 0), color: (w.crash_count ?? 0) > 0 ? "#ffc946" : TG.muted },
-                  { label: "Команда запуска", value: `python worker.py ${workerId}`, mono: true, small: true },
+                  { label: "Задач виконано", value: String(w.tasks_done), color: "#2de897" },
+                  { label: "Задач з помилкою", value: String(w.tasks_failed), color: w.tasks_failed > 0 ? "#ff6b7a" : TG.muted },
+                  { label: "Крашів всього", value: String(w.crash_count ?? 0), color: (w.crash_count ?? 0) > 0 ? "#ffc946" : TG.muted },
+                  { label: "Команда запуску", value: `python worker.py ${workerId}`, mono: true, small: true },
                 ].map((row, i) => (
                   <div key={row.label} style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, padding: "9px 14px", borderBottom: i < 9 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
                     <span style={{ fontSize: 10, color: TG.muted, flexShrink: 0 }}>{row.label}</span>
@@ -525,7 +525,7 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
         <button
           onClick={restart}
           disabled={restartBusy || alive}
-          title={alive ? "Воркер уже запущен" : "Перезапустить"}
+          title={alive ? "Воркер вже запущено" : "Перезапустити"}
           style={{
             flex: 1, padding: "11px 0", borderRadius: 13,
             background: alive ? "rgba(255,255,255,0.04)" : "rgba(45,232,151,0.13)",
@@ -542,7 +542,7 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
           ) : (
             <RotateCcw size={13} />
           )}
-          {restartDone ? "Запущен!" : restartBusy ? "Запуск…" : "Перезапустить"}
+          {restartDone ? "Запущено!" : restartBusy ? "Запуск…" : "Перезапустити"}
         </button>
         <button
           onClick={copyCmd}
@@ -555,7 +555,7 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
           }}
         >
           <Copy size={13} />
-          Скопировать cmd
+          Скопіювати cmd
         </button>
         <button
           onClick={() => { haptic.light(); onClose(); onDelete(); }}
@@ -565,7 +565,7 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
             border: "1px solid rgba(255,107,122,0.28)",
             cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
           }}
-          title="Удалить воркер"
+          title="Видалити воркер"
         >
           <XCircle size={15} color="#ff6b7a" />
         </button>

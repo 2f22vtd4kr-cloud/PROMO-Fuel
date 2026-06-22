@@ -41,7 +41,7 @@ function FloodCountdown({ until, onClear }: { until: string; onClear: () => void
       border: `1px solid ${expired ? "rgba(45,232,151,0.3)" : "rgba(255,201,70,0.35)"}`,
       borderRadius: 20, padding: "2px 7px",
       cursor: "pointer",
-    }} onClick={onClear} title="Нажмите для сброса">
+    }} onClick={onClear} title="Натисніть для скидання">
       <Timer size={9} />
       {expired ? "ГОТОВО" : `FLOOD ${mm}:${ss}`}
       <XCircle size={9} style={{ opacity: 0.7 }} />
@@ -55,13 +55,13 @@ function AuthBadge({ status, sessionFile }: { status?: string; sessionFile?: str
   if (sessionFile) {
     return (
       <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, color: "#2de897", background: "rgba(45,232,151,0.12)", border: "1px solid rgba(45,232,151,0.3)", borderRadius: 20, padding: "2px 7px" }}>
-        <CheckCircle size={9} />АВТОРИЗОВАН
+        <CheckCircle size={9} />АВТОРИЗОВАНО
       </span>
     );
   }
   return (
     <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, color: "#ffc946", background: "rgba(255,201,70,0.12)", border: "1px solid rgba(255,201,70,0.3)", borderRadius: 20, padding: "2px 7px" }}>
-      <AlertCircle size={9} />НЕТ СЕССИИ
+      <AlertCircle size={9} />НЕМАЄ СЕСІЇ
     </span>
   );
 }
@@ -84,14 +84,14 @@ function TelethonAuthFlow({ acc, onDone }: { acc: SenderAccount; onDone: () => v
   const needsCreds = !acc.api_id || !acc.api_hash;
 
   async function saveCredsAndStart() {
-    if (!apiId || !apiHash) { setErrorMsg("Введите api_id и api_hash"); return; }
+    if (!apiId || !apiHash) { setErrorMsg("Введіть api_id та api_hash"); return; }
     haptic.medium(); setStep("sending"); setErrorMsg("");
     try {
       // Save credentials to account first
       await api.patchAccount(acc.id, { api_id: Number(apiId), api_hash: apiHash.trim() } as any);
       await startAuth();
     } catch (e: any) {
-      setErrorMsg(e?.message ?? "Ошибка"); setStep("error");
+      setErrorMsg(e?.message ?? "Помилка"); setStep("error");
     }
   }
 
@@ -110,12 +110,12 @@ function TelethonAuthFlow({ acc, onDone }: { acc: SenderAccount; onDone: () => v
         setStep("waiting_code");
       }
     } catch (e: any) {
-      setErrorMsg(e?.message ?? "Auth server недоступен"); setStep("error"); haptic.error();
+      setErrorMsg(e?.message ?? "Auth server недоступний"); setStep("error"); haptic.error();
     }
   }
 
   async function confirmCode() {
-    if (!code.trim()) { setErrorMsg("Введите код"); return; }
+    if (!code.trim()) { setErrorMsg("Введіть код"); return; }
     haptic.medium(); setStep("sending"); setErrorMsg("");
     try {
       const res = await api.confirmAuth(acc.id, code.trim(), codeHash);
@@ -124,15 +124,15 @@ function TelethonAuthFlow({ acc, onDone }: { acc: SenderAccount; onDone: () => v
         setDisplayName(res.display_name ?? "");
         setStep("done"); haptic.success();
       } else {
-        setErrorMsg(res.error ?? "Неверный код"); setStep("waiting_code"); haptic.error();
+        setErrorMsg(res.error ?? "Невірний код"); setStep("waiting_code"); haptic.error();
       }
     } catch (e: any) {
-      setErrorMsg(e?.message ?? "Ошибка"); setStep("waiting_code"); haptic.error();
+      setErrorMsg(e?.message ?? "Помилка"); setStep("waiting_code"); haptic.error();
     }
   }
 
   async function confirm2fa() {
-    if (!password.trim()) { setErrorMsg("Введите пароль"); return; }
+    if (!password.trim()) { setErrorMsg("Введіть пароль"); return; }
     haptic.medium(); setStep("sending"); setErrorMsg("");
     try {
       const res = await api.confirm2fa(acc.id, password);
@@ -140,10 +140,10 @@ function TelethonAuthFlow({ acc, onDone }: { acc: SenderAccount; onDone: () => v
         setDisplayName(res.display_name ?? "");
         setStep("done"); haptic.success();
       } else {
-        setErrorMsg(res.error ?? "Неверный пароль"); setStep("waiting_2fa"); haptic.error();
+        setErrorMsg(res.error ?? "Невірний пароль"); setStep("waiting_2fa"); haptic.error();
       }
     } catch (e: any) {
-      setErrorMsg(e?.message ?? "Ошибка"); setStep("waiting_2fa"); haptic.error();
+      setErrorMsg(e?.message ?? "Помилка"); setStep("waiting_2fa"); haptic.error();
     }
   }
 
@@ -164,9 +164,9 @@ function TelethonAuthFlow({ acc, onDone }: { acc: SenderAccount; onDone: () => v
       <div style={{ padding: "14px", borderRadius: 14, background: "rgba(45,232,151,0.08)", border: "1px solid rgba(45,232,151,0.25)", display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <CheckCircle size={18} color="#2de897" />
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#2de897" }}>Авторизация успешна!</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#2de897" }}>Авторизацію успішно виконано!</div>
         </div>
-        {displayName && <div style={{ fontSize: 12, color: TG.textSecondary }}>Вошли как: {displayName}</div>}
+        {displayName && <div style={{ fontSize: 12, color: TG.textSecondary }}>Увійшли як: {displayName}</div>}
         <button onClick={() => { onDone(); }} style={{ padding: "9px", borderRadius: 10, background: "#2de897", border: "none", fontSize: 12, fontWeight: 700, color: "#07090f", cursor: "pointer" }}>
           Готово
         </button>
@@ -177,7 +177,7 @@ function TelethonAuthFlow({ acc, onDone }: { acc: SenderAccount; onDone: () => v
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid rgba(255,255,255,0.07)", paddingTop: 12, marginTop: 10 }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: "#6ba8e5", display: "flex", alignItems: "center", gap: 5 }}>
-        <Key size={11} />АВТОРИЗАЦИЯ TELETHON
+        <Key size={11} />АВТОРИЗАЦІЯ TELETHON
       </div>
 
       {/* Credentials (only when missing) */}
@@ -186,9 +186,9 @@ function TelethonAuthFlow({ acc, onDone }: { acc: SenderAccount; onDone: () => v
           {needsCreds && (
             <>
               {inp(apiId, setApiId, "API ID (число)", "number")}
-              {inp(apiHash, setApiHash, "API Hash (строка hex)")}
+              {inp(apiHash, setApiHash, "API Hash (hex рядок)")}
               <div style={{ fontSize: 10, color: TG.muted, lineHeight: 1.5 }}>
-                Получи на <span style={{ color: "#6ba8e5" }}>my.telegram.org</span> → Apps
+                Отримай на <span style={{ color: "#6ba8e5" }}>my.telegram.org</span> → Apps
               </div>
             </>
           )}
@@ -198,7 +198,7 @@ function TelethonAuthFlow({ acc, onDone }: { acc: SenderAccount; onDone: () => v
             style={{ padding: "10px", borderRadius: 12, background: "rgba(107,168,229,0.15)", border: "1px solid rgba(107,168,229,0.35)", fontSize: 12, fontWeight: 700, color: "#6ba8e5", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
           >
             {busy ? <Loader size={13} style={{ animation: "spin 0.8s linear infinite" }} /> : <Key size={13} />}
-            {busy ? "Отправляем код…" : "Получить код в Telegram"}
+            {busy ? "Надсилаємо код…" : "Отримати код в Telegram"}
           </button>
         </>
       )}
@@ -210,20 +210,20 @@ function TelethonAuthFlow({ acc, onDone }: { acc: SenderAccount; onDone: () => v
           disabled={busy}
           style={{ padding: "9px", borderRadius: 12, background: "rgba(255,201,70,0.10)", border: "1px solid rgba(255,201,70,0.25)", fontSize: 11, fontWeight: 700, color: "#ffc946", cursor: "pointer" }}
         >
-          Переавторизоваться
+          Переавторизуватись
         </button>
       )}
 
       {/* Code input */}
       {step === "waiting_code" && (
         <>
-          <div style={{ fontSize: 11, color: TG.textSecondary }}>Введи код из Telegram (5 цифр):</div>
+          <div style={{ fontSize: 11, color: TG.textSecondary }}>Введи код з Telegram (5 цифр):</div>
           {inp(code, setCode, "12345", "number")}
           <button onClick={confirmCode} disabled={busy} style={{ padding: "10px", borderRadius: 12, background: "#2de897", border: "none", fontSize: 12, fontWeight: 700, color: "#07090f", cursor: busy ? "not-allowed" : "pointer" }}>
-            {busy ? "Проверяем…" : "Подтвердить код"}
+            {busy ? "Перевіряємо…" : "Підтвердити код"}
           </button>
           <button onClick={() => setStep("idle")} style={{ padding: "6px", background: "none", border: "none", fontSize: 11, color: TG.muted, cursor: "pointer" }}>
-            Отмена
+            Скасувати
           </button>
         </>
       )}
@@ -232,11 +232,11 @@ function TelethonAuthFlow({ acc, onDone }: { acc: SenderAccount; onDone: () => v
       {step === "waiting_2fa" && (
         <>
           <div style={{ fontSize: 11, color: "#ffc946", display: "flex", alignItems: "center", gap: 5 }}>
-            <Lock size={11} />Требуется двухфакторный пароль
+            <Lock size={11} />Потрібен двофакторний пароль
           </div>
           {inp(password, setPassword, "Пароль 2FA", "password")}
           <button onClick={confirm2fa} disabled={busy} style={{ padding: "10px", borderRadius: 12, background: "#ffc946", border: "none", fontSize: 12, fontWeight: 700, color: "#07090f", cursor: busy ? "not-allowed" : "pointer" }}>
-            {busy ? "Проверяем…" : "Войти"}
+            {busy ? "Перевіряємо…" : "Увійти"}
           </button>
         </>
       )}
@@ -262,7 +262,7 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
   const [error,    setError]    = useState<string | null>(null);
 
   async function submit() {
-    if (!phone.trim()) { setError("Введите номер телефона"); return; }
+    if (!phone.trim()) { setError("Введіть номер телефону"); return; }
     haptic.medium(); setBusy(true); setError(null);
     try {
       await api.createAccount({
@@ -273,7 +273,7 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
         proxies:  proxies.trim() || undefined,
       });
       haptic.success(); onDone();
-    } catch (e: any) { setError(e?.message ?? "Ошибка"); haptic.error(); }
+    } catch (e: any) { setError(e?.message ?? "Помилка"); haptic.error(); }
     setBusy(false);
   }
 
@@ -285,21 +285,21 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
   return (
     <GlassCard style={{ padding: "16px", marginBottom: 8 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: TG.text }}>Новый аккаунт</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: TG.text }}>Новий акаунт</span>
         <div onClick={onDone} style={{ cursor: "pointer", color: TG.muted, padding: 4 }}><X size={16} /></div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {inp(phone,   setPhone,   "+7 (999) 000-00-00", "tel")}
-        {inp(label,   setLabel,   "Метка (необяз.)")}
-        {inp(apiId,   setApiId,   "API ID (необяз.)", "number")}
-        {inp(apiHash, setApiHash, "API Hash (необяз.)")}
-        {inp(proxies, setProxies, "Прокси: socks5://user:pass@host:port")}
+        {inp(label,   setLabel,   "Мітка (необов.)")}
+        {inp(apiId,   setApiId,   "API ID (необов.)", "number")}
+        {inp(apiHash, setApiHash, "API Hash (необов.)")}
+        {inp(proxies, setProxies, "Проксі: socks5://user:pass@host:port")}
         <div style={{ fontSize: 10, color: TG.muted, lineHeight: 1.5 }}>
-          API ID и Hash получают на <span style={{ color: "#6ba8e5" }}>my.telegram.org</span>
+          API ID та Hash отримують на <span style={{ color: "#6ba8e5" }}>my.telegram.org</span>
         </div>
         {error && <div style={{ fontSize: 11, color: "#ff6b7a", padding: "6px 0" }}>{error}</div>}
         <button onClick={submit} disabled={busy} style={{ width: "100%", padding: "12px", borderRadius: 14, background: TG.green, border: "none", fontSize: 13, fontWeight: 700, color: "#07090f", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
-          {busy ? "Добавление…" : "Добавить аккаунт"}
+          {busy ? "Додавання…" : "Додати акаунт"}
         </button>
       </div>
     </GlassCard>
@@ -362,7 +362,7 @@ function RateLimitGauge({ accountId }: { accountId: number }) {
         <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
           <Timer size={10} color={isEmpty ? "rgba(255,255,255,0.35)" : barColor} />
           <span style={{ fontSize: 10, fontWeight: 700, color: isEmpty ? "rgba(255,255,255,0.35)" : barColor }}>
-            Скорость / мин
+            Швидкість / хв
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -387,8 +387,8 @@ function RateLimitGauge({ accountId }: { accountId: number }) {
       </div>
       {!isEmpty && (
         <div style={{ marginTop: 5, fontSize: 9, color: "rgba(255,255,255,0.35)", display: "flex", justifyContent: "space-between" }}>
-          <span>осталось {data.remaining} сообщ.</span>
-          <span>окно {data.window_seconds} сек</span>
+          <span>залишилось {data.remaining} повід.</span>
+          <span>вікно {data.window_seconds} сек</span>
         </div>
       )}
     </div>
@@ -582,7 +582,7 @@ function AccountCard({ acc, onRefresh, pingResult }: { acc: SenderAccount; onRef
       {/* Daily quota bar */}
       <div style={{ marginBottom: expanded ? 12 : 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-          <span style={{ fontSize: 10, color: TG.muted }}>Дневной лимит</span>
+          <span style={{ fontSize: 10, color: TG.muted }}>Денний ліміт</span>
           {editingLimit ? (
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <input
@@ -600,7 +600,7 @@ function AccountCard({ acc, onRefresh, pingResult }: { acc: SenderAccount; onRef
             <span
               onClick={() => { setLimitInput(String(limit)); setEditingLimit(true); }}
               style={{ fontSize: 10, color: statusColor, fontWeight: 700, cursor: "pointer", borderBottom: "1px dashed rgba(107,168,229,0.4)", paddingBottom: 1 }}
-              title="Нажмите для изменения лимита"
+              title="Натисніть для зміни ліміту"
             >
               {acc.sent_today.toLocaleString("uk-UA")} / {limit.toLocaleString("uk-UA")}
             </span>
@@ -645,7 +645,7 @@ function AccountCard({ acc, onRefresh, pingResult }: { acc: SenderAccount; onRef
             <div style={{ fontSize: 10, color: TG.muted, lineHeight: 1.8, display: "flex", flexWrap: "wrap", gap: "2px 8px" }}>
               {acc.username && <span style={{ color: "#6ba8e5" }}>@{acc.username}</span>}
               {acc.api_id   && <span>API ID: {acc.api_id}</span>}
-              {acc.session_file && <span style={{ color: "#2de897" }}>· сессия активна</span>}
+              {acc.session_file && <span style={{ color: "#2de897" }}>· сесія активна</span>}
               {(acc.proxy || (acc as any).proxies) && (() => {
                 const rawProxy = (acc as any).proxies ?? acc.proxy ?? "";
                 const proxyCount = typeof rawProxy === "string"
@@ -653,7 +653,7 @@ function AccountCard({ acc, onRefresh, pingResult }: { acc: SenderAccount; onRef
                   : 0;
                 return proxyCount > 0 ? (
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "#c4aeff", background: "rgba(196,174,255,0.1)", border: "1px solid rgba(196,174,255,0.25)", borderRadius: 6, padding: "1px 6px", fontSize: 9, fontWeight: 700 }}>
-                    🌐 {proxyCount} {proxyCount === 1 ? "прокси" : "прокси"}
+                    🌐 {proxyCount} {proxyCount === 1 ? "проксі" : "проксі"}
                   </span>
                 ) : null;
               })()}
@@ -667,12 +667,12 @@ function AccountCard({ acc, onRefresh, pingResult }: { acc: SenderAccount; onRef
               <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                 <Timer size={12} color="#ffc946" />
                 <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#ffc946" }}>Flood Wait — аккаунт на паузе</div>
-                  <div style={{ fontSize: 9, color: TG.muted, marginTop: 1 }}>Telegram требует подождать перед следующей отправкой</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#ffc946" }}>Flood Wait — акаунт на паузі</div>
+                  <div style={{ fontSize: 9, color: TG.muted, marginTop: 1 }}>Telegram вимагає почекати перед наступним відправленням</div>
                 </div>
               </div>
               <button onClick={clearFlood} disabled={busy} style={{ flexShrink: 0, padding: "5px 10px", borderRadius: 8, background: "rgba(255,201,70,0.15)", border: "1px solid rgba(255,201,70,0.35)", fontSize: 10, fontWeight: 700, color: "#ffc946", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1 }}>
-                Сброс
+                Скинути
               </button>
             </div>
           )}
@@ -711,9 +711,9 @@ function AccountCard({ acc, onRefresh, pingResult }: { acc: SenderAccount; onRef
 
     {showConfirm && (
       <ConfirmModal
-        title="Удалить аккаунт?"
-        description={`"${acc.label || acc.phone}" будет удалён без возможности восстановления.`}
-        confirmLabel="Да, удалить"
+        title="Видалити акаунт?"
+        description={`"${acc.label || acc.phone}" буде видалено без можливості відновлення.`}
+        confirmLabel="Так, видалити"
         busy={busy}
         onConfirm={deleteAcc}
         onCancel={() => setShowConfirm(false)}

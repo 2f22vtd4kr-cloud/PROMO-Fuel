@@ -1,4 +1,4 @@
-export default function LoadingSpinner({ label = "Загрузка..." }: { label?: string }) {
+export default function LoadingSpinner({ label = "Завантаження..." }: { label?: string }) {
   return (
     <div className="loading-spinner">
       <span>{label}</span>

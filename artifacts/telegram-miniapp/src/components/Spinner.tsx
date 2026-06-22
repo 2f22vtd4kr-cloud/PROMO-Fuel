@@ -34,7 +34,7 @@ export function FullSpinner({ label }: { label?: string }) {
           animation: "pulseSoft 2s ease-in-out infinite",
         }} />
       </div>
-      <span style={{ fontSize: 13, color: TG.muted, letterSpacing: "0.02em" }}>{label ?? "Загрузка..."}</span>
+      <span style={{ fontSize: 13, color: TG.muted, letterSpacing: "0.02em" }}>{label ?? "Завантаження..."}</span>
     </div>
   );
 }

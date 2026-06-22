@@ -13,8 +13,8 @@ interface ConfirmModalProps {
 export function ConfirmModal({
   title,
   description,
-  confirmLabel = "Да, удалить",
-  cancelLabel = "Отмена",
+  confirmLabel = "Так, видалити",
+  cancelLabel = "Скасувати",
   busy = false,
   onConfirm,
   onCancel,
@@ -115,7 +115,7 @@ export function ConfirmModal({
             ) : (
               <Trash2 size={13} />
             )}
-            {busy ? "Удаление…" : confirmLabel}
+            {busy ? "Видалення…" : confirmLabel}
           </button>
         </div>
       </div>

@@ -48,14 +48,14 @@ export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { color: string; bg: string; label: string }> = {
     sent:       { color: "#a0b8e6", bg: "rgba(160,184,230,0.12)", label: "Готово" },
     running:    { color: "#2de897", bg: "rgba(45,232,151,0.15)",  label: "Активна" },
-    sending:    { color: "#2de897", bg: "rgba(45,232,151,0.15)",  label: "Отправка" },
-    scheduled:  { color: "#ffc946", bg: "rgba(255,201,70,0.15)",  label: "Запланирована" },
+    sending:    { color: "#2de897", bg: "rgba(45,232,151,0.15)",  label: "Відправка" },
+    scheduled:  { color: "#ffc946", bg: "rgba(255,201,70,0.15)",  label: "Заплановано" },
     paused:     { color: "#6ba8e5", bg: "rgba(107,168,229,0.15)", label: "Пауза" },
-    draft:      { color: "rgba(160,190,230,0.50)", bg: "rgba(255,255,255,0.06)", label: "Черновик" },
+    draft:      { color: "rgba(160,190,230,0.50)", bg: "rgba(255,255,255,0.06)", label: "Чернетка" },
     done:       { color: "rgba(160,190,230,0.50)", bg: "rgba(255,255,255,0.06)", label: "Готово" },
-    idle:       { color: "#2de897", bg: "rgba(45,232,151,0.15)",  label: "Готов" },
+    idle:       { color: "#2de897", bg: "rgba(45,232,151,0.15)",  label: "Готово" },
     offline:    { color: "#6ba8e5", bg: "rgba(107,168,229,0.15)", label: "Офлайн" },
-    banned:     { color: "#ff6b7a", bg: "rgba(255,107,122,0.15)", label: "Заблокирован" },
+    banned:     { color: "#ff6b7a", bg: "rgba(255,107,122,0.15)", label: "Заблоковано" },
     flood:      { color: "#ffc946", bg: "rgba(255,201,70,0.15)",  label: "Флуд-wait" },
   };
   const s = map[status] ?? map["draft"]!;
