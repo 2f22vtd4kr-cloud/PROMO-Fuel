@@ -133,7 +133,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
         <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingBottom: "24px" }}>
 
           {/* Welcome header */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", position: 'sticky', top: 0, zIndex: 50, background: 'linear-gradient(to bottom, rgba(6,8,16,0.95) 0%, transparent 100%)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', padding: "14px 14px 10px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", position: 'sticky', top: 0, zIndex: 50, background: 'linear-gradient(to bottom, rgba(6,8,16,0.95) 0%, transparent 100%)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', padding: "14px 120px 10px 14px" }}>
             <div>
               <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>
                 {t.home.welcome}
