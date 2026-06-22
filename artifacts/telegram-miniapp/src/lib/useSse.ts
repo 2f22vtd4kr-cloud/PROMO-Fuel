@@ -7,7 +7,8 @@ export type SseEventType =
   | "accounts"
   | "workers"
   | "worker_heartbeats"
-  | "tasks";
+  | "tasks"
+  | "daily_digest";
 
 export function useSse(onEvent: (type: SseEventType | string, data: unknown) => void) {
   const cbRef = useRef(onEvent);
@@ -24,6 +25,7 @@ export function useSse(onEvent: (type: SseEventType | string, data: unknown) => 
       "workers",
       "worker_heartbeats",
       "tasks",
+      "daily_digest",
     ];
 
     function connect() {

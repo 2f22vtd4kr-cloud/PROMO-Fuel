@@ -49273,6 +49273,7 @@ var lastWorkerSnap = "";
 var lastHeartbeatSnap = "";
 var lastTaskSnap = "";
 var lastGroupSendsSnap = "";
+var lastDailyDigestSnap = "";
 var workerAliveState = /* @__PURE__ */ new Map();
 var workerRestartNum = /* @__PURE__ */ new Map();
 function pollDb() {
@@ -49385,6 +49386,26 @@ function pollDb() {
       if (tSnap !== lastTaskSnap) {
         lastTaskSnap = tSnap;
         broadcastEvent("tasks", tasks);
+      }
+    } catch {
+    }
+    try {
+      const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+      let dmSentToday = 0;
+      let groupSentToday = 0;
+      try {
+        dmSentToday = db.prepare("SELECT COUNT(*) as n FROM sends WHERE status='ok' AND sent_at LIKE ?").get(`${today}%`).n;
+      } catch {
+      }
+      try {
+        groupSentToday = db.prepare("SELECT COUNT(*) as n FROM group_send_logs WHERE status='ok' AND sent_at LIKE ?").get(`${today}%`).n;
+      } catch {
+      }
+      const digest = { dm_sent_today: dmSentToday, group_sent_today: groupSentToday, total_sent_today: dmSentToday + groupSentToday };
+      const dSnap = JSON.stringify(digest);
+      if (dSnap !== lastDailyDigestSnap) {
+        lastDailyDigestSnap = dSnap;
+        broadcastEvent("daily_digest", digest);
       }
     } catch {
     }

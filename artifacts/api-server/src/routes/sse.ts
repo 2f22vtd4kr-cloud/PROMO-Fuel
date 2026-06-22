@@ -20,6 +20,7 @@ let lastWorkerSnap        = "";
 let lastHeartbeatSnap     = "";
 let lastTaskSnap          = "";
 let lastGroupSendsSnap    = "";
+let lastDailyDigestSnap   = "";
 
 // Track per-worker alive state for crash detection
 const workerAliveState = new Map<string, boolean>();
@@ -148,6 +149,21 @@ function pollDb() {
       if (tSnap !== lastTaskSnap) {
         lastTaskSnap = tSnap;
         broadcastEvent("tasks", tasks);
+      }
+    } catch {}
+
+    // ── Daily digest (live sent-today counters) ───────────────────────────────
+    try {
+      const today = new Date().toISOString().split("T")[0]!;
+      let dmSentToday = 0;
+      let groupSentToday = 0;
+      try { dmSentToday    = (db.prepare("SELECT COUNT(*) as n FROM sends WHERE status='ok' AND sent_at LIKE ?").get(`${today}%`) as { n: number }).n; } catch {}
+      try { groupSentToday = (db.prepare("SELECT COUNT(*) as n FROM group_send_logs WHERE status='ok' AND sent_at LIKE ?").get(`${today}%`) as { n: number }).n; } catch {}
+      const digest = { dm_sent_today: dmSentToday, group_sent_today: groupSentToday, total_sent_today: dmSentToday + groupSentToday };
+      const dSnap = JSON.stringify(digest);
+      if (dSnap !== lastDailyDigestSnap) {
+        lastDailyDigestSnap = dSnap;
+        broadcastEvent("daily_digest", digest);
       }
     } catch {}
 

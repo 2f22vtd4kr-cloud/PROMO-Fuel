@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Bell, Megaphone, BarChart2, ArrowUpRight, Gift, Users2, TrendingUp, Shield, Flame, Radio, Cpu, Fuel, X, CheckCircle2, AlertTriangle, Ban, Clock, Zap } from "lucide-react";
 import { api, Campaign, AnalyticsOverview, WorkersSummary, DailyDigest } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
 import { haptic } from "../lib/haptics";
 import { useI18n } from "../lib/i18n";
+import { useSse } from "../lib/useSse";
 
 export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
   onNewCampaign: () => void;
@@ -24,7 +25,22 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
   const [lastRefreshed,  setLastRefreshed]  = useState<Date | null>(null);
   const [upcomingCamps,  setUpcomingCamps]  = useState<{ id: number; name: string; scheduled_at: string; target_count: number }[]>([]);
   const [showNotifs,     setShowNotifs]     = useState(false);
+  const [flashSent,      setFlashSent]      = useState(false);
+  const prevTotalRef = useRef<number | null>(null);
   const { t, lang } = useI18n();
+
+  useSse((type, data) => {
+    if (type === "daily_digest") {
+      const d = data as { dm_sent_today: number; group_sent_today: number; total_sent_today: number };
+      const prev = prevTotalRef.current;
+      prevTotalRef.current = d.total_sent_today;
+      setDigest(old => old ? { ...old, dm_sent_today: d.dm_sent_today, group_sent_today: d.group_sent_today, total_sent_today: d.total_sent_today } : old);
+      if (prev !== null && d.total_sent_today > prev) {
+        setFlashSent(true);
+        setTimeout(() => setFlashSent(false), 900);
+      }
+    }
+  });
 
   useEffect(() => {
     Promise.all([api.getOverview(), api.getCampaigns(), api.getUsers(), api.getWorkersSummary(), api.getGroupCampaigns(), api.getAccounts(), api.getDailyDigest(), api.getUpcomingCampaigns()])
@@ -529,6 +545,14 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                 from { opacity: 0; transform: translateY(-14px) scale(0.97); }
                 to   { opacity: 1; transform: translateY(0) scale(1); }
               }
+              @keyframes sentFlash {
+                0%   { background: rgba(167,139,250,0.32); }
+                100% { background: transparent; }
+              }
+              @keyframes livePulse {
+                0%, 100% { opacity: 1; transform: scale(1); }
+                50%       { opacity: 0.4; transform: scale(0.7); }
+              }
             `}</style>
 
             {/* Top specular line */}
@@ -578,18 +602,46 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                 onClick={() => { setShowNotifs(false); haptic.light(); onNavigate("campaigns"); }}
               />
 
-              {/* Today's sends */}
+              {/* Today's sends — live SSE counter */}
               {digest && (
-                <StatusRow
-                  icon={<Zap size={13} color="#a78bfa" />}
-                  iconBg="rgba(167,139,250,0.15)"
-                  iconBorder="rgba(167,139,250,0.35)"
-                  label={lang === "ua" ? "Відправлено сьогодні" : "Sent today"}
-                  value={String(digest.total_sent_today)}
-                  valueColor="#a78bfa"
-                  sub={`DM: ${digest.dm_sent_today} · ${lang === "ua" ? "Групи" : "Groups"}: ${digest.group_sent_today}`}
+                <div
                   onClick={() => { setShowNotifs(false); haptic.light(); onNavigate("analytics"); }}
-                />
+                  style={{
+                    display:"flex", alignItems:"center", gap:10,
+                    cursor:"pointer", padding:"5px 0",
+                    borderRadius: flashSent ? 10 : 0,
+                    animation: flashSent ? "sentFlash 0.9s ease-out forwards" : "none",
+                    transition: "border-radius 0.2s",
+                  }}
+                >
+                  <div style={{ width:30, height:30, borderRadius:10, background:"rgba(167,139,250,0.15)", border:"1px solid rgba(167,139,250,0.35)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    <Zap size={13} color="#a78bfa" />
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+                        <span style={{ fontSize:12, fontWeight:600, color:"rgba(200,220,255,0.82)" }}>
+                          {lang === "ua" ? "Відправлено сьогодні" : "Sent today"}
+                        </span>
+                        {/* Live pulse dot */}
+                        <div style={{
+                          width:5, height:5, borderRadius:"50%",
+                          background:"#2de897",
+                          boxShadow:"0 0 4px rgba(45,232,151,0.8)",
+                          animation:"livePulse 1.8s ease-in-out infinite",
+                          flexShrink:0,
+                        }} />
+                      </div>
+                      <span style={{ fontSize:13, fontWeight:800, color: flashSent ? "#fff" : "#a78bfa", flexShrink:0, marginLeft:8, transition:"color 0.3s" }}>
+                        {digest.total_sent_today}
+                      </span>
+                    </div>
+                    <div style={{ fontSize:10, color:"rgba(140,165,210,0.55)", marginTop:2 }}>
+                      DM: {digest.dm_sent_today} · {lang === "ua" ? "Групи" : "Groups"}: {digest.group_sent_today}
+                    </div>
+                  </div>
+                  <ArrowUpRight size={11} color="rgba(160,180,230,0.28)" style={{ flexShrink:0 }} />
+                </div>
               )}
 
               {/* Daily quota */}
