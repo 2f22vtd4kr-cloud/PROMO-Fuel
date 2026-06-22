@@ -15,12 +15,24 @@ interface CountryItem {
 const _cache = new Map<string, { ts: number; data: CountryItem[] }>();
 
 /**
+ * GET /api/factory/config
+ *
+ * Returns server-level factory configuration visible to the frontend.
+ * Never exposes the actual key value — only its existence.
+ */
+router.get("/config", (_req: Request, res: Response) => {
+  const hasSmsPoolKey = Boolean(process.env["SMSPOOL_API_KEY"]?.trim());
+  return void res.json({ has_smspool_key: hasSmsPoolKey });
+});
+
+/**
  * GET /api/factory/countries?api_key=KEY&service=11
  *
  * Fetches real-time Telegram number stock + price from SMSPool.
  * Results are cached in-memory for 60 s per API key.
  * Implemented directly in Node.js so it works even when the Python
  * supervisor is not running.
+ * When api_key is omitted, falls back to SMSPOOL_API_KEY env var.
  */
 router.get("/countries", async (req: Request, res: Response) => {
   const apiKey =

@@ -467,7 +467,9 @@ async def register_account(request: Request):
     except Exception:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
 
-    smspool_api_key     = str(body.get("smspool_api_key", "")).strip()
+    # Prefer body value; fall back to server-side env var so the UI can omit the key
+    smspool_api_key     = (str(body.get("smspool_api_key", "")).strip()
+                           or os.environ.get("SMSPOOL_API_KEY", "").strip())
     country_id          = str(body.get("country_id", "")).strip()
     proxy_string        = str(body.get("proxy_string", "")).strip()
     two_factor_password = str(body.get("two_factor_password", "")).strip()
@@ -478,7 +480,7 @@ async def register_account(request: Request):
     api_hash    = str(os.environ.get("TELETHON_API_HASH") or body.get("api_hash", "")).strip()
 
     missing = []
-    if not smspool_api_key:     missing.append("smspool_api_key")
+    if not smspool_api_key:     missing.append("smspool_api_key (or set SMSPOOL_API_KEY on server)")
     if not country_id:          missing.append("country_id")
     if not proxy_string:        missing.append("proxy_string")
     if not two_factor_password: missing.append("two_factor_password")

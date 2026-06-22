@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { X, ChevronDown, Loader, Minus, Plus } from "lucide-react";
 import { useI18n } from "../lib/i18n";
 import { getStoredSecret } from "./LockScreen";
@@ -159,6 +159,16 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [quantity,      setQuantity]      = useState(1);
   const [showCountry,   setShowCountry]   = useState(false);
 
+  // Server-side SMSPOOL_API_KEY detection
+  const [serverHasKey,  setServerHasKey]  = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch("/api/factory/config", { headers: authHeaders() })
+      .then(r => r.json())
+      .then((d: { has_smspool_key?: boolean }) => setServerHasKey(d.has_smspool_key ?? false))
+      .catch(() => setServerHasKey(false));
+  }, []);
+
   // Stock checker
   const [showStock,    setShowStock]    = useState(false);
   const [stockLoading, setStockLoading] = useState(false);
@@ -186,7 +196,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const abortRef = useRef<AbortController | null>(null);
 
   async function fetchStock() {
-    if (!smsKey.trim()) {
+    if (!serverHasKey && !smsKey.trim()) {
       setStockError(L("Enter your SMSPool API key first.", "Спочатку введіть API ключ SMSPool."));
       setShowStock(true);
       return;
@@ -196,8 +206,11 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setShowStock(true);
     setStockSearch("");
     try {
+      const qs = serverHasKey
+        ? "service=11"
+        : `api_key=${encodeURIComponent(smsKey)}&service=11`;
       const resp = await fetch(
-        `/api/factory/countries?api_key=${encodeURIComponent(smsKey)}&service=11`,
+        `/api/factory/countries?${qs}`,
         { headers: authHeaders() },
       );
       const json = await resp.json() as { countries?: typeof stockData; error?: string; cached?: boolean };
@@ -226,7 +239,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
 
   async function launch() {
     const countryId = country === "custom" ? customCountry.trim() : country;
-    if (!smsKey || !countryId || !proxy || !twoFa) {
+    if ((!serverHasKey && !smsKey) || !countryId || !proxy || !twoFa) {
       setErrorMsg(L("Fill in all required fields.", "Заповніть усі обов'язкові поля."));
       return;
     }
@@ -253,7 +266,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({
-          smspool_api_key: smsKey,
+          ...(serverHasKey ? {} : { smspool_api_key: smsKey }),
           country_id: countryId,
           proxy_string: proxy,
           two_factor_password: twoFa,
@@ -428,14 +441,36 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
         {/* ── Config form ── */}
         {runState === "idle" && (
           <>
-            <LabelledInput
-              label={L("SMSPool API Key", "API-ключ SMSPool")}
-              value={smsKey}
-              onChange={setSmsKey}
-              placeholder="your-smspool-api-key"
-              type="password"
-              hint={L("Get your key at smspool.net/profile", "Отримайте ключ на smspool.net/profile")}
-            />
+            {serverHasKey ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10,
+                background: "rgba(45,232,151,0.07)", border: "1px solid rgba(45,232,151,0.25)",
+                borderRadius: 14, padding: "12px 16px" }}>
+                <div style={{ fontSize: 20, flexShrink: 0 }}>🔑</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: GREEN }}>
+                    {L("Server API Key Active", "Серверний API ключ активний")}
+                  </div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.38)", marginTop: 2, lineHeight: 1.4 }}>
+                    {L("SMSPOOL_API_KEY is configured on the server — no need to enter it here.",
+                       "SMSPOOL_API_KEY налаштовано на сервері — вводити тут не потрібно.")}
+                  </div>
+                </div>
+                <div style={{ flexShrink: 0, background: "rgba(45,232,151,0.15)",
+                  border: "1px solid rgba(45,232,151,0.35)", borderRadius: 8,
+                  padding: "3px 9px", fontSize: 10, fontWeight: 700, color: GREEN }}>
+                  ✓ {L("SET", "ВСТАНОВЛЕНО")}
+                </div>
+              </div>
+            ) : (
+              <LabelledInput
+                label={L("SMSPool API Key", "API-ключ SMSPool")}
+                value={smsKey}
+                onChange={setSmsKey}
+                placeholder="your-smspool-api-key"
+                type="password"
+                hint={L("Get your key at smspool.net/profile", "Отримайте ключ на smspool.net/profile")}
+              />
+            )}
 
             {/* Country */}
             <div style={{ position: "relative" }}>

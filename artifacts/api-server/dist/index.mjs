@@ -53125,6 +53125,10 @@ var router14 = (0, import_express14.Router)();
 var SMSPOOL_STOCK_URL = "https://api.smspool.net/request/countrystock";
 var CACHE_TTL_MS = 6e4;
 var _cache = /* @__PURE__ */ new Map();
+router14.get("/config", (_req, res) => {
+  const hasSmsPoolKey = Boolean(process.env["SMSPOOL_API_KEY"]?.trim());
+  return void res.json({ has_smspool_key: hasSmsPoolKey });
+});
 router14.get("/countries", async (req, res) => {
   const apiKey = String(req.query["api_key"] ?? process.env["SMSPOOL_API_KEY"] ?? "").trim();
   const service = String(req.query["service"] ?? "11").trim();
