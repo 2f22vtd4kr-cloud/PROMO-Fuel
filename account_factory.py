@@ -42,6 +42,11 @@ SMSPOOL_BUY    = "https://api.smspool.net/purchase/sms"
 SMSPOOL_CHECK  = "https://api.smspool.net/sms/check"
 SMSPOOL_CANCEL = "https://api.smspool.net/sms/cancel"
 SMSPOOL_STOCK  = "https://api.smspool.net/country/retrieve_all"
+SMSPOOL_PRICE  = "https://api.smspool.net/request/price"
+SMSPOOL_SVC    = "https://api.smspool.net/service/retrieve_all"
+
+# Telegram service ID on SMSPool (verified: service 907 = Telegram)
+TELEGRAM_SERVICE_ID = "907"
 
 # ── In-memory country availability cache (key → (timestamp, data)) ──────────
 _country_cache: dict[str, tuple[float, list]] = {}
@@ -192,16 +197,18 @@ def _parse_proxy(proxy_string: str):
 
 
 @factory_router.get("/countries")
-async def get_country_availability(api_key: str = "", service: str = "11"):
+async def get_country_availability(api_key: str = "", service: str = TELEGRAM_SERVICE_ID):
     """
-    Return real-time stock + price for every country that has Telegram
-    (service 11) numbers available on SMSPool.
+    Return all countries that have Telegram (service 907) numbers on SMSPool.
+    country/retrieve_all filtered by service gives country names + IDs only;
+    stock/price come from the /request/price endpoint (fetched per-country in /service-stock).
     Results are cached for COUNTRY_CACHE_TTL seconds per API key.
     """
-    if not api_key:
+    resolved_key = (api_key.strip() or os.environ.get("SMSPOOL_API_KEY", "").strip())
+    if not resolved_key:
         return JSONResponse({"error": "api_key is required"}, status_code=400)
 
-    cache_key = f"{api_key}:{service}"
+    cache_key = f"{resolved_key}:{service}"
     cached = _country_cache.get(cache_key)
     if cached and (time.time() - cached[0]) < COUNTRY_CACHE_TTL:
         return {"countries": cached[1], "cached": True, "ttl": COUNTRY_CACHE_TTL}
@@ -210,15 +217,13 @@ async def get_country_availability(api_key: str = "", service: str = "11"):
         async with aiohttp.ClientSession() as http:
             async with http.post(
                 SMSPOOL_STOCK,
-                data={"key": api_key, "service": service},
+                data={"key": resolved_key, "service": service},
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 raw = await resp.json(content_type=None)
     except Exception as exc:
         return JSONResponse({"error": f"SMSPool unreachable: {exc}"}, status_code=502)
 
-    # country/retrieve_all returns [{ID, name}, ...] — no per-service stock field
-    # Handle both list and dict responses; also catch API key error shape
     if isinstance(raw, dict) and raw.get("success") == 0:
         msgs = "; ".join(e.get("message", "") for e in raw.get("errors", []))
         return JSONResponse({"error": msgs or "Invalid API key"}, status_code=401)
@@ -230,19 +235,58 @@ async def get_country_availability(api_key: str = "", service: str = "11"):
     for c in items:
         if not isinstance(c, dict):
             continue
-        stock = int(c.get("stock", c.get("quantity", c.get("count", 1))) or 1)
-        price = float(c.get("price", c.get("cost", c.get("rate", 0))) or 0)
-        name  = str(c.get("name", c.get("country", c.get("countryName", ""))))
-        cid   = str(c.get("ID", c.get("id", c.get("country_id", ""))))
-        if not name:
+        name = str(c.get("name", c.get("country", c.get("countryName", ""))))
+        cid  = str(c.get("ID", c.get("id", c.get("country_id", ""))))
+        if not name or not cid:
             continue
-        countries.append({"id": cid, "name": name, "stock": stock, "price": price})
+        # Stock/price not included in country/retrieve_all — shown per-selection via /service-stock
+        countries.append({"id": cid, "name": name, "stock": 1, "price": 0})
 
-    # Sort cheapest first, then by stock descending
-    countries.sort(key=lambda x: (x["price"], -x["stock"]))
+    countries.sort(key=lambda x: x["name"])
 
     _country_cache[cache_key] = (time.time(), countries)
     return {"countries": countries, "cached": False, "ttl": COUNTRY_CACHE_TTL}
+
+
+@factory_router.get("/service-stock")
+async def get_service_stock(country: str = "", service: str = TELEGRAM_SERVICE_ID, api_key: str = ""):
+    """
+    Real-time price + availability for Telegram (service 907) in a specific country.
+    Uses SMSPool /request/price — returns {available, stock (=success_rate), price}.
+    """
+    resolved_key = (api_key.strip() or os.environ.get("SMSPOOL_API_KEY", "").strip())
+    if not resolved_key:
+        return JSONResponse({"error": "No SMSPool API key"}, status_code=400)
+    if not country:
+        return JSONResponse({"error": "country is required"}, status_code=400)
+
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.get(
+                SMSPOOL_PRICE,
+                params={"key": resolved_key, "service": service, "country": country},
+                timeout=aiohttp.ClientTimeout(total=12),
+            ) as resp:
+                raw = await resp.json(content_type=None)
+    except Exception as exc:
+        return JSONResponse({"error": f"SMSPool unreachable: {exc}"}, status_code=502)
+
+    if isinstance(raw, dict) and raw.get("success") == 0:
+        msgs = "; ".join(e.get("message", "") for e in raw.get("errors", []))
+        return JSONResponse({"error": msgs or "Invalid API key"}, status_code=401)
+
+    if not isinstance(raw, dict) or "price" not in raw:
+        # Service not available in this country
+        return {"available": False, "stock": 0, "price": 0.0}
+
+    price        = float(raw.get("price", 0) or 0)
+    success_rate = int(raw.get("success_rate", 0) or 0)
+
+    return {
+        "available": price > 0,
+        "stock":     success_rate,   # 0-100 success-rate used as stock indicator
+        "price":     price,
+    }
 
 
 async def _test_proxy_connection(proxy_string: str, timeout: float = 12.0) -> tuple[bool, str]:
@@ -344,7 +388,7 @@ async def _registration_stream(
         async with aiohttp.ClientSession() as http:
             async with http.post(
                 SMSPOOL_BUY,
-                data={"key": smspool_api_key, "service": "11",
+                data={"key": smspool_api_key, "service": TELEGRAM_SERVICE_ID,
                       "country": country_id, "platform": "2"},
                 timeout=aiohttp.ClientTimeout(total=30),
             ) as resp:

@@ -251,7 +251,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setSvcStock(s => ({ ...s, loading: true, error: null }));
     const timer = setTimeout(async () => {
       try {
-        const qs = new URLSearchParams({ country: effectiveSmsPoolId, service: "11" });
+        const qs = new URLSearchParams({ country: effectiveSmsPoolId, service: "907" });
         if (!serverHasKey && smsKey.trim()) qs.set("api_key", smsKey.trim());
         const resp = await fetch(`/api/factory/service-stock?${qs}`, { headers: authHeaders() });
         const json = await resp.json() as {
@@ -307,8 +307,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setStockSearch("");
     try {
       const qs = serverHasKey
-        ? "service=11"
-        : `api_key=${encodeURIComponent(smsKey)}&service=11`;
+        ? "service=907"
+        : `api_key=${encodeURIComponent(smsKey)}&service=907`;
       const resp = await fetch(
         `/api/factory/countries?${qs}`,
         { headers: authHeaders() },
@@ -1193,13 +1193,13 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                           : svcStock.available === false
                             ? L("Telegram numbers unavailable for this country", "Telegram номери недоступні для цієї країни")
                             : L(
-                                `${svcStock.stock} Telegram numbers in stock`,
-                                `${svcStock.stock} Telegram номерів у наявності`
+                                `Telegram numbers available · ${svcStock.stock}% success rate`,
+                                `Telegram номери доступні · ${svcStock.stock}% успішних SMS`
                               )}
                     </div>
                     {!svcStock.loading && !svcStock.error && svcStock.available && (
                       <div style={{ fontSize: 10, color: "rgba(255,255,255,0.38)", marginTop: 2 }}>
-                        {L("Real-time SMSPool data · service ID 11", "Дані SMSPool в реальному часі · сервіс ID 11")}
+                        {L("Real-time SMSPool data · Telegram service 907", "Дані SMSPool в реальному часі · сервіс Telegram 907")}
                       </div>
                     )}
                   </div>
