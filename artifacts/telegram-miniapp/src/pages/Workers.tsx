@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useI18n } from "../lib/i18n";
 import {
   Cpu, RefreshCw, Trash2, AlertTriangle, CheckCircle,
-  Activity, ListTodo, Calendar, Plus, Shield, Phone, Zap, RotateCcw, Timer,
+  Activity, ListTodo, Calendar, Plus, Shield, Phone, Zap, RotateCcw, Timer, Info,
 } from "lucide-react";
 import {
   api, BroadcastWorker, Task, WorkersSummary,
@@ -12,6 +12,7 @@ import { useSse } from "../lib/useSse";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
 import { ConfirmModal } from "../components/ConfirmModal";
+import { WorkerInfoPanel } from "../components/WorkerInfoPanel";
 import { haptic } from "../lib/haptics";
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
@@ -112,6 +113,7 @@ function WorkerCard({ worker, index = 0, onDelete, accounts = [], accountStats =
   const { t } = useI18n();
   const [busy,        setBusy]        = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showInfo,    setShowInfo]    = useState(false);
   const alive   = worker.is_alive ?? false;
   const working = alive && worker.status === "working";
   const color   = alive ? sc(worker.status) : "#ff6b7a";
@@ -147,6 +149,13 @@ function WorkerCard({ worker, index = 0, onDelete, accounts = [], accountStats =
           <span style={{ fontSize: 10, fontWeight: 700, color, background: `${color}18`, border: `1px solid ${color}30`, borderRadius: 20, padding: "2px 8px" }}>
             {alive ? worker.status : "dead"}
           </span>
+          <button
+            onClick={() => { haptic.light(); setShowInfo(true); }}
+            style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(107,168,229,0.10)", border: "1px solid rgba(107,168,229,0.28)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            title="Подробная информация"
+          >
+            <Info size={12} color="#6ba8e5" />
+          </button>
           {(!alive || worker.status === "stopped") && (
             <button onClick={() => { haptic.light(); setShowConfirm(true); }} disabled={busy} style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(255,107,122,0.10)", border: "1px solid rgba(255,107,122,0.22)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", opacity: busy ? 0.4 : 1 }}>
               <Trash2 size={12} color="#ff6b7a" />
@@ -213,6 +222,14 @@ function WorkerCard({ worker, index = 0, onDelete, accounts = [], accountStats =
         busy={busy}
         onConfirm={remove}
         onCancel={() => setShowConfirm(false)}
+      />
+    )}
+
+    {showInfo && (
+      <WorkerInfoPanel
+        workerId={worker.worker_id}
+        onClose={() => setShowInfo(false)}
+        onDelete={() => { setShowInfo(false); setShowConfirm(true); }}
       />
     )}
   </>

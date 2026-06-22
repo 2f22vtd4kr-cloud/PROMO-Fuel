@@ -51845,12 +51845,66 @@ router11.get("/tasks", (req, res) => {
   try {
     const db = getDb7();
     const status = req.query.status;
+    const workerId = req.query.worker_id;
     const limit = parseInt(String(req.query.limit ?? "100"));
-    const rows = status ? db.prepare("SELECT * FROM tasks WHERE status=? ORDER BY created_at DESC LIMIT ?").all(status, limit) : db.prepare("SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?").all(limit);
+    let rows;
+    if (workerId && status) {
+      rows = db.prepare("SELECT * FROM tasks WHERE worker_id=? AND status=? ORDER BY created_at DESC LIMIT ?").all(workerId, status, limit);
+    } else if (workerId) {
+      rows = db.prepare("SELECT * FROM tasks WHERE worker_id=? ORDER BY created_at DESC LIMIT ?").all(workerId, limit);
+    } else if (status) {
+      rows = db.prepare("SELECT * FROM tasks WHERE status=? ORDER BY created_at DESC LIMIT ?").all(status, limit);
+    } else {
+      rows = db.prepare("SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?").all(limit);
+    }
     db.close();
     res.json(rows);
   } catch {
     res.json([]);
+  }
+});
+router11.get("/workers/:id/crash-history", (req, res) => {
+  try {
+    const db = getDb7();
+    const rows = db.prepare(
+      "SELECT * FROM worker_crash_history WHERE worker_id=? ORDER BY crashed_at DESC LIMIT 30"
+    ).all(req.params.id);
+    db.close();
+    res.json(rows);
+  } catch {
+    res.json([]);
+  }
+});
+router11.get("/workers/:id/detail", (req, res) => {
+  try {
+    const db = getDb7();
+    const wId = req.params.id;
+    const wRow = db.prepare("SELECT * FROM broadcast_workers WHERE worker_id=?").get(wId);
+    if (!wRow) {
+      db.close();
+      return void res.status(404).json({ error: "Not found" });
+    }
+    const hb = wRow.last_heartbeat;
+    const ageSeconds = hb ? Math.floor((Date.now() - new Date(hb).getTime()) / 1e3) : 9999;
+    const worker = { ...wRow, heartbeat_age_seconds: ageSeconds, is_alive: ageSeconds < 90 };
+    const lockedAccount = db.prepare(
+      "SELECT id, phone, label, username, api_id, status, is_active, session_file, sent_today, daily_limit, flood_wait_until, proxy FROM sender_accounts WHERE locked_by=?"
+    ).get(wId) ?? null;
+    const recentTasks = db.prepare(
+      `SELECT t.*, gc.name as campaign_name
+       FROM tasks t LEFT JOIN group_campaigns gc ON gc.id = t.campaign_id
+       WHERE t.worker_id=? ORDER BY t.created_at DESC LIMIT 50`
+    ).all(wId);
+    const crashes = db.prepare(
+      "SELECT * FROM worker_crash_history WHERE worker_id=? ORDER BY crashed_at DESC LIMIT 20"
+    ).all(wId);
+    const sendsToday = lockedAccount ? db.prepare(
+      "SELECT SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) as ok, SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) as failed FROM group_send_logs WHERE task_id IN (SELECT id FROM tasks WHERE worker_id=?) AND sent_at >= date('now')"
+    ).get(wId) : null;
+    db.close();
+    res.json({ worker, locked_account: lockedAccount, recent_tasks: recentTasks, crashes, sends_today: sendsToday ?? null });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
   }
 });
 router11.get("/tasks/:id", (req, res) => {

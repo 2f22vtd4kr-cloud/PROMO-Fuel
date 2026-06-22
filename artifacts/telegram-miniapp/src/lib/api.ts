@@ -504,6 +504,13 @@ export const api = {
   getWorkersSummary:    () => get<WorkersSummary>("/workers-summary"),
   getWorkerHeartbeats:  () => get<WorkerHeartbeat[]>("/worker-heartbeats"),
   getWorkerCrashHistory:() => get<WorkerCrashEvent[]>("/workers/crash-history"),
+  getWorkerDetail:      (workerId: string) => get<{
+    worker: BroadcastWorker;
+    locked_account: Record<string, unknown> | null;
+    recent_tasks: (Task & { campaign_name?: string })[];
+    crashes: WorkerCrashEvent[];
+    sends_today: { ok: number; failed: number } | null;
+  }>(`/workers/${encodeURIComponent(workerId)}/detail`),
   deleteWorker:         (workerId: string) => del(`/workers/${encodeURIComponent(workerId)}`),
   spawnWorker:          (workerId?: string) =>
     post<{ ok: boolean; worker_id: string; pid: number | null }>("/workers/spawn", { worker_id: workerId }),
