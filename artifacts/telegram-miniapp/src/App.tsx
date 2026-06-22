@@ -13,7 +13,9 @@ import { DashboardPage }            from "./pages/Dashboard";
 import { AccountLoginPage }         from "./pages/AccountLogin";
 import { ManualPage }              from "./pages/Manual";
 import { ManualAccountsPage }     from "./pages/ManualAccounts";
+import { ManualVerificationPage } from "./pages/ManualVerification";
 import { AiAssistantPage }         from "./pages/AiAssistant";
+import { VerificationHubPage }    from "./pages/VerificationHub";
 import { LockScreen, getStoredSecret } from "./pages/LockScreen";
 import { BottomNav }                from "./components/BottomNav";
 import { LangSwitcher }             from "./components/LangSwitcher";
@@ -26,7 +28,7 @@ import { useI18n }                  from "./lib/i18n";
 import { BookOpen }                 from "lucide-react";
 import { haptic }                   from "./lib/haptics";
 
-export type Tab = "home" | "campaigns" | "analytics" | "audience" | "upload" | "groups" | "workers" | "dashboard" | "ai";
+export type Tab = "home" | "campaigns" | "analytics" | "audience" | "upload" | "groups" | "workers" | "dashboard" | "ai" | "verify";
 
 export function App() {
   const [unlocked, setUnlocked] = useState(() => getStoredSecret() !== "");
@@ -57,7 +59,8 @@ function OwnerApp() {
   const [showAccountLogin, setShowAccountLogin]= useState(false);
   const [showManual,         setShowManual]        = useState(false);
   const [showManualAccounts, setShowManualAccounts] = useState(false);
-  const [showManualChooser,  setShowManualChooser]  = useState(false);
+  const [showManualChooser,       setShowManualChooser]       = useState(false);
+  const [showManualVerification,  setShowManualVerification]  = useState(false);
 
   function openEditor(id?: number) {
     setEditId(id ?? null);
@@ -85,7 +88,7 @@ function OwnerApp() {
     setTab(t as Tab);
   }
 
-  const anyOverlay = showEditor || showGroupEditor || showAccounts || showAccountLogin || showManual || showManualAccounts || showManualChooser;
+  const anyOverlay = showEditor || showGroupEditor || showAccounts || showAccountLogin || showManual || showManualAccounts || showManualChooser || showManualVerification;
 
   return (
     <div style={{
@@ -134,6 +137,7 @@ function OwnerApp() {
         {tab === "workers"   && <WorkersPage />}
         {tab === "dashboard" && <DashboardPage />}
         {tab === "ai"        && <AiAssistantPage />}
+        {tab === "verify"    && <VerificationHubPage />}
       </div>
 
       {/* ── Overlays — highest z-index stack ──────────────────────── */}
@@ -173,10 +177,15 @@ function OwnerApp() {
         <ManualAccountsPage onClose={() => setShowManualAccounts(false)} />
       )}
 
+      {showManualVerification && (
+        <ManualVerificationPage onClose={() => setShowManualVerification(false)} />
+      )}
+
       {showManualChooser && (
         <ManualChooserPanel
           onSystemManual={() => { setShowManualChooser(false); setShowManual(true); }}
           onAccountsManual={() => { setShowManualChooser(false); setShowManualAccounts(true); }}
+          onVerifManual={() => { setShowManualChooser(false); setShowManualVerification(true); }}
           onClose={() => setShowManualChooser(false)}
         />
       )}
@@ -254,8 +263,13 @@ function CampaignToastWatcher() {
 
 // ─── Unified manual chooser bottom-sheet ───────────────────────────────────
 function ManualChooserPanel({
-  onSystemManual, onAccountsManual, onClose,
-}: { onSystemManual: () => void; onAccountsManual: () => void; onClose: () => void }) {
+  onSystemManual, onAccountsManual, onVerifManual, onClose,
+}: {
+  onSystemManual: () => void;
+  onAccountsManual: () => void;
+  onVerifManual: () => void;
+  onClose: () => void;
+}) {
   const { lang } = useI18n();
   return (
     <div
@@ -271,26 +285,35 @@ function ManualChooserPanel({
         <div style={{ fontSize:15, fontWeight:800, color:"rgba(255,255,255,0.9)", marginBottom:16, textAlign:"center", letterSpacing:"-0.01em" }}>
           {lang === "ua" ? "📚 Обрати довідник" : "📚 Choose a Manual"}
         </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
           {/* System manual */}
-          <button onClick={onSystemManual} style={{ background:"linear-gradient(145deg,rgba(0,212,255,0.12),rgba(0,212,255,0.05))", border:"1px solid rgba(0,212,255,0.28)", borderRadius:18, padding:"20px 14px", cursor:"pointer", textAlign:"center", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
-            <span style={{ fontSize:32 }}>📖</span>
+          <button onClick={onSystemManual} style={{ background:"linear-gradient(145deg,rgba(0,212,255,0.12),rgba(0,212,255,0.05))", border:"1px solid rgba(0,212,255,0.28)", borderRadius:18, padding:"18px 12px", cursor:"pointer", textAlign:"center", display:"flex", flexDirection:"column", alignItems:"center", gap:9 }}>
+            <span style={{ fontSize:30 }}>📖</span>
             <div>
-              <div style={{ fontSize:13, fontWeight:800, color:"#00d4ff", marginBottom:3 }}>{lang === "ua" ? "Системний мануал" : "System Manual"}</div>
-              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>31 {lang === "ua" ? "сторінка" : "pages"}</div>
+              <div style={{ fontSize:12, fontWeight:800, color:"#00d4ff", marginBottom:3 }}>{lang === "ua" ? "Системний мануал" : "System Manual"}</div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>33 {lang === "ua" ? "сторінки" : "pages"}</div>
               <div style={{ fontSize:9, color:"rgba(0,212,255,0.5)", marginTop:4 }}>{lang === "ua" ? "Кампанії · Воркери · API" : "Campaigns · Workers · API"}</div>
             </div>
           </button>
           {/* Accounts & proxy manual */}
-          <button onClick={onAccountsManual} style={{ background:"linear-gradient(145deg,rgba(45,232,151,0.12),rgba(45,232,151,0.05))", border:"1px solid rgba(45,232,151,0.28)", borderRadius:18, padding:"20px 14px", cursor:"pointer", textAlign:"center", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
-            <span style={{ fontSize:32 }}>🔐</span>
+          <button onClick={onAccountsManual} style={{ background:"linear-gradient(145deg,rgba(45,232,151,0.12),rgba(45,232,151,0.05))", border:"1px solid rgba(45,232,151,0.28)", borderRadius:18, padding:"18px 12px", cursor:"pointer", textAlign:"center", display:"flex", flexDirection:"column", alignItems:"center", gap:9 }}>
+            <span style={{ fontSize:30 }}>🔐</span>
             <div>
-              <div style={{ fontSize:13, fontWeight:800, color:"#2de897", marginBottom:3 }}>{lang === "ua" ? "Акаунти та проксі" : "Accounts & Proxy"}</div>
+              <div style={{ fontSize:12, fontWeight:800, color:"#2de897", marginBottom:3 }}>{lang === "ua" ? "Акаунти та проксі" : "Accounts & Proxy"}</div>
               <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>9 {lang === "ua" ? "сторінок" : "pages"}</div>
               <div style={{ fontSize:9, color:"rgba(45,232,151,0.5)", marginTop:4 }}>{lang === "ua" ? "SOCKS5 · MTProto · Масштаб" : "SOCKS5 · MTProto · Scale"}</div>
             </div>
           </button>
         </div>
+        {/* Verification manual — full-width row */}
+        <button onClick={onVerifManual} style={{ width:"100%", background:"linear-gradient(145deg,rgba(45,212,191,0.12),rgba(20,184,166,0.06))", border:"1px solid rgba(45,212,191,0.28)", borderRadius:18, padding:"14px 18px", cursor:"pointer", display:"flex", alignItems:"center", gap:14 }}>
+          <span style={{ fontSize:28, flexShrink:0 }}>🛡️</span>
+          <div style={{ textAlign:"left" }}>
+            <div style={{ fontSize:12, fontWeight:800, color:"#2dd4bf", marginBottom:2 }}>{lang === "ua" ? "Верифікація / HITL Captcha" : "Verification / HITL Captcha"}</div>
+            <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>12 {lang === "ua" ? "сторінок" : "pages"}</div>
+            <div style={{ fontSize:9, color:"rgba(45,212,191,0.55)", marginTop:2 }}>{lang === "ua" ? "Капча · Слухач · Групове вступ" : "Captcha · Listener · Bulk Join"}</div>
+          </div>
+        </button>
       </div>
     </div>
   );

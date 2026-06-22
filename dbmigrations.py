@@ -646,6 +646,30 @@ def run_migrations(db_path: str = DB_PATH) -> None:  # noqa: C901 — long but l
     conn.commit()
     logger.info("[migrations] Step 8 — account_rate_limits OK")
 
+    # ── Step 9: Unified Verification Queue ───────────────────────────────────
+    #
+    # Stores captcha challenges intercepted by the Telethon listener.
+    # Supports both inline-button captchas and text/math reply captchas.
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS pending_verifications (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id     INTEGER NOT NULL,
+            group_username TEXT,
+            group_title    TEXT,
+            bot_message_id INTEGER,
+            captcha_text   TEXT,
+            buttons_json   TEXT,
+            captcha_type   TEXT NOT NULL DEFAULT 'button',
+            status         TEXT NOT NULL DEFAULT 'pending',
+            created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+        )
+    """)
+    _create_index(conn, "idx_pending_verif_account", "pending_verifications(account_id)")
+    _create_index(conn, "idx_pending_verif_status",  "pending_verifications(status)")
+    conn.commit()
+    logger.info("[migrations] Step 9 — pending_verifications OK")
+
     # ── Done ─────────────────────────────────────────────────────────────────
 
     conn.close()

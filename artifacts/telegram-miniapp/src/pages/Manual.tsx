@@ -1976,6 +1976,54 @@ function SlideAiSpintax({ lang }: SL) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Slide 34 — Verification Hub overview (cross-ref)
+// ═══════════════════════════════════════════════════════════════
+function SlideVerificationHub({ lang }: SL) {
+  return (
+    <Shell>
+      <STitle icon="🛡️" text={L(lang,"Verification Hub","Центр верифікації")} color="#2dd4bf" />
+      <div style={{ ...card("#2dd4bf"), marginBottom:12 }}>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.7)", lineHeight:1.65, marginBottom:10 }}>
+          {L(lang,
+            "When accounts join many groups they may receive anti-bot captcha challenges. The Verification Hub lets you resolve them in real time without leaving the Mini App.",
+            "Коли акаунти вступають до багатьох груп, вони можуть отримувати антибот-виклики. Центр верифікації дозволяє вирішувати їх у реальному часі, не виходячи з Mini App."
+          )}
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {[
+            ["🔘", "#2dd4bf", L(lang,"Button captchas","Кнопкові капчі"),    L(lang,"Tap the inline keyboard button to prove you are human","Натисніть inline-кнопку, щоб довести, що ви людина")],
+            ["✏️", "#3b82f6", L(lang,"Text reply captchas","Текстові капчі"), L(lang,"Type the answer to a math/word challenge and send","Введіть відповідь на математику/запитання і надішліть")],
+            ["📡", "#a855f7", L(lang,"Telethon listener","Telethon-слухач"),  L(lang,"Start All in the hub to monitor all active accounts","Натисніть Запустити всі у хабі для відстеження всіх активних акаунтів")],
+            ["⏱️", "#f59e0b", L(lang,"4-second auto-poll","Авто-опит 4 с"),  L(lang,"New challenges appear automatically — no manual refresh","Нові виклики з'являються автоматично — без ручного оновлення")],
+          ].map(([icon,color,title,desc]) => (
+            <div key={title as string} style={{ display:"flex", gap:10, alignItems:"flex-start",
+              background:`${color as string}0f`, border:`1px solid ${color as string}28`,
+              borderRadius:12, padding:"10px 13px" }}>
+              <span style={{ fontSize:18, flexShrink:0 }}>{icon as string}</span>
+              <div>
+                <div style={{ fontSize:12, fontWeight:700, color: color as string, marginBottom:2 }}>{title as string}</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.48)", lineHeight:1.45 }}>{desc as string}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ ...card("#2dd4bf"), padding:"10px 14px" }}>
+        <div style={{ fontSize:10, fontWeight:700, color:"#2dd4bf", letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:6 }}>
+          {L(lang,"📚 Full Documentation","📚 Повна документація")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.55)", lineHeight:1.55 }}>
+          {L(lang,
+            "Open the 📚 manual chooser (top-right button) and select the 🛡️ Verification / HITL Captcha guide for the full 12-slide documentation.",
+            "Відкрийте вибір 📚 мануалу (кнопка у правому верхньому куті) і оберіть посібник 🛡️ Верифікація / HITL Captcha для повної 12-слайдової документації."
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Slide registry
 // ═══════════════════════════════════════════════════════════════
 // Keyword hints per slide (English) — used by search in addition to TITLES
@@ -2014,6 +2062,7 @@ const KEYWORDS: string[] = [
   "AI copilot autonomous assistant gemini groq mutation tools human-in-the-loop HITL approval gate",
   "AI spintax generator wand optimize regenerate tone casual professional direct seed message",
   "what's new latest changelog",
+  "verification hub captcha HITL human-in-the-loop listener button text solve group join",
 ];
 const SLIDES: Array<(p: SL) => React.ReactElement> = [
   Slide1,Slide2,Slide3,Slide4,Slide5,Slide6,Slide7,Slide8,Slide9,
@@ -2021,6 +2070,7 @@ const SLIDES: Array<(p: SL) => React.ReactElement> = [
   SlideAutoRevalidation,SlideAccountTools,SlideMonitoring,
   Slide15,Slide16,Slide17,Slide18,Slide19,Slide20,Slide21,Slide22,
   Slide23,Slide24,Slide25,SlideAiCopilot,SlideAiSpintax,SlideNewFeatures,
+  SlideVerificationHub,
 ];
 const TOTAL = SLIDES.length;
 
@@ -2033,7 +2083,7 @@ const TITLES: Record<Lang, string[]> = {
     "Auto-Revalidation","Account Tools","Monitoring & Alerts",
     "Workers","Task Queue","Rate Limits","Best Practices","Architecture",
     "Telegram Protocols","Sessions & Security","Spintax Engine",
-    "Process Internals","Database & API","Launch Checklist","AI Copilot","AI Spintax","What's New",
+    "Process Internals","Database & API","Launch Checklist","AI Copilot","AI Spintax","What's New","Verification Hub",
   ],
   ua: [
     "Обкладинка","Огляд системи","Дашборд","Швидкі дії","DM-розсилки",
@@ -2043,7 +2093,7 @@ const TITLES: Record<Lang, string[]> = {
     "Авто-реvalidація","Інструменти акаунтів","Моніторинг і сповіщення",
     "Воркери","Черга задач","Ліміти відправки","Поради та рекомендації",
     "Архітектура","Протоколи Telegram","Сесії та безпека",
-    "Рушій спінтаксу","Внутрішня будова процесів","База даних та API","Чеклист запуску","AI Копілот","AI Спінтакс","Нові функції",
+    "Рушій спінтаксу","Внутрішня будова процесів","База даних та API","Чеклист запуску","AI Копілот","AI Спінтакс","Нові функції","Центр верифікації",
   ],
 };
 

@@ -106,6 +106,7 @@ const SUGGESTIONS: Record<string, string[]> = {
     "Перевірити проксі",
     "Які кампанії активні?",
     "Статус воркерів",
+    "Є очікуючі капчі?",
   ],
   en: [
     "Platform summary",
@@ -113,6 +114,7 @@ const SUGGESTIONS: Record<string, string[]> = {
     "Check failed proxies",
     "Active campaigns?",
     "Worker status",
+    "Any pending captchas?",
   ],
 };
 
@@ -547,8 +549,8 @@ export function AiAssistantPage() {
   const GREETING: Message = {
     role: "model",
     text: lang === "ua"
-      ? "Привіт! Я PROMO-Fuel System Copilot. Можу допомогти з управлінням акаунтами, проксі SOCKS5, кампаніями та моніторингом платформи. Тепер я також можу виконувати дії — призупиняти кампанії, оновлювати проксі, видаляти заблоковані акаунти. Перед виконанням завжди буде запит на підтвердження."
-      : "Hi! I'm PROMO-Fuel System Copilot. I can help with account management, SOCKS5 proxies, campaigns, and platform monitoring. I can now also take actions — pause campaigns, update proxies, delete restricted accounts. Every action requires your approval before execution.",
+      ? "Привіт! Я PROMO-Fuel System Copilot. Можу допомогти з управлінням акаунтами, проксі SOCKS5, кампаніями та моніторингом платформи. Можу виконувати дії — призупиняти кампанії, оновлювати проксі, видаляти заблоковані акаунти. Є також вкладка **Верифікація** для вирішення капч вручну. Перед виконанням дій завжди буде запит на підтвердження."
+      : "Hi! I'm PROMO-Fuel System Copilot. I can help with account management, SOCKS5 proxies, campaigns, and platform monitoring. I can take actions — pause campaigns, update proxies, delete restricted accounts. There's also a **Verification** tab for solving captchas manually. Every action requires your approval before execution.",
     ts: new Date(),
   };
 

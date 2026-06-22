@@ -13,6 +13,7 @@ const en = {
     accounts: "Accounts",
     auth: "Auth",
     ai: "AI Help",
+    verify: "Verify",
   },
   common: {
     loading: "Loading...",
@@ -581,6 +582,7 @@ const ua: typeof en = {
     accounts: "Акаунти",
     auth: "Auth",
     ai: "AI Help",
+    verify: "Captcha",
   },
   common: {
     loading: "Завантаження...",

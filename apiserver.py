@@ -996,12 +996,197 @@ async def health() -> dict:
     return {"ok": True, "service": "promo-fuel-apiserver", "port": API_PORT}
 
 
+# ── Verifications router ──────────────────────────────────────────────────────
+
+verif_router = APIRouter(prefix="/api/verifications", tags=["verifications"])
+
+
+def _verif_db() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    return conn
+
+
+@verif_router.get("/pending")
+async def verif_pending(status: str = "pending") -> list[dict]:
+    """Return all verification challenges with the given status."""
+    conn = _verif_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT v.id, v.account_id, v.group_username, v.group_title,
+                   v.bot_message_id, v.captcha_text, v.buttons_json,
+                   v.captcha_type, v.status, v.created_at,
+                   a.phone, a.label
+              FROM pending_verifications v
+         LEFT JOIN sender_accounts a ON a.id = v.account_id
+             WHERE v.status = ?
+          ORDER BY v.created_at DESC
+             LIMIT 200
+            """,
+            (status,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+class VerifClickBody(BaseModel):
+    verification_id: int
+    button_index: int
+
+
+@verif_router.post("/click")
+async def verif_click(body: VerifClickBody) -> dict:
+    """Click an inline-keyboard button on a captcha message."""
+    conn = _verif_db()
+    try:
+        row = conn.execute(
+            "SELECT v.*, a.session_file, a.api_id, a.api_hash, a.proxies, a.current_proxy_index "
+            "FROM pending_verifications v JOIN sender_accounts a ON a.id = v.account_id "
+            "WHERE v.id = ?",
+            (body.verification_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Verification not found")
+        r = dict(row)
+    finally:
+        conn.close()
+
+    account = {
+        "id": r["account_id"],
+        "session_file": r["session_file"],
+        "api_id": r["api_id"],
+        "api_hash": r["api_hash"],
+        "proxies": r["proxies"],
+        "current_proxy_index": r["current_proxy_index"],
+    }
+    from verification_listener import perform_click, mark_verification_done
+    result = await perform_click(
+        account=account,
+        group_username=r["group_username"] or "",
+        bot_message_id=r["bot_message_id"],
+        button_index=body.button_index,
+    )
+    if result.get("ok"):
+        mark_verification_done(body.verification_id, "solved")
+    return result
+
+
+class VerifReplyBody(BaseModel):
+    verification_id: int
+    answer: str
+
+
+@verif_router.post("/reply")
+async def verif_reply(body: VerifReplyBody) -> dict:
+    """Send a text reply to a captcha challenge."""
+    conn = _verif_db()
+    try:
+        row = conn.execute(
+            "SELECT v.*, a.session_file, a.api_id, a.api_hash, a.proxies, a.current_proxy_index "
+            "FROM pending_verifications v JOIN sender_accounts a ON a.id = v.account_id "
+            "WHERE v.id = ?",
+            (body.verification_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Verification not found")
+        r = dict(row)
+    finally:
+        conn.close()
+
+    account = {
+        "id": r["account_id"],
+        "session_file": r["session_file"],
+        "api_id": r["api_id"],
+        "api_hash": r["api_hash"],
+        "proxies": r["proxies"],
+        "current_proxy_index": r["current_proxy_index"],
+    }
+    from verification_listener import perform_reply, mark_verification_done
+    result = await perform_reply(
+        account=account,
+        group_username=r["group_username"] or "",
+        bot_message_id=r["bot_message_id"],
+        answer=body.answer,
+    )
+    if result.get("ok"):
+        mark_verification_done(body.verification_id, "solved")
+    return result
+
+
+@verif_router.post("/resolve/{verification_id}")
+async def verif_resolve(verification_id: int, action: str = "dismissed") -> dict:
+    """Mark a verification as solved or dismissed without taking action."""
+    conn = _verif_db()
+    try:
+        conn.execute(
+            "UPDATE pending_verifications SET status=? WHERE id=?",
+            (action, verification_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "status": action}
+
+
+class ListenerStartBody(BaseModel):
+    account_id: int
+
+
+@verif_router.post("/listeners/start")
+async def verif_listener_start(body: ListenerStartBody) -> dict:
+    """Start a captcha listener for a single account."""
+    conn = _verif_db()
+    try:
+        row = conn.execute(
+            "SELECT id, session_file, api_id, api_hash, proxies, current_proxy_index "
+            "FROM sender_accounts WHERE id=?",
+            (body.account_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Account not found")
+        account = dict(row)
+    finally:
+        conn.close()
+
+    from verification_listener import start_listener
+    ok = await start_listener(account)
+    return {"ok": ok, "account_id": body.account_id}
+
+
+@verif_router.post("/listeners/stop")
+async def verif_listener_stop(body: ListenerStartBody) -> dict:
+    """Stop the captcha listener for an account."""
+    from verification_listener import stop_listener
+    await stop_listener(body.account_id)
+    return {"ok": True, "account_id": body.account_id}
+
+
+@verif_router.post("/listeners/start-all")
+async def verif_listener_start_all() -> dict:
+    """Start captcha listeners for ALL idle/active accounts."""
+    from verification_listener import start_all_active_accounts
+    result = await start_all_active_accounts()
+    return result
+
+
+@verif_router.get("/listeners")
+async def verif_listeners() -> dict:
+    """Return list of account IDs with active listeners."""
+    from verification_listener import get_active_listener_ids
+    return {"active": get_active_listener_ids()}
+
+
 # ── Mount all routers ─────────────────────────────────────────────────────────
 
 app.include_router(auth_router)
 app.include_router(metrics_router)
 app.include_router(campaigns_router)
 app.include_router(admin_router)
+app.include_router(verif_router)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
