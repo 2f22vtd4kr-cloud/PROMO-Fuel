@@ -52682,6 +52682,27 @@ Safe limits: 15-60s delay between sends; 50-100 msg/day per account (warm-up: st
 - Home page shows a "Verification" activity strip card (red when pending > 0, green otherwise); tapping navigates to verify tab
 - To check if push alerts are configured: verify TELEGRAM_TOKEN and ADMIN_TELEGRAM_ID environment variables are set
 
+## Account Factory (Automated Account Registration)
+- **Location**: Accounts page \u2192 "\xB7\xB7\xB7" overflow menu \u2192 "\u{1F3ED} Account Factory"
+- **Endpoint**: POST /api/factory/register (Python FastAPI, port 8083, proxied through Node.js) \u2014 returns SSE stream (text/event-stream)
+- **Proxy pre-check (runs BEFORE Step 1)**: factory opens a real SOCKS5 socket to Telegram DC1 (149.154.167.91:443, timeout 12s) before purchasing any SMSPool number. SSE event: \`preflight\` with status "running"\u2192"done"/"error". If it fails \u2192 pipeline aborts with no SMSPool balance spent. User must fix proxy string and retry.
+- **Country availability checker**: GET /api/factory/countries?api_key=KEY&service=11 \u2192 returns \`{countries:[{id,name,stock,price}], cached:bool, ttl:60}\` sorted cheapest first. Results cached 60s per API key. UI button "\u{1F4CA} Check Stock" next to the Country field \u2014 opens an inline panel showing live stock (\u{1F7E2}>50 \u{1F7E1}10-50 \u{1F534}<10) and USD price per number; clicking a row auto-selects the country. Shows a search filter. Requires SMSPool API key to be filled in first.
+- **Full pipeline (7 steps, fully automated)**:
+  1. Purchase real phone number from SMSPool API (service=11=Telegram)
+  2. Init Telethon client with random device fingerprint + SOCKS5 proxy tunnel
+  3. client.send_code_request(phone) \u2014 request Telegram verification code
+  4. Poll SMSPool /sms/check every 5s, auto-cancel after 120s timeout
+  5. client.sign_in(code) or client.sign_up(first_name, last_name) for fresh numbers
+  6. client.edit_2fa(new_password=...) \u2014 immediate 2FA security
+  7. Save .session + .json to ./sessions/ + INSERT into sender_accounts with auth_status='active'
+- **Batch mode**: quantity field (1\u201310) registers accounts sequentially with 12s cooldown between each
+- **Required env vars**: TELETHON_API_ID, TELETHON_API_HASH (can also be entered in the form)
+- **Error guards**: PhoneNumberBannedError \u2192 auto-cancel SMSPool order (no charge); SMS timeout \u2192 auto-cancel; SessionPasswordNeededError \u2192 number already registered
+- **SMSPool**: smspool.net \u2014 buy with crypto/card; service ID 11 = Telegram; Ukraine/Kazakhstan cheapest
+- **Proxy**: socks5://user:pass@ip:port format; Decodo (smartproxy.com) residential/mobile; match country to phone
+- **On success**: .session file + .json metadata written; CRM row inserted with 2FA pass, session_file, proxy, auth_status='active', is_active=1
+- **Manual**: \u{1F4DA} \u2192 "\u{1F3ED} Account Factory" guide (12 pages) \u2014 covers SMSPool setup, proxy selection, credentials, batch mode, error types, best practices
+
 ## Key Endpoints (for your reference)
 - GET /api/twa/campaigns \u2014 list all campaigns
 - GET /api/twa/accounts \u2014 list all sender accounts
@@ -52693,6 +52714,7 @@ Safe limits: 15-60s delay between sends; 50-100 msg/day per account (warm-up: st
 - GET /api/twa/events \u2014 SSE stream
 - GET /api/verifications/pending \u2014 pending captcha challenges (Python FastAPI port 8083)
 - POST /api/verifications/listeners/start-all \u2014 start Telethon captcha listeners for all active accounts
+- POST /api/factory/register \u2014 Account Factory SSE stream (Python FastAPI port 8083)
 
 Respond in the same language the user writes in (Russian, Ukrainian, or English). Be direct and precise.`;
 var GROQ_TOOLS = [
@@ -53382,29 +53404,33 @@ app.use("/api/twa", (req, res, next) => {
   next();
 });
 var PYTHON_PORT = parseInt(process.env["PYTHON_API_PORT"] ?? "8083");
-app.use("/api/verifications", (req, res) => {
-  const targetPath = `/api/verifications${req.path === "/" ? "" : req.path}`;
-  const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
-  const options = {
-    hostname: "127.0.0.1",
-    port: PYTHON_PORT,
-    path: targetPath + qs,
-    method: req.method,
-    headers: { ...req.headers, host: `127.0.0.1:${PYTHON_PORT}` }
+function makePythonProxy(prefix) {
+  return (req, res) => {
+    const targetPath = `${prefix}${req.path === "/" ? "" : req.path}`;
+    const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+    const options = {
+      hostname: "127.0.0.1",
+      port: PYTHON_PORT,
+      path: targetPath + qs,
+      method: req.method,
+      headers: { ...req.headers, host: `127.0.0.1:${PYTHON_PORT}` }
+    };
+    const proxyReq = http.request(options, (proxyRes) => {
+      res.status(proxyRes.statusCode ?? 200);
+      for (const [k, v] of Object.entries(proxyRes.headers)) {
+        if (v !== void 0) res.setHeader(k, v);
+      }
+      proxyRes.pipe(res, { end: true });
+    });
+    proxyReq.on("error", (err) => {
+      logger.error({ err }, `${prefix} proxy error`);
+      if (!res.headersSent) res.status(502).json({ error: "Python API unavailable", detail: err.message });
+    });
+    req.pipe(proxyReq, { end: true });
   };
-  const proxyReq = http.request(options, (proxyRes) => {
-    res.status(proxyRes.statusCode ?? 200);
-    for (const [k, v] of Object.entries(proxyRes.headers)) {
-      if (v !== void 0) res.setHeader(k, v);
-    }
-    proxyRes.pipe(res, { end: true });
-  });
-  proxyReq.on("error", (err) => {
-    logger.error({ err }, "verifications proxy error");
-    if (!res.headersSent) res.status(502).json({ error: "Python API unavailable", detail: err.message });
-  });
-  req.pipe(proxyReq, { end: true });
-});
+}
+app.use("/api/verifications", makePythonProxy("/api/verifications"));
+app.use("/api/factory", makePythonProxy("/api/factory"));
 if (API_SECRET) {
   app.use("/api", (req, res, next) => {
     const p = req.path;
