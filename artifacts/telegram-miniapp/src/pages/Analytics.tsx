@@ -20,10 +20,10 @@ const MOCK_TREND_BASE: TrendPoint[] = [
 ];
 
 const FUEL_MIX = [
-  { name:"АИ-92",value:38,color:"#6ba8e5" },
-  { name:"АИ-95",value:29,color:"#2de897" },
-  { name:"АИ-98",value:17,color:"#c4aeff" },
-  { name:"Дизель",value:16,color:"#ff9f40" },
+  { name:"A-92",   value:38, color:"#6ba8e5" },
+  { name:"A-95",   value:29, color:"#2de897" },
+  { name:"A-98",   value:17, color:"#c4aeff" },
+  { name:"Diesel", value:16, color:"#ff9f40" },
 ];
 
 function MiniAreaChart({ data, color1, color2 }: { data: TrendPoint[]; color1: string; color2: string }) {
@@ -309,7 +309,7 @@ export function AnalyticsPage() {
           <GlassCard style={{ padding: "12px 14px", animation: "slideUp 0.4s ease-out 0.32s both" }}>
             <div style={{ position: "absolute", top: 0, left: "10%", right: "10%", height: 1, background: "linear-gradient(90deg, transparent, #6ba8e5, transparent)" }} />
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: TG.muted }}>📊 Сводка за 7 дней</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: TG.muted }}>📊 {lang === "ua" ? "Зведення за 7 днів" : "7-day Summary"}</span>
               {digest.week_delta_pct !== 0 && (
                 <span style={{
                   fontSize: 10, fontWeight: 800, borderRadius: 20, padding: "2px 8px",
@@ -317,16 +317,16 @@ export function AnalyticsPage() {
                   border: `1px solid ${digest.week_delta_pct > 0 ? "rgba(45,232,151,0.3)" : "rgba(255,107,107,0.3)"}`,
                   color: digest.week_delta_pct > 0 ? "#2de897" : "#ff6b7a",
                 }}>
-                  {digest.week_delta_pct > 0 ? "+" : ""}{digest.week_delta_pct}% к прошлой неделе
+                  {digest.week_delta_pct > 0 ? "+" : ""}{digest.week_delta_pct}% {lang === "ua" ? "до мин. тижня" : "vs last week"}
                 </span>
               )}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
               {[
-                { label: "Отправлено", value: digest.sent_last_7_days.toLocaleString("uk-UA"), color: "#6ba8e5" },
-                { label: "Сегодня",    value: digest.total_sent_today.toLocaleString("uk-UA"), color: "#2de897" },
-                { label: "DM",         value: digest.dm_sent_today.toLocaleString("uk-UA"),    color: "#c4aeff" },
-                { label: "Группы",     value: digest.group_sent_today.toLocaleString("uk-UA"), color: "#ffc946" },
+                { label: lang === "ua" ? "Надіслано" : "Sent",   value: digest.sent_last_7_days.toLocaleString("uk-UA"), color: "#6ba8e5" },
+                { label: lang === "ua" ? "Сьогодні"  : "Today",  value: digest.total_sent_today.toLocaleString("uk-UA"), color: "#2de897" },
+                { label: "DM",                                    value: digest.dm_sent_today.toLocaleString("uk-UA"),    color: "#c4aeff" },
+                { label: lang === "ua" ? "Групи"     : "Groups", value: digest.group_sent_today.toLocaleString("uk-UA"), color: "#ffc946" },
               ].map(item => (
                 <div key={item.label} style={{ textAlign: "center" }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: item.color }}>{item.value}</div>
@@ -336,10 +336,10 @@ export function AnalyticsPage() {
             </div>
             {(digest.tasks_done > 0 || digest.tasks_failed > 0) && (
               <div style={{ display: "flex", gap: 8, marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-                <span style={{ fontSize: 10, color: "#2de897" }}>✓ {digest.tasks_done} задач</span>
-                {digest.tasks_failed > 0 && <span style={{ fontSize: 10, color: "#ff6b7a" }}>✗ {digest.tasks_failed} ошибок</span>}
+                <span style={{ fontSize: 10, color: "#2de897" }}>✓ {digest.tasks_done} {lang === "ua" ? "задач" : "tasks"}</span>
+                {digest.tasks_failed > 0 && <span style={{ fontSize: 10, color: "#ff6b7a" }}>✗ {digest.tasks_failed} {lang === "ua" ? "помилок" : "errors"}</span>}
                 <span style={{ fontSize: 10, color: TG.muted, marginLeft: "auto" }}>
-                  {digest.workers_alive}/{digest.workers_total} воркеров
+                  {digest.workers_alive}/{digest.workers_total} {lang === "ua" ? "воркерів" : "workers"}
                 </span>
               </div>
             )}
@@ -350,12 +350,12 @@ export function AnalyticsPage() {
         {groupSendsToday && (groupSendsToday.ok + groupSendsToday.failed) > 0 && (
           <GlassCard style={{ padding: "10px 14px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: TG.muted, flex: 1 }}>📡 Групповые рассылки сегодня</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: TG.muted, flex: 1 }}>📡 {lang === "ua" ? "Групові розсилки сьогодні" : "Group sends today"}</div>
               <span style={{ fontSize: 11, fontWeight: 800, color: "#2de897" }}>✓{groupSendsToday.ok}</span>
               {groupSendsToday.failed > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: "#ff6b7a" }}>✗{groupSendsToday.failed}</span>}
               {groupSendsToday.ok + groupSendsToday.failed > 0 && (
                 <span style={{ fontSize: 10, fontWeight: 700, color: "#ffc946", background: "rgba(255,201,70,0.10)", border: "1px solid rgba(255,201,70,0.25)", borderRadius: 20, padding: "2px 7px" }}>
-                  {Math.round(groupSendsToday.ok / (groupSendsToday.ok + groupSendsToday.failed) * 100)}% успех
+                  {Math.round(groupSendsToday.ok / (groupSendsToday.ok + groupSendsToday.failed) * 100)}% {lang === "ua" ? "успіх" : "success"}
                 </span>
               )}
             </div>
@@ -382,7 +382,7 @@ export function AnalyticsPage() {
 
         {/* Bar chart */}
         <GlassCard style={{ padding:"14px 14px 10px" }}>
-          <div style={{ fontSize:12,fontWeight:700,color:TG.textSecondary,marginBottom:8 }}>Отправки по дням</div>
+          <div style={{ fontSize:12,fontWeight:700,color:TG.textSecondary,marginBottom:8 }}>{lang === "ua" ? "Надсилання по днях" : "Sends by day"}</div>
           <MiniBarChart data={trend} color="#ff9f40" />
         </GlassCard>
 
@@ -390,7 +390,7 @@ export function AnalyticsPage() {
         {sendRate.length > 0 && (
           <GlassCard style={{ padding:"14px 14px 12px" }}>
             <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10 }}>
-              <div style={{ fontSize:12,fontWeight:700,color:TG.textSecondary }}>Отправки по часам (сегодня)</div>
+              <div style={{ fontSize:12,fontWeight:700,color:TG.textSecondary }}>{lang === "ua" ? "Надсилання по годинах (сьогодні)" : "Sends by hour (today)"}</div>
               <span style={{ fontSize:10,color:TG.muted }}>{new Date().toLocaleDateString("uk-UA",{day:"2-digit",month:"short"})}</span>
             </div>
             <HourlySendRateChart data={sendRate} />

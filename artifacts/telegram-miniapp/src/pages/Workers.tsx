@@ -38,27 +38,27 @@ const sc = (s: string) => STATUS_COLOR[s] ?? "#7c8db0";
 
 function timeAgo(iso: string): string {
   const d = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (d < 60)   return `${d}с`;
-  if (d < 3600) return `${Math.floor(d / 60)}м`;
-  return `${Math.floor(d / 3600)}ч`;
+  if (d < 60)   return `${d}s`;
+  if (d < 3600) return `${Math.floor(d / 60)}m`;
+  return `${Math.floor(d / 3600)}h`;
 }
 
 function uptime(iso: string): string {
   const d = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (d < 60)   return `${d}с`;
-  if (d < 3600) return `${Math.floor(d / 60)}м`;
+  if (d < 60)   return `${d}s`;
+  if (d < 3600) return `${Math.floor(d / 60)}m`;
   const h = Math.floor(d / 3600), m = Math.floor((d % 3600) / 60);
-  return m ? `${h}ч ${m}м` : `${h}ч`;
+  return m ? `${h}h ${m}m` : `${h}h`;
 }
 
 function formatCountdown(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = Math.floor((new Date(iso).getTime() - Date.now()) / 1000);
-  if (d <= 0) return "сейчас";
-  if (d < 60)   return `${d}с`;
-  if (d < 3600) return `${Math.floor(d / 60)}м ${d % 60}с`;
+  if (d <= 0) return "now";
+  if (d < 60)   return `${d}s`;
+  if (d < 3600) return `${Math.floor(d / 60)}m ${d % 60}s`;
   const h = Math.floor(d / 3600), m = Math.floor((d % 3600) / 60);
-  return `${h}ч ${m}м`;
+  return `${h}h ${m}m`;
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -104,13 +104,13 @@ function RestartWorkerButton({ workerId, onRestarted }: { workerId: string; onRe
       onClick={restart} disabled={busy || done}
       style={{ fontSize: 10, color: done ? "#2de897" : "#ffc946", background: done ? "rgba(45,232,151,0.10)" : "rgba(255,201,70,0.10)", border: `1px solid ${done ? "rgba(45,232,151,0.3)" : "rgba(255,201,70,0.3)"}`, borderRadius: 6, padding: "4px 9px", cursor: busy ? "not-allowed" : "pointer", fontWeight: 700, opacity: busy ? 0.6 : 1, transition: "all 0.2s" }}
     >
-      {done ? "✓ Запущен" : busy ? "…" : "▶ Restart"}
+      {done ? "✓ OK" : busy ? "…" : "▶ Restart"}
     </button>
   );
 }
 
 function WorkerCard({ worker, index = 0, onDelete, accounts = [], accountStats = {} }: { worker: BroadcastWorker; index?: number; onDelete: () => void; accounts?: SenderAccount[]; accountStats?: Record<string, { ok: number; failed: number }> }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [busy,        setBusy]        = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showInfo,    setShowInfo]    = useState(false);
@@ -152,7 +152,7 @@ function WorkerCard({ worker, index = 0, onDelete, accounts = [], accountStats =
           <button
             onClick={() => { haptic.light(); setShowInfo(true); }}
             style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(107,168,229,0.10)", border: "1px solid rgba(107,168,229,0.28)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-            title="Подробная информация"
+            title="Details"
           >
             <Info size={12} color="#6ba8e5" />
           </button>
@@ -166,11 +166,11 @@ function WorkerCard({ worker, index = 0, onDelete, accounts = [], accountStats =
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
         {[
-          { label: "Выполнено", value: String(worker.tasks_done),   color: "#2de897" },
-          { label: "Ошибок",    value: String(worker.tasks_failed), color: "#ff6b7a" },
-          { label: "Пульс",     value: worker.last_heartbeat ? timeAgo(worker.last_heartbeat) : "—", color: alive ? "#6ba8e5" : "#ff6b7a" },
+          { label: lang === "ua" ? "Виконано" : "Done",    value: String(worker.tasks_done),   color: "#2de897" },
+          { label: lang === "ua" ? "Помилок"  : "Errors",  value: String(worker.tasks_failed), color: "#ff6b7a" },
+          { label: lang === "ua" ? "Пульс"    : "Pulse",   value: worker.last_heartbeat ? timeAgo(worker.last_heartbeat) : "—", color: alive ? "#6ba8e5" : "#ff6b7a" },
           {
-            label: "Сегодня",
+            label: lang === "ua" ? "Сьогодні" : "Today",
             value: sendsToday
               ? todayTotal === 0
                 ? "0"
@@ -284,11 +284,11 @@ function ScheduledCampaignRow({ c }: { c: GroupCampaign }) {
       <div style={{ width: 6, height: 6, borderRadius: "50%", background: color, flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, color: "#c8d8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
-        <div style={{ fontSize: 10, color: "#7c8db0", marginTop: 1 }}>{c.sent_count} отправлено · {c.failed_count} ошибок</div>
+        <div style={{ fontSize: 10, color: "#7c8db0", marginTop: 1 }}>{c.sent_count} sent · {c.failed_count} errors</div>
       </div>
       <div style={{ flexShrink: 0, textAlign: "right" }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: c.next_send_at ? "#ffc946" : "#7c8db0" }}>{formatCountdown(c.next_send_at)}</div>
-        <div style={{ fontSize: 9, color: "#7c8db0" }}>след.</div>
+        <div style={{ fontSize: 9, color: "#7c8db0" }}>next</div>
       </div>
     </div>
   );
@@ -296,19 +296,30 @@ function ScheduledCampaignRow({ c }: { c: GroupCampaign }) {
 
 function SpawnWorkerButton({ onSpawned, prominent = false }: { onSpawned: () => void; prominent?: boolean }) {
   const [busy, setBusy] = useState(false);
-  const [label, setLabel] = useState("Запустить воркер");
+  const [mode, setMode] = useState<"idle" | "starting" | "done" | "error">("idle");
+  const [spawnedId, setSpawnedId] = useState("");
+  const { lang } = useI18n();
+
+  const labelMap = {
+    idle:     lang === "ua" ? "+ Запустити воркер" : "+ Start Worker",
+    starting: lang === "ua" ? "Запуск…" : "Starting…",
+    done:     `✓ ${spawnedId} ${lang === "ua" ? "запущено" : "started"}`,
+    error:    lang === "ua" ? "Помилка" : "Error",
+  };
+  const label = labelMap[mode];
 
   async function spawn() {
-    haptic.medium(); setBusy(true); setLabel("Запуск…");
+    haptic.medium(); setBusy(true); setMode("starting");
     try {
       const r = await api.spawnWorker();
       haptic.success();
-      setLabel(`✓ ${r.worker_id} запущен`);
-      setTimeout(() => setLabel("Запустить воркер"), 3000);
+      setSpawnedId(r.worker_id);
+      setMode("done");
+      setTimeout(() => setMode("idle"), 3000);
       onSpawned();
     } catch {
-      haptic.error(); setLabel("Ошибка запуска");
-      setTimeout(() => setLabel("Запустить воркер"), 2500);
+      haptic.error(); setMode("error");
+      setTimeout(() => setMode("idle"), 2500);
     } finally { setBusy(false); }
   }
 
@@ -754,11 +765,11 @@ export function WorkersPage() {
           {summary && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 5 }}>
               {[
-                { label: "Живых",    value: summary.alive_workers,                      color: "#2de897" },
-                { label: "Активных", value: tasks.filter(t => t.status === "claimed").length, color: "#6ba8e5" },
-                { label: "Очередь",  value: summary.tasks_pending,                      color: "#ffc946" },
-                { label: "Готово",   value: summary.tasks_done,                         color: "#2de897" },
-                { label: "Ошибок",   value: summary.tasks_failed + summary.tasks_dead,  color: "#ff6b7a" },
+                { label: lang === "ua" ? "Живих"    : "Alive",   value: summary.alive_workers,                      color: "#2de897" },
+                { label: lang === "ua" ? "Активних" : "Active",  value: tasks.filter(t => t.status === "claimed").length, color: "#6ba8e5" },
+                { label: lang === "ua" ? "Черга"    : "Queue",   value: summary.tasks_pending,                      color: "#ffc946" },
+                { label: lang === "ua" ? "Готово"   : "Done",    value: summary.tasks_done,                         color: "#2de897" },
+                { label: lang === "ua" ? "Помилок"  : "Errors",  value: summary.tasks_failed + summary.tasks_dead,  color: "#ff6b7a" },
               ].map(s => (
                 <GlassCard key={s.label} style={{ padding: "9px 4px", textAlign: "center" }}>
                   <div style={{ fontSize: 16, fontWeight: 800, color: s.color }}>{s.value}</div>
@@ -948,7 +959,7 @@ export function WorkersPage() {
               <div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: TG.muted, letterSpacing: "0.07em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5 }}>
-                    <ListTodo size={11} /> Очередь задач {tasks.length > 0 && <span style={{ fontWeight: 700, color: "#6ba8e5", background: "rgba(107,168,229,0.12)", borderRadius: 20, padding: "1px 6px", fontSize: 9 }}>{tasks.length}</span>}
+                    <ListTodo size={11} /> {lang === "ua" ? "Черга задач" : "Task queue"} {tasks.length > 0 && <span style={{ fontWeight: 700, color: "#6ba8e5", background: "rgba(107,168,229,0.12)", borderRadius: 20, padding: "1px 6px", fontSize: 9 }}>{tasks.length}</span>}
                   </div>
                   <div style={{ display: "flex", gap: 5 }}>
                     {(["all", "pending", "claimed", "failed"] as const).map(s => (
@@ -977,15 +988,15 @@ export function WorkersPage() {
                 {tasks.length > 0 && (
                   <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
                     {tasks.some(t => t.status === "failed" || t.status === "dead") && (
-                      <button onClick={async () => { haptic.medium(); const r = await api.bulkRetryTasks(); haptic.success(); load(); alert(`♻️ Перезапущено ${r.updated} задач`); }}
+                      <button onClick={async () => { haptic.medium(); const r = await api.bulkRetryTasks(); haptic.success(); load(); alert(`♻️ ${lang === "ua" ? `Перезапущено ${r.updated} задач` : `Retried ${r.updated} tasks`}`); }}
                         style={{ flex: 1, padding: "7px", background: "rgba(107,168,229,0.09)", border: "1px solid rgba(107,168,229,0.28)", borderRadius: 10, color: "#6ba8e5", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                        ♻️ Повтор всех ошибок
+                        ♻️ {lang === "ua" ? "Повтор всіх помилок" : "Retry all errors"}
                       </button>
                     )}
                     {tasks.some(t => t.status === "pending" || t.status === "claimed") && (
-                      <button onClick={async () => { haptic.warning(); const r = await api.bulkCancelTasks(); haptic.success(); load(); alert(`🚫 Отменено ${r.updated} задач`); }}
+                      <button onClick={async () => { haptic.warning(); const r = await api.bulkCancelTasks(); haptic.success(); load(); alert(`🚫 ${lang === "ua" ? `Скасовано ${r.updated} задач` : `Cancelled ${r.updated} tasks`}`); }}
                         style={{ flex: 1, padding: "7px", background: "rgba(255,107,122,0.07)", border: "1px solid rgba(255,107,122,0.22)", borderRadius: 10, color: "#ff6b7a", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                        🚫 Отменить все
+                        🚫 {lang === "ua" ? "Скасувати всі" : "Cancel all"}
                       </button>
                     )}
                   </div>

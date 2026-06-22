@@ -6,16 +6,27 @@ import { TG, BLUR, BLUR_HEAVY } from "../lib/theme";
 import { FullSpinner } from "../components/Spinner";
 import { haptic } from "../lib/haptics";
 
-const DELAY_PRESETS = [
-  { label: "15 мин",  value: 900 },
-  { label: "30 мин",  value: 1800 },
-  { label: "1 ч",     value: 3600 },
-  { label: "3 ч",     value: 10800 },
-  { label: "6 ч",     value: 21600 },
-  { label: "12 ч",    value: 43200 },
-  { label: "24 ч",    value: 86400 },
-  { label: "3 дня",   value: 259200 },
-  { label: "7 дней",  value: 604800 },
+const DELAY_PRESETS_UA = [
+  { label: "15 хв",  value: 900 },
+  { label: "30 хв",  value: 1800 },
+  { label: "1 год",  value: 3600 },
+  { label: "3 год",  value: 10800 },
+  { label: "6 год",  value: 21600 },
+  { label: "12 год", value: 43200 },
+  { label: "24 год", value: 86400 },
+  { label: "3 дні",  value: 259200 },
+  { label: "7 днів", value: 604800 },
+];
+const DELAY_PRESETS_EN = [
+  { label: "15 min", value: 900 },
+  { label: "30 min", value: 1800 },
+  { label: "1 hr",   value: 3600 },
+  { label: "3 hr",   value: 10800 },
+  { label: "6 hr",   value: 21600 },
+  { label: "12 hr",  value: 43200 },
+  { label: "24 hr",  value: 86400 },
+  { label: "3 days", value: 259200 },
+  { label: "7 days", value: 604800 },
 ];
 
 function GlassInput({
@@ -170,7 +181,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
   function resolveSpintax(src: string, seed: number): string {
     let r = src;
     let safety = 0;
-    const names  = ["Иван", "Алексей", "Мария", "Дмитрий", "Наталья"];
+    const names  = lang === "ua" ? ["Іван", "Олексій", "Марія", "Дмитро", "Наталя"] : ["Ivan", "Oleksiy", "Maria", "Dmytro", "Natalia"];
     const logins = ["ivan_fuel", "alex99", "maria_m", "dmitry_k", "natasha_oil"];
     const idx = seed % names.length;
     r = r.replace(/\{first_name\}/g, names[idx]!).replace(/\{username\}/g, logins[idx]!).replace(/\{promo\}/g, "FUEL10");
@@ -372,7 +383,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
             </div>
             <GlassTextarea value={text} onChange={setText} focused={textFocus} minHeight={170}
               onFocus={() => setTextFocus(true)} onBlur={() => setTextFocus(false)}
-              placeholder={"Привет, {first_name}! 👋\n\nПишем тебе, потому что..."} />
+              placeholder={lang === "ua" ? "Привіт, {first_name}! 👋\n\nПишемо тобі, тому що..." : "Hey {first_name}! 👋\n\nWe're writing to you because..."} />
             {charCount > 4000 && <div style={{ marginTop: 6, fontSize: 11, color: TG.red, fontWeight: 600 }}>{t.editor.textTooLong}</div>}
             {text.includes("|") && text.includes("{") && (
               <div style={{ marginTop: 8 }}>
@@ -382,7 +393,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
                 {showPreview && spintaxSamples.length > 0 && (
                   <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
                     {spintaxSamples.map((sample, i) => {
-                      const names = ["Иван", "Алексей", "Мария"];
+                      const names = lang === "ua" ? ["Іван", "Олексій", "Марія"] : ["Ivan", "Oleksiy", "Maria"];
                       return (
                         <div key={i} style={{ padding: "11px 13px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 13, fontSize: 13, color: TG.textSecondary, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                           <div style={{ fontSize: 9, color: TG.muted, fontWeight: 800, textTransform: "uppercase", marginBottom: 6, letterSpacing: "0.08em" }}>{t.editor.variantLabel(i + 1, names[i])}</div>
@@ -442,7 +453,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
                 onFocus={() => { setTextFocus(true); setTextBFocus(false); }}
                 onBlur={() => setTextFocus(false)}
                 accentColor="rgba(107,168,229,"
-                placeholder={"Привет, {first_name}! Акция A:\n10 рублей скидки на заправку"} />
+                placeholder={lang === "ua" ? "Привіт, {first_name}! Акція A:\n-10 грн знижки на заправку" : "Hey {first_name}! Promo A:\n10 UAH off your next fill-up"} />
             </div>
 
             {/* Variant B */}
@@ -459,7 +470,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
                 onFocus={() => { setTextBFocus(true); setTextFocus(false); }}
                 onBlur={() => setTextBFocus(false)}
                 accentColor="rgba(196,174,255,"
-                placeholder={"Привет, {first_name}! Акция B:\nБесплатная мойка при заправке от 30л"} />
+                placeholder={lang === "ua" ? "Привіт, {first_name}! Акція B:\nБезкоштовна мийка від заправки 30л" : "Hey {first_name}! Promo B:\nFree car wash with 30L+ fill-up"} />
             </div>
 
             {!textB.trim() && (
@@ -551,7 +562,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
             <FieldLabel>{t.editor.delayLabel}</FieldLabel>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-            {DELAY_PRESETS.map(p => (
+            {(lang === "ua" ? DELAY_PRESETS_UA : DELAY_PRESETS_EN).map(p => (
               <button key={p.value} onClick={() => { haptic.select(); setDelay(String(p.value)); }} className="tap" style={{
                 padding: "5px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
                 border: `1px solid ${parseInt(delay) === p.value ? "rgba(107,168,229,0.50)" : "rgba(255,255,255,0.10)"}`,
@@ -607,7 +618,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
             <button onClick={async () => {
               haptic.select();
               try {
-                await api.createTemplate({ name: name.trim() || "Без названия", text: text.trim() });
+                await api.createTemplate({ name: name.trim() || (lang === "ua" ? "Без назви" : "Untitled"), text: text.trim() });
                 haptic.success();
               } catch { haptic.error(); }
             }} className="tap" style={{
@@ -695,7 +706,7 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <BookOpen size={15} color="#c4aeff" />
-                  <span style={{ fontSize: 15, fontWeight: 800, color: TG.text }}>Шаблоны сообщений</span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: TG.text }}>{lang === "ua" ? "Шаблони повідомлень" : "Message Templates"}</span>
                 </div>
                 <button onClick={() => setShowTemplates(false)} className="tap" style={{
                   background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)",
@@ -710,9 +721,9 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
             {/* Template list */}
             <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px", WebkitOverflowScrolling: "touch" }}>
               {loadingTemplates ? (
-                <div style={{ textAlign: "center", padding: "32px 0", color: TG.muted, fontSize: 13 }}>Загрузка шаблонов...</div>
+                <div style={{ textAlign: "center", padding: "32px 0", color: TG.muted, fontSize: 13 }}>{lang === "ua" ? "Завантаження шаблонів…" : "Loading templates…"}</div>
               ) : templates.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "32px 0", color: TG.muted, fontSize: 13 }}>Шаблоны не найдены</div>
+                <div style={{ textAlign: "center", padding: "32px 0", color: TG.muted, fontSize: 13 }}>{lang === "ua" ? "Шаблони не знайдено" : "No templates found"}</div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {templates.map(t => {

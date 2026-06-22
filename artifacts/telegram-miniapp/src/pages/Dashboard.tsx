@@ -184,10 +184,10 @@ function ProxyRow({ account }: { account: SenderAccount }) {
         </div>
         <div style={{ fontSize: 9, color, marginTop: 2 }}>
           {proxies[account.proxy_index ?? 0] ?? proxies[0]}
-          {proxies.length > 1 && <span style={{ opacity: 0.6, marginLeft: 5 }}>(+{proxies.length - 1} резерв.)</span>}
+          {proxies.length > 1 && <span style={{ opacity: 0.6, marginLeft: 5 }}>(+{proxies.length - 1} {lang === "ua" ? "резерв." : "backup"})</span>}
           {account.status === "proxy_failed" && <span style={{ marginLeft: 6, fontWeight: 700 }}>⚠ proxy_failed</span>}
           {typeof account.proxy_index === "number" && account.proxy_index > 0 && (
-            <span style={{ marginLeft: 6, opacity: 0.6 }}>ротация #{account.proxy_index}</span>
+            <span style={{ marginLeft: 6, opacity: 0.6 }}>{lang === "ua" ? "ротація" : "rotation"} #{account.proxy_index}</span>
           )}
         </div>
       </div>

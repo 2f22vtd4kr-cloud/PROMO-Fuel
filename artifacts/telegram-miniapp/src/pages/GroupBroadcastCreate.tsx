@@ -12,16 +12,27 @@ import { resolve as resolveSpintax, preview_all } from "../lib/spintax";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const INTERVAL_PRESETS = [
-  { label: "15 мин",  value: 900 },
-  { label: "30 мин",  value: 1800 },
-  { label: "1 ч",     value: 3600 },
-  { label: "3 ч",     value: 10800 },
-  { label: "6 ч",     value: 21600 },
-  { label: "12 ч",    value: 43200 },
-  { label: "24 ч",    value: 86400 },
-  { label: "3 дня",   value: 259200 },
-  { label: "7 дней",  value: 604800 },
+const INTERVAL_PRESETS_UA = [
+  { label: "15 хв",  value: 900 },
+  { label: "30 хв",  value: 1800 },
+  { label: "1 год",  value: 3600 },
+  { label: "3 год",  value: 10800 },
+  { label: "6 год",  value: 21600 },
+  { label: "12 год", value: 43200 },
+  { label: "24 год", value: 86400 },
+  { label: "3 дні",  value: 259200 },
+  { label: "7 днів", value: 604800 },
+];
+const INTERVAL_PRESETS_EN = [
+  { label: "15 min", value: 900 },
+  { label: "30 min", value: 1800 },
+  { label: "1 hr",   value: 3600 },
+  { label: "3 hr",   value: 10800 },
+  { label: "6 hr",   value: 21600 },
+  { label: "12 hr",  value: 43200 },
+  { label: "24 hr",  value: 86400 },
+  { label: "3 days", value: 259200 },
+  { label: "7 days", value: 604800 },
 ];
 
 // ── Proxy parsing ─────────────────────────────────────────────────────────────

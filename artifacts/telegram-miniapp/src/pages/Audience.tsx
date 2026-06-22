@@ -8,7 +8,6 @@ import { useI18n } from "../lib/i18n";
 
 const SEGMENT_COLORS = ["#c4aeff", "#2de897", "#6ba8e5", "rgba(160,190,230,0.50)"];
 const SEGMENT_ICONS  = [Award, Zap, Star, Clock];
-const SEGMENT_LABELS = ["Премиум", "Активные", "Новые", "Спящие"];
 
 // Well-known fuel station locations in Russia (lat, lng, name)
 const STATIONS: { id: number; name: string; lat: number; lng: number; city: string }[] = [
@@ -65,6 +64,7 @@ function exportCSV(rows: User[]) {
 
 export function AudiencePage() {
   const { t, lang } = useI18n();
+  const segmentLabels = [t.audience.segmentPremium, t.audience.segmentActive, t.audience.segmentNew, t.audience.segmentSleeping];
   const [users, setUsers]                   = useState<User[]>([]);
   const [loading, setLoading]               = useState(true);
   const [search, setSearch]                 = useState("");
@@ -414,7 +414,7 @@ export function AudiencePage() {
               <div style={{ fontSize: 14, fontWeight: 700, color: TG.green }}>
                 {loading ? "—" : `+${Math.floor(users.length * 0.027)}`}
               </div>
-              <div style={{ fontSize: 10, color: TG.muted }}>за сегодня</div>
+              <div style={{ fontSize: 10, color: TG.muted }}>{lang === "ua" ? "сьогодні" : "today"}</div>
             </div>
           </div>
         </GlassCard>
@@ -422,7 +422,7 @@ export function AudiencePage() {
         {/* Segments 2×2 */}
         {!loading && !hasAnyFilter && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            {SEGMENT_LABELS.map((label, i) => {
+            {segmentLabels.map((label, i) => {
               const Icon = SEGMENT_ICONS[i]!;
               const color = SEGMENT_COLORS[i]!;
               return (
@@ -548,12 +548,12 @@ export function AudiencePage() {
                           {u.username ? `@${u.username}` : `ID: ${u.chat_id}`}
                           {u.tags && ` · ${u.tags}`}
                           {distKm !== null && (
-                            <span style={{ color: "#6ba8e5", marginLeft: 4 }}>· {distKm.toFixed(1)} км</span>
+                            <span style={{ color: "#6ba8e5", marginLeft: 4 }}>· {distKm.toFixed(1)} km</span>
                           )}
                         </div>
                       </div>
                       <span style={{ fontSize: 9, fontWeight: 700, color, background: `${color}18`, border: `1px solid ${color}35`, borderRadius: 20, padding: "1px 6px", flexShrink: 0 }}>
-                        {SEGMENT_LABELS[i % 4]}
+                        {segmentLabels[i % 4]}
                       </span>
                     </div>
                   </GlassCard>

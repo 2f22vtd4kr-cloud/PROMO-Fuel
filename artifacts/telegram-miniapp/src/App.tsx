@@ -97,6 +97,33 @@ function OwnerApp() {
     }}>
       <MeshBackground />
 
+      {/* ── Top bar — always part of layout flow, no overlap ────────── */}
+      <div style={{
+        flexShrink: 0,
+        display: "flex", justifyContent: "flex-end", alignItems: "center",
+        gap: 6,
+        padding: "10px 12px 4px",
+        position: "relative", zIndex: 10,
+        pointerEvents: "auto",
+      }}>
+        <LangSwitcher />
+        <button
+          onClick={() => { haptic.light(); setShowManualChooser(true); }}
+          style={{
+            width: 30, height: 30, borderRadius: 10,
+            background: "linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            boxShadow: "0 1px 0 rgba(255,255,255,0.10) inset",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+          }}
+        >
+          <BookOpen size={14} color="rgba(149,196,245,0.65)" strokeWidth={1.8} />
+        </button>
+      </div>
+
       <div style={{ flex: 1, overflow: "hidden", position: "relative", zIndex: 1 }}>
         {tab === "home"      && <HomePage onNewCampaign={() => openEditor()} onViewCampaigns={() => setTab("campaigns")} onNavigate={handleNavigate} />}
         {tab === "campaigns" && <CampaignsPage onEdit={openEditor} />}
@@ -153,32 +180,6 @@ function OwnerApp() {
           onClose={() => setShowManualChooser(false)}
         />
       )}
-
-      {/* ── Global top-right controls — lang + manual ──────────────── */}
-      <div style={{
-        position: "absolute", top: 0, right: 0,
-        zIndex: 60,
-        display: "flex", alignItems: "center", gap: 6,
-        padding: "10px 12px 0 0",
-        pointerEvents: "auto",
-      }}>
-        <LangSwitcher />
-        <button
-          onClick={() => { haptic.light(); setShowManualChooser(true); }}
-          style={{
-            width: 30, height: 30, borderRadius: 10,
-            background: "linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
-            border: "1px solid rgba(255,255,255,0.12)",
-            boxShadow: "0 1px 0 rgba(255,255,255,0.10) inset",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer",
-            backdropFilter: "blur(12px)",
-            WebkitBackdropFilter: "blur(12px)",
-          }}
-        >
-          <BookOpen size={14} color="rgba(149,196,245,0.65)" strokeWidth={1.8} />
-        </button>
-      </div>
 
       {/* ── Bottom nav ───────────────────────────────────────────────── */}
       {!anyOverlay && (

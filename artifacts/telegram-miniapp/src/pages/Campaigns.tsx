@@ -38,6 +38,7 @@ function logMeta(status: LogStatus): { icon: React.ReactNode; color: string; lab
 }
 
 function LogsPanel({ campaignId, isActive }: { campaignId: number; isActive: boolean }) {
+  const { t } = useI18n();
   const [logs, setLogs]                   = useState<SendLog[]>([]);
   const [loading, setLoading]             = useState(true);
   const [showBreakdown, setShowBreakdown] = useState(false);
@@ -85,17 +86,17 @@ function LogsPanel({ campaignId, isActive }: { campaignId: number; isActive: boo
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10, alignItems: "center" }}>
           {ok > 0 && (
             <span style={{ fontSize: 10, fontWeight: 700, color: TG.green, background: `${TG.green}18`, border: `1px solid ${TG.green}35`, borderRadius: 20, padding: "3px 8px", display: "flex", alignItems: "center", gap: 4 }}>
-              <CheckCircle2 size={9} /> {ok} доставлено
+              <CheckCircle2 size={9} /> {ok} {t.campaigns.delivered}
             </span>
           )}
           {failed > 0 && (
             <span style={{ fontSize: 10, fontWeight: 700, color: "#ff6b7a", background: "rgba(255,107,122,0.14)", border: "1px solid rgba(255,107,122,0.35)", borderRadius: 20, padding: "3px 8px", display: "flex", alignItems: "center", gap: 4 }}>
-              <XCircle size={9} /> {failed} ошибок
+              <XCircle size={9} /> {failed} {t.campaigns.statErrors.toLowerCase()}
             </span>
           )}
           {skipped > 0 && (
             <span style={{ fontSize: 10, fontWeight: 700, color: TG.muted, background: "rgba(160,190,230,0.10)", border: "1px solid rgba(160,190,230,0.20)", borderRadius: 20, padding: "3px 8px", display: "flex", alignItems: "center", gap: 4 }}>
-              <SkipForward size={9} /> {skipped} пропущено
+              <SkipForward size={9} /> {skipped} {t.campaigns.skipped}
             </span>
           )}
           {dry > 0 && (
@@ -194,6 +195,7 @@ function MiniSparkline({ values, color = "#2de897" }: { values: number[]; color?
 function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
   campaign: Campaign; index: number; onEdit: (id: number) => void; onRefresh: () => void; sparkline?: number[];
 }) {
+  const { t, lang } = useI18n();
   const [busy, setBusy]         = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showText, setShowText] = useState(false);
@@ -314,13 +316,13 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
           {campaign.status === "draft" && (
             <div onClick={launchDraft} style={{ height: 28, borderRadius: 9, background: `${TG.green}20`, border: `1px solid ${TG.green}40`, display: "flex", alignItems: "center", justifyContent: "center", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1, padding: "0 10px", gap: 5 }}>
               <Play size={11} color={TG.green} />
-              <span style={{ fontSize: 10, fontWeight: 700, color: TG.green }}>Запустить</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: TG.green }}>{t.campaigns.sendNow}</span>
             </div>
           )}
           {isDone && (
             <div onClick={restartCampaign} style={{ height: 28, borderRadius: 9, background: "rgba(107,168,229,0.15)", border: "1px solid rgba(107,168,229,0.35)", display: "flex", alignItems: "center", justifyContent: "center", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1, padding: "0 10px", gap: 5 }}>
               <RotateCcw size={11} color="#6ba8e5" />
-              <span style={{ fontSize: 10, fontWeight: 700, color: "#6ba8e5" }}>Повтор</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#6ba8e5" }}>{t.campaigns.resume}</span>
             </div>
           )}
           {isEditable && (
@@ -376,11 +378,11 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: 10, color: TG.muted }}>Отправлено</span>
+                <span style={{ fontSize: 10, color: TG.muted }}>{t.campaigns.sent}</span>
                 {rateStr && <span style={{ fontSize: 9, color: color, fontWeight: 700, background: `${color}18`, border: `1px solid ${color}30`, borderRadius: 8, padding: "1px 5px" }}>{rateStr}</span>}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                {etaStr && <span style={{ fontSize: 9, color: TG.muted }}>осталось {etaStr}</span>}
+                {etaStr && <span style={{ fontSize: 9, color: TG.muted }}>{lang === "ua" ? "залишилось" : "left"} {etaStr}</span>}
                 <span style={{ fontSize: 10, color, fontWeight: 700 }}>
                   {campaign.sent_count.toLocaleString("uk-UA")} / {campaign.target_count.toLocaleString("uk-UA")} ({pct}%)
                 </span>
@@ -457,16 +459,16 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)", fontSize: 10, color: TG.muted }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          <div>Отправлено: <span style={{ color: TG.text }}>{campaign.sent_count.toLocaleString("uk-UA")}</span></div>
+          <div>{t.campaigns.sent}: <span style={{ color: TG.text }}>{campaign.sent_count.toLocaleString("uk-UA")}</span></div>
           <div style={{ display: "flex", gap: 8 }}>
-            <span>Цель: <span style={{ color: TG.text }}>{campaign.target_count.toLocaleString("uk-UA")}</span></span>
-            <span>Ошибок: <span style={{ color: "#ff6b7a" }}>{(campaign.failed_count || 0).toLocaleString("uk-UA")}</span></span>
+            <span>{t.campaigns.total}: <span style={{ color: TG.text }}>{campaign.target_count.toLocaleString("uk-UA")}</span></span>
+            <span>{t.campaigns.statErrors}: <span style={{ color: "#ff6b7a" }}>{(campaign.failed_count || 0).toLocaleString("uk-UA")}</span></span>
           </div>
         </div>
         {sparkline && sparkline.some(v => v > 0) && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
             <MiniSparkline values={sparkline} color={color === "rgba(160,190,230,0.40)" ? "#6ba8e5" : color} />
-            <span style={{ fontSize: 8, color: TG.muted, opacity: 0.6 }}>7 дней</span>
+            <span style={{ fontSize: 8, color: TG.muted, opacity: 0.6 }}>{lang === "ua" ? "7 днів" : "7 days"}</span>
           </div>
         )}
       </div>

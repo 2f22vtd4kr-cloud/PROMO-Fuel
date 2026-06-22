@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { FolderUp, CheckCircle2 } from "lucide-react";
 import { TG } from "../lib/theme";
 import { useToast } from "../components/Toast";
+import { useI18n } from "../lib/i18n";
 
 const ALLOWED_EXT = [".html", ".csv", ".tsv", ".json", ".jsonl"];
 
@@ -13,6 +14,7 @@ interface UploadRecord {
 }
 
 export function UploadPage() {
+  const { lang } = useI18n();
   const [file, setFile]       = useState<File | null>(null);
   const [status, setStatus]   = useState<"idle" | "uploading" | "done" | "error">("idle");
   const [result, setResult]   = useState<{ key: string; count: number; filename: string } | null>(null);
@@ -38,7 +40,7 @@ export function UploadPage() {
     if (!f) return;
     const ext = "." + f.name.split(".").pop()?.toLowerCase();
     if (!ALLOWED_EXT.includes(ext)) {
-      showToast(`Формат не поддерживается: ${ALLOWED_EXT.join(", ")}`, "error");
+      showToast(`${lang === "ua" ? "Формат не підтримується" : "Unsupported format"}: ${ALLOWED_EXT.join(", ")}`, "error");
       return;
     }
     setFile(f);
@@ -63,11 +65,11 @@ export function UploadPage() {
       setResult(data);
       setStatus("done");
       setFile(null);
-      showToast(`Загружено ${data.count} записей`, "success");
+      showToast(`${lang === "ua" ? "Завантажено" : "Loaded"} ${data.count} ${lang === "ua" ? "записів" : "records"}`, "success");
     } catch (e: unknown) {
       setErrorMsg((e as Error).message);
       setStatus("error");
-      showToast("Ошибка загрузки", "error");
+      showToast(lang === "ua" ? "Помилка завантаження" : "Upload failed", "error");
     }
   }
 
@@ -86,7 +88,7 @@ export function UploadPage() {
             <FolderUp size={20} color="#ff9f40" />
           </div>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: "#eef2ff" }}>Файлы аудитории</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#eef2ff" }}>{lang === "ua" ? "Файли аудиторії" : "Audience Files"}</div>
             <div style={{ fontSize: 12, color: "rgba(238,242,255,0.4)" }}>CSV, TSV, JSON, JSONL, HTML</div>
           </div>
         </div>
@@ -122,7 +124,7 @@ export function UploadPage() {
           ) : (
             <>
               <div style={{ fontSize: 36, marginBottom: 8 }}>☁️</div>
-              <div style={{ color: "rgba(238,242,255,0.6)", fontSize: 14 }}>Нажмите для выбора файла</div>
+              <div style={{ color: "rgba(238,242,255,0.6)", fontSize: 14 }}>{lang === "ua" ? "Натисніть для вибору файлу" : "Click to select a file"}</div>
               <div style={{ color: "rgba(238,242,255,0.3)", fontSize: 12, marginTop: 4 }}>
                 {ALLOWED_EXT.join(", ")} · до 10 МБ
               </div>
@@ -144,13 +146,13 @@ export function UploadPage() {
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
             }}
           >
-            ⬆️ Загрузить файл
+            ⬆️ {lang === "ua" ? "Завантажити файл" : "Upload file"}
           </button>
         )}
 
         {status === "uploading" && (
           <div style={{ textAlign: "center", color: "rgba(238,242,255,0.5)", fontSize: 14, padding: 12 }}>
-            ⏳ Загружаю...
+            ⏳ {lang === "ua" ? "Завантажую…" : "Uploading…"}
           </div>
         )}
 
@@ -171,7 +173,7 @@ export function UploadPage() {
             <CheckCircle2 size={20} color={TG.green} />
             <div>
               <div style={{ color: TG.green, fontWeight: 700, fontSize: 14 }}>
-                Загружено {result.count} записей
+                {lang === "ua" ? "Завантажено" : "Loaded"} {result.count} {lang === "ua" ? "записів" : "records"}
               </div>
               <div style={{ color: "rgba(238,242,255,0.4)", fontSize: 12, marginTop: 2 }}>{result.filename}</div>
             </div>
@@ -182,7 +184,7 @@ export function UploadPage() {
         {uploads.length > 0 && (
           <>
             <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(238,242,255,0.35)", letterSpacing: "0.08em", textTransform: "uppercase", paddingTop: 4 }}>
-              История загрузок
+              {lang === "ua" ? "Історія завантажень" : "Upload History"}
             </div>
             {uploads.map(u => (
               <div key={u.key} style={{
@@ -199,7 +201,7 @@ export function UploadPage() {
                   </div>
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "#ff9f40" }}>
-                  {u.count} строк
+                  {u.count} {lang === "ua" ? "рядків" : "rows"}
                 </div>
               </div>
             ))}

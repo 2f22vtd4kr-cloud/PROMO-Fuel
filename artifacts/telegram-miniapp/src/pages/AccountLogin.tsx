@@ -51,7 +51,8 @@ function WizardProgress({ phase }: { phase: Phase }) {
   const steps = ["otp", "twofa", "done"];
   const idx   = steps.indexOf(phase);
 
-  const labels = ["Код", "2FA", "Готово"];
+  const { lang: stepLang } = useI18n();
+  const labels = stepLang === "ua" ? ["Код", "2FA", "Готово"] : ["Code", "2FA", "Done"];
   const phases: Phase[] = ["otp", "twofa", "done"];
 
   return (
@@ -118,7 +119,7 @@ function AccountCard({
   const inFlight = !!session;
 
   const statusColor = authed ? "#2de897" : inFlight ? "#ffc946" : acc.is_banned ? "#ff6b7a" : "#7c8db0";
-  const statusLabel = authed ? "Авторизован" : inFlight ? "В процессе" : acc.is_banned ? "Бан" : "Нет сессии";
+  const statusLabel = authed ? (lang === "ua" ? "Авторизовано" : "Authorized") : inFlight ? (lang === "ua" ? "В процесі" : "In progress") : acc.is_banned ? (lang === "ua" ? "Бан" : "Banned") : (lang === "ua" ? "Немає сесії" : "No session");
 
   return (
     <div
@@ -144,7 +145,7 @@ function AccountCard({
         <div style={{ fontSize: 11, color: TG.muted, marginTop: 1 }}>{acc.phone}</div>
         {session && (
           <div style={{ fontSize: 10, color: "#ffc946", marginTop: 2 }}>
-            Шаг: {session.step} · истекает через {Math.round(session.expires_in / 60)}м
+            {lang === "ua" ? "Крок" : "Step"}: {session.step} · {lang === "ua" ? "закінчується через" : "expires in"} {Math.round(session.expires_in / 60)}{lang === "ua" ? "хв" : "m"}
           </div>
         )}
       </div>
@@ -222,7 +223,7 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
     const { account, apiId, apiHash } = wizard;
     if (!account) return;
     if (!apiId || !apiHash.trim()) {
-      setWizard(w => ({ ...w, errorMsg: "Введите API ID и API Hash" })); return;
+      setWizard(w => ({ ...w, errorMsg: lang === "ua" ? "Введіть API ID та API Hash" : "Enter API ID and API Hash" })); return;
     }
     haptic.medium();
     setPhase("sending");
@@ -233,7 +234,7 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
       const res = await controlApi.sendCode(account.id);
       setPhase("otp", { phone_code_hash: res.phone_code_hash, phone: res.phone });
     } catch (e: unknown) {
-      setErrorOn("credentials", (e as Error).message ?? "Ошибка отправки кода");
+      setErrorOn("credentials", (e as Error).message ?? (lang === "ua" ? "Помилка відправки коду" : "Failed to send code"));
     }
   }
 
@@ -241,7 +242,7 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
 
   async function handleConfirmOtp() {
     const { code, phone, phone_code_hash } = wizard;
-    if (!code.trim()) { setWizard(w => ({ ...w, errorMsg: "Введите код из Telegram" })); return; }
+    if (!code.trim()) { setWizard(w => ({ ...w, errorMsg: lang === "ua" ? "Введіть код з Telegram" : "Enter the code from Telegram" })); return; }
     haptic.medium();
     setPhase("sending");
     try {
@@ -253,10 +254,10 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
         await load();
         setPhase("done", { displayName: res.display_name ?? "" });
       } else {
-        setErrorOn("otp", res.error ?? "Неверный код");
+        setErrorOn("otp", res.error ?? (lang === "ua" ? "Невірний код" : "Incorrect code"));
       }
     } catch (e: unknown) {
-      setErrorOn("otp", (e as Error).message ?? "Ошибка проверки кода");
+      setErrorOn("otp", (e as Error).message ?? (lang === "ua" ? "Помилка перевірки коду" : "Code verification failed"));
     }
   }
 
@@ -264,7 +265,7 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
 
   async function handleConfirm2fa() {
     const { password, phone } = wizard;
-    if (!password.trim()) { setWizard(w => ({ ...w, errorMsg: "Введите пароль" })); return; }
+    if (!password.trim()) { setWizard(w => ({ ...w, errorMsg: lang === "ua" ? "Введіть пароль" : "Enter your password" })); return; }
     haptic.medium();
     setPhase("sending");
     try {
@@ -274,10 +275,10 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
         await load();
         setPhase("done", { displayName: res.display_name ?? "" });
       } else {
-        setErrorOn("twofa", res.error ?? "Неверный пароль 2FA");
+        setErrorOn("twofa", res.error ?? (lang === "ua" ? "Невірний пароль 2FA" : "Incorrect 2FA password"));
       }
     } catch (e: unknown) {
-      setErrorOn("twofa", (e as Error).message ?? "Ошибка 2FA");
+      setErrorOn("twofa", (e as Error).message ?? (lang === "ua" ? "Помилка 2FA" : "2FA error"));
     }
   }
 
@@ -417,12 +418,12 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
               <GlassCard style={{ padding: 14 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: TG.muted, marginBottom: 10, letterSpacing: "0.07em" }}>API TELEGRAM</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <GlassInput value={wizard.apiId} onChange={v => setWizard(w => ({ ...w, apiId: v }))} placeholder="API ID (число)" type="number" autoFocus />
-                  <GlassInput value={wizard.apiHash} onChange={v => setWizard(w => ({ ...w, apiHash: v }))} placeholder="API Hash (32 символа hex)" />
+                  <GlassInput value={wizard.apiId} onChange={v => setWizard(w => ({ ...w, apiId: v }))} placeholder={lang === "ua" ? "API ID (число)" : "API ID (number)"} type="number" autoFocus />
+                  <GlassInput value={wizard.apiHash} onChange={v => setWizard(w => ({ ...w, apiHash: v }))} placeholder="API Hash (32 hex chars)" />
                 </div>
                 <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 10, background: "rgba(107,168,229,0.06)", border: "1px solid rgba(107,168,229,0.15)" }}>
                   <div style={{ fontSize: 11, color: "#6ba8e5", lineHeight: 1.6 }}>
-                    Получить на <span style={{ fontWeight: 700 }}>my.telegram.org</span> → Apps
+                    {lang === "ua" ? "Отримати на" : "Get from"} <span style={{ fontWeight: 700 }}>my.telegram.org</span> → Apps
                   </div>
                 </div>
               </GlassCard>
@@ -509,7 +510,7 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
                     value={wizard.password}
                     onChange={e => setWizard(w => ({ ...w, password: e.target.value }))}
                     onKeyDown={e => e.key === "Enter" && handleConfirm2fa()}
-                    placeholder="Пароль 2FA"
+                    placeholder={lang === "ua" ? "Пароль 2FA" : "2FA Password"}
                     type="password"
                     autoFocus
                     style={{
@@ -552,10 +553,10 @@ export function AccountLoginPage({ onClose }: { onClose: () => void }) {
                 )}
               </div>
               <button onClick={() => { haptic.success(); setPhase("select", INIT); load(); }} style={{ padding: "12px 32px", borderRadius: 16, background: "#2de897", border: "none", fontSize: 14, fontWeight: 800, color: "#07090f", cursor: "pointer" }}>
-                Авторизовать ещё один
+                {lang === "ua" ? "Авторизувати ще один" : "Authorize another"}
               </button>
               <button onClick={() => { haptic.light(); onClose(); }} style={{ background: "none", border: "none", cursor: "pointer", color: TG.muted, fontSize: 13, padding: "4px 0" }}>
-                Закрыть
+                {lang === "ua" ? "Закрити" : "Close"}
               </button>
             </div>
           )}

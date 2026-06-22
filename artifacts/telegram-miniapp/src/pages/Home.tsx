@@ -133,7 +133,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
         <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingBottom: "24px" }}>
 
           {/* Welcome header */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", position: 'sticky', top: 0, zIndex: 50, background: 'linear-gradient(to bottom, rgba(6,8,16,0.95) 0%, transparent 100%)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', padding: "14px 120px 10px 14px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", position: 'sticky', top: 0, zIndex: 50, background: 'linear-gradient(to bottom, rgba(6,8,16,0.95) 0%, transparent 100%)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', padding: "14px 14px 10px" }}>
             <div>
               <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>
                 {t.home.welcome}
@@ -287,7 +287,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-                {overview.activeCampaigns} активных кампаний
+                {overview.activeCampaigns} {lang === "ua" ? "активних кампаній" : "active campaigns"}
               </div>
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
                 {t.home.sentAndBase(overview.totalSent.toLocaleString(lang === "ua" ? "uk-UA" : lang), users.toLocaleString(lang === "ua" ? "uk-UA" : lang))}
@@ -330,7 +330,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                       border: `1px solid ${weekDelta > 0 ? "rgba(45,232,151,0.35)" : "rgba(255,107,107,0.35)"}`,
                       color: weekDelta > 0 ? "#2de897" : "#ff6b7a",
                     }}>
-                      {weekDelta > 0 ? "+" : ""}{weekDelta}% нед.
+                      {weekDelta > 0 ? "+" : ""}{weekDelta}% {lang === "ua" ? "тиж." : "wk."}
                     </span>
                   ) : (
                     <svg width="27" height="16" viewBox="0 0 27 16">
@@ -586,7 +586,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                 label={lang === "ua" ? "Воркери" : "Workers"}
                 value={workers ? `${workers.alive_workers} / ${workers.alive_workers + workers.dead_workers}` : "—"}
                 valueColor={workers && workers.alive_workers > 0 ? "#2de897" : "#ff6b7a"}
-                sub={workers && workers.tasks_pending > 0 ? `${workers.tasks_pending} задач в очереди` : lang === "ua" ? "Черга пуста" : "Queue empty"}
+                sub={workers && workers.tasks_pending > 0 ? `${workers.tasks_pending} ${lang === "ua" ? "задач у черзі" : "tasks in queue"}` : lang === "ua" ? "Черга пуста" : "Queue empty"}
                 onClick={() => { setShowNotifs(false); haptic.light(); onNavigate("workers"); }}
               />
 

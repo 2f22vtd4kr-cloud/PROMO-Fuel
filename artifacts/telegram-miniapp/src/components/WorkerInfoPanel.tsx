@@ -29,15 +29,15 @@ function uptime(iso: string): string {
 
 function fmtTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    return new Date(iso).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   } catch { return iso; }
 }
 
 function fmtDateTime(iso: string): string {
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }) + " " +
-           d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit" }) + " " +
+           d.toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" });
   } catch { return iso; }
 }
 

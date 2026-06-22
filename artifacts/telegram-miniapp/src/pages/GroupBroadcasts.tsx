@@ -43,11 +43,11 @@ function NextSendCountdown({ iso }: { iso: string }) {
     ref.current = setInterval(() => setDiff(Math.floor((new Date(iso).getTime() - Date.now()) / 1000)), 1000);
     return () => { if (ref.current) clearInterval(ref.current); };
   }, [iso]);
-  const fmt = diff <= 0 ? "сейчас" : diff < 60 ? `${diff}с` : diff < 3600 ? `${Math.floor(diff / 60)}м ${diff % 60}с` : `${Math.floor(diff / 3600)}ч ${Math.floor((diff % 3600) / 60)}м`;
+  const fmt = diff <= 0 ? "now" : diff < 60 ? `${diff}s` : diff < 3600 ? `${Math.floor(diff / 60)}m ${diff % 60}s` : `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m`;
   return (
     <div style={{ fontSize: 10, color: TG.muted, marginBottom: 10, display: "flex", alignItems: "center", gap: 4 }}>
       <Clock size={10} color={diff > 0 && diff <= 60 ? "#ffc946" : TG.muted} />
-      <span>Следующая через <span style={{ color: diff <= 0 ? "#2de897" : diff <= 60 ? "#ffc946" : TG.textSecondary, fontWeight: 700 }}>{fmt}</span></span>
+      <span>Next in <span style={{ color: diff <= 0 ? "#2de897" : diff <= 60 ? "#ffc946" : TG.textSecondary, fontWeight: 700 }}>{fmt}</span></span>
     </div>
   );
 }
@@ -118,7 +118,7 @@ function LiveSendFeed({ sends, onRetried }: { sends: GroupCampaignLog[]; onRetri
               onClick={handleRetry} disabled={retrying}
               style={{ fontSize: 10, fontWeight: 700, color: retryDone ? "#2de897" : "#ffc946", background: retryDone ? "rgba(45,232,151,0.12)" : "rgba(255,201,70,0.12)", border: `1px solid ${retryDone ? "rgba(45,232,151,0.30)" : "rgba(255,201,70,0.30)"}`, borderRadius: 8, padding: "3px 8px", cursor: retrying ? "not-allowed" : "pointer", opacity: retrying ? 0.6 : 1, transition: "all 0.25s" }}
             >
-              {retrying ? "…" : retryDone ? `✓ ${retryDone.tasks} задач` : "↺ Повторить ошибки"}
+              {retrying ? "…" : retryDone ? `✓ ${retryDone.tasks} tasks` : "↺ Retry errors"}
             </button>
           )}
           {collapsed ? <ChevronDown size={14} color={TG.muted} /> : <ChevronUp size={14} color={TG.muted} />}
@@ -309,7 +309,7 @@ function GroupCampaignCard({
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: TG.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{campaign.name}</div>
           {isActive && (
-            <div style={{ fontSize: 9, color: "#6ba8e5", fontWeight: 700, marginBottom: 1 }}>● В работе у воркера</div>
+            <div style={{ fontSize: 9, color: "#6ba8e5", fontWeight: 700, marginBottom: 1 }}>● {lang === "ua" ? "Виконується воркером" : "Running on worker"}</div>
           )}
           <div style={{ fontSize: 10, color: TG.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{campaign.text_template}</div>
           {campaign.notes && <div style={{ fontSize: 9, color: "#c4aeff", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📝 {campaign.notes}</div>}
@@ -341,11 +341,11 @@ function GroupCampaignCard({
         return (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 4, marginBottom: 10 }}>
             {[
-              { label: "Групп",     value: String(groups.length),                   color: "#6ba8e5" },
-              { label: "Отправлено",value: String(campaign.sent_count),              color: "#2de897" },
-              { label: "Ошибок",    value: String(campaign.failed_count),            color: "#ff6b7a" },
-              { label: "Интервал",  value: fmtInterval(campaign.interval_seconds),  color: "#ffc946" },
-              { label: "Успех",     value: succPct !== null ? `${succPct}%` : "—",  color: succColor },
+              { label: t.groups.groups,    value: String(groups.length),                   color: "#6ba8e5" },
+              { label: t.groups.sentTotal, value: String(campaign.sent_count),              color: "#2de897" },
+              { label: t.campaigns.statErrors, value: String(campaign.failed_count),        color: "#ff6b7a" },
+              { label: t.groups.interval,  value: fmtInterval(campaign.interval_seconds),  color: "#ffc946" },
+              { label: lang === "ua" ? "Успіх" : "Success", value: succPct !== null ? `${succPct}%` : "—", color: succColor },
             ].map(s => (
               <div key={s.label} style={{ textAlign: "center", background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "6px 2px" }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: s.color }}>{s.value}</div>
@@ -364,7 +364,7 @@ function GroupCampaignCard({
       {/* Last sent timestamp */}
       {campaign.last_sent_at && (
         <div style={{ fontSize: 9, color: TG.muted, textAlign: "right", marginTop: -6, marginBottom: 4 }}>
-          Последний: {new Date(campaign.last_sent_at).toLocaleString("uk-UA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+          {lang === "ua" ? "Останній" : "Last"}: {new Date(campaign.last_sent_at).toLocaleString("uk-UA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
         </div>
       )}
 
@@ -372,21 +372,21 @@ function GroupCampaignCard({
       <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
         {campaign.status === "running" ? (
           <button onClick={() => action("pause")} disabled={busy} style={{ flex: 1, padding: "8px", borderRadius: 10, background: "rgba(255,201,70,0.12)", border: "1px solid rgba(255,201,70,0.3)", fontSize: 11, fontWeight: 700, color: "#ffc946", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-            <Pause size={11} />Пауза
+            <Pause size={11} />{t.groups.pause}
           </button>
         ) : campaign.status === "paused" ? (
           <button onClick={() => action("resume")} disabled={busy} style={{ flex: 1, padding: "8px", borderRadius: 10, background: "rgba(45,232,151,0.12)", border: "1px solid rgba(45,232,151,0.3)", fontSize: 11, fontWeight: 700, color: "#2de897", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-            <Play size={11} />Продолжить
+            <Play size={11} />{t.campaigns.resume}
           </button>
         ) : (
           <button onClick={() => action("start")} disabled={busy} style={{ flex: 1, padding: "8px", borderRadius: 10, background: "rgba(45,232,151,0.12)", border: "1px solid rgba(45,232,151,0.3)", fontSize: 11, fontWeight: 700, color: "#2de897", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-            <Play size={11} />Запустить
+            <Play size={11} />{t.groups.start}
           </button>
         )}
 
-        <button onClick={sendNow} disabled={busy} title="Отправить во все группы сейчас" style={{ padding: "8px 10px", borderRadius: 10, background: "rgba(107,168,229,0.12)", border: "1px solid rgba(107,168,229,0.3)", cursor: busy ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4, opacity: busy ? 0.5 : 1 }}>
+        <button onClick={sendNow} disabled={busy} title={lang === "ua" ? "Відправити в усі групи зараз" : "Send to all groups now"} style={{ padding: "8px 10px", borderRadius: 10, background: "rgba(107,168,229,0.12)", border: "1px solid rgba(107,168,229,0.3)", cursor: busy ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4, opacity: busy ? 0.5 : 1 }}>
           <Send size={12} color="#6ba8e5" />
-          <span style={{ fontSize: 10, color: "#6ba8e5", fontWeight: 700 }}>Сейчас</span>
+          <span style={{ fontSize: 10, color: "#6ba8e5", fontWeight: 700 }}>{lang === "ua" ? "Зараз" : "Now"}</span>
         </button>
 
         {/* Test-send picker */}
@@ -440,21 +440,21 @@ function GroupCampaignCard({
       <div style={{ display: "flex", gap: 5 }}>
         <button onClick={() => openTab("logs")} style={{ flex: 1, padding: "6px", background: expanded && expandTab === "logs" ? "rgba(107,168,229,0.1)" : "none", border: `1px solid ${expanded && expandTab === "logs" ? "rgba(107,168,229,0.3)" : "rgba(255,255,255,0.07)"}`, borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
           {loadingData && expandTab === "logs" ? (
-            <span style={{ fontSize: 10, color: TG.muted }}>Загрузка…</span>
+            <span style={{ fontSize: 10, color: TG.muted }}>{lang === "ua" ? "Завантаження…" : "Loading…"}</span>
           ) : (
             <>
               {expanded && expandTab === "logs" ? <ChevronUp size={10} color="#6ba8e5" /> : <ChevronDown size={10} color={TG.muted} />}
-              <span style={{ fontSize: 10, color: expanded && expandTab === "logs" ? "#6ba8e5" : TG.muted }}>Отправки</span>
+              <span style={{ fontSize: 10, color: expanded && expandTab === "logs" ? "#6ba8e5" : TG.muted }}>{t.groups.logsTab}</span>
             </>
           )}
         </button>
         <button onClick={() => openTab("stats")} style={{ flex: 1, padding: "6px", background: expanded && expandTab === "stats" ? "rgba(45,232,151,0.08)" : "none", border: `1px solid ${expanded && expandTab === "stats" ? "rgba(45,232,151,0.25)" : "rgba(255,255,255,0.07)"}`, borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
           {loadingData && expandTab === "stats" ? (
-            <span style={{ fontSize: 10, color: TG.muted }}>Загрузка…</span>
+            <span style={{ fontSize: 10, color: TG.muted }}>{lang === "ua" ? "Завантаження…" : "Loading…"}</span>
           ) : (
             <>
               <BarChart2 size={10} color={expanded && expandTab === "stats" ? "#2de897" : TG.muted} />
-              <span style={{ fontSize: 10, color: expanded && expandTab === "stats" ? "#2de897" : TG.muted }}>По группам</span>
+              <span style={{ fontSize: 10, color: expanded && expandTab === "stats" ? "#2de897" : TG.muted }}>{t.groups.statsTab}</span>
               {expanded && expandTab === "stats" && <ChevronUp size={10} color="#2de897" />}
             </>
           )}
@@ -483,7 +483,7 @@ function GroupCampaignCard({
                   })}
                   <div style={{ flex: 1 }} />
                   <button onClick={() => {
-                    const rows = ["Группа,Статус,Ошибка,Время",
+                    const rows = [lang === "ua" ? "Група,Статус,Помилка,Час" : "Group,Status,Error,Time",
                       ...allMergedLogs.map(l => `"${l.group_title || l.group_id}",${l.status},"${l.error ?? ""}","${l.sent_at}"`)
                     ].join("\n");
                     const a = document.createElement("a");
@@ -532,12 +532,12 @@ function GroupCampaignCard({
                   const pctOk     = totAll > 0 ? Math.round((totSent / totAll) * 100) : 0;
                   return (
                     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: "#2de897", background: "rgba(45,232,151,0.10)", border: "1px solid rgba(45,232,151,0.25)", borderRadius: 20, padding: "3px 8px" }}>✓ {totSent} всего</span>
-                      {totFailed > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: "#ff6b7a", background: "rgba(255,107,122,0.10)", border: "1px solid rgba(255,107,122,0.25)", borderRadius: 20, padding: "3px 8px" }}>✗ {totFailed} ошибок</span>}
-                      <span style={{ fontSize: 10, fontWeight: 700, color: pctOk >= 80 ? "#2de897" : "#ffc946", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 20, padding: "3px 8px" }}>{pctOk}% успех</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "#2de897", background: "rgba(45,232,151,0.10)", border: "1px solid rgba(45,232,151,0.25)", borderRadius: 20, padding: "3px 8px" }}>✓ {totSent} {lang === "ua" ? "всього" : "total"}</span>
+                      {totFailed > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: "#ff6b7a", background: "rgba(255,107,122,0.10)", border: "1px solid rgba(255,107,122,0.25)", borderRadius: 20, padding: "3px 8px" }}>✗ {totFailed} {lang === "ua" ? "помилок" : "errors"}</span>}
+                      <span style={{ fontSize: 10, fontWeight: 700, color: pctOk >= 80 ? "#2de897" : "#ffc946", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 20, padding: "3px 8px" }}>{pctOk}% {lang === "ua" ? "успіх" : "success"}</span>
                       <div style={{ flex: 1 }} />
                       <button onClick={() => {
-                        const rows = ["Группа,Отправлено,Ошибок,Всего,Последняя отправка",
+                        const rows = [lang === "ua" ? "Група,Надіслано,Помилок,Всього,Останнє надсилання" : "Group,Sent,Errors,Total,Last sent",
                           ...stats.map(s => `"${s.group_title || s.group_id}",${s.sent},${s.failed},${s.total},${s.last_sent_at ?? ""}`)
                         ].join("\n");
                         const a = document.createElement("a");
@@ -686,7 +686,7 @@ export function GroupBroadcastsPage({
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>Групповые</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>{t.groups.title}</div>
             {running > 0 && (
               <span style={{ fontSize: 10, fontWeight: 700, color: "#2de897", background: "rgba(45,232,151,0.10)", borderRadius: 20, padding: "2px 8px" }}>
                 {running} active

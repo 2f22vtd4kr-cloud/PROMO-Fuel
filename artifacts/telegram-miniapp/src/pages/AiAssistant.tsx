@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, Bot, Sparkles, Cpu } from "lucide-react";
 import { getStoredSecret } from "./LockScreen";
+import { useI18n } from "../lib/i18n";
 
 interface Message {
   role: "user" | "model";
@@ -21,10 +22,13 @@ interface HistoryItem {
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
 export function AiAssistantPage() {
+  const { lang } = useI18n();
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "model",
-      text: "Привет! Я PROMO-Fuel System Copilot. Могу помочь с управлением аккаунтами, прокси SOCKS5 и мониторингом платформы. Спроси меня что-нибудь — например, состояние аккаунтов или статус прокси.",
+      text: lang === "ua"
+        ? "Привіт! Я PROMO-Fuel System Copilot. Можу допомогти з управлінням акаунтами, проксі SOCKS5 та моніторингом платформи. Запитай мене щось — наприклад, стан акаунтів або статус проксі."
+        : "Hi! I'm PROMO-Fuel System Copilot. I can help with account management, SOCKS5 proxies, and platform monitoring. Ask me anything — for example, account status or proxy health.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -58,7 +62,7 @@ export function AiAssistantPage() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-        setMessages(prev => [...prev, { role: "model", text: `❌ Ошибка: ${(err as { error?: string }).error ?? res.statusText}` }]);
+        setMessages(prev => [...prev, { role: "model", text: `❌ ${lang === "ua" ? "Помилка" : "Error"}: ${(err as { error?: string }).error ?? res.statusText}` }]);
         return;
       }
 
@@ -66,7 +70,7 @@ export function AiAssistantPage() {
       setMessages(prev => [...prev, { role: "model", text: data.reply }]);
       setHistory(data.history ?? []);
     } catch (e) {
-      setMessages(prev => [...prev, { role: "model", text: `❌ Сетевая ошибка: ${String(e)}` }]);
+      setMessages(prev => [...prev, { role: "model", text: `❌ ${lang === "ua" ? "Мережева помилка" : "Network error"}: ${String(e)}` }]);
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 50);
@@ -112,7 +116,7 @@ export function AiAssistantPage() {
               letterSpacing: "0.01em",
               display: "flex", alignItems: "center", gap: 6,
             }}>
-              AI Помощник
+              {lang === "ua" ? "AI Помічник" : "AI Assistant"}
               <Sparkles size={13} color="#a78bfa" style={{ opacity: 0.8 }} />
             </div>
             <div style={{ fontSize: 11, color: "rgba(160,180,230,0.55)", marginTop: 1 }}>
@@ -250,7 +254,7 @@ export function AiAssistantPage() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKey}
-            placeholder="Спросите о прокси, аккаунтах, кампаниях..."
+            placeholder={lang === "ua" ? "Запитайте про проксі, акаунти, кампанії…" : "Ask about proxies, accounts, campaigns…"}
             rows={1}
             disabled={loading}
             style={{
@@ -307,7 +311,7 @@ export function AiAssistantPage() {
           marginTop: 6,
           letterSpacing: "0.03em",
         }}>
-          Enter — отправить · Shift+Enter — перенос строки
+          {lang === "ua" ? "Enter — надіслати · Shift+Enter — новий рядок" : "Enter — send · Shift+Enter — new line"}
         </div>
       </div>
     </div>
