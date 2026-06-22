@@ -633,9 +633,11 @@ export function GroupBroadcastsPage({
 
   useEffect(() => { load(); const t = setInterval(load, 12_000); return () => clearInterval(t); }, [load]);
 
-  const running  = campaigns.filter(c => c.status === "running").length;
-  const paused   = campaigns.filter(c => c.status === "paused").length;
-  const filtered = search.trim() === "" ? campaigns
+  const running   = campaigns.filter(c => c.status === "running").length;
+  const paused    = campaigns.filter(c => c.status === "paused").length;
+  const done      = campaigns.filter(c => c.status === "done" || c.status === "completed").length;
+  const errored   = campaigns.filter(c => c.status === "error" || c.status === "cancelled").length;
+  const filtered  = search.trim() === "" ? campaigns
     : campaigns.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.text_template.toLowerCase().includes(search.toLowerCase()));
 
   async function bulkAction(action: "pause" | "resume") {
@@ -707,13 +709,14 @@ export function GroupBroadcastsPage({
         )}
 
         {!loading && (
+          <>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 6 }}>
             {[
-              { label: t.campaigns.total,      value: campaigns.length,                                                                                   color: TG.text },
-              { label: t.groups.running,      value: running,                                                                                             color: "#2de897" },
-              { label: t.groups.paused,       value: paused,                                                                                              color: "#ffc946" },
-              { label: t.groups.draft,        value: campaigns.filter(c => c.status === "draft").length,                                                  color: "#7c8db0" },
-              { label: t.groups.sentTotal,    value: campaigns.reduce((s, c) => s + (c.sent_count ?? 0), 0).toLocaleString(lang === "ua" ? "uk-UA" : lang),                        color: "#6ba8e5" },
+              { label: t.campaigns.total,   value: campaigns.length,                                                                                    color: TG.text },
+              { label: t.groups.running,    value: running,                                                                                              color: "#2de897" },
+              { label: t.groups.paused,     value: paused,                                                                                               color: "#ffc946" },
+              { label: t.groups.draft,      value: campaigns.filter(c => c.status === "draft").length,                                                   color: "#7c8db0" },
+              { label: t.groups.sentTotal,  value: campaigns.reduce((s, c) => s + (c.sent_count ?? 0), 0).toLocaleString(lang === "ua" ? "uk-UA" : lang), color: "#6ba8e5" },
             ].map(s => (
               <GlassCard key={s.label} style={{ padding: "10px 4px", textAlign: "center" }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: s.color }}>{s.value}</div>
@@ -721,6 +724,25 @@ export function GroupBroadcastsPage({
               </GlassCard>
             ))}
           </div>
+          {(done > 0 || errored > 0) && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {done > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 10, background: "rgba(45,232,151,0.08)", border: "1px solid rgba(45,232,151,0.25)" }}>
+                  <span style={{ fontSize: 11 }}>✅</span>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "#2de897" }}>{done}</span>
+                  <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>завершено</span>
+                </div>
+              )}
+              {errored > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 10, background: "rgba(255,107,122,0.08)", border: "1px solid rgba(255,107,122,0.25)" }}>
+                  <span style={{ fontSize: 11 }}>⛔</span>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "#ff6b7a" }}>{errored}</span>
+                  <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>відхилено</span>
+                </div>
+              )}
+            </div>
+          )}
+          </>
         )}
 
         {/* ── Global live send feed ───────────────────────────────── */}

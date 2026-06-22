@@ -473,6 +473,27 @@ router.get("/accounts/proxy-check", async (req, res) => {
   }
 });
 
+router.get("/accounts/export.csv", (_req, res) => {
+  try {
+    const db = getDb(true);
+    const rows = db.prepare(
+      "SELECT id, phone, label, username, status, proxy, daily_limit, sent_today, sent_total, is_active, created_at FROM sender_accounts ORDER BY id"
+    ).all() as Record<string, unknown>[];
+    db.close();
+
+    const cols = ["id","phone","label","username","status","proxy","daily_limit","sent_today","sent_total","is_active","created_at"];
+    const esc  = (v: unknown) => { const s = String(v ?? ""); return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s; };
+    const csv  = [cols.join(","), ...rows.map(r => cols.map(c => esc(r[c])).join(","))].join("\n");
+
+    const fname = `accounts-${new Date().toISOString().slice(0,10)}.csv`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${fname}"`);
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 const VALIDATE_SCRIPT = join(process.cwd(), "scripts", "validate_sessions.py");
 
 router.post("/accounts/validate-sessions", (req, res) => {

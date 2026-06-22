@@ -997,6 +997,47 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
     try { setAccounts(await api.getAccounts()); } catch {} finally { setLoading(false); }
   }, []);
 
+  const sessionInvalidIds = accounts
+    .filter(a => a.status === "session_invalid" && !!(a as any).session_file)
+    .map(a => a.id);
+
+  const [valAllState,   setValAllState]   = useState<"idle" | "running">("idle");
+  const [valAllResults, setValAllResults] = useState<ValidateResult[]>([]);
+  const [valAllErr,     setValAllErr]     = useState("");
+  const [showValAll,    setShowValAll]    = useState(false);
+
+  const allActiveSessionIds = accounts
+    .filter(a => a.is_active && !!(a as any).session_file)
+    .map(a => a.id);
+
+  async function validateAllInvalid() {
+    if (valAllState === "running" || sessionInvalidIds.length === 0) return;
+    haptic.medium();
+    setValAllState("running"); setValAllErr(""); setValAllResults([]); setShowValAll(true);
+    try {
+      const { results } = await api.validateSessions(sessionInvalidIds);
+      setValAllResults(results); haptic.success();
+    } catch (e: unknown) {
+      setValAllErr((e as Error).message ?? "Помилка"); haptic.error();
+    }
+    setValAllState("idle");
+    load();
+  }
+
+  async function revalidateAllActive() {
+    if (valAllState === "running" || allActiveSessionIds.length === 0) return;
+    haptic.medium();
+    setValAllState("running"); setValAllErr(""); setValAllResults([]); setShowValAll(true);
+    try {
+      const { results } = await api.validateSessions(allActiveSessionIds);
+      setValAllResults(results); haptic.success();
+    } catch (e: unknown) {
+      setValAllErr((e as Error).message ?? "Помилка"); haptic.error();
+    }
+    setValAllState("idle");
+    load();
+  }
+
   async function pingAll() {
     if (pingAllRunning) return;
     haptic.medium();
@@ -1021,6 +1062,15 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
   const totalSent   = accounts.reduce((s, a) => s + (a.sent_today ?? 0), 0);
   const totalLimit  = accounts.reduce((s, a) => s + (a.daily_limit ?? 0), 0);
   const quotaPct    = totalLimit > 0 ? Math.min(Math.round(totalSent / totalLimit * 100), 100) : 0;
+
+  const healthCounts = {
+    session_invalid: accounts.filter(a => a.status === "session_invalid").length,
+    banned:          accounts.filter(a => a.status === "banned").length,
+    flood_wait:      accounts.filter(a => a.status === "flood_wait").length,
+    proxy_failed:    accounts.filter(a => a.status === "proxy_failed").length,
+    near_limit:      accounts.filter(a => a.daily_limit > 0 && (a.sent_today ?? 0) >= a.daily_limit * 0.9).length,
+  };
+  const hasProblems = Object.values(healthCounts).some(v => v > 0);
   const quotaColor  = quotaPct >= 90 ? "#ff6b7a" : quotaPct >= 70 ? "#ffc946" : "#2de897";
 
   return (
@@ -1033,6 +1083,66 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
           </div>
         </div>
       )}
+      {/* Validate-all results overlay */}
+      {showValAll && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 201, background: "#07090f", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+          <div style={{ padding: "24px 16px", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 60px)", display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: TG.text }}>🔬 Перевірка сесій</div>
+              <div onClick={() => { haptic.light(); setShowValAll(false); }} style={{ cursor: "pointer", color: TG.muted, padding: 6 }}><X size={18} /></div>
+            </div>
+
+            {valAllState === "running" && (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, borderRadius: 12, background: "rgba(196,174,255,0.07)", border: "1px solid rgba(196,174,255,0.2)", padding: "14px 16px" }}>
+                <div style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid rgba(196,174,255,0.3)", borderTopColor: "#c4aeff", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                <div style={{ fontSize: 13, color: "#c4aeff" }}>Підключення до Telegram… ({sessionInvalidIds.length} акаунтів)</div>
+              </div>
+            )}
+
+            {valAllErr && (
+              <div style={{ fontSize: 12, color: "#ff6b7a", background: "rgba(255,107,122,0.08)", borderRadius: 10, border: "1px solid rgba(255,107,122,0.2)", padding: "10px 14px" }}>⚠️ {valAllErr}</div>
+            )}
+
+            {valAllResults.length > 0 && (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                  {[
+                    { label: "Авторизовано",   value: valAllResults.filter(r => r.status === "authorized").length,    color: "#2de897" },
+                    { label: "Невалідні",       value: valAllResults.filter(r => r.status === "session_invalid").length, color: "#ff6b7a" },
+                    { label: "Заблоковані",     value: valAllResults.filter(r => r.status === "banned").length,       color: "#ffc946" },
+                  ].map(s => (
+                    <GlassCard key={s.label} style={{ padding: "10px 6px", textAlign: "center" }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</div>
+                      <div style={{ fontSize: 9, color: TG.muted, marginTop: 2 }}>{s.label}</div>
+                    </GlassCard>
+                  ))}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {valAllResults.map(r => {
+                    const ok = r.status === "authorized";
+                    const banned = r.status === "banned";
+                    const col = ok ? "#2de897" : banned ? "#ffc946" : "#ff6b7a";
+                    return (
+                      <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderRadius: 10, background: `${col}08`, border: `1px solid ${col}22` }}>
+                        <span style={{ fontSize: 14, color: col }}>{ok ? "✓" : banned ? "⛔" : "✗"}</span>
+                        <span style={{ fontSize: 12, fontFamily: "monospace", color: TG.text, minWidth: 90 }}>{r.phone}</span>
+                        <span style={{ fontSize: 11, color: col, fontWeight: 600 }}>{r.display_name ?? r.status}</span>
+                        {r.error && !ok && <span style={{ fontSize: 9, color: TG.muted, marginLeft: "auto", maxWidth: 100, textAlign: "right", lineHeight: 1.3 }}>{r.error}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            <button onClick={() => { haptic.light(); setShowValAll(false); }}
+              style={{ padding: "12px", borderRadius: 14, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", fontSize: 13, fontWeight: 700, color: TG.text, cursor: "pointer" }}>
+              Закрити
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Bulk import overlay */}
       {showBulk && (
         <div style={{ position: "absolute", inset: 0, zIndex: 200, background: "#07090f", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
@@ -1068,6 +1178,39 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
               <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                 <RotateCcw size={13} color={TG.muted} />
                 <span style={{ fontSize: 11, color: TG.muted, fontWeight: 600 }}>Сброс</span>
+              </div>
+            </GlassCard>
+            {sessionInvalidIds.length > 0 && (
+              <GlassCard
+                style={{ padding: "8px 10px", borderRadius: 14, cursor: valAllState === "running" ? "not-allowed" : "pointer", opacity: valAllState === "running" ? 0.7 : 1 }}
+                onClick={validateAllInvalid}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <span style={{ fontSize: 13 }}>{valAllState === "running" ? "⏳" : "🔬"}</span>
+                  <span style={{ fontSize: 11, color: "#ff6b7a", fontWeight: 700 }}>
+                    Validate ({sessionInvalidIds.length})
+                  </span>
+                </div>
+              </GlassCard>
+            )}
+            {allActiveSessionIds.length > 0 && (
+              <GlassCard
+                style={{ padding: "8px 10px", borderRadius: 14, cursor: valAllState === "running" ? "not-allowed" : "pointer", opacity: valAllState === "running" ? 0.7 : 1 }}
+                onClick={revalidateAllActive}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <span style={{ fontSize: 13 }}>{valAllState === "running" ? "⏳" : "🔄"}</span>
+                  <span style={{ fontSize: 11, color: "#c4aeff", fontWeight: 700 }}>Reval All</span>
+                </div>
+              </GlassCard>
+            )}
+            <GlassCard
+              style={{ padding: "8px 10px", borderRadius: 14, cursor: "pointer" }}
+              onClick={() => { haptic.light(); window.open(api.getAccountsCsvUrl(), "_blank"); }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ fontSize: 13 }}>📥</span>
+                <span style={{ fontSize: 11, color: TG.muted, fontWeight: 600 }}>CSV</span>
               </div>
             </GlassCard>
             <GlassCard style={{ padding: "8px 10px", borderRadius: 14, cursor: pingAllRunning ? "not-allowed" : "pointer", opacity: pingAllRunning ? 0.7 : 1 }} onClick={pingAll}>
@@ -1110,13 +1253,33 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
           {totalLimit > 0 && (
             <GlassCard style={{ padding: "10px 14px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: TG.muted }}>Общая квота за сегодня</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: TG.muted }}>Загальна квота за сьогодні</span>
                 <span style={{ fontSize: 11, fontWeight: 800, color: quotaColor }}>{totalSent.toLocaleString("uk-UA")} / {totalLimit.toLocaleString("uk-UA")} · {quotaPct}%</span>
               </div>
               <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${quotaPct}%`, borderRadius: 2, background: `linear-gradient(90deg, ${quotaColor}, ${quotaColor}99)`, boxShadow: `0 0 6px ${quotaColor}66`, transition: "width 0.6s ease" }} />
               </div>
             </GlassCard>
+          )}
+
+          {hasProblems && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {[
+                { key: "session_invalid", icon: "🔑", label: "невалідних", color: "#ff6b7a" },
+                { key: "banned",          icon: "🚫", label: "заблок.",    color: "#ff6b7a" },
+                { key: "flood_wait",      icon: "⏳", label: "FloodWait", color: "#ffc946" },
+                { key: "proxy_failed",    icon: "🔴", label: "no proxy",  color: "#ffc946" },
+                { key: "near_limit",      icon: "📊", label: "≥90% ліміту", color: "#c4aeff" },
+              ]
+                .filter(s => healthCounts[s.key as keyof typeof healthCounts] > 0)
+                .map(s => (
+                  <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 10, background: `${s.color}10`, border: `1px solid ${s.color}30` }}>
+                    <span style={{ fontSize: 11 }}>{s.icon}</span>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: s.color }}>{healthCounts[s.key as keyof typeof healthCounts]}</span>
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>{s.label}</span>
+                  </div>
+                ))}
+            </div>
           )}
           </>
         )}

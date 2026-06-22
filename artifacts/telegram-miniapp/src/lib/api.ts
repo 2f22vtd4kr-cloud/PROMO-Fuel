@@ -451,6 +451,8 @@ export const api = {
     return r.json();
   },
 
+  getAccountsCsvUrl: () => `${API_BASE}/api/accounts/export.csv`,
+
   bulkImportAccounts: async (file: File, proxies: string): Promise<{
     status: string;
     data?: { total_extracted_sessions: number; total_valid_proxies_parsed: number; saved: number; skipped: number; errors: string[]; message: string };

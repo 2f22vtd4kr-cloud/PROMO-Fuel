@@ -95,7 +95,7 @@ function Slide1({ lang }: SL) {
         {L(lang,"User Manual","Посібник користувача")}
       </div>
       <div style={{ fontSize:12, color:"rgba(255,255,255,0.38)", marginBottom:30 }}>
-        {L(lang,"Complete system reference · 27 pages","Повний опис системи · 27 сторінок")}
+        {L(lang,"Complete system reference · 30 pages","Повний опис системи · 30 сторінок")}
       </div>
       <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"center", marginBottom:24 }}>
         {topics.map(([ic,lb]) => (
@@ -874,6 +874,101 @@ function SlideProxyHealth({ lang }: SL) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SLIDE — Auto-Revalidation (inserted after SlideProxyHealth)
+// ═══════════════════════════════════════════════════════════════
+function SlideAutoRevalidation({ lang }: SL) {
+  return (
+    <Shell>
+      {title("🔄", L(lang,"Auto-Revalidation","Авто-реvalidація"), ACCENT)}
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)", marginBottom:14, lineHeight:1.5 }}>
+        {L(lang,
+          "The supervisor daemon automatically re-validates all sessions every 6 hours and alerts you when any expire.",
+          "Демон supervisor автоматично перевіряє всі сесії кожні 6 годин і сповіщає, коли якась із них протерміновує."
+        )}
+      </div>
+      <div style={card(ACCENT)}>
+        <div style={{ fontSize:13, fontWeight:700, color:"#fff", marginBottom:10 }}>
+          {L(lang,"How it works","Як це працює")}
+        </div>
+        {[
+          [1, ACCENT, L(lang,"Every 6 h (configurable)","Кожні 6 год (налаштовується)"),
+            L(lang,"Runs validate_sessions.py on all active accounts","Запускає validate_sessions.py для всіх активних акаунтів")],
+          [2, GREEN,  L(lang,"Session OK","Сесія OK"),
+            L(lang,"Status stays 'authorized' — no alert","Статус залишається 'authorized' — без сповіщення")],
+          [3, AMBER,  L(lang,"Session expired","Сесія протермінована"),
+            L(lang,"Status → 'session_invalid' — Telegram alert to owner","Статус → 'session_invalid' — сповіщення власнику в Telegram")],
+          [4, PURPLE, L(lang,"Account recovered","Акаунт відновлений"),
+            L(lang,"If re-authed between checks — logged as 'recovered'","Якщо повторно авторизовано — логується як 'відновлено'")],
+        ].map(([n,c,t,d]) => step(n as number, c as string, t as string, d as string))}
+      </div>
+      <div style={{ display:"flex", flexDirection:"column", gap:6, marginTop:4 }}>
+        {[
+          ["REVALIDATE_INTERVAL_HOURS", "6",  L(lang,"Check interval (hours)","Інтервал перевірки (годин)")],
+          ["REVALIDATE_MAX_BATCH",      "20", L(lang,"Max accounts per pass","Макс. акаунтів за прохід")],
+        ].map(([k,v,d]) => (
+          <div key={k as string} style={{ ...card(PURPLE), marginTop:0, display:"flex", gap:8, alignItems:"baseline", flexWrap:"wrap" }}>
+            <code style={{ fontSize:10, color:PURPLE, fontFamily:"monospace", minWidth:200 }}>{k as string}</code>
+            <span style={{ fontSize:11, color:GREEN, fontWeight:700 }}>=&nbsp;{v as string}</span>
+            <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{d as string}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ ...card(AMBER), marginTop:4 }}>
+        <div style={{ fontSize:12, color:AMBER, fontWeight:700, marginBottom:4 }}>💡</div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.6)", lineHeight:1.5 }}>
+          {L(lang,
+            "You can also trigger a manual check from the Accounts tab → 🔬 Validate (N) button.",
+            "Ви також можете запустити ручну перевірку з вкладки Акаунти → кнопка 🔬 Validate (N)."
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SLIDE — Account Tools (Export & Utilities)
+// ═══════════════════════════════════════════════════════════════
+function SlideAccountTools({ lang }: SL) {
+  return (
+    <Shell>
+      {title("🛠", L(lang,"Account Tools","Інструменти акаунтів"), GREEN)}
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)", marginBottom:14, lineHeight:1.5 }}>
+        {L(lang,
+          "Quick-action tools in the Accounts header for managing your sender fleet.",
+          "Інструменти швидкої дії в заголовку Акаунтів для управління відправниками."
+        )}
+      </div>
+      <div style={card(GREEN)}>
+        {[
+          ["🔬 Validate (N)", ACCENT,  L(lang,"Appears when N accounts have invalid sessions — re-checks them all via Telethon","З'являється коли N акаунтів мають невалідні сесії — перевіряє їх усі через Telethon")],
+          ["📥 CSV",          PURPLE,  L(lang,"Downloads all accounts as a spreadsheet (phone, status, proxy, daily limit, sent today)","Завантажує всі акаунти як таблицю (телефон, статус, проксі, ліміт, надіслано)") ],
+          ["🔌 Ping All",     GREEN,   L(lang,"Pings every SOCKS5 proxy at once — coloured latency badges appear on each card","Пінгує всі SOCKS5 проксі одночасно — кольорові бейджі затримки з'являються на кожній картці")],
+          ["📦 Bulk",         AMBER,   L(lang,"Opens the bulk ZIP importer for mass session upload","Відкриває масовий ZIP-імпортер для завантаження сесій")],
+          ["🔄 Сброс",        "#6b7280", L(lang,"Resets all accounts' sent_today counter to zero","Скидає лічильник sent_today до нуля для всіх акаунтів")],
+        ].map(([btn,col,desc]) => (
+          <div key={btn as string} style={{ display:"flex", gap:10, alignItems:"baseline", marginBottom:10 }}>
+            <code style={{ fontSize:11, color:col as string, fontFamily:"monospace", minWidth:96, whiteSpace:"nowrap" }}>{btn as string}</code>
+            <span style={{ fontSize:12, color:"rgba(255,255,255,0.5)", lineHeight:1.4 }}>{desc as string}</span>
+          </div>
+        ))}
+      </div>
+      <div style={card(AMBER)}>
+        <div style={{ fontSize:13, fontWeight:700, color:"#fff", marginBottom:8 }}>
+          {L(lang,"Account pipeline","Конвеєр акаунтів")}
+        </div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.55)", lineHeight:2 }}>
+          {L(lang,
+            "📦 Bulk import → 🔬 Validate → 🔌 Ping proxy → 🔑 Auth (if needed) → ✅ idle",
+            "📦 Масовий імпорт → 🔬 Перевірка → 🔌 Пінг проксі → 🔑 Авторизація (якщо треба) → ✅ idle"
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // SLIDE 15 — Workers
 // ═══════════════════════════════════════════════════════════════
 function Slide15({ lang }: SL) {
@@ -1465,11 +1560,69 @@ function Slide25({ lang }: SL) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SLIDE — Monitoring & Alerts
+// ═══════════════════════════════════════════════════════════════
+function SlideMonitoring({ lang }: SL) {
+  return (
+    <Shell>
+      {title("🔔", L(lang,"Monitoring & Alerts","Моніторинг і сповіщення"), AMBER)}
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)", marginBottom:14, lineHeight:1.5 }}>
+        {L(lang,
+          "The supervisor sends proactive Telegram alerts so you know about issues before they impact campaigns.",
+          "Supervisor надсилає проактивні Telegram-сповіщення, щоб ви знали про проблеми до того, як вони вплинуть на кампанії."
+        )}
+      </div>
+      <div style={card(AMBER)}>
+        <div style={{ fontSize:13, fontWeight:700, color:"#fff", marginBottom:10 }}>
+          {L(lang,"Automatic alerts","Автоматичні сповіщення")}
+        </div>
+        {[
+          ["⚠️", AMBER,  L(lang,"Worker crash","Воркер впав"),            L(lang,"1st crash fires immediately; subsequent within 15 min window suppressed","Перший краш — негайно; наступні в межах 15 хв — подавляються")],
+          ["☠️", "#ff6b7a", L(lang,"Worker dead","Воркер мертвий"),         L(lang,"After 5 crashes in 10 min — process not restarted","Після 5 крашів за 10 хв — процес не перезапускається")],
+          ["🔑", ACCENT,  L(lang,"Session expired","Сесія протермінована"),  L(lang,"Auto-revalidation every 6h detects newly invalid sessions","Авто-реvalіdація кожні 6 год знаходить невалідні сесії")],
+          ["🐢", GREEN,   L(lang,"Silent hour","Тихий час"),                 L(lang,"Active campaigns sent 0 messages in the last hour","Активні кампанії надіслали 0 повідомлень за годину")],
+          ["📊", PURPLE,  L(lang,"Quota warning","Попередження ліміту"),     L(lang,"Any sender account reaches ≥90% of daily limit","Будь-який акаунт досяг ≥90% денного ліміту")],
+          ["📊", "#6b7280", L(lang,"Daily digest","Щоденний звіт"),          L(lang,"Every day at 09:00 UTC — summary of sends, workers, users","Щодня о 09:00 UTC — підсумок відправок, воркерів, юзерів")],
+          ["📈", "#6b7280", L(lang,"Weekly digest","Тижневий звіт"),         L(lang,"Sundays at 19:00 UTC — 7-day aggregated report","Неділя 19:00 UTC — агрегований звіт за 7 днів")],
+        ].map(([ic,c,t,d]) => (
+          <div key={t as string} style={{ display:"flex", gap:10, alignItems:"flex-start", marginBottom:10 }}>
+            <span style={{ fontSize:16, minWidth:24 }}>{ic as string}</span>
+            <div>
+              <div style={{ fontSize:12, fontWeight:700, color:c as string, marginBottom:2 }}>{t as string}</div>
+              <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", lineHeight:1.4 }}>{d as string}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ ...card(GREEN), marginTop:4 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:GREEN, marginBottom:6 }}>
+          {L(lang,"Configurable via env vars","Налаштовується через env vars")}
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+          {[
+            ["DAILY_SUMMARY_HOUR",       "9",  L(lang,"Daily digest hour (UTC)","Година щоденного звіту UTC")],
+            ["WEEKLY_SUMMARY_WEEKDAY",   "6",  L(lang,"Weekly weekday (0=Mon, 6=Sun)","День тижня (0=Пн, 6=Нд)")],
+            ["REVALIDATE_INTERVAL_HOURS","6",  L(lang,"Session check interval","Інтервал перевірки сесій")],
+          ].map(([k,v,d]) => (
+            <div key={k as string} style={{ display:"flex", gap:6, alignItems:"baseline", flexWrap:"wrap" }}>
+              <code style={{ fontSize:9, color:PURPLE, fontFamily:"monospace" }}>{k as string}</code>
+              <span style={{ fontSize:10, color:GREEN, fontWeight:700 }}>={v as string}</span>
+              <span style={{ fontSize:10, color:"rgba(255,255,255,0.35)" }}>{d as string}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Slide registry
 // ═══════════════════════════════════════════════════════════════
 const SLIDES: Array<(p: SL) => React.ReactElement> = [
   Slide1,Slide2,Slide3,Slide4,Slide5,Slide6,Slide7,Slide8,Slide9,
   Slide10,Slide11,Slide12,Slide13,SlideAccountsBulk,Slide14,SlideProxyHealth,
+  SlideAutoRevalidation,SlideAccountTools,SlideMonitoring,
   Slide15,Slide16,Slide17,Slide18,Slide19,Slide20,Slide21,Slide22,
   Slide23,Slide24,Slide25,
 ];
@@ -1480,19 +1633,21 @@ const TITLES: Record<Lang, string[]> = {
     "Cover","System Overview","Dashboard","Quick Actions","DM Campaigns",
     "Campaign Editor","Groups","Group Broadcasts","Campaign Settings",
     "Step-by-Step Walkthrough","Analytics","Audience","Sender Accounts",
-    "Bulk Account Import","Account Authorization","Proxy Health Check","Workers",
-    "Task Queue","Rate Limits","Best Practices","Architecture","Telegram Protocols",
-    "Sessions & Security","Spintax Engine","Process Internals",
-    "Database & API","Launch Checklist",
+    "Bulk Account Import","Account Authorization","Proxy Health Check",
+    "Auto-Revalidation","Account Tools","Monitoring & Alerts",
+    "Workers","Task Queue","Rate Limits","Best Practices","Architecture",
+    "Telegram Protocols","Sessions & Security","Spintax Engine",
+    "Process Internals","Database & API","Launch Checklist",
   ],
   ua: [
     "Обкладинка","Огляд системи","Дашборд","Швидкі дії","DM-розсилки",
     "Редактор кампанії","Групи","Групові розсилки","Налаштування кампанії",
     "Покрокове керівництво","Статистика","Аудиторія","Sender-акаунти",
-    "Масовий імпорт акаунтів","Авторизація акаунта","Перевірка проксі","Воркери",
-    "Черга задач","Ліміти відправки","Поради та рекомендації","Архітектура",
-    "Протоколи Telegram","Сесії та безпека","Рушій спінтаксу",
-    "Внутрішня будова процесів","База даних та API","Чеклист запуску",
+    "Масовий імпорт акаунтів","Авторизація акаунта","Перевірка проксі",
+    "Авто-реvalidація","Інструменти акаунтів","Моніторинг і сповіщення",
+    "Воркери","Черга задач","Ліміти відправки","Поради та рекомендації",
+    "Архітектура","Протоколи Telegram","Сесії та безпека",
+    "Рушій спінтаксу","Внутрішня будова процесів","База даних та API","Чеклист запуску",
   ],
 };
 

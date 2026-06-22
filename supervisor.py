@@ -193,8 +193,10 @@ def _format_daily_summary(stats: dict) -> str:
     )
 
 
-_WEEKLY_SUMMARY_WEEKDAY = int(os.getenv("WEEKLY_SUMMARY_WEEKDAY", "6"))  # 6 = Sunday
-_WEEKLY_SUMMARY_HOUR   = int(os.getenv("WEEKLY_SUMMARY_HOUR", "19"))    # 19:00 UTC
+_WEEKLY_SUMMARY_WEEKDAY    = int(os.getenv("WEEKLY_SUMMARY_WEEKDAY", "6"))  # 6 = Sunday
+_WEEKLY_SUMMARY_HOUR       = int(os.getenv("WEEKLY_SUMMARY_HOUR", "19"))    # 19:00 UTC
+_REVALIDATE_INTERVAL_HOURS = int(os.getenv("REVALIDATE_INTERVAL_HOURS", "6"))
+_REVALIDATE_MAX_BATCH      = int(os.getenv("REVALIDATE_MAX_BATCH", "20"))
 
 
 def _format_weekly_summary(stats: dict, db_path: str) -> str:
@@ -323,6 +325,159 @@ def _check_slow_sends(db_path: str, last_hour_key: str) -> str:
     return ""
 
 
+_quota_warned_accounts: set[int]  = set()   # IDs already warned today
+_campaign_was_running:  set[int]  = set()   # campaign IDs seen as running last poll
+
+
+def _check_campaign_completions(db_path: str) -> None:
+    """Alert when a running DM or group campaign just became 'done'."""
+    global _campaign_was_running
+    try:
+        conn = sqlite3.connect(db_path, timeout=5)
+        conn.row_factory = sqlite3.Row
+        dm_rows  = conn.execute("SELECT id, name, status, sent_count, target_count FROM campaigns").fetchall()
+        grp_rows = conn.execute("SELECT id, name, status FROM group_campaigns").fetchall()
+        conn.close()
+
+        current_running: set[int] = set()
+        newly_done: list[str] = []
+
+        for r in dm_rows:
+            rid = f"dm_{r['id']}"
+            if r["status"] in ("running", "sending"):
+                current_running.add(rid)  # type: ignore[arg-type]
+            elif r["status"] == "done" and rid in _campaign_was_running:
+                pct = (round(r["sent_count"] / r["target_count"] * 100)
+                       if r["target_count"] and r["target_count"] > 0 else 100)
+                newly_done.append(f"📨 `{r['name']}` — {r['sent_count']} отправлено ({pct}%)")
+
+        for r in grp_rows:
+            rid = f"grp_{r['id']}"
+            if r["status"] == "running":
+                current_running.add(rid)  # type: ignore[arg-type]
+            elif r["status"] in ("done", "completed") and rid in _campaign_was_running:
+                newly_done.append(f"📡 `{r['name']}` (групп.) — завершено")
+
+        for nd in newly_done:
+            _notify_owner_sync(f"✅ *Кампания завершена*\n\n{nd}")
+
+        _campaign_was_running = current_running
+    except Exception as exc:
+        logger.debug("[campaign-done] Check failed: %s", exc)
+
+
+def _check_quota_warnings(db_path: str) -> None:
+    """Alert if any account is ≥ 90% of its daily send limit (once per account per day)."""
+    try:
+        conn = sqlite3.connect(db_path, timeout=5)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT id, phone, sent_today, daily_limit FROM sender_accounts "
+            "WHERE daily_limit > 0 AND sent_today >= daily_limit * 0.9 AND is_active = 1"
+        ).fetchall()
+        conn.close()
+        new_warnings = [r for r in rows if r["id"] not in _quota_warned_accounts]
+        if not new_warnings:
+            return
+        lines = "\n".join(
+            f"   • `{r['phone']}` — {r['sent_today']}/{r['daily_limit']} ({round(r['sent_today']/r['daily_limit']*100)}%)"
+            for r in new_warnings[:10]
+        )
+        _notify_owner_sync(
+            f"📊 *Ліміт відправок* — {len(new_warnings)} акаунт(а) на 90%+\n\n"
+            f"{lines}\n\nЛіміт скинеться о опівночі UTC."
+        )
+        for r in new_warnings:
+            _quota_warned_accounts.add(r["id"])
+        logger.info("[quota-warning] Alerted for %d account(s)", len(new_warnings))
+    except Exception as exc:
+        logger.debug("[quota-warning] Check failed: %s", exc)
+
+
+def _run_revalidation(db_path: str) -> None:
+    """One pass: validate every active account that has a session file."""
+    import json as _json
+    import subprocess as _subp
+
+    try:
+        conn = sqlite3.connect(db_path, timeout=10)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT id, phone, status FROM sender_accounts "
+            "WHERE session_file IS NOT NULL AND session_file != '' AND is_active = 1 "
+            "ORDER BY id"
+        ).fetchall()
+        conn.close()
+
+        if not rows:
+            logger.info("[revalidator] No accounts with session files — skipping")
+            return
+
+        batch = list(rows[:_REVALIDATE_MAX_BATCH])
+        ids   = [str(r["id"]) for r in batch]
+        prev  = {int(r["id"]): r["status"] for r in batch}
+
+        logger.info("[revalidator] Checking %d account(s)…", len(ids))
+
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts", "validate_sessions.py")
+        python = "/home/runner/workspace/.pythonlibs/bin/python3"
+
+        res = _subp.run(
+            [python, script, db_path] + ids,
+            capture_output=True, text=True, timeout=600,
+        )
+        if not res.stdout.strip():
+            logger.warning("[revalidator] Script produced no output; stderr: %s", res.stderr[:300])
+            return
+
+        data    = _json.loads(res.stdout)
+        results = data.get("results", [])
+
+        newly_invalid: list[str] = []
+        newly_authed:  list[str] = []
+        for r in results:
+            p = prev.get(int(r["id"]))
+            c = r["status"]
+            if p == "authorized" and c == "session_invalid":
+                newly_invalid.append(r["phone"])
+            elif p in ("session_invalid", "idle") and c == "authorized":
+                newly_authed.append(r["phone"])
+
+        logger.info(
+            "[revalidator] Done — %d checked, %d newly invalid, %d recovered",
+            len(results), len(newly_invalid), len(newly_authed),
+        )
+
+        if newly_invalid:
+            phones = "\n".join(f"   • `{p}`" for p in newly_invalid[:10])
+            extra  = "\n   _(и ещё…)_" if len(newly_invalid) > 10 else ""
+            _notify_owner_sync(
+                f"🔑 *Сессии истекли* — {len(newly_invalid)} аккаунт(а)\n\n"
+                f"{phones}{extra}\n\n"
+                "Перейди в Аккаунты → повторно авторизуй."
+            )
+
+        if newly_authed:
+            logger.info("[revalidator] Recovered: %s", ", ".join(newly_authed))
+
+    except Exception as exc:
+        logger.warning("[revalidator] Error during revalidation pass: %s", exc)
+
+
+def _revalidation_thread(db_path: str, shutdown_event: threading.Event) -> None:
+    """Background thread: re-validates sessions every REVALIDATE_INTERVAL_HOURS hours."""
+    interval = _REVALIDATE_INTERVAL_HOURS * 3600
+    logger.info(
+        "[revalidator] Started — interval=%dh, max_batch=%d",
+        _REVALIDATE_INTERVAL_HOURS, _REVALIDATE_MAX_BATCH,
+    )
+    # Brief startup delay so the system fully boots before hitting Telegram
+    shutdown_event.wait(90)
+    while not shutdown_event.is_set():
+        _run_revalidation(db_path)
+        shutdown_event.wait(interval)
+
+
 def _daily_summary_thread(db_path: str, shutdown_event: threading.Event) -> None:
     """Background thread: fires daily digest + Sunday weekly digest + slow-sends alert."""
     logger.info(
@@ -369,6 +524,19 @@ def _daily_summary_thread(db_path: str, shutdown_event: threading.Event) -> None
             shutdown_event.wait(61)
             continue
 
+        # ── Midnight quota-reset: set sent_today = 0 for all accounts ────────
+        if now.hour == 0 and now.minute < 2 and date_key != _last_sent_date:
+            try:
+                conn = sqlite3.connect(db_path, timeout=10)
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("UPDATE sender_accounts SET sent_today = 0")
+                conn.commit()
+                conn.close()
+                logger.info("[daily-summary] Midnight quota reset: sent_today → 0 for all accounts")
+                _quota_warned_accounts.clear()   # reset quota-warn set for the new day
+            except Exception as exc:
+                logger.warning("[daily-summary] Midnight quota reset failed: %s", exc)
+
         # Slow-sends alert — check every 30 min during business hours (06:00–22:00 UTC)
         if 6 <= now.hour <= 22 and time.monotonic() - _last_slow_check >= _slow_sends_check_interval:
             try:
@@ -379,6 +547,19 @@ def _daily_summary_thread(db_path: str, shutdown_event: threading.Event) -> None
                     logger.info("[slow-sends] Alert sent for hour %s", _slow_sends_alerted_hour)
             except Exception as exc:
                 logger.debug("[slow-sends] Error: %s", exc)
+
+            # Quota warning: alert if any account is ≥90% of daily limit
+            try:
+                _check_quota_warnings(db_path)
+            except Exception as exc:
+                logger.debug("[quota-warning] Error: %s", exc)
+
+            # Campaign completion: alert when running → done
+            try:
+                _check_campaign_completions(db_path)
+            except Exception as exc:
+                logger.debug("[campaign-done] Skipped: %s", exc)
+
             _last_slow_check = time.monotonic()
 
         shutdown_event.wait(30)
@@ -866,6 +1047,18 @@ def run(args: argparse.Namespace) -> None:  # noqa: C901
         daemon=True,
     )
     _daily_t.start()
+
+    _reval_t = threading.Thread(
+        target=_revalidation_thread,
+        args=(env_state.db_path, _shutdown_event),
+        name="session-revalidator",
+        daemon=True,
+    )
+    _reval_t.start()
+    logger.info(
+        "[supervisor] Session revalidator started — interval=%dh, max_batch=%d",
+        _REVALIDATE_INTERVAL_HOURS, _REVALIDATE_MAX_BATCH,
+    )
 
     logger.info(
         "[supervisor] Fleet launched: %d subprocess(es) running",
