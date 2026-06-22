@@ -50868,6 +50868,26 @@ router6.get("/accounts/proxy-check", async (req, res) => {
     res.status(500).json({ error: String(err) });
   }
 });
+var VALIDATE_SCRIPT = join(process.cwd(), "scripts", "validate_sessions.py");
+router6.post("/accounts/validate-sessions", (req, res) => {
+  const { ids } = req.body;
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    return void res.status(400).json({ error: "ids array required" });
+  }
+  const PYTHON = "/home/runner/workspace/.pythonlibs/bin/python3";
+  const batch = ids.slice(0, 30).map(String);
+  const child = spawnSync(PYTHON, [VALIDATE_SCRIPT, DB_PATH, ...batch], {
+    encoding: "utf8",
+    timeout: 48e4
+  });
+  try {
+    const parsed = JSON.parse(child.stdout || "{}");
+    if (parsed.error) return void res.status(500).json({ error: parsed.error });
+    res.json(parsed);
+  } catch {
+    res.status(500).json({ error: child.stderr?.trim() || "Parse error" });
+  }
+});
 router6.get("/accounts/sends-today", (_req, res) => {
   try {
     const db = getDb4(true);

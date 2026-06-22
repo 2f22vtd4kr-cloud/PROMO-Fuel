@@ -473,6 +473,30 @@ router.get("/accounts/proxy-check", async (req, res) => {
   }
 });
 
+const VALIDATE_SCRIPT = join(process.cwd(), "scripts", "validate_sessions.py");
+
+router.post("/accounts/validate-sessions", (req, res) => {
+  const { ids } = req.body as { ids: number[] };
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    return void res.status(400).json({ error: "ids array required" });
+  }
+  const PYTHON = "/home/runner/workspace/.pythonlibs/bin/python3";
+  const batch = ids.slice(0, 30).map(String);
+
+  const child = spawnSync(PYTHON, [VALIDATE_SCRIPT, DB_PATH, ...batch], {
+    encoding: "utf8",
+    timeout: 480_000,
+  });
+
+  try {
+    const parsed = JSON.parse(child.stdout || "{}") as { results?: unknown[]; error?: string };
+    if (parsed.error) return void res.status(500).json({ error: parsed.error });
+    res.json(parsed);
+  } catch {
+    res.status(500).json({ error: child.stderr?.trim() || "Parse error" });
+  }
+});
+
 router.get("/accounts/sends-today", (_req, res) => {
   try {
     const db = getDb(true);

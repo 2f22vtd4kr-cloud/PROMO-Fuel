@@ -398,9 +398,20 @@ function RateLimitGauge({ accountId }: { accountId: number }) {
 
 type ProxyResult = { alive: boolean | null; latency_ms: number | null; error: string | null };
 
-function ProxyPingBadge({ accountId, proxy }: { accountId: number; proxy: string | null }) {
+function ProxyPingBadge({ accountId, proxy, externalResult }: {
+  accountId: number;
+  proxy: string | null;
+  externalResult?: ProxyResult | null;
+}) {
   const [state,  setState]  = useState<"idle" | "checking" | "done">("idle");
   const [result, setResult] = useState<ProxyResult | null>(null);
+
+  useEffect(() => {
+    if (externalResult !== undefined) {
+      setResult(externalResult);
+      setState(externalResult !== null ? "done" : "idle");
+    }
+  }, [externalResult]);
 
   async function ping() {
     setState("checking");
@@ -464,7 +475,7 @@ function ProxyPingBadge({ accountId, proxy }: { accountId: number; proxy: string
   );
 }
 
-function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => void }) {
+function AccountCard({ acc, onRefresh, pingResult }: { acc: SenderAccount; onRefresh: () => void; pingResult?: ProxyResult }) {
   const { t, lang } = useI18n();
   const [expanded,      setExpanded]      = useState(false);
   const [showAuth,      setShowAuth]      = useState(false);
@@ -642,7 +653,7 @@ function AccountCard({ acc, onRefresh }: { acc: SenderAccount; onRefresh: () => 
                   </span>
                 ) : null;
               })()}
-              <ProxyPingBadge accountId={acc.id} proxy={acc.proxy ?? (acc as any).proxies ?? null} />
+              <ProxyPingBadge accountId={acc.id} proxy={acc.proxy ?? (acc as any).proxies ?? null} externalResult={pingResult} />
             </div>
           )}
 
@@ -705,15 +716,27 @@ type BulkResult = {
   skipped: number;
   errors: string[];
   message: string;
+  saved_ids?: number[];
+};
+
+type ValidateResult = {
+  id: number;
+  phone: string;
+  status: string;
+  display_name: string | null;
+  error: string | null;
 };
 
 function BulkImportPanel({ onDone }: { onDone: () => void }) {
-  const [zipFile,  setZipFile]  = useState<File | null>(null);
-  const [proxies,  setProxies]  = useState("");
-  const [status,   setStatus]   = useState<"idle" | "running" | "done" | "error">("idle");
-  const [result,   setResult]   = useState<BulkResult | null>(null);
-  const [errMsg,   setErrMsg]   = useState("");
-  const [dragging, setDragging] = useState(false);
+  const [zipFile,       setZipFile]       = useState<File | null>(null);
+  const [proxies,       setProxies]       = useState("");
+  const [status,        setStatus]        = useState<"idle" | "running" | "done" | "error">("idle");
+  const [result,        setResult]        = useState<BulkResult | null>(null);
+  const [errMsg,        setErrMsg]        = useState("");
+  const [dragging,      setDragging]      = useState(false);
+  const [valState,      setValState]      = useState<"idle" | "running" | "done">("idle");
+  const [valResults,    setValResults]    = useState<ValidateResult[]>([]);
+  const [valErr,        setValErr]        = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -888,6 +911,67 @@ function BulkImportPanel({ onDone }: { onDone: () => void }) {
             </div>
           )}
 
+          {/* Validate sessions section */}
+          {result?.saved_ids && result.saved_ids.length > 0 && valState === "idle" && (
+            <button
+              onClick={async () => {
+                haptic.medium(); setValState("running"); setValErr("");
+                try {
+                  const { results } = await api.validateSessions(result.saved_ids!);
+                  setValResults(results); setValState("done"); haptic.success();
+                } catch (e: unknown) {
+                  setValErr((e as Error).message ?? "Помилка перевірки"); setValState("idle"); haptic.error();
+                }
+              }}
+              style={{ width: "100%", padding: "12px", borderRadius: 14,
+                background: "rgba(196,174,255,0.12)", border: "1px solid rgba(196,174,255,0.35)",
+                color: "#c4aeff", fontSize: 13, fontWeight: 700, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              🔬 Перевірити сесії ({result.saved_ids.length})
+            </button>
+          )}
+
+          {valState === "running" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, borderRadius: 12,
+              background: "rgba(196,174,255,0.07)", border: "1px solid rgba(196,174,255,0.2)", padding: "12px 14px" }}>
+              <div style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid rgba(196,174,255,0.3)", borderTopColor: "#c4aeff", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+              <div style={{ fontSize: 12, color: "#c4aeff" }}>Підключення до Telegram для кожного акаунта…</div>
+            </div>
+          )}
+
+          {valErr && (
+            <div style={{ fontSize: 11, color: "#ff6b7a", background: "rgba(255,107,122,0.08)", borderRadius: 10, border: "1px solid rgba(255,107,122,0.2)", padding: "8px 12px" }}>
+              ⚠️ {valErr}
+            </div>
+          )}
+
+          {valState === "done" && valResults.length > 0 && (
+            <div style={{ borderRadius: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.5)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                Результати перевірки
+              </div>
+              {valResults.map(r => {
+                const ok = r.status === "authorized";
+                const banned = r.status === "banned";
+                const col = ok ? "#2de897" : banned ? "#ffc946" : "#ff6b7a";
+                const icon = ok ? "✓" : banned ? "⛔" : "✗";
+                return (
+                  <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 4px" }}>
+                    <span style={{ fontSize: 13, color: col, minWidth: 16, textAlign: "center" }}>{icon}</span>
+                    <span style={{ fontSize: 12, color: TG.text, minWidth: 80, fontFamily: "monospace" }}>{r.phone}</span>
+                    <span style={{ fontSize: 11, color: col, fontWeight: 600 }}>{r.display_name ?? r.status}</span>
+                    {r.error && !ok && (
+                      <span style={{ fontSize: 9, color: TG.muted, marginLeft: "auto", maxWidth: 120, textAlign: "right", lineHeight: 1.3 }}>{r.error}</span>
+                    )}
+                  </div>
+                );
+              })}
+              <div style={{ marginTop: 6, fontSize: 10, color: TG.muted, textAlign: "right" }}>
+                {valResults.filter(r => r.status === "authorized").length} / {valResults.length} авторизовано
+              </div>
+            </div>
+          )}
+
           <button onClick={() => { haptic.medium(); onDone(); }}
             style={{ padding: "10px", borderRadius: 12, background: "#2de897", border: "none", fontSize: 12, fontWeight: 700, color: "#07090f", cursor: "pointer" }}>
             Готово — оновити список акаунтів
@@ -902,14 +986,32 @@ function BulkImportPanel({ onDone }: { onDone: () => void }) {
 
 export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => void; onManualAccounts?: () => void }) {
   const { t, lang } = useI18n();
-  const [accounts, setAccounts] = useState<SenderAccount[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [showBulk, setShowBulk] = useState(false);
+  const [accounts,       setAccounts]       = useState<SenderAccount[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [showForm,       setShowForm]       = useState(false);
+  const [showBulk,       setShowBulk]       = useState(false);
+  const [pingAllResults, setPingAllResults] = useState<Record<number, ProxyResult>>({});
+  const [pingAllRunning, setPingAllRunning] = useState(false);
 
   const load = useCallback(async () => {
     try { setAccounts(await api.getAccounts()); } catch {} finally { setLoading(false); }
   }, []);
+
+  async function pingAll() {
+    if (pingAllRunning) return;
+    haptic.medium();
+    setPingAllRunning(true);
+    try {
+      const { results } = await api.checkProxies();
+      const map: Record<number, ProxyResult> = {};
+      for (const r of results) map[r.id] = r;
+      setPingAllResults(map);
+      haptic.success();
+    } catch {
+      haptic.error();
+    }
+    setPingAllRunning(false);
+  }
 
   useEffect(() => { load(); }, [load]);
   useSse(() => { load(); });
@@ -966,6 +1068,12 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
               <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                 <RotateCcw size={13} color={TG.muted} />
                 <span style={{ fontSize: 11, color: TG.muted, fontWeight: 600 }}>Сброс</span>
+              </div>
+            </GlassCard>
+            <GlassCard style={{ padding: "8px 10px", borderRadius: 14, cursor: pingAllRunning ? "not-allowed" : "pointer", opacity: pingAllRunning ? 0.7 : 1 }} onClick={pingAll}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ fontSize: 13 }}>{pingAllRunning ? "⏳" : "🔌"}</span>
+                <span style={{ fontSize: 11, color: "#c4aeff", fontWeight: 700 }}>Ping All</span>
               </div>
             </GlassCard>
             <GlassCard style={{ padding: "8px 10px", borderRadius: 14, cursor: "pointer" }} onClick={() => { haptic.medium(); setShowBulk(s => !s); }}>
@@ -1026,7 +1134,7 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
           </GlassCard>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {accounts.map(a => <AccountCard key={a.id} acc={a} onRefresh={load} />)}
+            {accounts.map(a => <AccountCard key={a.id} acc={a} onRefresh={load} pingResult={pingAllResults[a.id]} />)}
           </div>
         )}
       </div>

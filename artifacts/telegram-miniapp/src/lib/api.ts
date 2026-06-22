@@ -439,6 +439,18 @@ export const api = {
     return r.json();
   },
 
+  validateSessions: async (ids: number[]): Promise<{
+    results: { id: number; phone: string; status: string; display_name: string | null; error: string | null }[];
+  }> => {
+    const r = await fetch(`${API_BASE}/api/accounts/validate-sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  },
+
   bulkImportAccounts: async (file: File, proxies: string): Promise<{
     status: string;
     data?: { total_extracted_sessions: number; total_valid_proxies_parsed: number; saved: number; skipped: number; errors: string[]; message: string };

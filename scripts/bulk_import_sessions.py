@@ -49,9 +49,10 @@ def main():
         pass
     con.close()
 
-    saved   = 0
-    skipped = 0
-    errors  = []
+    saved      = 0
+    skipped    = 0
+    errors     = []
+    saved_ids  = []
 
     try:
         with zipfile.ZipFile(zip_path, "r") as archive:
@@ -96,6 +97,9 @@ def main():
                             status          = 'idle'
                     """, (phone, proxy_str, session_path, two_fa, now))
                     con.commit()
+                    row = con.execute("SELECT id FROM sender_accounts WHERE phone = ?", (phone,)).fetchone()
+                    if row:
+                        saved_ids.append(row[0])
                     con.close()
                     saved += 1
 
@@ -118,6 +122,7 @@ def main():
             "saved": saved,
             "skipped": skipped,
             "errors": errors[:10],
+            "saved_ids": saved_ids,
             "message": f"Імпорт завершено. Збережено {saved} акаунтів, пропущено {skipped}."
         }
     }, ensure_ascii=False))
