@@ -6,6 +6,7 @@ import { useI18n } from "../lib/i18n";
 interface Message {
   role: "user" | "model";
   text: string;
+  engine?: string;
 }
 
 interface HistoryPart {
@@ -49,6 +50,10 @@ export function AiAssistantPage() {
     setMessages(prev => [...prev, { role: "user", text }]);
     setLoading(true);
 
+    const CAPACITY_MSG = lang === "ua"
+      ? "⚠️ Асистент тимчасово перевантажений. Спробуйте ще раз за хвилину."
+      : "⚠️ The Assistant is temporarily over capacity. Please try again in a moment.";
+
     try {
       const secret = getStoredSecret();
       const res = await fetch(`${API_BASE}/api/v3/ai/chat`, {
@@ -61,16 +66,15 @@ export function AiAssistantPage() {
       });
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-        setMessages(prev => [...prev, { role: "model", text: `❌ ${lang === "ua" ? "Помилка" : "Error"}: ${(err as { error?: string }).error ?? res.statusText}` }]);
+        setMessages(prev => [...prev, { role: "model", text: CAPACITY_MSG }]);
         return;
       }
 
-      const data = await res.json() as { reply: string; history: HistoryItem[] };
-      setMessages(prev => [...prev, { role: "model", text: data.reply }]);
+      const data = await res.json() as { reply: string; history: HistoryItem[]; engine?: string };
+      setMessages(prev => [...prev, { role: "model", text: data.reply, engine: data.engine }]);
       setHistory(data.history ?? []);
-    } catch (e) {
-      setMessages(prev => [...prev, { role: "model", text: `❌ ${lang === "ua" ? "Мережева помилка" : "Network error"}: ${String(e)}` }]);
+    } catch {
+      setMessages(prev => [...prev, { role: "model", text: CAPACITY_MSG }]);
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 50);

@@ -3,6 +3,12 @@ import Database from "better-sqlite3";
 import { DB_PATH } from "../lib/db-path";
 import { GoogleGenAI, type Tool, type Content } from "@google/genai";
 
+interface HistoryPart {
+  text?: string;
+  functionCall?: unknown;
+  functionResponse?: unknown;
+}
+
 const router: IRouter = Router();
 
 function getDb() {
@@ -305,13 +311,60 @@ Safe limits: 15-60s delay between sends; 50-100 msg/day per account (warm-up: st
 
 Respond in the same language the user writes in (Russian, Ukrainian, or English). Be direct and precise.`;
 
+// ── Groq fallback ─────────────────────────────────────────────────────────
+
+const GROQ_SYSTEM_INSTRUCTION = `You are the PROMO-Fuel System Copilot running on the emergency backup engine (Groq/Llama). The primary AI engine (Gemini) is temporarily over capacity. Politely inform the user of this at the start of your response. You can still answer general operational questions about SOCKS5 proxies, Telegram bulk messaging, account management, campaign strategy, and platform troubleshooting — but you cannot query live database metrics right now. Be helpful and direct. Respond in the same language the user writes in (Ukrainian, Russian, or English).`;
+
+function isOverloadError(err: unknown): boolean {
+  const s = String(err);
+  return s.includes("503") || s.includes("UNAVAILABLE") || s.includes("overloaded") ||
+         s.includes("rate") || s.includes("quota") || s.includes("capacity") ||
+         s.includes("high demand") || s.includes("Resource has been exhausted");
+}
+
+async function callGroqFallback(message: string, history: Content[]): Promise<string> {
+  const GROQ_API_KEY = process.env["GROQ_API_KEY"];
+  if (!GROQ_API_KEY) throw new Error("GROQ_API_KEY not configured");
+
+  const openaiMessages: { role: string; content: string }[] = [
+    { role: "system", content: GROQ_SYSTEM_INSTRUCTION },
+  ];
+
+  for (const item of (history ?? [])) {
+    if (item.role !== "user" && item.role !== "model") continue;
+    const text = (item.parts ?? [])
+      .filter((p: HistoryPart) => typeof p.text === "string")
+      .map((p: HistoryPart) => p.text as string)
+      .join("");
+    if (!text) continue;
+    openaiMessages.push({ role: item.role === "model" ? "assistant" : "user", content: text });
+  }
+
+  openaiMessages.push({ role: "user", content: message });
+
+  const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${GROQ_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      messages: openaiMessages,
+      max_tokens: 1024,
+      temperature: 0.7,
+    }),
+  });
+
+  if (!resp.ok) throw new Error(`Groq HTTP ${resp.status}`);
+  const data = await resp.json() as { choices: { message: { content: string } }[] };
+  return data.choices[0]?.message?.content ?? "";
+}
+
 // ── POST /v3/ai/chat ────────────────────────────────────────────────────────
 
 router.post("/v3/ai/chat", async (req: Request, res: Response) => {
   const GEMINI_API_KEY = process.env["GEMINI_API_KEY"];
-  if (!GEMINI_API_KEY) {
-    return void res.status(503).json({ error: "GEMINI_API_KEY not configured" });
-  }
 
   const { history, message } = req.body as {
     history?: Content[];
@@ -322,59 +375,61 @@ router.post("/v3/ai/chat", async (req: Request, res: Response) => {
     return void res.status(400).json({ error: "message is required" });
   }
 
-  try {
-    const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+  // ── Primary: Gemini with function calling ─────────────────────────────
+  if (GEMINI_API_KEY) {
+    try {
+      const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
-    const chat = ai.chats.create({
-      model: "gemini-2.5-flash",
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        tools: TOOLS,
-      },
-      history: history ?? [],
-    });
-
-    let response = await chat.sendMessage({ message });
-
-    // ── Function calling execution loop ──────────────────────────────────
-    let iterations = 0;
-    while (iterations < 5) {
-      const fnCall = response.functionCalls?.[0];
-      if (!fnCall) break;
-
-      const fn = TOOL_DISPATCH[fnCall.name ?? ""];
-      let toolResult: Record<string, unknown>;
-      if (fn) {
-        try {
-          toolResult = fn() as Record<string, unknown>;
-        } catch (e) {
-          toolResult = { error: String(e) };
-        }
-      } else {
-        toolResult = { error: `Unknown tool: ${fnCall.name}` };
-      }
-
-      response = await chat.sendMessage({
-        message: [
-          {
-            functionResponse: {
-              name: fnCall.name ?? "",
-              response: toolResult,
-            },
-          },
-        ],
+      const chat = ai.chats.create({
+        model: "gemini-2.5-flash",
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTION,
+          tools: TOOLS,
+        },
+        history: history ?? [],
       });
 
-      iterations++;
+      let response = await chat.sendMessage({ message });
+
+      let iterations = 0;
+      while (iterations < 5) {
+        const fnCall = response.functionCalls?.[0];
+        if (!fnCall) break;
+
+        const fn = TOOL_DISPATCH[fnCall.name ?? ""];
+        let toolResult: Record<string, unknown>;
+        if (fn) {
+          try { toolResult = fn() as Record<string, unknown>; }
+          catch (e) { toolResult = { error: String(e) }; }
+        } else {
+          toolResult = { error: `Unknown tool: ${fnCall.name}` };
+        }
+
+        response = await chat.sendMessage({
+          message: [{ functionResponse: { name: fnCall.name ?? "", response: toolResult } }],
+        });
+        iterations++;
+      }
+
+      const text = response.text?.() ?? "";
+      return void res.json({ reply: text, history: chat.getHistory(), engine: "gemini" });
+
+    } catch (err) {
+      if (!isOverloadError(err)) {
+        console.error("[ai/gemini] Non-overload error:", err);
+        return void res.status(503).json({ error: "capacity" });
+      }
+      console.warn("[ai/gemini] Overload — falling back to Groq");
     }
+  }
 
-    const text = response.text?.() ?? "";
-    const updatedHistory = chat.getHistory();
-
-    return void res.json({ reply: text, history: updatedHistory });
+  // ── Fallback: Groq (text-only) ────────────────────────────────────────
+  try {
+    const text = await callGroqFallback(message, history ?? []);
+    return void res.json({ reply: text, history: history ?? [], engine: "groq" });
   } catch (err) {
-    console.error("[ai] Error:", err);
-    return void res.status(500).json({ error: String(err) });
+    console.error("[ai/groq] Fallback also failed:", err);
+    return void res.status(503).json({ error: "capacity" });
   }
 });
 

@@ -1,0 +1,18 @@
+We want to add a native "AI Assistant / System Copilot" feature inside our Telegram Mini App interface. This assistant needs read-only permissions to query our database via Gemini Function Calling (Tools), AND a cross-provider fallback system using the free Groq API to prevent 503 infrastructure errors.
+
+Please execute the following steps to build this feature:
+
+1. FRONTEND:
+- Create a conversational chat panel in our Mini App UI called "AI Help". 
+- Features: clear message history view, auto-scrolling, distinct user/AI speech bubbles, and a text input field with a send button.
+- Intercept errors cleanly: Never display raw API JSON error blocks in the chat bubbles under any circumstances. If a call completely fails after all provider fallbacks, show a clean message: "⚠️ The Assistant is temporarily over capacity. Please try again in a moment."
+
+2. BACKEND API & DUAL-LLM ROUTING:
+- Create a secure endpoint: POST /api/v3/ai/chat.
+- Securely load GEMINI_API_KEY and GROQ_API_KEY from Replit environment secrets.
+- Implement the execution routing flow:
+  * PRIMARY: Attempt to process the user prompt using Google Gemini (gemini-2.5-flash model). Pass our database tools (get_platform_summary, check_failed_proxies) so it can answer live system monitoring questions.
+  * FALLBACK: If Gemini returns a 503 error, network timeout, or rate-limit code, catch the exception immediately. Do not bubble the error to the UI. Instead, instantly re-route the traffic to Groq's API using the 'llama-3.3-70b-versatile' model to generate the text response.
+
+3. SYSTEM INSTRUCTIONS:
+- For both models, supply this master system instruction layout: "You are the PROMO-Fuel System Copilot. Help the user manage their Telegram bulk sessions, format SOCKS5 strings, and review system status. If running on the Primary engine (Gemini), use your database tools to fetch real metrics. If running on the Fallback engine (Groq), politely inform the user you are running on the emergency backup engine and can only answer general operational questions until the primary engine scales back up."
