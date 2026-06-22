@@ -4,6 +4,7 @@ import { Plus, Play, Pause, Square, Copy, Trash2, Radio, ChevronRight, ChevronDo
 import { api, GroupCampaign, GroupCampaignLog, GroupSendStat, DailyStat, AccountGroup } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
+import { ConfirmModal } from "../components/ConfirmModal";
 import { haptic } from "../lib/haptics";
 import { useSse } from "../lib/useSse";
 
@@ -190,6 +191,7 @@ function GroupCampaignCard({
   const [testGroupId,  setTestGroupId]  = useState<string | null>(null);
   const [acctGroups,   setAcctGroups]   = useState<AccountGroup[]>([]);
   const [logFilter,    setLogFilter]    = useState<"all"|"ok"|"failed"|"banned">("all");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const color  = STATUS_COLOR[campaign.status] ?? "#7c8db0";
   const groups: string[] = (() => { try { return JSON.parse(campaign.selected_groups || "[]"); } catch { return []; } })();
@@ -239,8 +241,12 @@ function GroupCampaignCard({
     catch { haptic.error(); } finally { setBusy(false); }
   }
 
-  async function remove() {
-    haptic.warning(); setBusy(true);
+  function remove() {
+    haptic.warning();
+    setShowDeleteConfirm(true);
+  }
+  async function doRemove() {
+    setBusy(true);
     try { await api.deleteGroupCampaign(campaign.id); haptic.success(); onRefresh(); }
     catch { haptic.error(); setBusy(false); }
   }
@@ -591,6 +597,15 @@ function GroupCampaignCard({
             )
           )}
         </div>
+      )}
+      {showDeleteConfirm && (
+        <ConfirmModal
+          title="Удалить кампанию?"
+          description={`«${campaign.name}» — все логи и данные будут удалены навсегда.`}
+          confirmLabel="Удалить"
+          onConfirm={doRemove}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
       )}
     </GlassCard>
   );

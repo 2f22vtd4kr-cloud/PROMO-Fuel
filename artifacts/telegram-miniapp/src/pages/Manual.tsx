@@ -974,11 +974,14 @@ function SlideAccountTools({ lang }: SL) {
       </div>
       <div style={card(GREEN)}>
         {[
-          ["🔬 Validate (N)", ACCENT,  L(lang,"Appears when N accounts have invalid sessions — re-checks them all via Telethon","З'являється коли N акаунтів мають невалідні сесії — перевіряє їх усі через Telethon")],
-          ["📥 CSV",          PURPLE,  L(lang,"Downloads all accounts as a spreadsheet (phone, status, proxy, daily limit, sent today)","Завантажує всі акаунти як таблицю (телефон, статус, проксі, ліміт, надіслано)") ],
-          ["🔌 Ping All",     GREEN,   L(lang,"Pings every SOCKS5 proxy at once — coloured latency badges appear on each card","Пінгує всі SOCKS5 проксі одночасно — кольорові бейджі затримки з'являються на кожній картці")],
-          ["📦 Bulk",         AMBER,   L(lang,"Opens the bulk ZIP importer for mass session upload","Відкриває масовий ZIP-імпортер для завантаження сесій")],
-          ["🔄 Сброс",        "#6b7280", L(lang,"Resets all accounts' sent_today counter to zero","Скидає лічильник sent_today до нуля для всіх акаунтів")],
+          ["🔬 Validate (N)", ACCENT,    L(lang,"Primary — appears when N accounts have invalid sessions; re-checks them all via Telethon","Основна — з'являється коли N акаунтів мають невалідні сесії; перевіряє їх через Telethon")],
+          ["🔄 Reval All",    PURPLE,    L(lang,"Primary — revalidates every active session in one batch","Основна — перевіряє кожну активну сесію пакетом")],
+          ["··· (overflow)",  "#6ba8e5", L(lang,"Tap to expand secondary tools: Bulk Proxy, Bulk Import, Ping All, CSV Export, Reset Counts","Натисніть щоб відкрити вторинні інструменти: Bulk Proxy, Bulk Import, Ping All, CSV Export, Скид")],
+          ["🌐 Bulk Proxy",   "#6ba8e5", L(lang,"(inside ···) Assign a proxy list to all accounts at once","(у ···) Призначити список проксі всім акаунтам одразу")],
+          ["📦 Bulk Import",  AMBER,     L(lang,"(inside ···) Opens the bulk ZIP importer for mass session upload","(у ···) Відкриває масовий ZIP-імпортер для завантаження сесій")],
+          ["🔌 Ping All",     GREEN,     L(lang,"(inside ···) Pings every SOCKS5 proxy — coloured latency badges appear on each card","(у ···) Пінгує всі SOCKS5 проксі — кольорові бейджі затримки з'являються на картках")],
+          ["📥 CSV",          "#7c8db0", L(lang,"(inside ···) Downloads all accounts as a spreadsheet","(у ···) Завантажує всі акаунти як таблицю")],
+          ["🔁 Reset Counts", "#7c8db0", L(lang,"(inside ···) Resets all accounts' sent_today counter to zero","(у ···) Скидає лічильник sent_today до нуля для всіх акаунтів")],
         ].map(([btn,col,desc]) => (
           <div key={btn as string} style={{ display:"flex", gap:10, alignItems:"baseline", marginBottom:10 }}>
             <code style={{ fontSize:11, color:col as string, fontFamily:"monospace", minWidth:96, whiteSpace:"nowrap" }}>{btn as string}</code>
@@ -1068,6 +1071,17 @@ function Slide15({ lang }: SL) {
           {L(lang,
             "«Speed / min — all accounts» widget below the summary tiles. Mini bar per active account, updates every 15 s. 🟢 free · 🟡 moderate · 🔴 critical.",
             "Віджет «Швидкість / хв — всі акаунти» під підсумковими плитками. Мінi-смуга на акаунт, оновлення 15 с. 🟢 вільно · 🟡 помірно · 🔴 критично."
+          )}
+        </div>
+      </div>
+      <div style={card(ACCENT)}>
+        <div style={{ fontSize:12, color:ACCENT, fontWeight:700, marginBottom:4 }}>
+          {L(lang,"ℹ️ Worker Info Panel","ℹ️ Панель інформації воркера")}
+        </div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.58)", lineHeight:1.55 }}>
+          {L(lang,
+            "Tap the ℹ button on any worker card to open the full info panel: live heartbeat bar, vitals grid, linked account details, task list, crash history, and session info.",
+            "Натисніть ℹ на картці воркера — відкриється повна панель: живий heartbeat, метрики, деталі акаунту, задачі, історія крешів, інформація про сесію."
           )}
         </div>
       </div>
@@ -1700,6 +1714,30 @@ function SlideNewFeatures({ lang }: SL) {
       desc:  L(lang,
         "The Home dashboard \"Sent today\" row updates live via SSE — shows DM sends + group sends combined, with a green pulse dot when the counter is updating.",
         "Рядок «Надіслано сьогодні» на дашборді оновлюється в реальному часі через SSE — сумує DM і групові розсилки, зі зеленою пульсуючою крапкою.",
+      ),
+    },
+    {
+      icon: "···",
+      title: L(lang,"Accounts Overflow Toolbar","Кнопка ··· у акаунтах"),
+      desc:  L(lang,
+        "Secondary Accounts tools (Bulk Proxy, Bulk Import, Ping All, CSV Export, Reset Counts) are now hidden behind a ··· button — primary bar stays clean with just Validate and Reval All.",
+        "Вторинні інструменти акаунтів (Bulk Proxy, Bulk Import, Ping All, CSV, Скид) сховані за кнопкою ··· — основна панель залишається чистою з Validate та Reval All.",
+      ),
+    },
+    {
+      icon: "🗑",
+      title: L(lang,"Delete Confirmations","Підтвердження видалення"),
+      desc:  L(lang,
+        "Deleting a DM Campaign or Group Broadcast now requires double confirmation — tap Delete in the menu, then confirm in the modal to prevent accidental data loss.",
+        "Видалення DM-кампанії або групової розсилки тепер потребує подвійного підтвердження — натисніть «Видалити» у меню, потім підтвердьте у модальному вікні.",
+      ),
+    },
+    {
+      icon: "ℹ",
+      title: L(lang,"Worker Info Panel","Панель деталей воркера"),
+      desc:  L(lang,
+        "Tap ℹ on any Worker card to open a full-screen info panel: live heartbeat bar, vitals, linked account, active task, crash history, and session table.",
+        "Натисніть ℹ на будь-якій картці воркера — відкривається повноекранна панель: heartbeat, метрики, акаунт, активна задача, історія крешів, таблиця сесій.",
       ),
     },
   ];

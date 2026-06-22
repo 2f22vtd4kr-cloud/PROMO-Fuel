@@ -97,7 +97,7 @@ function TaskRow({ task }: { task: Task & { campaign_name?: string } }) {
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color }}>#{task.id}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: col }}>#{task.id}</span>
           {task.campaign_name && (
             <span style={{ fontSize: 10, color: TG.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
               {task.campaign_name}
@@ -420,9 +420,9 @@ export function WorkerInfoPanel({ workerId, onClose, onDelete }: {
                         {data.sends_today.failed > 0 && <span style={{ fontSize: 10, color: "#ff6b7a" }}>✗ {data.sends_today.failed} ошибок</span>}
                       </div>
                     )}
-                    {acc.flood_wait_until && (
+                    {(acc as any).flood_wait_until && (
                       <div style={{ marginTop: 8, fontSize: 10, color: "#ffc946", background: "rgba(255,201,70,0.09)", border: "1px solid rgba(255,201,70,0.25)", borderRadius: 8, padding: "5px 10px" }}>
-                        ⏳ FloodWait до {fmtTime(String(acc.flood_wait_until))}
+                        ⏳ FloodWait до {fmtTime(String((acc as any).flood_wait_until))}
                       </div>
                     )}
                   </div>

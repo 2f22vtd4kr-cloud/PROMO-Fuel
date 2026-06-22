@@ -1006,6 +1006,7 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
   const [loading,        setLoading]        = useState(true);
   const [showForm,       setShowForm]       = useState(false);
   const [showBulk,       setShowBulk]       = useState(false);
+  const [showOverflow,   setShowOverflow]   = useState(false);
   const [pingAllResults, setPingAllResults] = useState<Record<number, ProxyResult>>({});
   const [pingAllRunning, setPingAllRunning] = useState(false);
 
@@ -1292,20 +1293,12 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
           </GlassCard>
         </div>
 
-        {/* ── Row 2: Action buttons — wrap freely, never overflow ── */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          <GlassCard
-            style={{ padding: "7px 10px", borderRadius: 12, cursor: "pointer" }}
-            onClick={async () => { haptic.medium(); try { await api.resetDailyCounts(); haptic.success(); load(); } catch { haptic.error(); } }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <RotateCcw size={12} color={TG.muted} />
-              <span style={{ fontSize: 11, color: TG.muted, fontWeight: 600 }}>Сброс</span>
-            </div>
-          </GlassCard>
+        {/* ── Row 2: Primary actions + "···" overflow ── */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
+          {/* Primary: Validate (only when session_invalid accounts exist) */}
           {sessionInvalidIds.length > 0 && (
             <GlassCard
-              style={{ padding: "7px 10px", borderRadius: 12, cursor: valAllState === "running" ? "not-allowed" : "pointer", opacity: valAllState === "running" ? 0.7 : 1 }}
+              style={{ padding: "7px 10px", borderRadius: 12, cursor: valAllState === "running" ? "not-allowed" : "pointer", opacity: valAllState === "running" ? 0.7 : 1, flexShrink: 0 }}
               onClick={validateAllInvalid}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -1314,9 +1307,10 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
               </div>
             </GlassCard>
           )}
+          {/* Primary: Reval All (only when active sessions exist) */}
           {allActiveSessionIds.length > 0 && (
             <GlassCard
-              style={{ padding: "7px 10px", borderRadius: 12, cursor: valAllState === "running" ? "not-allowed" : "pointer", opacity: valAllState === "running" ? 0.7 : 1 }}
+              style={{ padding: "7px 10px", borderRadius: 12, cursor: valAllState === "running" ? "not-allowed" : "pointer", opacity: valAllState === "running" ? 0.7 : 1, flexShrink: 0 }}
               onClick={revalidateAllActive}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -1325,34 +1319,59 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
               </div>
             </GlassCard>
           )}
-          <GlassCard style={{ padding: "7px 10px", borderRadius: 12, cursor: "pointer" }} onClick={() => { haptic.medium(); setShowBulkProxy(true); setBulkProxyDone(null); }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ fontSize: 12 }}>🌐</span>
-              <span style={{ fontSize: 11, color: "#6ba8e5", fontWeight: 700 }}>{lang === "ua" ? "Проксі" : "Proxy"}</span>
-            </div>
-          </GlassCard>
+          {/* Overflow "···" button */}
           <GlassCard
-            style={{ padding: "7px 10px", borderRadius: 12, cursor: "pointer" }}
-            onClick={() => { haptic.light(); window.open(api.getAccountsCsvUrl(), "_blank"); }}
+            style={{ padding: "7px 11px", borderRadius: 12, cursor: "pointer", flexShrink: 0, marginLeft: "auto", background: showOverflow ? "rgba(107,168,229,0.12)" : undefined, border: showOverflow ? "1px solid rgba(107,168,229,0.35)" : undefined }}
+            onClick={() => { haptic.light(); setShowOverflow(v => !v); }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ fontSize: 12 }}>📥</span>
-              <span style={{ fontSize: 11, color: TG.muted, fontWeight: 600 }}>CSV</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+              <span style={{ fontSize: 15, color: showOverflow ? "#6ba8e5" : TG.muted, letterSpacing: 2, lineHeight: 1 }}>···</span>
             </div>
           </GlassCard>
-          <GlassCard style={{ padding: "7px 10px", borderRadius: 12, cursor: pingAllRunning ? "not-allowed" : "pointer", opacity: pingAllRunning ? 0.7 : 1 }} onClick={pingAll}>
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ fontSize: 12 }}>{pingAllRunning ? "⏳" : "🔌"}</span>
-              <span style={{ fontSize: 11, color: "#c4aeff", fontWeight: 700 }}>Ping All</span>
+
+          {/* Overflow dropdown — positioned absolutely, no layout shift */}
+          {showOverflow && (
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
+                background: "rgba(7,9,20,0.97)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+                border: "1px solid rgba(107,168,229,0.22)", borderRadius: 16,
+                boxShadow: "0 12px 40px rgba(0,0,0,0.6)", overflow: "hidden", minWidth: 180,
+              }}
+            >
+              {[
+                { icon: "🌐", label: lang === "ua" ? "Проксі (масово)" : "Bulk Proxy", color: "#6ba8e5", action: () => { haptic.medium(); setShowBulkProxy(true); setBulkProxyDone(null); setShowOverflow(false); } },
+                { icon: "📦", label: "Bulk Import", color: "#2de897",  action: () => { haptic.medium(); setShowBulk(s => !s); setShowOverflow(false); } },
+                { icon: "🔌", label: "Ping All",    color: "#c4aeff",  action: () => { haptic.light();  setShowOverflow(false); pingAll(); } },
+                { icon: "📥", label: "CSV Export",  color: TG.muted,   action: () => { haptic.light();  setShowOverflow(false); window.open(api.getAccountsCsvUrl(), "_blank"); } },
+                { icon: "🔁", label: lang === "ua" ? "Скид лічильника" : "Reset Counts", color: TG.muted, action: async () => { haptic.medium(); setShowOverflow(false); try { await api.resetDailyCounts(); haptic.success(); load(); } catch { haptic.error(); } } },
+              ].map((item, i, arr) => (
+                <div key={item.label}>
+                  <div
+                    onClick={item.action}
+                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", cursor: "pointer" }}
+                  >
+                    <span style={{ fontSize: 16, flexShrink: 0 }}>{item.icon}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: item.color }}>{item.label}</span>
+                    {item.icon === "🔌" && pingAllRunning && (
+                      <div style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid rgba(196,174,255,0.4)", borderTopColor: "#c4aeff", animation: "spin 0.8s linear infinite", marginLeft: "auto" }} />
+                    )}
+                  </div>
+                  {i < arr.length - 1 && <div style={{ height: 1, background: "rgba(255,255,255,0.06)", marginLeft: 44 }} />}
+                </div>
+              ))}
             </div>
-          </GlassCard>
-          <GlassCard style={{ padding: "7px 10px", borderRadius: 12, cursor: "pointer" }} onClick={() => { haptic.medium(); setShowBulk(s => !s); }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ fontSize: 12 }}>📦</span>
-              <span style={{ fontSize: 11, color: "#2de897", fontWeight: 700 }}>Bulk</span>
-            </div>
-          </GlassCard>
+          )}
         </div>
+
+        {/* Click-outside to close overflow */}
+        {showOverflow && (
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 99 }}
+            onClick={() => setShowOverflow(false)}
+          />
+        )}
 
         {/* Summary 4-col */}
         {!loading && (

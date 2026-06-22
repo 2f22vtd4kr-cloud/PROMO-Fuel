@@ -3,6 +3,7 @@ import { Plus, Pause, Play, MoreHorizontal, Clock, Copy, Trash2, Settings, Chevr
 import { api, Campaign, SendLog } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard, StatusBadge } from "../components/GlassCard";
+import { ConfirmModal } from "../components/ConfirmModal";
 import { haptic } from "../lib/haptics";
 import { useSse } from "../lib/useSse";
 import { useI18n } from "../lib/i18n";
@@ -199,6 +200,7 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
   const [showLogs, setShowLogs] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesVal, setNotesVal] = useState(campaign.notes || "");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const isActive   = campaign.status === "running" || campaign.status === "sending";
   const isPaused   = campaign.status === "paused";
@@ -238,8 +240,11 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
     haptic.medium(); setMenuOpen(false);
     try { await api.duplicateCampaign(campaign.id); haptic.success(); onRefresh(); } catch { haptic.error(); }
   }
-  async function deleteCampaign() {
+  function deleteCampaign() {
     haptic.warning(); setMenuOpen(false);
+    setShowDeleteConfirm(true);
+  }
+  async function doDeleteCampaign() {
     try { await api.deleteCampaign(campaign.id); haptic.success(); onRefresh(); } catch { haptic.error(); }
   }
 
@@ -447,6 +452,15 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
           </div>
         )}
       </div>
+      {showDeleteConfirm && (
+        <ConfirmModal
+          title="Удалить кампанию?"
+          description={`«${campaign.name}» — все логи и данные будут удалены навсегда.`}
+          confirmLabel="Удалить"
+          onConfirm={doDeleteCampaign}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
     </GlassCard>
   );
 }
