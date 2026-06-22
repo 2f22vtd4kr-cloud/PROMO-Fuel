@@ -159,6 +159,14 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [quantity,      setQuantity]      = useState(1);
   const [showCountry,   setShowCountry]   = useState(false);
 
+  // Stock checker
+  const [showStock,    setShowStock]    = useState(false);
+  const [stockLoading, setStockLoading] = useState(false);
+  const [stockError,   setStockError]   = useState<string | null>(null);
+  const [stockData,    setStockData]    = useState<{ id: string; name: string; stock: number; price: number }[]>([]);
+  const [stockCached,  setStockCached]  = useState(false);
+  const [stockSearch,  setStockSearch]  = useState("");
+
   const [runState,        setRunState]        = useState<RunState>("idle");
   const [steps,           setSteps]           = useState<StepState[]>(initSteps());
   const [errorMsg,        setErrorMsg]        = useState<string | null>(null);
@@ -176,6 +184,39 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [batchDone,      setBatchDone]      = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
+
+  async function fetchStock() {
+    if (!smsKey.trim()) {
+      setStockError(L("Enter your SMSPool API key first.", "Спочатку введіть API ключ SMSPool."));
+      setShowStock(true);
+      return;
+    }
+    setStockLoading(true);
+    setStockError(null);
+    setShowStock(true);
+    setStockSearch("");
+    try {
+      const resp = await fetch(
+        `/api/factory/countries?api_key=${encodeURIComponent(smsKey)}&service=11`,
+        { headers: authHeaders() },
+      );
+      const json = await resp.json() as { countries?: typeof stockData; error?: string; cached?: boolean };
+      if (!resp.ok || json.error) {
+        setStockError(json.error ?? `HTTP ${resp.status}`);
+      } else {
+        setStockData(json.countries ?? []);
+        setStockCached(json.cached ?? false);
+      }
+    } catch (e) {
+      setStockError(String(e));
+    } finally {
+      setStockLoading(false);
+    }
+  }
+
+  function stockIndicator(n: number): string {
+    return n > 50 ? "🟢" : n > 10 ? "🟡" : "🔴";
+  }
 
   const updateStep = useCallback((idx: number, patch: Partial<StepState>) => {
     setSteps(prev => prev.map((s, i) => i === idx ? { ...s, ...patch } : s));
@@ -398,9 +439,31 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
 
             {/* Country */}
             <div style={{ position: "relative" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.45)",
-                letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>
-                {L("Country", "Країна")}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.45)",
+                  letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                  {L("Country", "Країна")}
+                </div>
+                <button
+                  onClick={() => void fetchStock()}
+                  disabled={stockLoading}
+                  title={L("Check real-time availability & price from SMSPool", "Перевірити доступність та ціну в SMSPool")}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    background: showStock ? `${ACCENT}20` : GLASS2,
+                    border: `1px solid ${showStock ? `${ACCENT}55` : BORDER2}`,
+                    borderRadius: 8, padding: "4px 10px", cursor: stockLoading ? "default" : "pointer",
+                    fontSize: 11, color: showStock ? ACCENT : "rgba(255,255,255,0.5)",
+                    fontFamily: "inherit", fontWeight: 600, transition: "all 0.2s",
+                  }}
+                >
+                  {stockLoading ? (
+                    <div style={{ width: 10, height: 10, borderRadius: "50%",
+                      border: `1.5px solid ${ACCENT}44`, borderTopColor: ACCENT,
+                      animation: "spin 0.8s linear infinite" }} />
+                  ) : "📊"}
+                  {L("Check Stock", "Наявність")}
+                </button>
               </div>
               <button
                 onClick={() => setShowCountry(v => !v)}
@@ -453,6 +516,165 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     fontFamily: "inherit", outline: "none",
                   }}
                 />
+              )}
+
+              {/* ── Stock panel ── */}
+              {showStock && (
+                <div style={{
+                  marginTop: 10,
+                  background: "rgba(7,9,20,0.97)", border: `1px solid ${BORDER2}`,
+                  borderRadius: 16, overflow: "hidden",
+                  boxShadow: "0 16px 48px rgba(0,0,0,0.7)",
+                }}>
+                  {/* Panel header */}
+                  <div style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "10px 14px", borderBottom: `1px solid ${BORDER}`,
+                    background: "rgba(255,255,255,0.025)",
+                  }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: ACCENT,
+                      textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      📊 {L("Live SMSPool Availability", "Наявність SMSPool в реальному часі")}
+                      {stockCached && (
+                        <span style={{ color: "rgba(255,255,255,0.3)", marginLeft: 6, fontWeight: 400 }}>
+                          ({L("cached", "кеш")})
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setShowStock(false)}
+                      style={{ background: "none", border: "none", cursor: "pointer",
+                        color: "rgba(255,255,255,0.4)", fontSize: 16, lineHeight: 1 }}>
+                      ✕
+                    </button>
+                  </div>
+
+                  {stockLoading && (
+                    <div style={{ padding: "20px", textAlign: "center",
+                      color: "rgba(255,255,255,0.4)", fontSize: 12 }}>
+                      {L("Loading…", "Завантаження…")}
+                    </div>
+                  )}
+
+                  {stockError && (
+                    <div style={{ padding: "14px 16px", fontSize: 12,
+                      color: "rgba(255,150,150,0.85)", lineHeight: 1.5 }}>
+                      ⚠️ {stockError}
+                    </div>
+                  )}
+
+                  {!stockLoading && !stockError && stockData.length > 0 && (
+                    <>
+                      {/* Search */}
+                      <div style={{ padding: "8px 12px", borderBottom: `1px solid ${BORDER}` }}>
+                        <input
+                          value={stockSearch}
+                          onChange={e => setStockSearch(e.target.value)}
+                          placeholder={L("Filter countries…", "Фільтр країн…")}
+                          style={{
+                            width: "100%", boxSizing: "border-box",
+                            background: GLASS2, border: `1px solid ${BORDER}`,
+                            borderRadius: 8, padding: "7px 12px",
+                            fontSize: 12, color: "rgba(226,232,255,0.85)",
+                            fontFamily: "inherit", outline: "none",
+                          }}
+                        />
+                      </div>
+                      {/* Legend */}
+                      <div style={{
+                        display: "flex", gap: 12, padding: "6px 14px",
+                        borderBottom: `1px solid ${BORDER}`,
+                        fontSize: 10, color: "rgba(255,255,255,0.35)",
+                      }}>
+                        <span>🟢 {L(">50 in stock", ">50 у наявності")}</span>
+                        <span>🟡 {L("10–50", "10–50")}</span>
+                        <span>🔴 {L("<10", "<10")}</span>
+                      </div>
+                      {/* Rows */}
+                      <div style={{ maxHeight: 240, overflowY: "auto" }}>
+                        {stockData
+                          .filter(c =>
+                            !stockSearch.trim() ||
+                            c.name.toLowerCase().includes(stockSearch.toLowerCase()) ||
+                            c.id.toLowerCase().includes(stockSearch.toLowerCase())
+                          )
+                          .slice(0, 60)
+                          .map(c => (
+                            <div
+                              key={c.id}
+                              onClick={() => {
+                                // Try to match against known countries; else use custom
+                                const known = COUNTRIES.find(
+                                  k => k.code.toLowerCase() === c.id.toLowerCase() ||
+                                       k.label.toLowerCase().includes(c.name.toLowerCase())
+                                );
+                                if (known) {
+                                  setCountry(known.code);
+                                } else {
+                                  setCountry("custom");
+                                  setCustomCountry(c.id);
+                                }
+                                setShowStock(false);
+                              }}
+                              style={{
+                                display: "flex", alignItems: "center", gap: 10,
+                                padding: "9px 14px", cursor: "pointer",
+                                borderBottom: `1px solid ${BORDER}`,
+                                background: country === c.id || customCountry === c.id
+                                  ? `${ACCENT}10` : "transparent",
+                                transition: "background 0.15s",
+                              }}
+                            >
+                              <span style={{ fontSize: 14, flexShrink: 0 }}>{stockIndicator(c.stock)}</span>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12, fontWeight: 600,
+                                  color: "rgba(226,232,255,0.88)",
+                                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {c.name}
+                                </div>
+                                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>
+                                  ID: {c.id} · {L(`${c.stock} numbers in stock`, `${c.stock} номерів у наявності`)}
+                                </div>
+                              </div>
+                              <div style={{
+                                flexShrink: 0,
+                                background: c.price < 0.3 ? `${GREEN}18` : c.price < 0.7 ? `${ACCENT}18` : "rgba(255,107,122,0.12)",
+                                border: `1px solid ${c.price < 0.3 ? `${GREEN}44` : c.price < 0.7 ? `${ACCENT}44` : "rgba(255,107,122,0.4)"}`,
+                                borderRadius: 7, padding: "3px 8px",
+                                fontSize: 11, fontWeight: 700,
+                                color: c.price < 0.3 ? GREEN : c.price < 0.7 ? ACCENT : RED,
+                              }}>
+                                ${c.price.toFixed(2)}
+                              </div>
+                            </div>
+                          ))
+                        }
+                        {stockData.filter(c =>
+                          !stockSearch.trim() ||
+                          c.name.toLowerCase().includes(stockSearch.toLowerCase()) ||
+                          c.id.toLowerCase().includes(stockSearch.toLowerCase())
+                        ).length === 0 && (
+                          <div style={{ padding: "14px", textAlign: "center",
+                            fontSize: 12, color: "rgba(255,255,255,0.3)" }}>
+                            {L("No matches", "Немає збігів")}
+                          </div>
+                        )}
+                      </div>
+                      {/* Refresh */}
+                      <div style={{ padding: "8px 14px", borderTop: `1px solid ${BORDER}`,
+                        display: "flex", justifyContent: "flex-end" }}>
+                        <button
+                          onClick={() => void fetchStock()}
+                          style={{ background: GLASS2, border: `1px solid ${BORDER2}`,
+                            borderRadius: 8, padding: "5px 12px",
+                            fontSize: 11, color: "rgba(255,255,255,0.55)",
+                            cursor: "pointer", fontFamily: "inherit" }}>
+                          {L("🔄 Refresh", "🔄 Оновити")}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
             </div>
 

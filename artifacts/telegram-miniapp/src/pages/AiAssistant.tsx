@@ -121,6 +121,8 @@ const SUGGESTIONS: Record<string, string[]> = {
     "Як прогріти новозареєстрований акаунт?",
     "Що таке перевірка проксі у Фабриці акаунтів?",
     "Чому не пройшла перевірка проксі?",
+    "Як перевірити, які країни мають номери в наявності?",
+    "Що робить кнопка 📊 Наявність?",
   ],
   en: [
     "Platform summary",
@@ -143,6 +145,8 @@ const SUGGESTIONS: Record<string, string[]> = {
     "How do I warm up a freshly registered account?",
     "What does proxy pre-check mean in Account Factory?",
     "Why did my proxy pre-check fail?",
+    "How do I check which countries have numbers in stock?",
+    "What does the 📊 Check Stock button do?",
   ],
 };
 

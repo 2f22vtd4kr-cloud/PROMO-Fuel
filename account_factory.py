@@ -35,6 +35,11 @@ SESSION_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "session
 SMSPOOL_BUY    = "https://api.smspool.net/purchase/sms"
 SMSPOOL_CHECK  = "https://api.smspool.net/sms/check"
 SMSPOOL_CANCEL = "https://api.smspool.net/sms/cancel"
+SMSPOOL_STOCK  = "https://api.smspool.net/request/countrystock"
+
+# ── In-memory country availability cache (key → (timestamp, data)) ──────────
+_country_cache: dict[str, tuple[float, list]] = {}
+COUNTRY_CACHE_TTL = 60.0  # seconds
 
 DEVICE_MODELS = [
     "Samsung Galaxy S23", "Samsung Galaxy S22 Ultra", "iPhone 14 Pro",
@@ -74,6 +79,55 @@ def _parse_proxy(proxy_string: str):
     stype = pysocks.SOCKS5 if "5" in scheme else pysocks.SOCKS4
     return (stype, parsed.hostname, parsed.port or 1080, True,
             parsed.username or None, parsed.password or None)
+
+
+@factory_router.get("/countries")
+async def get_country_availability(api_key: str = "", service: str = "11"):
+    """
+    Return real-time stock + price for every country that has Telegram
+    (service 11) numbers available on SMSPool.
+    Results are cached for COUNTRY_CACHE_TTL seconds per API key.
+    """
+    if not api_key:
+        return JSONResponse({"error": "api_key is required"}, status_code=400)
+
+    cache_key = f"{api_key}:{service}"
+    cached = _country_cache.get(cache_key)
+    if cached and (time.time() - cached[0]) < COUNTRY_CACHE_TTL:
+        return {"countries": cached[1], "cached": True, "ttl": COUNTRY_CACHE_TTL}
+
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.get(
+                SMSPOOL_STOCK,
+                params={"key": api_key, "service": service},
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                raw = await resp.json(content_type=None)
+    except Exception as exc:
+        return JSONResponse({"error": f"SMSPool unreachable: {exc}"}, status_code=502)
+
+    # Normalise — SMSPool returns either a list or a dict depending on API version
+    countries: list[dict] = []
+    items = raw if isinstance(raw, list) else (
+        [{"id": k, **v} for k, v in raw.items()] if isinstance(raw, dict) else []
+    )
+    for c in items:
+        if not isinstance(c, dict):
+            continue
+        stock = int(c.get("stock", c.get("quantity", c.get("count", 0))) or 0)
+        price = float(c.get("price", c.get("cost", c.get("rate", 0))) or 0)
+        name  = str(c.get("name", c.get("country", c.get("countryName", ""))))
+        cid   = str(c.get("ID", c.get("id", c.get("country_id", ""))))
+        if not name or stock == 0:
+            continue
+        countries.append({"id": cid, "name": name, "stock": stock, "price": price})
+
+    # Sort cheapest first, then by stock descending
+    countries.sort(key=lambda x: (x["price"], -x["stock"]))
+
+    _country_cache[cache_key] = (time.time(), countries)
+    return {"countries": countries, "cached": False, "ttl": COUNTRY_CACHE_TTL}
 
 
 async def _test_proxy_connection(proxy_string: str, timeout: float = 12.0) -> tuple[bool, str]:

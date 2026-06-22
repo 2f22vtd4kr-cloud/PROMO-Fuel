@@ -200,8 +200,21 @@ function Slide4({ lang }: SL) {
         desc="smspool.net → Register → top up balance (min $1)" />
       <Step n={2} color={ACCENT} title={L(lang, "Copy your API key", "Скопіюйте ваш API ключ")}
         desc={L(lang, "Go to smspool.net/profile → API section → copy the key", "Перейдіть на smspool.net/profile → розділ API → скопіюйте ключ")} />
-      <Step n={3} color={ACCENT} title={L(lang, "Choose country wisely", "Оберіть країну мудро")}
+      <Step n={3} color={ACCENT} title={L(lang, "Check live availability before registering", "Перевірте наявність у реальному часі перед реєстрацією")}
+        desc={L(lang, `Enter your API key, then tap "📊 Check Stock" next to the Country field — see every country's real-time stock and price sorted cheapest first.`, `Введіть API ключ, потім натисніть "📊 Наявність" поруч із полем Країна — побачите наявність та ціну для кожної країни, відсортованої від дешевшої.`)} />
+      <Step n={4} color={ACCENT} title={L(lang, "Choose country wisely", "Оберіть країну мудро")}
         desc={L(lang, "Ukraine (ua), Kazakhstan (kz), Estonia (ee) have the best success rates for Telegram numbers.", "Україна (ua), Казахстан (kz), Естонія (ee) мають найкращі показники успіху для Telegram-номерів.")} />
+      <div style={card(TEAL)}>
+        <div style={{ fontSize:12, fontWeight:700, color:TEAL, marginBottom:6 }}>
+          📊 {L(lang, "Real-Time Stock Checker", "Перевірка наявності в реальному часі")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", lineHeight:1.6 }}>
+          {L(lang,
+            "The \"Check Stock\" button calls GET /api/factory/countries and shows all countries with Telegram numbers in stock, sorted by price. 🟢 >50 | 🟡 10–50 | 🔴 <10. Results are cached for 60 seconds. Click any country to select it instantly.",
+            "Кнопка \"Наявність\" викликає GET /api/factory/countries та показує всі країни з наявними Telegram-номерами, відсортованими за ціною. 🟢 >50 | 🟡 10–50 | 🔴 <10. Результати кешуються на 60 секунд. Натисніть на будь-яку країну, щоб одразу вибрати її."
+          )}
+        </div>
+      </div>
       <div style={card(GREEN)}>
         <div style={{ fontSize:12, fontWeight:700, color:GREEN, marginBottom:6 }}>
           {L(lang, "Anti-ban protection", "Захист від витрати коштів")}
@@ -358,11 +371,22 @@ function Slide8({ lang }: SL) {
   return (
     <Shell>
       <STitle icon="🌍" text={L(lang, "Country Selection", "Вибір країни")} color={TEAL} />
-      <div style={{ fontSize:13, color:"rgba(255,255,255,0.55)", lineHeight:1.6, marginBottom:16 }}>
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.55)", lineHeight:1.6, marginBottom:14 }}>
         {L(lang,
           "Choose the country based on your target audience and budget. The phone number's country affects Telegram's trust level and FloodWait thresholds.",
           "Вибирайте країну виходячи з вашої цільової аудиторії та бюджету. Країна номера впливає на рівень довіри Telegram та пороги FloodWait."
         )}
+      </div>
+      <div style={card(TEAL)}>
+        <div style={{ fontSize:12, fontWeight:700, color:TEAL, marginBottom:6 }}>
+          📊 {L(lang, "Use Live Stock Checker for best results", "Використовуйте перевірку наявності для найкращого результату")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.65)", lineHeight:1.6 }}>
+          {L(lang,
+            `Tap "📊 Check Stock" next to the Country field to see all countries with Telegram numbers available RIGHT NOW — sorted cheapest first. Stock indicators: 🟢 >50 in stock · 🟡 10–50 · 🔴 <10. Tap any row to select it. Results cached 60s.`,
+            `Натисніть "📊 Наявність" поруч із полем Країна, щоб побачити всі країни з доступними зараз Telegram-номерами — відсортованими від дешевших. Індикатори: 🟢 >50 · 🟡 10–50 · 🔴 <10. Натисніть рядок для вибору. Кеш 60с.`
+          )}
+        </div>
       </div>
       {countries.map(c => (
         <div key={c.code} style={{ display:"flex", gap:12, alignItems:"center", marginBottom:8,
