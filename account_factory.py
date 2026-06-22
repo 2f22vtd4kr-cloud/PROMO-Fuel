@@ -41,7 +41,7 @@ SESSION_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "session
 SMSPOOL_BUY    = "https://api.smspool.net/purchase/sms"
 SMSPOOL_CHECK  = "https://api.smspool.net/sms/check"
 SMSPOOL_CANCEL = "https://api.smspool.net/sms/cancel"
-SMSPOOL_STOCK  = "https://api.smspool.net/request/countrystock"
+SMSPOOL_STOCK  = "https://api.smspool.net/country/retrieve_all"
 
 # ── In-memory country availability cache (key → (timestamp, data)) ──────────
 _country_cache: dict[str, tuple[float, list]] = {}
@@ -208,16 +208,21 @@ async def get_country_availability(api_key: str = "", service: str = "11"):
 
     try:
         async with aiohttp.ClientSession() as http:
-            async with http.get(
+            async with http.post(
                 SMSPOOL_STOCK,
-                params={"key": api_key, "service": service},
+                data={"key": api_key, "service": service},
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 raw = await resp.json(content_type=None)
     except Exception as exc:
         return JSONResponse({"error": f"SMSPool unreachable: {exc}"}, status_code=502)
 
-    # Normalise — SMSPool returns either a list or a dict depending on API version
+    # country/retrieve_all returns [{ID, name}, ...] — no per-service stock field
+    # Handle both list and dict responses; also catch API key error shape
+    if isinstance(raw, dict) and raw.get("success") == 0:
+        msgs = "; ".join(e.get("message", "") for e in raw.get("errors", []))
+        return JSONResponse({"error": msgs or "Invalid API key"}, status_code=401)
+
     countries: list[dict] = []
     items = raw if isinstance(raw, list) else (
         [{"id": k, **v} for k, v in raw.items()] if isinstance(raw, dict) else []
@@ -225,11 +230,11 @@ async def get_country_availability(api_key: str = "", service: str = "11"):
     for c in items:
         if not isinstance(c, dict):
             continue
-        stock = int(c.get("stock", c.get("quantity", c.get("count", 0))) or 0)
+        stock = int(c.get("stock", c.get("quantity", c.get("count", 1))) or 1)
         price = float(c.get("price", c.get("cost", c.get("rate", 0))) or 0)
         name  = str(c.get("name", c.get("country", c.get("countryName", ""))))
         cid   = str(c.get("ID", c.get("id", c.get("country_id", ""))))
-        if not name or stock == 0:
+        if not name:
             continue
         countries.append({"id": cid, "name": name, "stock": stock, "price": price})
 

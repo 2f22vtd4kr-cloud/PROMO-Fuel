@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { X, ChevronDown, Loader, Minus, Plus } from "lucide-react";
 import { useI18n } from "../lib/i18n";
 import { getStoredSecret } from "./LockScreen";
@@ -158,7 +158,17 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [apiId,         setApiId]         = useState("");
   const [apiHash,       setApiHash]       = useState("");
   const [quantity,      setQuantity]      = useState(1);
-  const [showCountry,   setShowCountry]   = useState(false);
+  const [showCountry,     setShowCountry]     = useState(false);
+  const [smsPoolCountryId, setSmsPoolCountryId] = useState("");
+
+  // Per-country Telegram service stock (real-time from SMSPool)
+  const [svcStock, setSvcStock] = useState<{
+    loading: boolean;
+    available: boolean | null;
+    stock: number;
+    price: number;
+    error: string | null;
+  }>({ loading: false, available: null, stock: 0, price: 0, error: null });
 
   // Server-side SMSPOOL_API_KEY detection
   const [serverHasKey,  setServerHasKey]  = useState<boolean | null>(null);
@@ -216,6 +226,41 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
       setBalanceLoading(false);
     }
   }, []);
+
+  // Derived: the actual SMSPool numeric country ID for service-stock lookups
+  const effectiveSmsPoolId = useMemo(() =>
+    smsPoolCountryId || (country === "custom" ? customCountry.trim() : ""),
+    [smsPoolCountryId, country, customCountry]
+  );
+
+  // Auto-fetch per-country Telegram service stock whenever country changes
+  useEffect(() => {
+    if (!effectiveSmsPoolId) {
+      setSvcStock({ loading: false, available: null, stock: 0, price: 0, error: null });
+      return;
+    }
+    if (!serverHasKey && !smsKey.trim()) return;
+
+    setSvcStock(s => ({ ...s, loading: true, error: null }));
+    const timer = setTimeout(async () => {
+      try {
+        const qs = new URLSearchParams({ country: effectiveSmsPoolId, service: "11" });
+        if (!serverHasKey && smsKey.trim()) qs.set("api_key", smsKey.trim());
+        const resp = await fetch(`/api/factory/service-stock?${qs}`, { headers: authHeaders() });
+        const json = await resp.json() as {
+          available?: boolean; stock?: number; price?: number; error?: string;
+        };
+        if (!resp.ok || json.error) {
+          setSvcStock({ loading: false, available: null, stock: 0, price: 0, error: json.error ?? `HTTP ${resp.status}` });
+        } else {
+          setSvcStock({ loading: false, available: json.available ?? false, stock: json.stock ?? 0, price: json.price ?? 0, error: null });
+        }
+      } catch (e) {
+        setSvcStock({ loading: false, available: null, stock: 0, price: 0, error: String(e) });
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [effectiveSmsPoolId, smsKey, serverHasKey]);
 
   // Stock checker
   const [showStock,    setShowStock]    = useState(false);
@@ -746,15 +791,13 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                           }}
                         />
                       </div>
-                      {/* Legend */}
+                      {/* Info */}
                       <div style={{
-                        display: "flex", gap: 12, padding: "6px 14px",
+                        padding: "5px 14px",
                         borderBottom: `1px solid ${BORDER}`,
-                        fontSize: 10, color: "rgba(255,255,255,0.35)",
+                        fontSize: 10, color: "rgba(255,255,255,0.32)",
                       }}>
-                        <span>🟢 {L(">50 in stock", ">50 у наявності")}</span>
-                        <span>🟡 {L("10–50", "10–50")}</span>
-                        <span>🔴 {L("<10", "<10")}</span>
+                        {L("Select a country to check Telegram stock", "Оберіть країну для перевірки наявності Telegram")}
                       </div>
                       {/* Rows */}
                       <div style={{ maxHeight: 240, overflowY: "auto" }}>
@@ -780,6 +823,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                                   setCountry("custom");
                                   setCustomCountry(c.id);
                                 }
+                                setSmsPoolCountryId(c.id);
                                 setShowStock(false);
                               }}
                               style={{
@@ -791,7 +835,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                                 transition: "background 0.15s",
                               }}
                             >
-                              <span style={{ fontSize: 14, flexShrink: 0 }}>{stockIndicator(c.stock)}</span>
+                              <span style={{ fontSize: 14, flexShrink: 0 }}>🌐</span>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontSize: 12, fontWeight: 600,
                                   color: "rgba(226,232,255,0.88)",
@@ -799,18 +843,14 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                                   {c.name}
                                 </div>
                                 <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>
-                                  ID: {c.id} · {L(`${c.stock} numbers in stock`, `${c.stock} номерів у наявності`)}
+                                  ID: {c.id}
                                 </div>
                               </div>
                               <div style={{
-                                flexShrink: 0,
-                                background: c.price < 0.3 ? `${GREEN}18` : c.price < 0.7 ? `${ACCENT}18` : "rgba(255,107,122,0.12)",
-                                border: `1px solid ${c.price < 0.3 ? `${GREEN}44` : c.price < 0.7 ? `${ACCENT}44` : "rgba(255,107,122,0.4)"}`,
-                                borderRadius: 7, padding: "3px 8px",
-                                fontSize: 11, fontWeight: 700,
-                                color: c.price < 0.3 ? GREEN : c.price < 0.7 ? ACCENT : RED,
+                                flexShrink: 0, fontSize: 10, color: "rgba(255,255,255,0.28)",
+                                fontWeight: 500,
                               }}>
-                                ${c.price.toFixed(2)}
+                                {L("Select →", "Обрати →")}
                               </div>
                             </div>
                           ))
@@ -843,6 +883,100 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                 </div>
               )}
             </div>
+
+            {/* ── Per-country Telegram service stock badge ── */}
+            {effectiveSmsPoolId && (serverHasKey || smsKey.trim()) && (
+              <div style={{
+                borderRadius: 12, overflow: "hidden",
+                border: svcStock.loading
+                  ? `1px solid ${BORDER2}`
+                  : svcStock.error
+                    ? "1px solid rgba(255,107,122,0.3)"
+                    : svcStock.available === false
+                      ? "1px solid rgba(255,107,122,0.3)"
+                      : svcStock.available && svcStock.stock > 50
+                        ? "1px solid rgba(45,232,151,0.35)"
+                        : svcStock.available && svcStock.stock > 10
+                          ? `1px solid ${ACCENT}55`
+                          : svcStock.available
+                            ? "1px solid rgba(255,107,122,0.35)"
+                            : `1px solid ${BORDER2}`,
+                background: svcStock.loading
+                  ? GLASS
+                  : svcStock.error || svcStock.available === false
+                    ? "rgba(255,107,122,0.05)"
+                    : svcStock.available && svcStock.stock > 10
+                      ? "rgba(45,232,151,0.04)"
+                      : "rgba(245,158,11,0.05)",
+                transition: "all 0.3s",
+              }}>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "10px 14px",
+                }}>
+                  {/* Icon */}
+                  <div style={{ fontSize: 16, flexShrink: 0 }}>
+                    {svcStock.loading ? (
+                      <div style={{ width: 16, height: 16, borderRadius: "50%",
+                        border: `2px solid ${ACCENT}44`, borderTopColor: ACCENT,
+                        animation: "spin 0.8s linear infinite" }} />
+                    ) : svcStock.error
+                      ? "⚠️"
+                      : svcStock.available === false
+                        ? "❌"
+                        : svcStock.stock > 50 ? "🟢"
+                        : svcStock.stock > 10 ? "🟡"
+                        : "🔴"}
+                  </div>
+
+                  {/* Text */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 11, fontWeight: 700,
+                      color: svcStock.loading
+                        ? "rgba(255,255,255,0.5)"
+                        : svcStock.error || svcStock.available === false
+                          ? RED
+                          : svcStock.stock > 10 ? GREEN : ACCENT,
+                    }}>
+                      {svcStock.loading
+                        ? L("Checking Telegram stock…", "Перевірка наявності Telegram…")
+                        : svcStock.error
+                          ? svcStock.error
+                          : svcStock.available === false
+                            ? L("Telegram numbers unavailable for this country", "Telegram номери недоступні для цієї країни")
+                            : L(
+                                `${svcStock.stock} Telegram numbers in stock`,
+                                `${svcStock.stock} Telegram номерів у наявності`
+                              )}
+                    </div>
+                    {!svcStock.loading && !svcStock.error && svcStock.available && (
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.38)", marginTop: 2 }}>
+                        {L("Real-time SMSPool data · service ID 11", "Дані SMSPool в реальному часі · сервіс ID 11")}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Price badge */}
+                  {!svcStock.loading && !svcStock.error && svcStock.available && (
+                    <div style={{
+                      flexShrink: 0,
+                      background: svcStock.price < 0.3
+                        ? `${GREEN}18` : svcStock.price < 0.7
+                          ? `${ACCENT}18` : "rgba(255,107,122,0.12)",
+                      border: `1px solid ${svcStock.price < 0.3
+                        ? `${GREEN}44` : svcStock.price < 0.7
+                          ? `${ACCENT}44` : "rgba(255,107,122,0.4)"}`,
+                      borderRadius: 8, padding: "4px 10px",
+                      fontSize: 13, fontWeight: 800,
+                      color: svcStock.price < 0.3 ? GREEN : svcStock.price < 0.7 ? ACCENT : RED,
+                    }}>
+                      ${svcStock.price.toFixed(2)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <LabelledInput
               label={L("Decodo SOCKS5 Proxy", "Проксі Decodo SOCKS5")}

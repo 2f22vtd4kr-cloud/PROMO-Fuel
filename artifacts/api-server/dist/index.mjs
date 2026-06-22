@@ -53122,10 +53122,12 @@ var routes_default = router13;
 // src/routes/factory.ts
 var import_express14 = __toESM(require_express2(), 1);
 var router14 = (0, import_express14.Router)();
-var SMSPOOL_STOCK_URL = "https://api.smspool.net/request/countrystock";
+var SMSPOOL_STOCK_URL = "https://api.smspool.net/country/retrieve_all";
 var SMSPOOL_BALANCE_URL = "https://api.smspool.net/request/balance";
+var SMSPOOL_SERVICE_URL = "https://api.smspool.net/service/retrieve_all";
 var CACHE_TTL_MS = 6e4;
 var _cache = /* @__PURE__ */ new Map();
+var _serviceCache = /* @__PURE__ */ new Map();
 router14.get("/config", (_req, res) => {
   const hasSmsPoolKey = Boolean(process.env["SMSPOOL_API_KEY"]?.trim());
   return void res.json({ has_smspool_key: hasSmsPoolKey });
@@ -53172,40 +53174,95 @@ router14.get("/countries", async (req, res) => {
     return void res.json({ countries: cached.data, cached: true, ttl: 60 });
   }
   try {
-    const url = new URL(SMSPOOL_STOCK_URL);
-    url.searchParams.set("key", apiKey);
-    url.searchParams.set("service", service);
-    const resp = await fetch(url.toString(), {
+    const body = new URLSearchParams({ key: apiKey, service });
+    const resp = await fetch(SMSPOOL_STOCK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
       signal: AbortSignal.timeout(15e3)
     });
     if (!resp.ok) {
       return void res.status(502).json({ error: `SMSPool returned HTTP ${resp.status}` });
     }
     const raw = await resp.json();
-    const items = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? Object.entries(raw).map(([k, v]) => ({
+    const items = Array.isArray(raw) ? raw : raw && typeof raw === "object" && !("success" in raw) ? Object.entries(raw).map(([k, v]) => ({
       id: k,
       ...typeof v === "object" && v !== null ? v : {}
     })) : [];
+    if (items.length === 0 && raw && typeof raw === "object" && "errors" in raw) {
+      const errObj = raw;
+      const msgs = Array.isArray(errObj["errors"]) ? errObj["errors"].map((e) => String(e["message"] ?? "")).join(", ") : "API key rejected";
+      return void res.status(401).json({ error: msgs });
+    }
     const countries = [];
     for (const c of items) {
       if (!c || typeof c !== "object") continue;
       const obj = c;
-      const stock = Number(
-        obj["stock"] ?? obj["quantity"] ?? obj["count"] ?? 0
-      ) || 0;
+      const stock = Number(obj["stock"] ?? obj["quantity"] ?? obj["count"] ?? 1) || 1;
       const price = Number(obj["price"] ?? obj["cost"] ?? obj["rate"] ?? 0) || 0;
-      const name = String(
-        obj["name"] ?? obj["country"] ?? obj["countryName"] ?? ""
-      );
-      const id = String(
-        obj["ID"] ?? obj["id"] ?? obj["country_id"] ?? ""
-      );
-      if (!name || stock === 0) continue;
+      const name = String(obj["name"] ?? obj["country"] ?? obj["countryName"] ?? "");
+      const id = String(obj["ID"] ?? obj["id"] ?? obj["country_id"] ?? "");
+      if (!name) continue;
       countries.push({ id, name, stock, price });
     }
-    countries.sort((a, b) => a.price - b.price || b.stock - a.stock);
+    countries.sort((a, b) => a.name.localeCompare(b.name));
     _cache.set(cacheKey, { ts: Date.now(), data: countries });
     return void res.json({ countries, cached: false, ttl: 60 });
+  } catch (err) {
+    return void res.status(502).json({ error: `SMSPool unreachable: ${String(err)}` });
+  }
+});
+router14.get("/service-stock", async (req, res) => {
+  const apiKey = String(req.query["api_key"] ?? process.env["SMSPOOL_API_KEY"] ?? "").trim();
+  const country = String(req.query["country"] ?? "").trim();
+  const service = String(req.query["service"] ?? "11").trim();
+  if (!apiKey) return void res.status(400).json({ error: "api_key is required" });
+  if (!country) return void res.status(400).json({ error: "country is required" });
+  const cacheKey = `${apiKey}:${country}:${service}`;
+  const cached = _serviceCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    return void res.json({ ...cached.data, cached: true });
+  }
+  try {
+    const body = new URLSearchParams({ key: apiKey, country });
+    const resp = await fetch(SMSPOOL_SERVICE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+      signal: AbortSignal.timeout(12e3)
+    });
+    if (!resp.ok) {
+      return void res.status(502).json({ error: `SMSPool returned HTTP ${resp.status}` });
+    }
+    const raw = await resp.json();
+    if (raw && typeof raw === "object" && "success" in raw) {
+      const errObj = raw;
+      if (errObj["success"] === 0) {
+        const msgs = Array.isArray(errObj["errors"]) ? errObj["errors"].map((e) => String(e["message"] ?? "")).join(", ") : "Invalid API key";
+        return void res.status(401).json({ error: msgs });
+      }
+    }
+    const items = Array.isArray(raw) ? raw : [];
+    let telegramService = null;
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      const obj = item;
+      const sid = String(obj["ID"] ?? obj["id"] ?? obj["service_id"] ?? "");
+      const sname = String(obj["name"] ?? obj["service"] ?? "").toLowerCase();
+      if (sid === service || sname.includes("telegram")) {
+        telegramService = obj;
+        break;
+      }
+    }
+    const result = telegramService ? {
+      available: true,
+      stock: Number(telegramService["stock"] ?? telegramService["quantity"] ?? telegramService["count"] ?? 0) || 0,
+      price: Number(telegramService["price"] ?? telegramService["cost"] ?? telegramService["rate"] ?? 0) || 0,
+      service_name: String(telegramService["name"] ?? "Telegram"),
+      cached: false
+    } : { available: false, stock: 0, price: 0, service_name: "Telegram", cached: false };
+    _serviceCache.set(cacheKey, { ts: Date.now(), data: result });
+    return void res.json(result);
   } catch (err) {
     return void res.status(502).json({ error: `SMSPool unreachable: ${String(err)}` });
   }
