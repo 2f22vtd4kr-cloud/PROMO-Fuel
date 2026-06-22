@@ -447,9 +447,9 @@ async def _registration_stream(
 
         if not code:
             await cancel_order()
-            yield _sse("error", {
-                "message": "⏱️ SMS code not received within 2 minutes. "
-                           "Order cancelled automatically."
+            yield _sse("sms_retry_prompt", {
+                "country_id": country_id,
+                "message": "⏱️ SMS code not received within 2 minutes. Order cancelled automatically.",
             })
             return
 
@@ -755,7 +755,8 @@ async def register_account(request: Request):
                 })
                 yield _sse("batch_reset", {})
 
-            got_complete = False
+            got_complete      = False
+            got_retry_prompt  = False
             async for chunk in _registration_stream(
                 smspool_api_key, country_id, proxy_string,
                 two_factor_password, api_id, api_hash,
@@ -763,16 +764,29 @@ async def register_account(request: Request):
                 warmup_mode,
             ):
                 yield chunk
-                # Track outcome for summary
+                # Track outcome for batch summary
                 if '"complete"' in chunk:
                     got_complete = True
-                elif '"error"' in chunk:
-                    pass
+                elif '"sms_retry_prompt"' in chunk:
+                    got_retry_prompt = True
 
             if got_complete:
                 succeeded += 1
             else:
                 failed += 1
+
+            # SMS retry prompt — stop the batch immediately so the UI
+            # can show the popup without continuing with remaining slots
+            if got_retry_prompt:
+                if quantity > 1:
+                    yield _sse("batch_done", {
+                        "total": quantity,
+                        "succeeded": succeeded,
+                        "failed": failed,
+                        "message": f"⏱ Batch paused — SMS timeout on account {i + 1}. "
+                                   f"{succeeded} registered, {failed} failed.",
+                    })
+                return
 
             # Inter-registration cooldown (skip after last)
             if quantity > 1 and i < quantity - 1:
