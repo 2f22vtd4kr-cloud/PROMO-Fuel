@@ -23,6 +23,25 @@ interface HistoryItem {
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
+// ── Quick-reply suggestions ───────────────────────────────────────────────
+
+const SUGGESTIONS: Record<string, string[]> = {
+  ua: [
+    "Огляд платформи",
+    "Стан акаунтів",
+    "Перевірити проксі",
+    "Які кампанії активні?",
+    "Статус воркерів",
+  ],
+  en: [
+    "Platform summary",
+    "Account health",
+    "Check failed proxies",
+    "Active campaigns?",
+    "Worker status",
+  ],
+};
+
 // ── File → base64 helper ──────────────────────────────────────────────────
 
 function fileToBase64(file: File): Promise<{ base64: string; mimeType: string; dataUrl: string }> {
@@ -78,12 +97,12 @@ export function AiAssistantPage() {
 
   // ── Send ────────────────────────────────────────────────────────────────
 
-  const send = useCallback(async () => {
-    const text = input.trim();
+  const send = useCallback(async (override?: string) => {
+    const text = (override ?? input).trim();
     if ((!text && !attachedImage) || loading) return;
 
     const img = attachedImage;
-    setInput("");
+    if (!override) setInput("");
     setAttached(null);
     setMessages(prev => [...prev, { role: "user", text: text || "📎", imageUrl: img?.dataUrl }]);
     setLoading(true);
@@ -241,6 +260,52 @@ export function AiAssistantPage() {
                 <div key={d} style={{ width: 6, height: 6, borderRadius: "50%", background: "#a78bfa", animation: "aiTyping 1.4s ease-in-out infinite", animationDelay: `${d * 0.18}s` }} />
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Quick-reply suggestion chips — shown only on fresh chat */}
+        {messages.length === 1 && !loading && (
+          <div style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 7,
+            padding: "4px 0 8px",
+            animation: "aiFadeIn 0.4s ease 0.15s both",
+          }}>
+            {(SUGGESTIONS[lang] ?? SUGGESTIONS["en"]).map((chip, i) => (
+              <button
+                key={i}
+                onClick={() => void send(chip)}
+                style={{
+                  padding: "7px 13px",
+                  borderRadius: 20,
+                  background: "linear-gradient(135deg, rgba(139,92,246,0.15) 0%, rgba(59,130,246,0.12) 100%)",
+                  border: "1px solid rgba(139,92,246,0.3)",
+                  color: "rgba(196,181,253,0.9)",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  letterSpacing: "0.02em",
+                  backdropFilter: "blur(12px)",
+                  WebkitBackdropFilter: "blur(12px)",
+                  transition: "all 0.18s ease",
+                  fontFamily: "inherit",
+                  whiteSpace: "nowrap",
+                }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLButtonElement).style.background =
+                    "linear-gradient(135deg, rgba(139,92,246,0.28) 0%, rgba(59,130,246,0.22) 100%)";
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(139,92,246,0.55)";
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLButtonElement).style.background =
+                    "linear-gradient(135deg, rgba(139,92,246,0.15) 0%, rgba(59,130,246,0.12) 100%)";
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(139,92,246,0.3)";
+                }}
+              >
+                {chip}
+              </button>
+            ))}
           </div>
         )}
 
