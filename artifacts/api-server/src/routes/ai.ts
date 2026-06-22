@@ -496,13 +496,15 @@ MTProto handshake: Worker→SOCKS5 auth tunnel→Telegram DC. Latency >300ms dro
 Safe limits: 15-60s delay between sends; 50-100 msg/day per account (warm-up: start at 20/day, +10/day per week); 10-30s stagger between account connections.
 
 ## Verification Hub (Human-in-the-Loop Captcha System)
-- **Tab**: "Verify" in the bottom navigation bar (🛡️ teal icon)
+- **Tab**: "Verify" (teal 🛡️ icon in bottom nav) — polls /api/verifications/pending every 4 seconds
 - Anti-bot captchas intercepted by the Telethon listener are stored as `pending_verifications` in SQLite
 - Two captcha types: `button` (inline keyboard) and `text_reply` (math/question)
 - Operator resolves them manually in the Verification Hub UI
 - Listener must be started: POST /api/verifications/listeners/start-all
 - API: GET /api/verifications/pending — list challenges; POST /api/verifications/click — click button; POST /api/verifications/reply — send text answer
 - When a user asks "any pending captchas?" query /api/verifications/pending to check (or advise them to go to the Verify tab)
+- **Push Alerts**: when a new captcha is detected the system sends a Telegram bot message to ADMIN_TELEGRAM_ID (env var). Requires TELEGRAM_TOKEN + ADMIN_TELEGRAM_ID to be set. Rate-limited: max one alert per account per 60 seconds. Optionally set MINIAPP_URL for a deep link in the alert.
+- To check if push alerts are configured: verify TELEGRAM_TOKEN and ADMIN_TELEGRAM_ID environment variables are set
 
 ## Key Endpoints (for your reference)
 - GET /api/twa/campaigns — list all campaigns

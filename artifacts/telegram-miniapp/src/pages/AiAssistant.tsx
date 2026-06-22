@@ -107,6 +107,7 @@ const SUGGESTIONS: Record<string, string[]> = {
     "Які кампанії активні?",
     "Статус воркерів",
     "Є очікуючі капчі?",
+    "Як налаштувати push-сповіщення для капч?",
   ],
   en: [
     "Platform summary",
@@ -115,6 +116,7 @@ const SUGGESTIONS: Record<string, string[]> = {
     "Active campaigns?",
     "Worker status",
     "Any pending captchas?",
+    "How to set up captcha push alerts?",
   ],
 };
 
@@ -549,8 +551,8 @@ export function AiAssistantPage() {
   const GREETING: Message = {
     role: "model",
     text: lang === "ua"
-      ? "Привіт! Я PROMO-Fuel System Copilot. Можу допомогти з управлінням акаунтами, проксі SOCKS5, кампаніями та моніторингом платформи. Можу виконувати дії — призупиняти кампанії, оновлювати проксі, видаляти заблоковані акаунти. Є також вкладка **Верифікація** для вирішення капч вручну. Перед виконанням дій завжди буде запит на підтвердження."
-      : "Hi! I'm PROMO-Fuel System Copilot. I can help with account management, SOCKS5 proxies, campaigns, and platform monitoring. I can take actions — pause campaigns, update proxies, delete restricted accounts. There's also a **Verification** tab for solving captchas manually. Every action requires your approval before execution.",
+      ? "Привіт! Я PROMO-Fuel System Copilot. Можу допомогти з управлінням акаунтами, проксі SOCKS5, кампаніями та моніторингом платформи. Можу виконувати дії — призупиняти кампанії, оновлювати проксі, видаляти заблоковані акаунти. Є вкладка **Captcha** для вирішення капч вручну — з push-сповіщеннями у Telegram, коли надходять нові виклики. Перед виконанням дій завжди буде запит на підтвердження."
+      : "Hi! I'm PROMO-Fuel System Copilot. I can help with account management, SOCKS5 proxies, campaigns, and platform monitoring. I can take actions — pause campaigns, update proxies, delete restricted accounts. There's a **Verify** tab for solving captchas manually — with Telegram push alerts when new challenges arrive. Every action requires your approval before execution.",
     ts: new Date(),
   };
 

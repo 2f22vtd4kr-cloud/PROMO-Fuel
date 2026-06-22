@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import sqlite3
+import time
 from typing import Optional
 
 from telethon import TelegramClient, events
@@ -26,8 +27,72 @@ from telethon.errors import (
 
 logger = logging.getLogger(__name__)
 
-DB_PATH    = os.getenv("DB_PATH", "campaigns.db")
+DB_PATH     = os.getenv("DB_PATH", "campaigns.db")
 SESSION_DIR = os.getenv("SESSION_DIR", "./sessions")
+
+# ─── Push-alert config ───────────────────────────────────────────────────────
+
+_BOT_TOKEN   = os.getenv("TELEGRAM_TOKEN", "")
+_ADMIN_ID    = os.getenv("ADMIN_TELEGRAM_ID", "")
+_MINIAPP_URL = os.getenv("MINIAPP_URL", "")
+
+# Per-account cooldown: suppress duplicate alerts within this window (seconds)
+_ALERT_COOLDOWN_SECS = 60
+_last_alert_sent: dict[int, float] = {}   # account_id → last alert epoch
+
+
+async def _push_captcha_alert(
+    account_id: int,
+    account_label: str,
+    group_title: str,
+    captcha_type: str,
+) -> None:
+    """
+    Fire-and-forget: send a Telegram Bot API push notification to ADMIN_TELEGRAM_ID
+    when a new captcha challenge is detected.
+
+    Silently skipped when:
+      - TELEGRAM_TOKEN or ADMIN_TELEGRAM_ID is not set
+      - A previous alert for this account was sent within _ALERT_COOLDOWN_SECS
+      - httpx is not available
+    """
+    if not (_BOT_TOKEN and _ADMIN_ID):
+        return
+
+    now = time.monotonic()
+    if now - _last_alert_sent.get(account_id, 0) < _ALERT_COOLDOWN_SECS:
+        return
+    _last_alert_sent[account_id] = now
+
+    type_label = "🔘 Button" if captcha_type == "button" else "✏️ Text reply"
+    group_display = group_title or "Unknown group"
+    app_line = f"\n🔗 {_MINIAPP_URL}" if _MINIAPP_URL else ""
+
+    text = (
+        f"🛡️ *Captcha Alert*\n"
+        f"Account: `{account_label}`\n"
+        f"Group: {group_display}\n"
+        f"Type: {type_label}{app_line}\n\n"
+        f"Open the *Verification Hub* in PROMO\\-Fuel to solve\\."
+    )
+
+    try:
+        import httpx  # type: ignore
+        async with httpx.AsyncClient(timeout=10) as http:
+            await http.post(
+                f"https://api.telegram.org/bot{_BOT_TOKEN}/sendMessage",
+                json={
+                    "chat_id": _ADMIN_ID,
+                    "text": text,
+                    "parse_mode": "MarkdownV2",
+                    "disable_web_page_preview": True,
+                },
+            )
+        logger.info("[listener] push alert sent for account %d", account_id)
+    except ImportError:
+        logger.debug("[listener] httpx not available — push alert skipped")
+    except Exception as exc:
+        logger.warning("[listener] push alert failed: %s", exc)
 
 # ─── Captcha detection heuristics ────────────────────────────────────────────
 
@@ -226,6 +291,17 @@ async def _run_listener(account: dict) -> None:
                 buttons_json   = buttons_json,
                 captcha_type   = captcha_type,
             )
+
+            # Push notification — fire-and-forget, never blocks listener
+            label = (
+                account.get("label")
+                or account.get("phone")
+                or str(account_id)
+            )
+            asyncio.create_task(
+                _push_captcha_alert(account_id, label, group_title, captcha_type),
+                name=f"verif-alert-{account_id}",
+            )
         except Exception as exc:
             logger.debug("[listener] handler error account %d: %s", account_id, exc)
 
@@ -279,12 +355,12 @@ async def start_all_active_accounts() -> dict:
     """
     conn = _db()
     rows = conn.execute(
-        "SELECT id, session_file, api_id, api_hash, proxies, current_proxy_index "
+        "SELECT id, session_file, api_id, api_hash, proxies, current_proxy_index, label, phone "
         "FROM sender_accounts WHERE status IN ('idle','active')"
     ).fetchall()
     conn.close()
 
-    cols = ["id", "session_file", "api_id", "api_hash", "proxies", "current_proxy_index"]
+    cols = ["id", "session_file", "api_id", "api_hash", "proxies", "current_proxy_index", "label", "phone"]
     accounts = [dict(zip(cols, r)) for r in rows]
 
     started = 0

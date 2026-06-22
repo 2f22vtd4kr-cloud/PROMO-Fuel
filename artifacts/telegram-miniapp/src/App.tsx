@@ -310,8 +310,8 @@ function ManualChooserPanel({
           <span style={{ fontSize:28, flexShrink:0 }}>🛡️</span>
           <div style={{ textAlign:"left" }}>
             <div style={{ fontSize:12, fontWeight:800, color:"#2dd4bf", marginBottom:2 }}>{lang === "ua" ? "Верифікація / HITL Captcha" : "Verification / HITL Captcha"}</div>
-            <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>12 {lang === "ua" ? "сторінок" : "pages"}</div>
-            <div style={{ fontSize:9, color:"rgba(45,212,191,0.55)", marginTop:2 }}>{lang === "ua" ? "Капча · Слухач · Групове вступ" : "Captcha · Listener · Bulk Join"}</div>
+            <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>13 {lang === "ua" ? "сторінок" : "pages"}</div>
+            <div style={{ fontSize:9, color:"rgba(45,212,191,0.55)", marginTop:2 }}>{lang === "ua" ? "Капча · Слухач · Push-сповіщення" : "Captcha · Listener · Push Alerts"}</div>
           </div>
         </button>
       </div>

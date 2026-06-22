@@ -2008,14 +2008,32 @@ function SlideVerificationHub({ lang }: SL) {
           ))}
         </div>
       </div>
+      <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:12 }}>
+        {[
+          ["🔔", "#f59e0b", L(lang,"Push Alerts","Push-сповіщення"),
+            L(lang,"Set TELEGRAM_TOKEN + ADMIN_TELEGRAM_ID → bot messages you when a captcha arrives","Встановіть TELEGRAM_TOKEN + ADMIN_TELEGRAM_ID → бот надсилає вам повідомлення при капчі")],
+          ["⏱️", "#2dd4bf", L(lang,"60 s rate-limit per account","60 с ліміт на акаунт"),
+            L(lang,"Multiple captchas on the same account don't spam — one alert/minute maximum","Кілька капч від одного акаунта не спамлять — максимум одне сповіщення/хвилину")],
+        ].map(([icon,color,title,desc]) => (
+          <div key={title as string} style={{ display:"flex", gap:10, alignItems:"flex-start",
+            background:`${color as string}0f`, border:`1px solid ${color as string}28`,
+            borderRadius:12, padding:"10px 13px" }}>
+            <span style={{ fontSize:18, flexShrink:0 }}>{icon as string}</span>
+            <div>
+              <div style={{ fontSize:12, fontWeight:700, color: color as string, marginBottom:2 }}>{title as string}</div>
+              <div style={{ fontSize:11, color:"rgba(255,255,255,0.48)", lineHeight:1.45 }}>{desc as string}</div>
+            </div>
+          </div>
+        ))}
+      </div>
       <div style={{ ...card("#2dd4bf"), padding:"10px 14px" }}>
         <div style={{ fontSize:10, fontWeight:700, color:"#2dd4bf", letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:6 }}>
           {L(lang,"📚 Full Documentation","📚 Повна документація")}
         </div>
         <div style={{ fontSize:11, color:"rgba(255,255,255,0.55)", lineHeight:1.55 }}>
           {L(lang,
-            "Open the 📚 manual chooser (top-right button) and select the 🛡️ Verification / HITL Captcha guide for the full 12-slide documentation.",
-            "Відкрийте вибір 📚 мануалу (кнопка у правому верхньому куті) і оберіть посібник 🛡️ Верифікація / HITL Captcha для повної 12-слайдової документації."
+            "Open the 📚 manual chooser (top-right button) and select the 🛡️ Verification / HITL Captcha guide for the full 13-slide documentation.",
+            "Відкрийте вибір 📚 мануалу (кнопка у правому верхньому куті) і оберіть посібник 🛡️ Верифікація / HITL Captcha для повної 13-слайдової документації."
           )}
         </div>
       </div>

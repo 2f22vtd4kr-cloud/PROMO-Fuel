@@ -490,6 +490,58 @@ function Slide12({ lang }: SL) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SLIDE 13 — Push Alerts
+// ═══════════════════════════════════════════════════════════════
+function Slide13({ lang }: SL) {
+  return (
+    <Shell>
+      <STitle icon="🔔" text={L(lang,"Push Alerts","Push-сповіщення")} color={AMBER} />
+      <div style={{ ...card(AMBER), marginBottom:12 }}>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.7)", lineHeight:1.65, marginBottom:10 }}>
+          {L(lang,
+            "When a new captcha challenge is detected, the system can instantly notify you via a Telegram bot message — so you don't need to keep the Hub tab open. Solved captchas are handled without leaving your chat.",
+            "Коли виявляється новий капча-виклик, система може миттєво сповістити вас через повідомлення Telegram-бота — вам не потрібно тримати вкладку Хабу відкритою. Капчі вирішуються без виходу з чату."
+          )}
+        </div>
+        <div style={{ background:`${AMBER}12`, border:`1px solid ${AMBER}30`, borderRadius:12,
+          padding:"12px 14px", fontFamily:"monospace", fontSize:11, lineHeight:1.7,
+          color:"rgba(255,255,255,0.75)" }}>
+          🛡️ <strong style={{ color:AMBER }}>Captcha Alert</strong><br />
+          Account: <span style={{ color:TEAL }}>`+38099…`</span><br />
+          Group: SomeGroup<br />
+          Type: 🔘 Button<br />
+          🔗 https://your-app.replit.app<br /><br />
+          <span style={{ color:"rgba(255,255,255,0.45)" }}>{L(lang,"Open the Verification Hub in PROMO-Fuel to solve.","Відкрийте Центр верифікації у PROMO-Fuel для вирішення.")}</span>
+        </div>
+      </div>
+
+      <div style={{ fontSize:11, fontWeight:700, color:TEAL, letterSpacing:"0.07em", textTransform:"uppercase", marginBottom:10 }}>
+        {L(lang,"Setup — 2 required env vars","Налаштування — 2 обов'язкові змінні середовища")}
+      </div>
+
+      <Row icon="🤖" color={GREEN} label="TELEGRAM_TOKEN"
+        desc={L(lang,"Your Telegram bot token (same one used for the main bot)","Токен вашого Telegram-бота (той самий, що для основного бота)")} />
+      <Row icon="👤" color={BLUE} label="ADMIN_TELEGRAM_ID"
+        desc={L(lang,"Your personal Telegram user ID — alerts go here (use @userinfobot to find it)","Ваш особистий Telegram user ID — сповіщення надходять сюди (знайдіть через @userinfobot)")} />
+      <Row icon="🔗" color={PURPLE} label="MINIAPP_URL (optional)"
+        desc={L(lang,"Your deployed Mini App URL — added as a clickable deep-link in every alert","URL вашого розгорнутого Mini App — додається як посилання в кожне сповіщення")} />
+
+      <div style={{ ...card(RED), marginTop:4 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:RED, marginBottom:5 }}>
+          ⚡ {L(lang,"Rate limiting","Обмеження частоти")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.58)", lineHeight:1.55 }}>
+          {L(lang,
+            "Maximum one alert per account per 60 seconds — prevents flooding when many captchas arrive at once. The Hub UI still shows all challenges in real time.",
+            "Максимум одне сповіщення на акаунт на 60 секунд — запобігає спаму, коли багато капч надходить одночасно. Інтерфейс Хабу все одно показує всі виклики в реальному часі."
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Registry
 // ═══════════════════════════════════════════════════════════════
 
@@ -506,11 +558,12 @@ const KEYWORDS_VERIF: string[] = [
   "bulk join workflow broadcast groups sequence steps",
   "best practices tips residential proxy aged accounts",
   "FAQ questions answers troubleshoot dismiss stale auto-solve",
+  "push alerts notifications telegram bot token admin ID MINIAPP_URL rate limit",
 ];
 
 const SLIDES_V: Array<(p: SL) => React.ReactElement> = [
   Slide1,Slide2,Slide3,Slide4,Slide5,Slide6,
-  Slide7,Slide8,Slide9,Slide10,Slide11,Slide12,
+  Slide7,Slide8,Slide9,Slide10,Slide11,Slide12,Slide13,
 ];
 const TOTAL_V = SLIDES_V.length;
 
@@ -519,11 +572,13 @@ const TITLES_V: Record<Lang, string[]> = {
     "Cover","Why Captchas Happen","Architecture","DB Table Schema",
     "Telethon Listener","Hub UI Walkthrough","Button Captchas","Text Reply Captchas",
     "API Reference","Bulk Join + Verify Workflow","Best Practices","FAQ",
+    "Push Alerts",
   ],
   ua: [
     "Обкладинка","Чому виникають капчі","Архітектура","Схема таблиці БД",
     "Telethon-слухач","Огляд інтерфейсу","Кнопкові капчі","Текстові капчі",
     "Довідник API","Масовий вступ + верифікація","Поради","Часті запитання",
+    "Push-сповіщення",
   ],
 };
 
