@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import { useI18n } from "../lib/i18n";
 import type { Lang } from "../lib/translations";
 
-interface Props { onClose: () => void }
+interface Props { onClose: () => void; onOpenAccountsGuide?: () => void }
 type SL = { lang: Lang };
 
 const ACCENT = "#00d4ff";
@@ -77,7 +77,7 @@ function Tag({ color, label }: { color: string; label: string }) {
 // ═══════════════════════════════════════════════════════════════
 // SLIDE 1 — Cover
 // ═══════════════════════════════════════════════════════════════
-function Slide1({ lang }: SL) {
+function Slide1({ lang, onOpenAccountsGuide }: SL & { onOpenAccountsGuide?: () => void }) {
   const topics = lang === "ua"
     ? [["🎯","Кампанії"],["👥","Аудиторія"],["📊","Аналітика"],["🤖","Воркери"],["🏗️","Архітектура"],["🔐","Протоколи"]]
     : [["🎯","Campaigns"],["👥","Audience"],["📊","Analytics"],["🤖","Workers"],["🏗️","Architecture"],["🔐","Protocols"]];
@@ -104,6 +104,39 @@ function Slide1({ lang }: SL) {
             display:"flex", alignItems:"center", gap:5 }}><span>{ic}</span><span>{lb}</span></div>
         ))}
       </div>
+
+      {/* Second guide tile */}
+      {onOpenAccountsGuide && (
+        <div
+          onClick={onOpenAccountsGuide}
+          style={{
+            width:"100%", background:`linear-gradient(135deg,rgba(168,85,247,0.14) 0%,rgba(45,232,151,0.10) 100%)`,
+            border:`1px solid rgba(168,85,247,0.35)`, borderRadius:16,
+            padding:"14px 18px", cursor:"pointer", textAlign:"left", marginBottom:16,
+            boxShadow:"0 0 20px rgba(168,85,247,0.15)",
+            display:"flex", alignItems:"center", gap:14,
+          }}
+        >
+          <div style={{ width:44, height:44, borderRadius:13, flexShrink:0,
+            background:"linear-gradient(135deg,rgba(168,85,247,0.28),rgba(45,232,151,0.18))",
+            border:"1.5px solid rgba(168,85,247,0.5)",
+            display:"flex", alignItems:"center", justifyContent:"center", fontSize:22,
+            boxShadow:"0 0 16px rgba(168,85,247,0.3)" }}>🔐</div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:13, fontWeight:800, color:"#fff", marginBottom:3 }}>
+              {L(lang,"Accounts & Proxy Guide","Гід: Акаунти та проксі")}
+            </div>
+            <div style={{ fontSize:11, color:"rgba(200,180,255,0.65)", lineHeight:1.4 }}>
+              {L(lang,
+                "Session import, proxy setup, anti-ban protocols",
+                "Імпорт сесій, налаштування проксі, антибан"
+              )}
+            </div>
+          </div>
+          <div style={{ fontSize:18, color:"rgba(168,85,247,0.7)", flexShrink:0 }}>›</div>
+        </div>
+      )}
+
       <div style={{ fontSize:11, color:"rgba(255,255,255,0.2)", marginTop:"auto", paddingTop:16 }}>
         {L(lang,"Swipe right →","Гортайте вправо →")}
       </div>
@@ -1654,7 +1687,7 @@ const TITLES: Record<Lang, string[]> = {
 // ═══════════════════════════════════════════════════════════════
 // ManualPage shell
 // ═══════════════════════════════════════════════════════════════
-export function ManualPage({ onClose }: Props) {
+export function ManualPage({ onClose, onOpenAccountsGuide }: Props) {
   const { lang } = useI18n();
   const [current, setCurrent] = useState(0);
   const touchX = useRef(0);
@@ -1716,7 +1749,10 @@ export function ManualPage({ onClose }: Props) {
           <div style={{ position:"absolute", bottom:-80, right:-100, width:300, height:300, borderRadius:"50%",
             background:`radial-gradient(circle,${PURPLE}16 0%,transparent 68%)` }} />
         </div>
-        <SlideComp lang={lang} />
+        {current === 0
+          ? <Slide1 lang={lang} onOpenAccountsGuide={onOpenAccountsGuide} />
+          : <SlideComp lang={lang} />
+        }
       </div>
 
       {/* Bottom nav */}

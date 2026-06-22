@@ -73,7 +73,8 @@ function OwnerApp() {
   function handleNavigate(t: string) {
     if (t === "accounts")     { setShowAccounts(true);     return; }
     if (t === "account-login"){ setShowAccountLogin(true); return; }
-    if (t === "manual")       { setShowManual(true);       return; }
+    if (t === "manual")         { setShowManual(true);         return; }
+  if (t === "manual-accounts"){ setShowManualAccounts(true); return; }
     setTab(t as Tab);
   }
 
@@ -128,7 +129,10 @@ function OwnerApp() {
       )}
 
       {showManual && (
-        <ManualPage onClose={() => setShowManual(false)} />
+        <ManualPage
+          onClose={() => setShowManual(false)}
+          onOpenAccountsGuide={() => { setShowManual(false); setShowManualAccounts(true); }}
+        />
       )}
 
       {showManualAccounts && (
