@@ -286,6 +286,7 @@ export function GroupBroadcastCreatePage({
 }) {
   const editing = !!campaignId;
   const { t, lang } = useI18n();
+  const INTERVAL_PRESETS = lang === "ua" ? INTERVAL_PRESETS_UA : INTERVAL_PRESETS_EN;
 
   const [name,         setName]         = useState("");
   const [text,         setText]         = useState("");
