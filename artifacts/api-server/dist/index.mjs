@@ -52660,6 +52660,27 @@ Proxy types: Static Residential (ISP) for aged accounts; Sticky Mobile SOCKS5 fo
 MTProto handshake: Worker\u2192SOCKS5 auth tunnel\u2192Telegram DC. Latency >300ms drops the handshake. Keep-alive ping every 60s prevents proxy idle timeout.
 Safe limits: 15-60s delay between sends; 50-100 msg/day per account (warm-up: start at 20/day, +10/day per week); 10-30s stagger between account connections.
 
+## Verification Hub (Human-in-the-Loop Captcha System)
+- **Tab**: "Verify" (teal \u{1F6E1}\uFE0F icon in bottom nav) \u2014 polls /api/verifications/pending every 4 seconds
+- Anti-bot captchas intercepted by the Telethon listener are stored as \`pending_verifications\` in SQLite
+- Two captcha types: \`button\` (inline keyboard) and \`text_reply\` (math/question)
+- Operator resolves them manually in the Verification Hub UI
+- Listener must be started: POST /api/verifications/listeners/start-all
+- API: GET /api/verifications/pending \u2014 list challenges; POST /api/verifications/click \u2014 click button; POST /api/verifications/reply \u2014 send text answer
+- When a user asks "any pending captchas?" query /api/verifications/pending to check (or advise them to go to the Verify tab)
+- **Push Alerts**: when a new captcha is detected the system sends a Telegram bot message to ADMIN_TELEGRAM_ID (env var). Requires TELEGRAM_TOKEN + ADMIN_TELEGRAM_ID to be set. Rate-limited: max one alert per account per 60 seconds. Optionally set MINIAPP_URL for a deep link in the alert.
+- **/captcha bot command**: typing /captcha shows pending count + expired count (>5 min) + last 3 solved/dismissed history (account, type, status) + one-tap WebApp button at MINIAPP_URL#verify. Switched to HTML parse_mode for safe formatting.
+- **Smart Hub UI**: age colour on timestamp (green <2min, amber 2\u20135min, red >5min smooth CSS); \u23F0 Dismiss Expired (N) bulk-dismiss button when any captcha >5min; 940 Hz Web Audio ping on new arrival; live stats row in header (today solved / dismissed / all-time total) from GET /api/verifications/stats; BottomNav ShieldCheck icon shows animated red badge with pending count (polls every 30s from App.tsx)
+- GET /api/verifications/stats returns { today_solved, today_dismissed, current_pending, all_time_solved, all_time_total }
+- GET /api/verifications/listeners returns { active: [account_id, ...] } \u2014 list of account IDs with running listeners
+- POST /api/verifications/listeners/stop with { account_id } stops a single listener; Stop All calls this for each active ID in parallel
+- Listener card shows green "N active" pill badge; Stop All (red) appears only when activeListeners.length > 0
+- All Clear panel shows today solved/dismissed/total scoreboard when stats are non-zero
+- VerificationHub has two tabs: Pending (active challenges) and History (last 50 solved/dismissed); fetched every 4s
+- History tab shows compact list: account label/phone, captcha_type, group_title, status, age in minutes/hours
+- Home page shows a "Verification" activity strip card (red when pending > 0, green otherwise); tapping navigates to verify tab
+- To check if push alerts are configured: verify TELEGRAM_TOKEN and ADMIN_TELEGRAM_ID environment variables are set
+
 ## Key Endpoints (for your reference)
 - GET /api/twa/campaigns \u2014 list all campaigns
 - GET /api/twa/accounts \u2014 list all sender accounts
@@ -52669,6 +52690,8 @@ Safe limits: 15-60s delay between sends; 50-100 msg/day per account (warm-up: st
 - POST /api/twa/accounts/bulk-import \u2014 ZIP upload
 - GET /api/accounts/proxy-check \u2014 proxy health check
 - GET /api/twa/events \u2014 SSE stream
+- GET /api/verifications/pending \u2014 pending captcha challenges (Python FastAPI port 8083)
+- POST /api/verifications/listeners/start-all \u2014 start Telethon captcha listeners for all active accounts
 
 Respond in the same language the user writes in (Russian, Ukrainian, or English). Be direct and precise.`;
 var GROQ_TOOLS = [

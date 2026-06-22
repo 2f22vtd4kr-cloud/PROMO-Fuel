@@ -497,8 +497,8 @@ Safe limits: 15-60s delay between sends; 50-100 msg/day per account (warm-up: st
 
 ## Verification Hub (Human-in-the-Loop Captcha System)
 - **Tab**: "Verify" (teal 🛡️ icon in bottom nav) — polls /api/verifications/pending every 4 seconds
-- Anti-bot captchas intercepted by the Telethon listener are stored as `pending_verifications` in SQLite
-- Two captcha types: `button` (inline keyboard) and `text_reply` (math/question)
+- Anti-bot captchas intercepted by the Telethon listener are stored as \`pending_verifications\` in SQLite
+- Two captcha types: \`button\` (inline keyboard) and \`text_reply\` (math/question)
 - Operator resolves them manually in the Verification Hub UI
 - Listener must be started: POST /api/verifications/listeners/start-all
 - API: GET /api/verifications/pending — list challenges; POST /api/verifications/click — click button; POST /api/verifications/reply — send text answer
