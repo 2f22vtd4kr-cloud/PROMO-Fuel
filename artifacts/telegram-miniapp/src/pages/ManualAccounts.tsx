@@ -1,0 +1,681 @@
+import { useState, useRef, useCallback } from "react";
+import { useI18n } from "../lib/i18n";
+import type { Lang } from "../lib/translations";
+
+interface Props { onClose: () => void }
+type SL = { lang: Lang };
+
+const ACCENT = "#2de897";
+const PURPLE = "#a855f7";
+const AMBER  = "#f59e0b";
+const GREEN  = "#10d88a";
+const PINK   = "#f472b6";
+const BLUE   = "#3b82f6";
+const RED    = "#ff6b7a";
+const BG     = "#07090f";
+const GLASS  = "rgba(255,255,255,0.055)";
+const GLASS2 = "rgba(255,255,255,0.09)";
+const BORDER = "rgba(255,255,255,0.10)";
+const BORDER2= "rgba(255,255,255,0.16)";
+
+const L = (lang: Lang, en: string, ua: string) => lang === "ua" ? ua : en;
+
+const card = (accent = ACCENT): React.CSSProperties => ({
+  background: GLASS2, border: `1px solid ${BORDER2}`, borderRadius: 16,
+  padding: "16px 18px", backdropFilter: "blur(12px)",
+  boxShadow: `0 0 18px ${accent}18`, marginBottom: 12,
+});
+
+function Shell({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div style={{ position:"absolute", inset:0, overflowY:"auto", overflowX:"hidden",
+      padding:"26px 20px 36px", display:"flex", flexDirection:"column", ...style }}>
+      {children}
+    </div>
+  );
+}
+
+function STitle({ icon, text, color = ACCENT }: { icon: string; text: string; color?: string }) {
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
+      <div style={{ width:40, height:40, borderRadius:12, background:`${color}20`,
+        border:`1.5px solid ${color}55`, display:"flex", alignItems:"center",
+        justifyContent:"center", fontSize:20 }}>{icon}</div>
+      <div style={{ fontSize:20, fontWeight:800, color:"#fff", letterSpacing:-0.3 }}>{text}</div>
+    </div>
+  );
+}
+
+function Step({ n, color, title, desc }: { n: number; color: string; title: string; desc: string }) {
+  return (
+    <div style={{ display:"flex", gap:13, alignItems:"flex-start", marginBottom:14 }}>
+      <div style={{ width:32, height:32, borderRadius:"50%", background:`${color}22`,
+        border:`2px solid ${color}`, display:"flex", alignItems:"center", justifyContent:"center",
+        fontSize:13, fontWeight:800, color, flexShrink:0, minWidth:32 }}>{n}</div>
+      <div>
+        <div style={{ fontSize:14, fontWeight:700, color:"#fff", marginBottom:3 }}>{title}</div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.58)", lineHeight:1.5 }}>{desc}</div>
+      </div>
+    </div>
+  );
+}
+
+function Row({ icon, label, color, desc }: { icon: string; label: string; color: string; desc: string }) {
+  return (
+    <div style={{ display:"flex", gap:12, alignItems:"flex-start", marginBottom:9,
+      background:GLASS, border:`1px solid ${BORDER}`, borderRadius:12, padding:"10px 13px" }}>
+      <div style={{ width:34, height:34, borderRadius:9, background:`${color}20`,
+        border:`1.5px solid ${color}44`, display:"flex", alignItems:"center",
+        justifyContent:"center", fontSize:16, flexShrink:0 }}>{icon}</div>
+      <div>
+        <div style={{ fontSize:13, fontWeight:700, color, marginBottom:1 }}>{label}</div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.48)", lineHeight:1.45 }}>{desc}</div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SLIDE 1 — Cover
+// ═══════════════════════════════════════════════════════════════
+function Slide1({ lang }: SL) {
+  const chapters = lang === "ua"
+    ? [["🛒","Пошук акаунтів"],["🌐","Проксі та інфра"],["🔀","Одиночний vs Bulk"],["🔬","Техдеталі"],["🛡️","Антибан"]]
+    : [["🛒","Sourcing"],["🌐","Proxies & Infra"],["🔀","Single vs Bulk"],["🔬","Tech Deep Dive"],["🛡️","Anti-Ban"]];
+  return (
+    <Shell style={{ alignItems:"center", justifyContent:"center", textAlign:"center" }}>
+      <div style={{ width:88, height:88, borderRadius:26,
+        background:`linear-gradient(135deg,${ACCENT}33,${PURPLE}33)`,
+        border:`2px solid ${ACCENT}55`, display:"flex", alignItems:"center",
+        justifyContent:"center", fontSize:44, marginBottom:24,
+        boxShadow:`0 0 40px ${ACCENT}33` }}>🔐</div>
+      <div style={{ fontSize:28, fontWeight:900, color:"#fff", letterSpacing:-0.8, lineHeight:1.1, marginBottom:8 }}>
+        {L(lang,"Account & Proxy","Акаунти та проксі")}
+      </div>
+      <div style={{ fontSize:14, fontWeight:700, color:ACCENT, marginBottom:4 }}>
+        {L(lang,"Deployment Pipeline","Конвеєр розгортання")}
+      </div>
+      <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginBottom:28 }}>
+        {L(lang,"From purchase to first send — complete guide","Від покупки до першої розсилки — повний гід")}
+      </div>
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"center", marginBottom:24 }}>
+        {chapters.map(([ic,lb]) => (
+          <div key={lb} style={{ background:GLASS, border:`1px solid ${BORDER}`, borderRadius:11,
+            padding:"8px 12px", fontSize:11, fontWeight:600, color:"rgba(255,255,255,0.7)",
+            display:"flex", alignItems:"center", gap:5 }}><span>{ic}</span><span>{lb}</span></div>
+        ))}
+      </div>
+      <div style={{ ...card(AMBER), width:"100%", textAlign:"left" }}>
+        <div style={{ fontSize:11, fontWeight:700, color:AMBER, marginBottom:4 }}>
+          {L(lang,"⚠️ Before you start","⚠️ Перед початком")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", lineHeight:1.55 }}>
+          {L(lang,
+            "Accounts must be purchased from a trusted vendor with .session + .json format. Never use accounts registered on the same datacenter IP range.",
+            "Акаунти мають бути придбані у надійного продавця у форматі .session + .json. Ніколи не використовуйте акаунти, зареєстровані з одного IP-діапазону дата-центрів."
+          )}
+        </div>
+      </div>
+      <div style={{ fontSize:11, color:"rgba(255,255,255,0.2)", marginTop:"auto", paddingTop:12 }}>
+        {L(lang,"Swipe right →","Гортайте вправо →")}
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SLIDE 2 — Sourcing & Vetting
+// ═══════════════════════════════════════════════════════════════
+function Slide2({ lang }: SL) {
+  const rows = lang === "ua" ? [
+    { metric:"Формат",   good:".session + .json (Telethon/Pyrogram)", bad:"tdata або прості номери", gi:GREEN, bi:RED },
+    { metric:"Вік",      good:"14–90+ днів (\"Отлежані\")",           bad:"0–3 дні (\"Автореги\")",   gi:GREEN, bi:RED },
+    { metric:"Безпека",  good:"2FA-пароль включено в .json",          bad:"Без 2FA пароля",            gi:GREEN, bi:RED },
+    { metric:"Реєстрація",good:"Фізична SIM / приватний VoIP",        bad:"Дешевий публічний VoIP",    gi:GREEN, bi:RED },
+    { metric:"Проксі",   good:"Реєстр через residential/mobile IP",   bad:"Реєстр через datacenter IP",gi:GREEN, bi:RED },
+  ] : [
+    { metric:"Format",    good:".session + .json (Telethon/Pyrogram)", bad:"tdata or raw phone numbers", gi:GREEN, bi:RED },
+    { metric:"Age",       good:"14–90+ days old (\"Aged\")",            bad:"0–3 days (\"Fresh/Auto-reg\")", gi:GREEN, bi:RED },
+    { metric:"Security",  good:"2FA password included in .json",        bad:"No 2FA password",             gi:GREEN, bi:RED },
+    { metric:"Origin",    good:"Physical SIM / private VoIP",           bad:"Cheap recycled public VoIP",  gi:GREEN, bi:RED },
+    { metric:"Proxy reg", good:"Registered via residential/mobile IP",  bad:"Registered via datacenter IP",gi:GREEN, bi:RED },
+  ];
+  return (
+    <Shell>
+      <STitle icon="🛒" text={L(lang,"Sourcing & Vetting","Пошук та перевірка")} color={GREEN} />
+      <div style={{ fontSize:12, color:"rgba(255,255,255,0.48)", marginBottom:14, lineHeight:1.5 }}>
+        {L(lang,
+          "Use this quality matrix when selecting stock from DarkStore, AccsMarket, or private dealer panels.",
+          "Використовуйте цю матрицю при виборі акаунтів на DarkStore, AccsMarket або у приватних постачальників."
+        )}
+      </div>
+      {rows.map(r => (
+        <div key={r.metric} style={{ background:GLASS, border:`1px solid ${BORDER}`, borderRadius:12,
+          padding:"10px 13px", marginBottom:8 }}>
+          <div style={{ fontSize:11, fontWeight:800, color:"rgba(255,255,255,0.5)",
+            textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:7 }}>{r.metric}</div>
+          <div style={{ display:"flex", gap:8 }}>
+            <div style={{ flex:1, background:`${GREEN}12`, border:`1px solid ${GREEN}30`,
+              borderRadius:8, padding:"7px 10px" }}>
+              <div style={{ fontSize:9, fontWeight:700, color:GREEN, marginBottom:3 }}>
+                {L(lang,"✅ BUY","✅ КУПУЙ")}
+              </div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.7)", lineHeight:1.4 }}>{r.good}</div>
+            </div>
+            <div style={{ flex:1, background:`${RED}12`, border:`1px solid ${RED}30`,
+              borderRadius:8, padding:"7px 10px" }}>
+              <div style={{ fontSize:9, fontWeight:700, color:RED, marginBottom:3 }}>
+                {L(lang,"❌ AVOID","❌ УНИКАЙ")}
+              </div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.7)", lineHeight:1.4 }}>{r.bad}</div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SLIDE 3 — Proxy Infrastructure
+// ═══════════════════════════════════════════════════════════════
+function Slide3({ lang }: SL) {
+  return (
+    <Shell>
+      <STitle icon="🌐" text={L(lang,"Proxy Infrastructure","Інфраструктура проксі")} color={BLUE} />
+      <div style={{ fontSize:12, color:"rgba(255,255,255,0.48)", marginBottom:14, lineHeight:1.5 }}>
+        {L(lang,
+          "Each account must connect to Telegram through its own dedicated SOCKS5 proxy — never share one proxy between two accounts.",
+          "Кожен акаунт повинен підключатися до Telegram через власний виділений SOCKS5 проксі — ніколи не ділиться одним проксі між двома акаунтами."
+        )}
+      </div>
+
+      {/* Traffic flow diagram */}
+      <div style={{ ...card(BLUE), marginBottom:12 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:BLUE, marginBottom:10 }}>
+          {L(lang,"Traffic flow","Схема трафіку")}
+        </div>
+        <code style={{ display:"block", fontSize:10, color:"rgba(255,255,255,0.72)", lineHeight:1.9,
+          background:GLASS, border:`1px solid ${BORDER}`, borderRadius:8, padding:"10px 12px",
+          fontFamily:"monospace", whiteSpace:"pre" }}>
+          {L(lang,
+`[ Replit Server ]
+  │
+  ├─► Acct #1 ─► SOCKS5 Proxy A ─► TG DC1
+  ├─► Acct #2 ─► SOCKS5 Proxy B ─► TG DC2
+  └─► Acct #3 ─► SOCKS5 Proxy C ─► TG DC4`,
+`[ Сервер Replit ]
+  │
+  ├─► Акаунт #1 ─► SOCKS5 Проксі A ─► TG DC1
+  ├─► Акаунт #2 ─► SOCKS5 Проксі B ─► TG DC2
+  └─► Акаунт #3 ─► SOCKS5 Проксі C ─► TG DC4`
+          )}
+        </code>
+      </div>
+
+      <Row icon="🏢" label={L(lang,"Recommended providers","Рекомендовані провайдери")} color={ACCENT}
+        desc="Smartproxy · Proxy-Seller · IPRoyal" />
+      <Row icon="🌍" label={L(lang,"Match country to account","Збіг країни з акаунтом")} color={GREEN}
+        desc={L(lang,"+380 accounts → UA proxy · +7 → RU proxy · +1 → US proxy","+380 акаунти → UA проксі · +7 → RU проксі · +1 → US проксі")} />
+      <Row icon="🔑" label={L(lang,"Format required","Обов'язковий формат")} color={PURPLE}
+        desc="socks5://username:password@ip:port" />
+
+      <div style={{ ...card(AMBER) }}>
+        <div style={{ fontSize:11, fontWeight:700, color:AMBER, marginBottom:5 }}>
+          {L(lang,"⚠️ Proxy type matters","⚠️ Тип проксі важливий")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", lineHeight:1.55 }}>
+          {L(lang,
+            "Use Static Residential (ISP) or Sticky Mobile SOCKS5. Datacenter IPs get detected immediately. Avoid \"rotating\" proxies — each account needs a stable IP.",
+            "Використовуйте Static Residential (ISP) або Sticky Mobile SOCKS5. Datacenter IP одразу детектуються. Уникайте \"rotating\" проксі — кожному акаунту потрібен стабільний IP."
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SLIDE 4 — Single vs Bulk (toggled)
+// ═══════════════════════════════════════════════════════════════
+function Slide4({ lang }: SL) {
+  const [mode, setMode] = useState<"single" | "bulk">("single");
+
+  const singleSteps = lang === "ua" ? [
+    { title:"Відкрийте панель акаунтів", desc:"Натисніть вкладку «Акаунти» у нижній панелі навігації." },
+    { title:"Натисніть «Додати»", desc:"Кнопка у правому верхньому куті — відкриє форму додавання." },
+    { title:"Введіть номер телефону", desc:"Формат: +380XXXXXXXXX. Номер прив'язаний до купленого акаунта." },
+    { title:"Вставте рядок SOCKS5 проксі", desc:"socks5://user:pass@ip:port — один рядок у поле «Проксі»." },
+    { title:"Введіть api_id та api_hash", desc:"Отримайте на my.telegram.org → App configuration (ваші особисті ключі)." },
+    { title:"Запит коду підтвердження", desc:"Натисніть «Надіслати код». Бекенд маршрутизує через проксі до Telegram." },
+    { title:"Введіть код + 2FA пароль", desc:"Код надходить у Telegram-клієнт акаунта або SMS. Потім 2FA якщо є." },
+  ] : [
+    { title:"Open the Accounts panel", desc:"Tap the «Accounts» tab in the bottom navigation bar." },
+    { title:"Tap «Add Account»", desc:"The button in the top-right corner — opens the add form." },
+    { title:"Enter the phone number", desc:"Format: +380XXXXXXXXX. The number tied to the purchased account." },
+    { title:"Paste the SOCKS5 proxy string", desc:"socks5://user:pass@ip:port — one line in the «Proxy» field." },
+    { title:"Enter api_id and api_hash", desc:"Get them from my.telegram.org → App configuration (your personal keys)." },
+    { title:"Request confirmation code", desc:"Tap «Send Code». The backend routes the handshake through the proxy." },
+    { title:"Enter code + 2FA password", desc:"Code arrives in the account's Telegram client or SMS. Then 2FA if set." },
+  ];
+
+  const bulkSteps = lang === "ua" ? [
+    { title:"Підготуйте ZIP-архів", desc:"Переконайтесь: кожна пара account.session + account.json присутня. .json повинен містити поле phone та two_factor_auth (якщо є 2FA)." },
+    { title:"Підготуйте список проксі", desc:"Один рядок = один SOCKS5 проксі. Формат: socks5://user:pass@ip:port. Кількість може бути менша за кількість акаунтів — ротація автоматична." },
+    { title:"Відкрийте «Bulk Import»", desc:"Натисніть кнопку «📦 Bulk» у верхньому правому куті панелі Акаунти." },
+    { title:"Завантажте ZIP та проксі", desc:"Перетягніть .zip у зону завантаження. Вставте список проксі у текстове поле нижче." },
+    { title:"Натисніть «Виконати імпорт»", desc:"Python-бекенд розпакує архів, зчитає .json, прив'яже проксі, збереже .session-файли та запише акаунти у базу даних." },
+    { title:"Перевірте результати", desc:"Панель покаже: знайдено сесій / збережено / пропущено / помилки. Імпортовані акаунти одразу з'являться у списку." },
+    { title:"Авторизація не потрібна", desc:"Bulk-імпорт передбачає вже авторизовані сесії. Якщо сесія протухла — статус зміниться на session_invalid після першого підключення воркера." },
+  ] : [
+    { title:"Prepare the ZIP archive", desc:"Ensure every account.session + account.json pair is present. The .json must contain phone and two_factor_auth (if 2FA is set)." },
+    { title:"Prepare your proxy list", desc:"One line = one SOCKS5 proxy. Format: socks5://user:pass@ip:port. Fewer proxies than accounts is OK — rotation is automatic." },
+    { title:"Open «Bulk Import»", desc:"Tap the «📦 Bulk» button in the top-right corner of the Accounts panel." },
+    { title:"Upload ZIP + paste proxies", desc:"Drag your .zip into the upload zone. Paste the proxy list into the text field below it." },
+    { title:"Tap «Execute Import»", desc:"The Python backend unzips the archive, reads .json files, assigns proxies, saves .session files to disk, and writes accounts to the database." },
+    { title:"Check results", desc:"The panel shows: sessions found / saved / skipped / errors. Imported accounts appear in the list immediately." },
+    { title:"No authorization needed", desc:"Bulk import assumes already-authorized sessions. If a session has expired, the worker will mark it session_invalid on first connection." },
+  ];
+
+  const steps = mode === "single" ? singleSteps : bulkSteps;
+  const modeColor = mode === "single" ? ACCENT : PURPLE;
+
+  return (
+    <Shell>
+      <STitle icon="🔀" text={L(lang,"Integration Guide","Керівництво з інтеграції")} color={modeColor} />
+
+      {/* Toggle */}
+      <div style={{ display:"flex", gap:0, marginBottom:20, borderRadius:14,
+        background:GLASS, border:`1px solid ${BORDER}`, overflow:"hidden", flexShrink:0 }}>
+        {(["single","bulk"] as const).map(m => (
+          <button key={m} onClick={() => setMode(m)} style={{
+            flex:1, padding:"11px 8px", border:"none", cursor:"pointer",
+            background: mode === m
+              ? `linear-gradient(135deg,${m==="single"?ACCENT:PURPLE}33,${m==="single"?ACCENT:PURPLE}18)`
+              : "transparent",
+            color: mode === m ? (m==="single"?ACCENT:PURPLE) : "rgba(255,255,255,0.38)",
+            fontWeight: mode === m ? 800 : 500,
+            fontSize:12, letterSpacing:"-0.01em",
+            borderRight: m==="single" ? `1px solid ${BORDER}` : "none",
+            transition:"all 0.22s",
+          }}>
+            {m === "single"
+              ? `👤 ${L(lang,"Single Account","Один акаунт")}`
+              : `📦 ${L(lang,"Bulk Import","Bulk-імпорт")}`}
+          </button>
+        ))}
+      </div>
+
+      {/* Case label */}
+      <div style={{ fontSize:11, fontWeight:700, color:modeColor,
+        textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:12 }}>
+        {mode === "single"
+          ? `${L(lang,"Case A","Варіант А")} — ${L(lang,"Manual UI flow","Ручне додавання через UI")}`
+          : `${L(lang,"Case B","Варіант Б")} — ${L(lang,"Automated batch pipeline","Автоматичний пакетний конвеєр")}`}
+      </div>
+
+      {/* Diagram */}
+      {mode === "single" ? (
+        <div style={{ ...card(ACCENT), marginBottom:12, padding:"12px 14px" }}>
+          <code style={{ display:"block", fontSize:10, color:"rgba(255,255,255,0.7)", lineHeight:1.8,
+            fontFamily:"monospace", whiteSpace:"pre" }}>
+            {L(lang,
+`[ Mini App UI ]
+  │  phone + proxy + api_id
+  ▼
+[ API Server ]
+  │  routes via SOCKS5
+  ▼
+[ Telegram DC ] ──► send code
+  │  code + 2FA
+  ▼
+[ Session saved to DB ]`,
+`[ Mini App UI ]
+  │  телефон + проксі + api_id
+  ▼
+[ API Server ]
+  │  маршрутизує через SOCKS5
+  ▼
+[ Telegram DC ] ──► надсилає код
+  │  код + 2FA
+  ▼
+[ Сесія збережена в БД ]`
+            )}
+          </code>
+        </div>
+      ) : (
+        <div style={{ ...card(PURPLE), marginBottom:12, padding:"12px 14px" }}>
+          <code style={{ display:"block", fontSize:10, color:"rgba(255,255,255,0.7)", lineHeight:1.8,
+            fontFamily:"monospace", whiteSpace:"pre" }}>
+            {L(lang,
+`[ Your PC ]              [ Replit Backend ]
+  └─► ZIP file ─────────► unzip + parse .json
+        ├─ acc1.session ──► sessions/acc1.session
+        ├─ acc1.json ─────► phone + 2FA extracted
+        ├─ acc2.session ──► proxy assigned
+        └─ acc2.json ─────► upsert to DB`,
+`[ Ваш ПК ]               [ Replit Бекенд ]
+  └─► ZIP файл ───────────► розпаковка + .json
+        ├─ acc1.session ──► sessions/acc1.session
+        ├─ acc1.json ─────► телефон + 2FA
+        ├─ acc2.session ──► проксі призначено
+        └─ acc2.json ─────► запис у БД`
+            )}
+          </code>
+        </div>
+      )}
+
+      {/* Steps */}
+      {steps.map((s, i) => (
+        <Step key={i} n={i+1} color={modeColor} title={s.title} desc={s.desc} />
+      ))}
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SLIDE 5 — Technical Deep Dive
+// ═══════════════════════════════════════════════════════════════
+function Slide5({ lang }: SL) {
+  return (
+    <Shell>
+      <STitle icon="🔬" text={L(lang,"Technical Deep Dive","Технічні деталі")} color={BLUE} />
+
+      <div style={card(PINK)}>
+        <div style={{ fontSize:13, fontWeight:800, color:PINK, marginBottom:8 }}>
+          {L(lang,"Anatomy of a .session File","Анатомія файлу .session")}
+        </div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.6)", lineHeight:1.6 }}>
+          {L(lang,
+            "A .session file is a local SQLite database created by Telethon on first login. It stores three critical values:",
+            "Файл .session — це локальна SQLite база, яку Telethon створює при першому вході. Вона зберігає три критичних значення:"
+          )}
+        </div>
+        {[
+          ["Auth Key", L(lang,"256-byte secret negotiated via Diffie-Hellman. Signs every MTProto message.","256-байтний секрет, узгоджений через DH. Підписує кожне MTProto-повідомлення.")],
+          ["DC ID", L(lang,"The Telegram Data Center (1–5) where the account data lives.","Дата-центр Telegram (1–5), де зберігаються дані акаунта.")],
+          ["Server Addr", L(lang,"The exact TCP endpoint the worker connects to.","Точний TCP-ендпоінт, з яким підключається воркер.")],
+        ].map(([k, v]) => (
+          <div key={k as string} style={{ display:"flex", gap:8, alignItems:"flex-start", marginTop:9 }}>
+            <code style={{ fontSize:10, fontWeight:700, color:PINK, minWidth:84,
+              fontFamily:"monospace", paddingTop:1, flexShrink:0 }}>{k as string}</code>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.58)", lineHeight:1.45 }}>{v as string}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={card(PURPLE)}>
+        <div style={{ fontSize:13, fontWeight:800, color:PURPLE, marginBottom:8 }}>
+          {L(lang,"MTProto Handshake via SOCKS5","MTProto Рукостискання через SOCKS5")}
+        </div>
+        <code style={{ display:"block", fontSize:10, color:"rgba(255,255,255,0.7)", lineHeight:1.9,
+          background:GLASS, border:`1px solid ${BORDER}`, borderRadius:8, padding:"10px 12px",
+          fontFamily:"monospace", whiteSpace:"pre", marginBottom:10 }}>
+          {L(lang,
+`[Worker] ──SOCKS5 Auth──► [Proxy]
+   └──Obfuscated MTProto──► [Telegram DC]`,
+`[Воркер] ──SOCKS5 Auth──► [Проксі]
+   └──Obfuscated MTProto──► [Telegram DC]`
+          )}
+        </code>
+        {[
+          [L(lang,"① Proxy Auth","① Авторизація проксі"),
+           L(lang,"Worker opens an encrypted TCP tunnel to the SOCKS5 proxy using user:pass credentials.",
+                  "Воркер відкриває TCP-тунель до SOCKS5 через user:pass.")],
+          [L(lang,"② IP Masking","② Маскування IP"),
+           L(lang,"Proxy server hides the Replit datacenter origin and routes via its residential IP.",
+                  "Проксі-сервер приховує дата-центр Replit та маршрутизує через свій residential IP.")],
+          [L(lang,"③ MTProto Transport","③ MTProto транспорт"),
+           L(lang,"Handshake uses Telegram's binary MTProto protocol. >300ms latency → drop. Use fast ISP proxies.",
+                  "Рукостискання через бінарний MTProto. Затримка >300мс → обрив. Потрібні швидкі ISP-проксі.")],
+        ].map(([title, desc]) => (
+          <div key={title as string} style={{ marginBottom:9 }}>
+            <div style={{ fontSize:12, fontWeight:700, color:PURPLE, marginBottom:2 }}>{title as string}</div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.55)", lineHeight:1.45 }}>{desc as string}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={card(GREEN)}>
+        <div style={{ fontSize:12, fontWeight:700, color:GREEN, marginBottom:5 }}>
+          {L(lang,"📁 .json File Structure","📁 Структура файлу .json")}
+        </div>
+        <code style={{ display:"block", fontSize:10, color:"rgba(255,255,255,0.7)", lineHeight:1.7,
+          background:GLASS, border:`1px solid ${BORDER}`, borderRadius:8, padding:"8px 12px",
+          fontFamily:"monospace", whiteSpace:"pre" }}>
+{`{
+  "phone": "+380991234567",
+  "two_factor_auth": "mypassword"
+}`}
+        </code>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.45)", marginTop:8, lineHeight:1.4 }}>
+          {L(lang,
+            "Only phone is required. two_factor_auth is optional and stored encrypted in the DB.",
+            "Тільки phone обов'язковий. two_factor_auth — опційний, зберігається в БД."
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SLIDE 6 — Anti-Ban & Safe Limits
+// ═══════════════════════════════════════════════════════════════
+function Slide6({ lang }: SL) {
+  const limits = lang === "ua" ? [
+    {icon:"⏱️",color:ACCENT, label:"Затримка між повідомленнями", val:"15–60 секунд",
+     desc:"Не відправляйте швидше за 15 секунд. Людська поведінка — 30–60 с на групу."},
+    {icon:"📊",color:GREEN,  label:"Ліміт повідомлень на день",   val:"50–100 / акаунт",
+     desc:"Новий акаунт: починайте з 20/день. Прогрівайте +10/день протягом тижня."},
+    {icon:"🔄",color:PURPLE, label:"Keep-alive пінги",            val:"кожні 60 секунд",
+     desc:"Бекенд надсилає ping кожні 60 с, щоб SOCKS5-проксі не скидав з'єднання."},
+    {icon:"⚡",color:AMBER,  label:"Затримка між сесіями",        val:"10–30 секунд",
+     desc:"Воркери не завантажують всі акаунти одночасно. Рандомізована затримка між підключеннями."},
+  ] : [
+    {icon:"⏱️",color:ACCENT, label:"Delay between messages",      val:"15–60 seconds",
+     desc:"Never send faster than 15 seconds. Human-like behavior is 30–60s per group."},
+    {icon:"📊",color:GREEN,  label:"Daily message limit",          val:"50–100 / account",
+     desc:"New account: start with 20/day. Warm up by +10/day over a week."},
+    {icon:"🔄",color:PURPLE, label:"Keep-alive pings",            val:"every 60 seconds",
+     desc:"The backend pings every 60s to keep the SOCKS5 proxy from dropping idle connections."},
+    {icon:"⚡",color:AMBER,  label:"Session stagger delay",        val:"10–30 seconds",
+     desc:"Workers don't connect all accounts at once. Randomized delay between each connection."},
+  ];
+
+  return (
+    <Shell>
+      <STitle icon="🛡️" text={L(lang,"Anti-Ban & Safe Limits","Антибан та безпечні ліміти")} color={RED} />
+      <div style={{ fontSize:12, color:"rgba(255,255,255,0.48)", marginBottom:14, lineHeight:1.5 }}>
+        {L(lang,
+          "Telegram's anti-spam system flags patterns, not just volume. Mimic human behavior to stay clean.",
+          "Антиспам Telegram реагує на патерни, а не лише на об'єм. Імітуйте людську поведінку."
+        )}
+      </div>
+
+      {limits.map(l => (
+        <div key={l.label} style={{ background:GLASS, border:`1px solid ${l.color}28`,
+          borderRadius:13, padding:"12px 14px", marginBottom:9,
+          boxShadow:`0 0 10px ${l.color}0e` }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:5 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <span style={{ fontSize:16 }}>{l.icon}</span>
+              <span style={{ fontSize:12, fontWeight:700, color:"#fff" }}>{l.label}</span>
+            </div>
+            <span style={{ fontSize:11, fontWeight:800, color:l.color,
+              background:`${l.color}18`, border:`1px solid ${l.color}33`,
+              borderRadius:8, padding:"2px 9px" }}>{l.val}</span>
+          </div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", lineHeight:1.45 }}>{l.desc}</div>
+        </div>
+      ))}
+
+      <div style={{ ...card(RED), marginTop:4 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:RED, marginBottom:6 }}>
+          {L(lang,"🚨 FloodWait handling","🚨 Обробка FloodWait")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", lineHeight:1.55 }}>
+          {L(lang,
+            "When Telegram responds with FloodWaitError, the worker pauses exactly as many seconds as instructed — then resumes automatically. Repeated floods mean your limits are too aggressive.",
+            "При FloodWaitError воркер чекає рівно стільки секунд, скільки вказав Telegram — потім продовжує. Повторні флуди = ваші ліміти задіяні надто агресивно."
+          )}
+        </div>
+      </div>
+
+      <div style={{ ...card(GREEN), marginTop:0 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:GREEN, marginBottom:6 }}>
+          {L(lang,"✅ Session warm-up checklist","✅ Чеклист прогріву акаунта")}
+        </div>
+        {(lang === "ua" ? [
+          "☐ День 1–3: тільки читання груп, без відправок",
+          "☐ День 4–7: 5–10 повідомлень/день з затримкою 60+ с",
+          "☐ Тиждень 2: до 30 повідомлень/день, затримка 30+ с",
+          "☐ Тиждень 3+: повний режим 50–100/день",
+        ] : [
+          "☐ Day 1–3: read groups only, no sends",
+          "☐ Day 4–7: 5–10 messages/day, 60s+ delay",
+          "☐ Week 2: up to 30 messages/day, 30s+ delay",
+          "☐ Week 3+: full mode 50–100/day",
+        ]).map((item, i) => (
+          <div key={i} style={{ fontSize:11, color:"rgba(255,255,255,0.65)", marginBottom:4 }}>{item}</div>
+        ))}
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Slide registry
+// ═══════════════════════════════════════════════════════════════
+const SLIDES: Array<(p: SL) => React.ReactElement> = [
+  Slide1, Slide2, Slide3, Slide4, Slide5, Slide6,
+];
+const TOTAL = SLIDES.length;
+
+const TITLES: Record<Lang, string[]> = {
+  en: [
+    "Account & Proxy Pipeline",
+    "Sourcing & Vetting",
+    "Proxy Infrastructure",
+    "Integration Guide",
+    "Technical Deep Dive",
+    "Anti-Ban & Safe Limits",
+  ],
+  ua: [
+    "Конвеєр акаунтів та проксі",
+    "Пошук та перевірка",
+    "Інфраструктура проксі",
+    "Керівництво з інтеграції",
+    "Технічні деталі",
+    "Антибан та безпечні ліміти",
+  ],
+};
+
+const SLIDE_COLORS: string[] = [ACCENT, GREEN, BLUE, PURPLE, BLUE, RED];
+
+// ═══════════════════════════════════════════════════════════════
+// ManualAccountsPage shell
+// ═══════════════════════════════════════════════════════════════
+export function ManualAccountsPage({ onClose }: Props) {
+  const { lang } = useI18n();
+  const [current, setCurrent] = useState(0);
+  const touchX = useRef(0);
+  const touchY = useRef(0);
+
+  const prev = useCallback(() => setCurrent(c => Math.max(0, c - 1)), []);
+  const next = useCallback(() => setCurrent(c => Math.min(TOTAL - 1, c + 1)), []);
+
+  function onTouchStart(e: React.TouchEvent) {
+    touchX.current = e.touches[0].clientX;
+    touchY.current = e.touches[0].clientY;
+  }
+  function onTouchEnd(e: React.TouchEvent) {
+    const dx = e.changedTouches[0].clientX - touchX.current;
+    const dy = Math.abs(e.changedTouches[0].clientY - touchY.current);
+    if (Math.abs(dx) > 48 && dy < 60) { if (dx < 0) next(); else prev(); }
+  }
+
+  const SlideComp = SLIDES[current]!;
+  const accentColor = SLIDE_COLORS[current] ?? ACCENT;
+  const titles = TITLES[lang];
+
+  return (
+    <div
+      style={{ position:"fixed", inset:0, zIndex:200, background:BG,
+        display:"flex", flexDirection:"column", userSelect:"none" }}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+    >
+      {/* Top bar */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+        padding:"13px 18px 7px", borderBottom:`1px solid ${BORDER}`,
+        background:"rgba(7,9,15,0.82)", backdropFilter:"blur(16px)",
+        flexShrink:0, zIndex:2 }}>
+        <div>
+          <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+            <div style={{ width:6, height:6, borderRadius:"50%", background:accentColor,
+              boxShadow:`0 0 8px ${accentColor}` }} />
+            <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.88)", letterSpacing:-0.2 }}>
+              {titles[current]}
+            </div>
+          </div>
+          <div style={{ fontSize:10, color:"rgba(255,255,255,0.28)", marginTop:1, paddingLeft:13 }}>
+            {L(lang,"Account & Proxy Pipeline","Конвеєр акаунтів та проксі")} · {current + 1} / {TOTAL}
+          </div>
+        </div>
+        <button onClick={onClose} style={{ background:GLASS2, border:`1px solid ${BORDER2}`,
+          borderRadius:10, width:33, height:33, display:"flex", alignItems:"center",
+          justifyContent:"center", color:"rgba(255,255,255,0.6)", fontSize:15, cursor:"pointer" }}>✕</button>
+      </div>
+
+      {/* Slide area */}
+      <div style={{ flex:1, position:"relative", overflow:"hidden" }}>
+        <div style={{ position:"absolute", inset:0, pointerEvents:"none" }}>
+          <div style={{ position:"absolute", inset:0, background:`linear-gradient(170deg,${BG} 0%,#0b1020 40%,${BG} 100%)` }} />
+          <div style={{ position:"absolute", top:-160, left:-80, width:380, height:380, borderRadius:"50%",
+            background:`radial-gradient(circle,${accentColor}18 0%,transparent 68%)`,
+            transition:"background 0.4s" }} />
+          <div style={{ position:"absolute", bottom:-80, right:-100, width:300, height:300, borderRadius:"50%",
+            background:`radial-gradient(circle,${PURPLE}16 0%,transparent 68%)` }} />
+        </div>
+        <SlideComp lang={lang} />
+      </div>
+
+      {/* Bottom nav */}
+      <div style={{ flexShrink:0, padding:"9px 18px 16px", borderTop:`1px solid ${BORDER}`,
+        background:"rgba(7,9,15,0.88)", backdropFilter:"blur(16px)",
+        display:"flex", alignItems:"center", gap:10 }}>
+        <button onClick={prev} disabled={current === 0}
+          style={{ background:current===0?"rgba(255,255,255,0.04)":GLASS2,
+            border:`1px solid ${current===0?"rgba(255,255,255,0.06)":BORDER2}`,
+            borderRadius:11, padding:"9px 16px", fontSize:13,
+            color:current===0?"rgba(255,255,255,0.18)":"rgba(255,255,255,0.7)",
+            cursor:current===0?"default":"pointer", flexShrink:0 }}>
+          {L(lang,"← Back","← Назад")}
+        </button>
+
+        <div style={{ flex:1, display:"flex", justifyContent:"center", gap:5, flexWrap:"wrap" }}>
+          {SLIDES.map((_, i) => (
+            <button key={i} onClick={() => setCurrent(i)} style={{
+              width: i === current ? 22 : 6, height: 6, borderRadius: 3,
+              background: i === current ? accentColor : "rgba(255,255,255,0.16)",
+              border:"none", padding:0, cursor:"pointer",
+              transition:"all 0.2s", flexShrink:0,
+            }} />
+          ))}
+        </div>
+
+        <button onClick={current === TOTAL - 1 ? onClose : next}
+          style={{
+            background: current === TOTAL - 1
+              ? `linear-gradient(135deg,${GREEN},${ACCENT})`
+              : `linear-gradient(135deg,${accentColor},${PURPLE})`,
+            border:"none", borderRadius:11, padding:"9px 16px", fontSize:13,
+            color:"#fff", fontWeight:700, cursor:"pointer",
+            boxShadow:`0 0 14px ${accentColor}3a`, flexShrink:0 }}>
+          {current === TOTAL - 1 ? L(lang,"✓ Close","✓ Закрити") : L(lang,"Next →","Далі →")}
+        </button>
+      </div>
+    </div>
+  );
+}

@@ -831,7 +831,7 @@ function BulkImportPanel({ onDone }: { onDone: () => void }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export function AccountsPage({ onClose }: { onClose?: () => void }) {
+export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => void; onManualAccounts?: () => void }) {
   const { t, lang } = useI18n();
   const [accounts, setAccounts] = useState<SenderAccount[]>([]);
   const [loading,  setLoading]  = useState(true);
@@ -882,6 +882,14 @@ export function AccountsPage({ onClose }: { onClose?: () => void }) {
             <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>{t.nav.accounts}</div>
           </div>
           <div style={{ display: "flex", gap: 6 }}>
+            {onManualAccounts && (
+              <GlassCard style={{ padding: "8px 10px", borderRadius: 14, cursor: "pointer" }} onClick={() => { haptic.light(); onManualAccounts(); }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <span style={{ fontSize: 14 }}>📖</span>
+                  <span style={{ fontSize: 11, color: "#00d4ff", fontWeight: 700 }}>Гайд</span>
+                </div>
+              </GlassCard>
+            )}
             <GlassCard
               style={{ padding: "8px 10px", borderRadius: 14, cursor: "pointer" }}
               onClick={async () => { haptic.medium(); try { await api.resetDailyCounts(); haptic.success(); load(); } catch { haptic.error(); } }}

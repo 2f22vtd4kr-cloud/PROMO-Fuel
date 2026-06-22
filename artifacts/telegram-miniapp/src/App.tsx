@@ -12,6 +12,7 @@ import { AccountsPage }             from "./pages/Accounts";
 import { DashboardPage }            from "./pages/Dashboard";
 import { AccountLoginPage }         from "./pages/AccountLogin";
 import { ManualPage }              from "./pages/Manual";
+import { ManualAccountsPage }     from "./pages/ManualAccounts";
 import { LockScreen, getStoredSecret } from "./pages/LockScreen";
 import { BottomNav }                from "./components/BottomNav";
 import { ConsumerApp }              from "./ConsumerApp";
@@ -47,7 +48,8 @@ function OwnerApp() {
   const [showGroupEditor,  setShowGroupEditor] = useState(false);
   const [showAccounts,     setShowAccounts]    = useState(false);
   const [showAccountLogin, setShowAccountLogin]= useState(false);
-  const [showManual,       setShowManual]      = useState(false);
+  const [showManual,         setShowManual]        = useState(false);
+  const [showManualAccounts, setShowManualAccounts] = useState(false);
 
   function openEditor(id?: number) {
     setEditId(id ?? null);
@@ -74,7 +76,7 @@ function OwnerApp() {
     setTab(t as Tab);
   }
 
-  const anyOverlay = showEditor || showGroupEditor || showAccounts || showAccountLogin || showManual;
+  const anyOverlay = showEditor || showGroupEditor || showAccounts || showAccountLogin || showManual || showManualAccounts;
 
   return (
     <div style={{
@@ -113,7 +115,7 @@ function OwnerApp() {
 
       {showAccounts && (
         <div style={{ position: "absolute", inset: 0, zIndex: 50, background: "#07090f" }}>
-          <AccountsPage onClose={() => setShowAccounts(false)} />
+          <AccountsPage onClose={() => setShowAccounts(false)} onManualAccounts={() => setShowManualAccounts(true)} />
         </div>
       )}
 
@@ -125,6 +127,10 @@ function OwnerApp() {
 
       {showManual && (
         <ManualPage onClose={() => setShowManual(false)} />
+      )}
+
+      {showManualAccounts && (
+        <ManualAccountsPage onClose={() => setShowManualAccounts(false)} />
       )}
 
       {/* ── Bottom nav (with lang switcher + help built in) ──────────── */}
