@@ -13,13 +13,14 @@ import { DashboardPage }            from "./pages/Dashboard";
 import { AccountLoginPage }         from "./pages/AccountLogin";
 import { ManualPage }              from "./pages/Manual";
 import { ManualAccountsPage }     from "./pages/ManualAccounts";
+import { AiAssistantPage }         from "./pages/AiAssistant";
 import { LockScreen, getStoredSecret } from "./pages/LockScreen";
 import { BottomNav }                from "./components/BottomNav";
 import { ConsumerApp }              from "./ConsumerApp";
 import { getOwnerRole }             from "./lib/twa";
 import { I18nProvider }             from "./lib/i18n";
 
-export type Tab = "home" | "campaigns" | "analytics" | "audience" | "upload" | "groups" | "workers" | "dashboard";
+export type Tab = "home" | "campaigns" | "analytics" | "audience" | "upload" | "groups" | "workers" | "dashboard" | "ai";
 
 export function App() {
   const [unlocked, setUnlocked] = useState(() => getStoredSecret() !== "");
@@ -97,6 +98,7 @@ function OwnerApp() {
         {tab === "groups"    && <GroupBroadcastsPage onNew={openGroupEditor} onEdit={openGroupEditor} />}
         {tab === "workers"   && <WorkersPage />}
         {tab === "dashboard" && <DashboardPage />}
+        {tab === "ai"        && <AiAssistantPage />}
       </div>
 
       {/* ── Overlays — highest z-index stack ──────────────────────── */}

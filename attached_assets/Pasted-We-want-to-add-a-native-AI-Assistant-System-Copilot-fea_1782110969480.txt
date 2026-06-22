@@ -1,0 +1,25 @@
+We want to add a native "AI Assistant / System Copilot" feature directly inside our Telegram Mini App interface. This assistant needs full read-only permissions to query our platform's data (accounts, proxies, campaign statistics) using Gemini Function Calling (Tools).
+
+Please execute the following steps to build this feature:
+
+1. FRONTEND:
+- Create a beautiful, conversational chat panel in our Mini App UI called "AI Help". 
+- It should feature a clean message history view, auto-scrolling, distinct user/AI speech bubbles, and a text input field with a send button.
+
+2. BACKEND API:
+- Create a secure endpoint: POST /api/v3/ai/chat.
+- Ensure it securely loads the GEMINI_API_KEY from environment variables.
+
+3. GEMINI SDK INTEGRATION & TOOLS:
+- Use the official Google Gen AI SDK (gemini-2.5-flash model).
+- Define and pass a list of execution TOOLS (Function Callings) to the Gemini model initialization configuration so it can read live database states.
+- Implement backend service functions exposed to the AI, including:
+  * get_platform_summary(): Returns total numbers of connected accounts, active proxies, and overall text transmission statistics.
+  * check_failed_proxies(): Queries the database for proxies throwing connectivity errors or high latency metrics.
+  * get_account_status_by_country(): Returns a breakdown of working vs. restricted accounts grouped by their country prefixes (e.g., UK +44, Poland +48).
+
+4. SYSTEM PROMPT:
+- Inject a permanent system instruction: "You are the PROMO-Fuel System Copilot. Your role is twofold: 1) Act as a technical expert guiding the user on SOCKS5 proxy formats and account management based on our manual. 2) Act as a system monitor. Whenever the user asks about the state of their accounts, proxies, or campaigns, proactively invoke your database tools to fetch real-time information and deliver an accurate data analysis. Do not hallucinate metrics—always fetch them."
+
+5. EXECUTION LOOP:
+- Ensure the backend handles the model's 'function_call' requests natively, executes the local database queries safely (read-only), sends the data back to Gemini, and returns the final conversational answer to the Mini App UI.

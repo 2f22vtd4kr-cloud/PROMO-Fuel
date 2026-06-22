@@ -20522,27 +20522,27 @@ var require_router = __commonJS({
     var slice = Array.prototype.slice;
     var flatten = Array.prototype.flat;
     var methods = METHODS.map((method) => method.toLowerCase());
-    module.exports = Router13;
+    module.exports = Router14;
     module.exports.Route = Route;
-    function Router13(options) {
-      if (!(this instanceof Router13)) {
-        return new Router13(options);
+    function Router14(options) {
+      if (!(this instanceof Router14)) {
+        return new Router14(options);
       }
       const opts = options || {};
-      function router13(req, res, next) {
-        router13.handle(req, res, next);
+      function router14(req, res, next) {
+        router14.handle(req, res, next);
       }
-      Object.setPrototypeOf(router13, this);
-      router13.caseSensitive = opts.caseSensitive;
-      router13.mergeParams = opts.mergeParams;
-      router13.params = {};
-      router13.strict = opts.strict;
-      router13.stack = [];
-      return router13;
+      Object.setPrototypeOf(router14, this);
+      router14.caseSensitive = opts.caseSensitive;
+      router14.mergeParams = opts.mergeParams;
+      router14.params = {};
+      router14.strict = opts.strict;
+      router14.stack = [];
+      return router14;
     }
-    Router13.prototype = function() {
+    Router14.prototype = function() {
     };
-    Router13.prototype.param = function param(name, fn) {
+    Router14.prototype.param = function param(name, fn) {
       if (!name) {
         throw new TypeError("argument name is required");
       }
@@ -20562,7 +20562,7 @@ var require_router = __commonJS({
       params.push(fn);
       return this;
     };
-    Router13.prototype.handle = function handle(req, res, callback) {
+    Router14.prototype.handle = function handle(req, res, callback) {
       if (!callback) {
         throw new TypeError("argument callback is required");
       }
@@ -20689,7 +20689,7 @@ var require_router = __commonJS({
         }
       }
     };
-    Router13.prototype.use = function use(handler) {
+    Router14.prototype.use = function use(handler) {
       let offset = 0;
       let path2 = "/";
       if (typeof handler !== "function") {
@@ -20722,7 +20722,7 @@ var require_router = __commonJS({
       }
       return this;
     };
-    Router13.prototype.route = function route(path2) {
+    Router14.prototype.route = function route(path2) {
       const route2 = new Route(path2);
       const layer = new Layer(path2, {
         sensitive: this.caseSensitive,
@@ -20737,7 +20737,7 @@ var require_router = __commonJS({
       return route2;
     };
     methods.concat("all").forEach(function(method) {
-      Router13.prototype[method] = function(path2) {
+      Router14.prototype[method] = function(path2) {
         const route = this.route(path2);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
@@ -20920,13 +20920,13 @@ var require_application = __commonJS({
     var compileTrust = require_utils3().compileTrust;
     var resolve = __require("node:path").resolve;
     var once = require_once();
-    var Router13 = require_router();
+    var Router14 = require_router();
     var slice = Array.prototype.slice;
     var flatten = Array.prototype.flat;
     var app2 = exports = module.exports = {};
     var trustProxyDefaultSymbol = "@@symbol:trust_proxy_default";
     app2.init = function init() {
-      var router13 = null;
+      var router14 = null;
       this.cache = /* @__PURE__ */ Object.create(null);
       this.engines = /* @__PURE__ */ Object.create(null);
       this.settings = /* @__PURE__ */ Object.create(null);
@@ -20935,13 +20935,13 @@ var require_application = __commonJS({
         configurable: true,
         enumerable: true,
         get: function getrouter() {
-          if (router13 === null) {
-            router13 = new Router13({
+          if (router14 === null) {
+            router14 = new Router14({
               caseSensitive: this.enabled("case sensitive routing"),
               strict: this.enabled("strict routing")
             });
           }
-          return router13;
+          return router14;
         }
       });
     };
@@ -21012,15 +21012,15 @@ var require_application = __commonJS({
       if (fns.length === 0) {
         throw new TypeError("app.use() requires a middleware function");
       }
-      var router13 = this.router;
+      var router14 = this.router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router13.use(path2, fn2);
+          return router14.use(path2, fn2);
         }
         debug(".use app under %s", path2);
         fn2.mountpath = path2;
         fn2.parent = this;
-        router13.use(path2, function mounted_app(req, res, next) {
+        router14.use(path2, function mounted_app(req, res, next) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             Object.setPrototypeOf(req, orig.request);
@@ -23593,7 +23593,7 @@ var require_express = __commonJS({
     var EventEmitter = __require("node:events").EventEmitter;
     var mixin = require_merge_descriptors();
     var proto = require_application();
-    var Router13 = require_router();
+    var Router14 = require_router();
     var req = require_request();
     var res = require_response();
     exports = module.exports = createApplication;
@@ -23615,8 +23615,8 @@ var require_express = __commonJS({
     exports.application = proto;
     exports.request = req;
     exports.response = res;
-    exports.Route = Router13.Route;
-    exports.Router = Router13;
+    exports.Route = Router14.Route;
+    exports.Router = Router14;
     exports.json = bodyParser.json;
     exports.raw = bodyParser.raw;
     exports.static = require_serve_static();
@@ -45136,7 +45136,7 @@ var require_multer = __commonJS({
 });
 
 // src/app.ts
-var import_express13 = __toESM(require_express2(), 1);
+var import_express14 = __toESM(require_express2(), 1);
 var import_cors = __toESM(require_lib3(), 1);
 var import_pino_http = __toESM(require_logger(), 1);
 import crypto from "crypto";
@@ -45144,7 +45144,7 @@ import { existsSync as existsSync3 } from "fs";
 import { join as join2 } from "path";
 
 // src/routes/index.ts
-var import_express12 = __toESM(require_express2(), 1);
+var import_express13 = __toESM(require_express2(), 1);
 
 // src/routes/health.ts
 var import_express = __toESM(require_express2(), 1);
@@ -52058,29 +52058,271 @@ router11.get("/workers-summary", (_req, res) => {
 });
 var workers_default = router11;
 
-// src/routes/index.ts
+// src/routes/ai.ts
+var import_express12 = __toESM(require_express2(), 1);
+import Database11 from "better-sqlite3";
+import { GoogleGenAI } from "@google/genai";
 var router12 = (0, import_express12.Router)();
-router12.use(health_default);
-router12.use(campaigns_default);
-router12.use(group_campaigns_default);
-router12.use(users_default);
-router12.use(analytics_default);
-router12.use(sse_default);
-router12.use(accounts_default);
-router12.use(templates_default);
-router12.use(audience_default);
-router12.use(upload_default);
-router12.use(workers_default);
-router12.use("/twa", campaigns_default);
-router12.use("/twa", group_campaigns_default);
-router12.use("/twa", users_default);
-router12.use("/twa", analytics_default);
-router12.use("/twa", accounts_default);
-router12.use("/twa", audience_default);
-router12.use("/twa", upload_default);
-router12.use("/twa", sse_default);
-router12.use("/twa", workers_default);
-var routes_default = router12;
+function getDb8() {
+  return new Database11(DB_PATH, { readonly: true });
+}
+function getPlatformSummary() {
+  const db = getDb8();
+  try {
+    const totalAccounts = db.prepare("SELECT COUNT(*) as n FROM sender_accounts").get().n;
+    const activeAccounts = db.prepare("SELECT COUNT(*) as n FROM sender_accounts WHERE status = 'idle' OR status = 'active'").get().n;
+    let totalProxies = 0;
+    let activeProxies = 0;
+    try {
+      totalProxies = db.prepare("SELECT COUNT(*) as n FROM sender_accounts WHERE proxy IS NOT NULL AND proxy != ''").get().n;
+      activeProxies = db.prepare("SELECT COUNT(*) as n FROM sender_accounts WHERE (status='idle' OR status='active') AND proxy IS NOT NULL AND proxy != ''").get().n;
+    } catch {
+    }
+    const totalSent = db.prepare("SELECT COALESCE(SUM(sent_count),0) as s FROM campaigns").get().s;
+    const totalFailed = db.prepare("SELECT COALESCE(SUM(failed_count),0) as f FROM campaigns").get().f;
+    let groupSent = 0;
+    try {
+      groupSent = db.prepare("SELECT COUNT(*) as n FROM group_send_logs WHERE status='ok'").get().n;
+    } catch {
+    }
+    const activeCampaigns = db.prepare("SELECT COUNT(*) as n FROM campaigns WHERE status='running'").get().n;
+    let activeGroupCampaigns = 0;
+    try {
+      activeGroupCampaigns = db.prepare("SELECT COUNT(*) as n FROM group_campaigns WHERE status='running'").get().n;
+    } catch {
+    }
+    const heartbeats = db.prepare("SELECT worker_id, last_seen FROM worker_heartbeats").all();
+    const nowMs = Date.now();
+    const workersAlive = heartbeats.filter((w) => {
+      try {
+        return nowMs - new Date(w.last_seen).getTime() <= 6e4;
+      } catch {
+        return false;
+      }
+    }).length;
+    return {
+      total_accounts: totalAccounts,
+      active_accounts: activeAccounts,
+      banned_accounts: db.prepare("SELECT COUNT(*) as n FROM sender_accounts WHERE status='banned'").get().n,
+      flood_wait_accounts: db.prepare("SELECT COUNT(*) as n FROM sender_accounts WHERE status='flood_wait'").get().n,
+      total_proxies: totalProxies,
+      active_proxies: activeProxies,
+      total_dm_sent: totalSent,
+      total_dm_failed: totalFailed,
+      total_group_sent: groupSent,
+      active_dm_campaigns: activeCampaigns,
+      active_group_campaigns: activeGroupCampaigns,
+      workers_alive: workersAlive,
+      workers_total: heartbeats.length
+    };
+  } finally {
+    db.close();
+  }
+}
+function checkFailedProxies() {
+  const db = getDb8();
+  try {
+    const proxyFailed = db.prepare(
+      "SELECT id, phone, label, proxy, status, last_error FROM sender_accounts WHERE status = 'proxy_failed' OR last_error LIKE '%proxy%' OR last_error LIKE '%SOCKS%' OR last_error LIKE '%connect%' ORDER BY id DESC LIMIT 30"
+    ).all();
+    const floodWait = db.prepare(
+      "SELECT id, phone, label, status, flood_wait_until FROM sender_accounts WHERE status='flood_wait' AND flood_wait_until IS NOT NULL ORDER BY flood_wait_until ASC"
+    ).all();
+    const banned = db.prepare(
+      "SELECT COUNT(*) as n FROM sender_accounts WHERE status='banned'"
+    ).get();
+    return {
+      proxy_failed_accounts: proxyFailed.map((a) => ({
+        id: a.id,
+        phone: a.phone,
+        label: a.label,
+        proxy: a.proxy,
+        status: a.status,
+        last_error: a.last_error
+      })),
+      proxy_failed_count: proxyFailed.length,
+      flood_wait_accounts: floodWait.map((a) => ({
+        id: a.id,
+        phone: a.phone,
+        label: a.label,
+        flood_wait_until: a.flood_wait_until,
+        seconds_remaining: Math.max(0, Math.round((new Date(a.flood_wait_until).getTime() - Date.now()) / 1e3))
+      })),
+      flood_wait_count: floodWait.length,
+      banned_count: banned.n
+    };
+  } finally {
+    db.close();
+  }
+}
+function getAccountStatusByCountry() {
+  const db = getDb8();
+  try {
+    const accounts = db.prepare(
+      "SELECT id, phone, status FROM sender_accounts"
+    ).all();
+    const countryMap = {};
+    const COUNTRY_CODES = [
+      ["+7", "Russia/KZ"],
+      ["+380", "Ukraine"],
+      ["+375", "Belarus"],
+      ["+374", "Armenia"],
+      ["+995", "Georgia"],
+      ["+998", "Uzbekistan"],
+      ["+44", "UK"],
+      ["+48", "Poland"],
+      ["+49", "Germany"],
+      ["+1", "US/CA"],
+      ["+90", "Turkey"],
+      ["+33", "France"],
+      ["+34", "Spain"],
+      ["+39", "Italy"],
+      ["+31", "Netherlands"]
+    ];
+    for (const acc of accounts) {
+      const phone = acc.phone.replace(/\s+/g, "");
+      let matched = "Other";
+      let code = "";
+      for (const [prefix, name] of COUNTRY_CODES) {
+        if (phone.startsWith(prefix)) {
+          matched = name;
+          code = prefix;
+          break;
+        }
+      }
+      if (!countryMap[matched]) {
+        countryMap[matched] = { code, name: matched, total: 0, active: 0, banned: 0, flood_wait: 0, proxy_failed: 0, other: 0 };
+      }
+      countryMap[matched].total++;
+      if (acc.status === "idle" || acc.status === "active") countryMap[matched].active++;
+      else if (acc.status === "banned") countryMap[matched].banned++;
+      else if (acc.status === "flood_wait") countryMap[matched].flood_wait++;
+      else if (acc.status === "proxy_failed") countryMap[matched].proxy_failed++;
+      else countryMap[matched].other++;
+    }
+    const breakdown = Object.values(countryMap).sort((a, b) => b.total - a.total);
+    return {
+      total_accounts: accounts.length,
+      breakdown,
+      summary: {
+        countries_with_accounts: breakdown.filter((c) => c.total > 0).length,
+        healthiest_country: breakdown.sort((a, b) => b.active / Math.max(b.total, 1) - a.active / Math.max(a.total, 1))[0]?.name ?? "N/A",
+        most_problematic_country: breakdown.sort((a, b) => b.banned + b.proxy_failed - (a.banned + a.proxy_failed))[0]?.name ?? "N/A"
+      }
+    };
+  } finally {
+    db.close();
+  }
+}
+var TOOL_DISPATCH = {
+  get_platform_summary: getPlatformSummary,
+  check_failed_proxies: checkFailedProxies,
+  get_account_status_by_country: getAccountStatusByCountry
+};
+var TOOLS = [
+  {
+    functionDeclarations: [
+      {
+        name: "get_platform_summary",
+        description: "Returns total numbers of connected accounts, their statuses (active, banned, flood_wait), active proxies count, overall DM and group message transmission statistics, active campaigns count, and worker process health."
+      },
+      {
+        name: "check_failed_proxies",
+        description: "Queries the database for accounts with proxy connectivity errors (proxy_failed status), flood wait restrictions, and ban status. Returns detailed per-account error info including proxy strings and last error messages."
+      },
+      {
+        name: "get_account_status_by_country",
+        description: "Returns a breakdown of all connected accounts grouped by country prefix (e.g., Russia +7, UK +44, Poland +48). Shows working vs restricted (banned/flood_wait/proxy_failed) accounts per country."
+      }
+    ]
+  }
+];
+var SYSTEM_INSTRUCTION = `You are the PROMO-Fuel System Copilot. Your role is twofold: 1) Act as a technical expert guiding the user on SOCKS5 proxy formats and account management based on our manual. 2) Act as a system monitor. Whenever the user asks about the state of their accounts, proxies, or campaigns, proactively invoke your database tools to fetch real-time information and deliver an accurate data analysis. Do not hallucinate metrics\u2014always fetch them.
+
+SOCKS5 proxy format: socks5://user:pass@host:port or socks5://host:port
+Accounts are Telegram user sessions managed via Telethon MTProto.
+Respond in the same language the user writes in (Russian, Ukrainian, or English).`;
+router12.post("/v3/ai/chat", async (req, res) => {
+  const GEMINI_API_KEY = process.env["GEMINI_API_KEY"];
+  if (!GEMINI_API_KEY) {
+    return void res.status(503).json({ error: "GEMINI_API_KEY not configured" });
+  }
+  const { history, message } = req.body;
+  if (!message || typeof message !== "string") {
+    return void res.status(400).json({ error: "message is required" });
+  }
+  try {
+    const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+    const chat = ai.chats.create({
+      model: "gemini-2.5-flash",
+      config: {
+        systemInstruction: SYSTEM_INSTRUCTION,
+        tools: TOOLS
+      },
+      history: history ?? []
+    });
+    let response = await chat.sendMessage({ message });
+    let iterations = 0;
+    while (iterations < 5) {
+      const fnCall = response.functionCalls?.[0];
+      if (!fnCall) break;
+      const fn = TOOL_DISPATCH[fnCall.name ?? ""];
+      let toolResult;
+      if (fn) {
+        try {
+          toolResult = fn();
+        } catch (e) {
+          toolResult = { error: String(e) };
+        }
+      } else {
+        toolResult = { error: `Unknown tool: ${fnCall.name}` };
+      }
+      response = await chat.sendMessage({
+        message: [
+          {
+            functionResponse: {
+              name: fnCall.name ?? "",
+              response: toolResult
+            }
+          }
+        ]
+      });
+      iterations++;
+    }
+    const text = response.text?.() ?? "";
+    const updatedHistory = chat.getHistory();
+    return void res.json({ reply: text, history: updatedHistory });
+  } catch (err) {
+    console.error("[ai] Error:", err);
+    return void res.status(500).json({ error: String(err) });
+  }
+});
+var ai_default = router12;
+
+// src/routes/index.ts
+var router13 = (0, import_express13.Router)();
+router13.use(health_default);
+router13.use(campaigns_default);
+router13.use(group_campaigns_default);
+router13.use(users_default);
+router13.use(analytics_default);
+router13.use(sse_default);
+router13.use(accounts_default);
+router13.use(templates_default);
+router13.use(audience_default);
+router13.use(upload_default);
+router13.use(workers_default);
+router13.use(ai_default);
+router13.use("/twa", campaigns_default);
+router13.use("/twa", group_campaigns_default);
+router13.use("/twa", users_default);
+router13.use("/twa", analytics_default);
+router13.use("/twa", accounts_default);
+router13.use("/twa", audience_default);
+router13.use("/twa", upload_default);
+router13.use("/twa", sse_default);
+router13.use("/twa", workers_default);
+var routes_default = router13;
 
 // src/lib/logger.ts
 var import_pino = __toESM(require_pino(), 1);
@@ -52102,7 +52344,7 @@ var logger = (0, import_pino.default)({
 });
 
 // src/lib/watchdog.ts
-import Database11 from "better-sqlite3";
+import Database12 from "better-sqlite3";
 
 // src/lib/notify.ts
 var TELEGRAM_API = "https://api.telegram.org";
@@ -52168,7 +52410,7 @@ function alreadySent(db, eventType, entityId) {
 async function checkCampaigns() {
   let db = null;
   try {
-    db = new Database11(DB_PATH);
+    db = new Database12(DB_PATH);
     ensureNotificationsTable(db);
     const campaigns = db.prepare(
       `SELECT id, name, status, sent_count, failed_count, target_count
@@ -52199,7 +52441,7 @@ async function checkCampaigns() {
 async function checkWorkers() {
   let db = null;
   try {
-    db = new Database11(DB_PATH);
+    db = new Database12(DB_PATH);
     ensureNotificationsTable(db);
     const workers = db.prepare("SELECT worker_id, pid, last_heartbeat, last_error FROM broadcast_workers").all();
     const now = Date.now();
@@ -52311,7 +52553,7 @@ var apiLimiter = createLimiter({
 });
 
 // src/app.ts
-var app = (0, import_express13.default)();
+var app = (0, import_express14.default)();
 app.use(
   (0, import_pino_http.default)({
     logger,
@@ -52326,8 +52568,8 @@ app.use(
   })
 );
 app.use((0, import_cors.default)());
-app.use(import_express13.default.json({ limit: "10mb" }));
-app.use(import_express13.default.urlencoded({ extended: true }));
+app.use(import_express14.default.json({ limit: "10mb" }));
+app.use(import_express14.default.urlencoded({ extended: true }));
 app.use("/api/twa", twaLimiter);
 app.post("/api/auth", authLimiter);
 app.use("/api", apiLimiter);
@@ -52382,7 +52624,7 @@ startWatchdog();
 var WORKSPACE_ROOT = join2(import.meta.dirname, "../../..");
 var FRONTEND_DIST = join2(WORKSPACE_ROOT, "artifacts", "telegram-miniapp", "dist");
 if (existsSync3(FRONTEND_DIST)) {
-  app.use(import_express13.default.static(FRONTEND_DIST, {
+  app.use(import_express14.default.static(FRONTEND_DIST, {
     setHeaders(res, filePath) {
       if (filePath.endsWith(".html")) {
         res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");

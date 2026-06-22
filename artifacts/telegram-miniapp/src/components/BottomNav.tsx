@@ -1,4 +1,4 @@
-import { LayoutGrid, Megaphone, BarChart2, Users2, Radio, Cpu, LayoutDashboard, Key } from "lucide-react";
+import { LayoutGrid, Megaphone, BarChart2, Users2, Radio, Cpu, LayoutDashboard, Key, Sparkles } from "lucide-react";
 import type { Tab } from "../App";
 import { TG } from "../lib/theme";
 import { haptic } from "../lib/haptics";
@@ -30,6 +30,7 @@ export function BottomNav({
     { id: "analytics",   kind: "tab",    icon: BarChart2,       label: t.nav.analytics, color: "#ffc946", glow: "rgba(255,201,70,0.55)"  },
     { id: "audience",    kind: "tab",    icon: Users2,          label: t.nav.audience,  color: "#ff9f40", glow: "rgba(255,159,64,0.55)"  },
     { id: "workers",     kind: "tab",    icon: Cpu,             label: t.nav.workers,   color: "#6ba8e5", glow: "rgba(107,168,229,0.55)" },
+    { id: "ai",           kind: "tab",    icon: Sparkles,        label: t.nav.ai,        color: "#a78bfa", glow: "rgba(167,139,250,0.55)" },
     { id: "account-login", kind: "action", icon: Key,           label: t.nav.auth,      color: "#ff7eb3", glow: "rgba(255,126,179,0.55)" },
   ];
 

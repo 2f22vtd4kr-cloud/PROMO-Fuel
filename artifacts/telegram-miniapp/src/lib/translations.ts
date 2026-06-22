@@ -12,6 +12,7 @@ const en = {
     workers: "Workers",
     accounts: "Accounts",
     auth: "Auth",
+    ai: "AI Help",
   },
   common: {
     loading: "Loading...",
@@ -579,6 +580,7 @@ const ua: typeof en = {
     workers: "Воркери",
     accounts: "Акаунти",
     auth: "Auth",
+    ai: "AI Help",
   },
   common: {
     loading: "Завантаження...",
