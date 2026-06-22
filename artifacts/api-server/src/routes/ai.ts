@@ -15,7 +15,11 @@ function getDb() {
   return new Database(DB_PATH, { readonly: true });
 }
 
-// ── Tool implementations (read-only DB queries) ────────────────────────────
+function getWriteDb() {
+  return new Database(DB_PATH);
+}
+
+// ── Read-only tool implementations ─────────────────────────────────────────
 
 function getPlatformSummary(): object {
   const db = getDb();
@@ -226,15 +230,121 @@ function getAccountStatusByCountry(): object {
   }
 }
 
-// ── Tool dispatch map ──────────────────────────────────────────────────────
+// ── Mutation tool implementations ──────────────────────────────────────────
 
-const TOOL_DISPATCH: Record<string, () => object> = {
+function execDeleteRestrictedAccounts(args: { account_ids: number[] }): object {
+  const db = getWriteDb();
+  try {
+    const ids = args.account_ids;
+    if (!ids?.length) return { error: "No account_ids provided" };
+    const placeholders = ids.map(() => "?").join(",");
+    const result = db.prepare(`DELETE FROM sender_accounts WHERE id IN (${placeholders})`).run(...ids);
+    return { deleted: result.changes, account_ids: ids };
+  } finally {
+    db.close();
+  }
+}
+
+function execUpdateAccountProxy(args: { account_ids: number[]; new_proxy_string: string }): object {
+  const db = getWriteDb();
+  try {
+    const { account_ids, new_proxy_string } = args;
+    if (!account_ids?.length) return { error: "No account_ids provided" };
+    if (!new_proxy_string) return { error: "No new_proxy_string provided" };
+    const placeholders = account_ids.map(() => "?").join(",");
+    const result = db.prepare(`UPDATE sender_accounts SET proxy = ? WHERE id IN (${placeholders})`).run(new_proxy_string, ...account_ids);
+    return { updated: result.changes, proxy: new_proxy_string, account_ids };
+  } finally {
+    db.close();
+  }
+}
+
+function execRemoveDeadProxies(): object {
+  const db = getWriteDb();
+  try {
+    const result = db.prepare("UPDATE sender_accounts SET proxy = NULL WHERE status = 'proxy_failed'").run();
+    return { cleared: result.changes };
+  } finally {
+    db.close();
+  }
+}
+
+function execPauseActiveCampaign(args: { campaign_id: number }): object {
+  const db = getWriteDb();
+  try {
+    const result = db.prepare("UPDATE campaigns SET status = 'paused' WHERE id = ? AND status = 'running'").run(args.campaign_id);
+    if (result.changes === 0) {
+      const check = db.prepare("SELECT id, name, status FROM campaigns WHERE id = ?").get(args.campaign_id) as { id: number; name: string; status: string } | undefined;
+      if (!check) return { error: `Campaign #${args.campaign_id} not found` };
+      return { error: `Campaign "${check.name}" is not running (current status: ${check.status})` };
+    }
+    return { paused: true, campaign_id: args.campaign_id };
+  } finally {
+    db.close();
+  }
+}
+
+function execResumeCampaign(args: { campaign_id: number }): object {
+  const db = getWriteDb();
+  try {
+    const result = db.prepare("UPDATE campaigns SET status = 'running' WHERE id = ? AND status = 'paused'").run(args.campaign_id);
+    if (result.changes === 0) {
+      const check = db.prepare("SELECT id, name, status FROM campaigns WHERE id = ?").get(args.campaign_id) as { id: number; name: string; status: string } | undefined;
+      if (!check) return { error: `Campaign #${args.campaign_id} not found` };
+      return { error: `Campaign "${check.name}" cannot be resumed (current status: ${check.status})` };
+    }
+    return { resumed: true, campaign_id: args.campaign_id };
+  } finally {
+    db.close();
+  }
+}
+
+function execTriggerBulkBlast(args: { account_ids: number[]; message_text: string; target_list: string[] }): object {
+  const db = getWriteDb();
+  try {
+    const { account_ids, message_text, target_list } = args;
+    if (!message_text?.trim()) return { error: "message_text is required" };
+    const now = new Date().toISOString();
+    const name = `AI Blast ${now.slice(0, 10)} ${now.slice(11, 16)}`;
+    const targetCount = target_list?.length ?? 0;
+    const primaryAccountId = account_ids?.[0] ?? null;
+    const result = db.prepare(
+      "INSERT INTO campaigns (name, message, status, target_count, sender_account_id, created_at) VALUES (?, ?, 'running', ?, ?, ?)"
+    ).run(name, message_text, targetCount, primaryAccountId, now);
+    return {
+      created: true,
+      campaign_id: result.lastInsertRowid,
+      campaign_name: name,
+      account_ids: account_ids ?? [],
+      target_count: targetCount,
+    };
+  } finally {
+    db.close();
+  }
+}
+
+// ── Tool registries ────────────────────────────────────────────────────────
+
+const READ_DISPATCH: Record<string, () => object> = {
   get_platform_summary: getPlatformSummary,
   check_failed_proxies: checkFailedProxies,
   get_account_status_by_country: getAccountStatusByCountry,
   get_group_campaigns: getGroupCampaigns,
   get_dm_campaign_performance: getDmCampaignPerformance,
 };
+
+type MutationArgs = Record<string, unknown>;
+
+const MUTATION_DISPATCH: Record<string, (args: MutationArgs) => object> = {
+  delete_restricted_accounts: (a) => execDeleteRestrictedAccounts(a as { account_ids: number[] }),
+  update_account_proxy: (a) => execUpdateAccountProxy(a as { account_ids: number[]; new_proxy_string: string }),
+  remove_dead_proxies: () => execRemoveDeadProxies(),
+  pause_active_campaign: (a) => execPauseActiveCampaign(a as { campaign_id: number }),
+  resume_campaign: (a) => execResumeCampaign(a as { campaign_id: number }),
+  trigger_bulk_blast: (a) => execTriggerBulkBlast(a as { account_ids: number[]; message_text: string; target_list: string[] }),
+};
+
+const MUTATION_TOOL_NAMES = new Set(Object.keys(MUTATION_DISPATCH));
 
 // ── Gemini tool definitions ────────────────────────────────────────────────
 
@@ -255,17 +365,102 @@ const TOOLS: Tool[] = [
       },
       {
         name: "get_group_campaigns",
-        description: "Returns all group broadcast campaigns with their status (running/paused/draft), sent/failed counts, group count, next scheduled send time, and recent errors across all group sends. Use this to answer questions about group broadcast health, what campaigns are active, or what errors are occurring in group sends.",
+        description: "Returns all group broadcast campaigns with their status (running/paused/draft), sent/failed counts, group count, next scheduled send time, and recent errors across all group sends.",
       },
       {
         name: "get_dm_campaign_performance",
-        description: "Returns all DM (direct message) campaigns with status, sent/failed counts, success rate %, and how many campaigns are archived. Use this to answer questions about DM campaign performance, success rates, archived campaigns, or which campaigns have errors.",
+        description: "Returns all DM (direct message) campaigns with status, sent/failed counts, success rate %, and how many campaigns are archived.",
+      },
+      {
+        name: "delete_restricted_accounts",
+        description: "⚠️ MUTATION — Permanently deletes sender accounts by their IDs. Use for accounts that are banned, session_invalid, or otherwise unrecoverable. Always call get_platform_summary or check_failed_proxies first to confirm IDs.",
+        parameters: {
+          type: "object" as const,
+          properties: {
+            account_ids: {
+              type: "array",
+              items: { type: "integer" },
+              description: "Array of sender_account IDs to delete",
+            },
+          },
+          required: ["account_ids"],
+        },
+      },
+      {
+        name: "update_account_proxy",
+        description: "⚠️ MUTATION — Sets a new SOCKS5 proxy string on one or more accounts. Use when the user wants to fix proxy_failed accounts or bulk-assign a new proxy.",
+        parameters: {
+          type: "object" as const,
+          properties: {
+            account_ids: {
+              type: "array",
+              items: { type: "integer" },
+              description: "Array of sender_account IDs to update",
+            },
+            new_proxy_string: {
+              type: "string",
+              description: "SOCKS5 proxy string in format: socks5://user:pass@host:port",
+            },
+          },
+          required: ["account_ids", "new_proxy_string"],
+        },
+      },
+      {
+        name: "remove_dead_proxies",
+        description: "⚠️ MUTATION — Clears the proxy field on ALL accounts currently in 'proxy_failed' status. Use to bulk-clean accounts with dead proxies.",
+        parameters: { type: "object" as const, properties: {} },
+      },
+      {
+        name: "pause_active_campaign",
+        description: "⚠️ MUTATION — Pauses a currently running DM campaign by its ID.",
+        parameters: {
+          type: "object" as const,
+          properties: {
+            campaign_id: { type: "integer", description: "ID of the DM campaign to pause" },
+          },
+          required: ["campaign_id"],
+        },
+      },
+      {
+        name: "resume_campaign",
+        description: "⚠️ MUTATION — Resumes a paused DM campaign by its ID.",
+        parameters: {
+          type: "object" as const,
+          properties: {
+            campaign_id: { type: "integer", description: "ID of the DM campaign to resume" },
+          },
+          required: ["campaign_id"],
+        },
+      },
+      {
+        name: "trigger_bulk_blast",
+        description: "⚠️ MUTATION — Creates and immediately starts a new bulk DM campaign with the given message text, sender account IDs, and list of target usernames/phone numbers.",
+        parameters: {
+          type: "object" as const,
+          properties: {
+            account_ids: {
+              type: "array",
+              items: { type: "integer" },
+              description: "Sender account IDs to use for this blast",
+            },
+            message_text: {
+              type: "string",
+              description: "The message content to send",
+            },
+            target_list: {
+              type: "array",
+              items: { type: "string" },
+              description: "List of target Telegram usernames or phone numbers",
+            },
+          },
+          required: ["account_ids", "message_text", "target_list"],
+        },
       },
     ],
   },
 ];
 
-const SYSTEM_INSTRUCTION = `You are the PROMO-Fuel System Copilot — an expert assistant for a Telegram bulk-messaging platform used by fuel station operators. Your role: 1) Technical expert on SOCKS5 proxies, account management, and Telegram MTProto. 2) System monitor — when asked about account/campaign/worker state, always call your database tools, never hallucinate metrics.
+const SYSTEM_INSTRUCTION = `You are the PROMO-Fuel System Copilot — an expert assistant for a Telegram bulk-messaging platform used by fuel station operators. Your role: 1) Technical expert on SOCKS5 proxies, account management, and Telegram MTProto. 2) System monitor — when asked about account/campaign/worker state, always call your database tools, never hallucinate metrics. 3) Autonomous operator — you can propose and execute account, proxy, and campaign actions when the user requests them.
 
 ## Platform Architecture
 - Backend: Node.js + Express (port 8080), SQLite via Drizzle ORM, Python supervisor with multi-worker engine
@@ -279,18 +474,19 @@ const SYSTEM_INSTRUCTION = `You are the PROMO-Fuel System Copilot — an expert 
 - **Workers**: Python supervisor.py manages worker processes; alive/dead tracking; MAX_CRASHES=5 with exponential backoff; SIGTERM→SIGKILL escalation
 - **Analytics**: daily/weekly sent stats; audience breakdown; SVG bar charts; 7-day trend
 
-## Recent UI Features (inform user about these)
-- **Bell Status Panel** (🔔 on Home): tap bell to see live platform health overlay — workers alive/dead, active campaigns, quota used today, banned/flood accounts. Badge dot = red (ban) / yellow (flood) / green (active)
-- **Campaign Completion Toasts**: automatic toast notifications when campaigns change state — 🚀 started, ✅ completed (with sent count), ⛔ cancelled. Works for both DM and group broadcasts (📡/✅/⏹). Always visible regardless of active tab
-- **Daily Digest SSE**: "Sent today" on Home updates live in real-time from SSE stream; green pulsing dot confirms live connection
-- **Fleet Health Score**: Accounts header shows a % bar — green ≥90%, yellow ≥70%, red <70%. Unhealthy = banned + session_invalid + proxy_failed accounts
-- **Bulk Proxy Update** (🌐 Proxy button in Accounts toolbar): apply one proxy string to ALL accounts / only accounts without proxy / only proxy_failed accounts — in one tap. Supports socks5://user:pass@host:port format
-- **Manual Search** (🔍 in both manuals): tap search icon to filter all slides by title or keyword, tap result to jump directly. Both System Manual and Accounts & Proxy guide have search
-- **Unified Manual Chooser**: tap ? button in bottom nav → bottom sheet appears with two cards: 📖 System Manual (31 slides) and 🔐 Accounts & Proxy (9 slides). No more scattered guide buttons
-- **Campaign Sparklines**: each campaign card shows a 7-bar mini chart of the last 7 days' sends
-- **Campaign Archive**: DM campaigns can be archived (soft-delete) via ··· menu → Archive. Archived tab hides them from main view; they can be restored via Unarchive
-- **Group Analytics Overlay**: tap any group name in the Group Broadcasts stats tab → full-screen overlay shows all-time delivery rate, FloodWait frequency, ban events, per-campaign breakdown, and 30-day daily history for that group
-- **What's New slide**: Manual slide 31 summarizes all recently added features
+## Mutation / Action Tools (require user approval before execution)
+You have access to the following mutation tools. When the user asks you to take an action, always:
+1. First call the relevant read tool to gather IDs and confirm the current state.
+2. Then call the appropriate mutation tool with exact IDs.
+3. Execution will be paused for human approval — do NOT say you've completed the action yet.
+
+Available mutations:
+- **delete_restricted_accounts(account_ids)** — permanently deletes accounts. Use for banned/session_invalid accounts only.
+- **update_account_proxy(account_ids, new_proxy_string)** — assigns a new SOCKS5 proxy to accounts.
+- **remove_dead_proxies()** — clears proxy field on all proxy_failed accounts.
+- **pause_active_campaign(campaign_id)** — pauses a running campaign.
+- **resume_campaign(campaign_id)** — resumes a paused campaign.
+- **trigger_bulk_blast(account_ids, message_text, target_list)** — creates and starts a new DM campaign.
 
 ## Proxy & Account Knowledge
 SOCKS5 format: socks5://username:password@ip:port
@@ -354,6 +550,87 @@ const GROQ_TOOLS = [
       parameters: { type: "object", properties: {} },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "delete_restricted_accounts",
+      description: "⚠️ MUTATION — Permanently deletes sender accounts by IDs. Use for banned/session_invalid/unrecoverable accounts only.",
+      parameters: {
+        type: "object",
+        properties: {
+          account_ids: { type: "array", items: { type: "integer" }, description: "Array of sender_account IDs to delete" },
+        },
+        required: ["account_ids"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_account_proxy",
+      description: "⚠️ MUTATION — Sets a new SOCKS5 proxy string on one or more accounts.",
+      parameters: {
+        type: "object",
+        properties: {
+          account_ids: { type: "array", items: { type: "integer" }, description: "Sender account IDs to update" },
+          new_proxy_string: { type: "string", description: "SOCKS5 proxy string: socks5://user:pass@host:port" },
+        },
+        required: ["account_ids", "new_proxy_string"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remove_dead_proxies",
+      description: "⚠️ MUTATION — Clears the proxy field on ALL accounts in 'proxy_failed' status.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "pause_active_campaign",
+      description: "⚠️ MUTATION — Pauses a currently running DM campaign by its ID.",
+      parameters: {
+        type: "object",
+        properties: {
+          campaign_id: { type: "integer", description: "ID of the campaign to pause" },
+        },
+        required: ["campaign_id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "resume_campaign",
+      description: "⚠️ MUTATION — Resumes a paused DM campaign by its ID.",
+      parameters: {
+        type: "object",
+        properties: {
+          campaign_id: { type: "integer", description: "ID of the campaign to resume" },
+        },
+        required: ["campaign_id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "trigger_bulk_blast",
+      description: "⚠️ MUTATION — Creates and starts a new bulk DM campaign with the given message, accounts, and targets.",
+      parameters: {
+        type: "object",
+        properties: {
+          account_ids: { type: "array", items: { type: "integer" }, description: "Sender account IDs" },
+          message_text: { type: "string", description: "Message content to send" },
+          target_list: { type: "array", items: { type: "string" }, description: "Target usernames or phone numbers" },
+        },
+        required: ["account_ids", "message_text", "target_list"],
+      },
+    },
+  },
 ];
 
 // ── Groq types ─────────────────────────────────────────────────────────────
@@ -378,6 +655,12 @@ interface GroqMessage {
 
 interface GroqResponse {
   choices: { message: GroqMessage & { content: string } }[];
+}
+
+interface MutationInterceptResult {
+  __type: "mutation_intercept";
+  function_name: string;
+  arguments: MutationArgs;
 }
 
 // ── Groq API helper ────────────────────────────────────────────────────────
@@ -420,7 +703,7 @@ async function callGroqWithTools(
   history: Content[],
   imageBase64?: string,
   imageMimeType?: string,
-): Promise<string> {
+): Promise<string | MutationInterceptResult> {
   const withVision = !!imageBase64;
 
   const messages: GroqMessage[] = [
@@ -437,7 +720,6 @@ async function callGroqWithTools(
     messages.push({ role: item.role === "model" ? "assistant" : "user", content: text });
   }
 
-  // Build user message with optional image
   const userContent: GroqContentPart[] = [{ type: "text", text: message }];
   if (imageBase64 && imageMimeType) {
     userContent.push({
@@ -447,7 +729,6 @@ async function callGroqWithTools(
   }
   messages.push({ role: "user", content: userContent.length === 1 ? message : userContent });
 
-  // Tool call loop (max 5 iterations)
   let iterations = 0;
   while (iterations < 5) {
     const data = await groqRequest(messages, withVision && iterations === 0);
@@ -458,12 +739,20 @@ async function callGroqWithTools(
       return choice?.message?.content ?? "";
     }
 
-    // Add assistant turn with tool_calls
+    // Intercept the first mutation tool call — stop the loop and return for approval
+    const mutationCall = toolCalls.find(tc => MUTATION_TOOL_NAMES.has(tc.function.name));
+    if (mutationCall) {
+      let args: MutationArgs = {};
+      try { args = JSON.parse(mutationCall.function.arguments || "{}") as MutationArgs; }
+      catch { /* keep empty args */ }
+      return { __type: "mutation_intercept", function_name: mutationCall.function.name, arguments: args };
+    }
+
+    // Read-only tools: execute and continue
     messages.push(choice.message as GroqMessage);
 
-    // Execute each tool call and append results
     for (const tc of toolCalls) {
-      const fn = TOOL_DISPATCH[tc.function.name ?? ""];
+      const fn = READ_DISPATCH[tc.function.name ?? ""];
       let result: object;
       try { result = fn ? fn() : { error: `Unknown tool: ${tc.function.name}` }; }
       catch (e) { result = { error: String(e) }; }
@@ -482,7 +771,7 @@ async function callGroqWithTools(
   return "";
 }
 
-// ── POST /v3/ai/chat ────────────────────────────────────────────────────────
+// ── POST /api/v3/ai/chat ───────────────────────────────────────────────────
 
 router.post("/v3/ai/chat", async (req: Request, res: Response) => {
   const GEMINI_API_KEY = process.env["GEMINI_API_KEY"];
@@ -509,7 +798,6 @@ router.post("/v3/ai/chat", async (req: Request, res: Response) => {
         history: history ?? [],
       });
 
-      // Build message parts (text + optional image)
       type GeminiPart =
         | { text: string }
         | { inlineData: { mimeType: string; data: string } };
@@ -526,7 +814,21 @@ router.post("/v3/ai/chat", async (req: Request, res: Response) => {
         const fnCall = response.functionCalls?.[0];
         if (!fnCall) break;
 
-        const fn = TOOL_DISPATCH[fnCall.name ?? ""];
+        // Intercept mutation tool calls — pause for user approval
+        if (MUTATION_TOOL_NAMES.has(fnCall.name ?? "")) {
+          return void res.json({
+            status: "pending_user_approval",
+            action_details: {
+              function_name: fnCall.name ?? "",
+              arguments: (fnCall.args ?? {}) as MutationArgs,
+            },
+            history: chat.getHistory(),
+            engine: "gemini",
+          });
+        }
+
+        // Read-only tools: execute immediately
+        const fn = READ_DISPATCH[fnCall.name ?? ""];
         let toolResult: Record<string, unknown>;
         try { toolResult = fn ? (fn() as Record<string, unknown>) : { error: `Unknown tool: ${fnCall.name}` }; }
         catch (e) { toolResult = { error: String(e) }; }
@@ -537,22 +839,67 @@ router.post("/v3/ai/chat", async (req: Request, res: Response) => {
         iterations++;
       }
 
-      // ✅ FIX: response.text is a property, not a function
       const text = response.text ?? "";
       return void res.json({ reply: text, history: chat.getHistory(), engine: "gemini" });
 
     } catch (err) {
-      console.warn("[ai/gemini] Error, falling back to Groq:", String(err).slice(0, 120));
+      const errStr = String(err);
+      // Only fall through to Groq on transient/capacity errors
+      if (!errStr.includes("503") && !errStr.includes("overloaded") && !errStr.includes("UNAVAILABLE") && !errStr.includes("fetch")) {
+        console.error("[ai/gemini] Non-transient error:", errStr.slice(0, 200));
+      } else {
+        console.warn("[ai/gemini] Transient error, falling back to Groq:", errStr.slice(0, 120));
+      }
     }
   }
 
   // ── Fallback: Groq with full tool calling + vision ────────────────────
   try {
-    const text = await callGroqWithTools(message, history ?? [], imageBase64, imageMimeType);
-    return void res.json({ reply: text, history: history ?? [], engine: "groq" });
+    const result = await callGroqWithTools(message, history ?? [], imageBase64, imageMimeType);
+
+    if (typeof result === "object" && result.__type === "mutation_intercept") {
+      return void res.json({
+        status: "pending_user_approval",
+        action_details: {
+          function_name: result.function_name,
+          arguments: result.arguments,
+        },
+        history: history ?? [],
+        engine: "groq",
+      });
+    }
+
+    return void res.json({ reply: result, history: history ?? [], engine: "groq" });
   } catch (err) {
     console.error("[ai/groq] Fallback also failed:", err);
     return void res.status(503).json({ error: "capacity" });
+  }
+});
+
+// ── POST /api/v3/ai/execute ────────────────────────────────────────────────
+// Executes a pre-approved mutation action from the frontend confirmation gate.
+
+router.post("/v3/ai/execute", (req: Request, res: Response) => {
+  const { function_name, arguments: args } = req.body as {
+    function_name: string;
+    arguments: MutationArgs;
+  };
+
+  if (!function_name || typeof function_name !== "string") {
+    return void res.status(400).json({ error: "function_name is required" });
+  }
+
+  if (!MUTATION_TOOL_NAMES.has(function_name)) {
+    return void res.status(400).json({ error: `"${function_name}" is not a registered mutation tool` });
+  }
+
+  const fn = MUTATION_DISPATCH[function_name];
+  try {
+    const result = fn(args ?? {});
+    return void res.json({ success: true, function_name, result });
+  } catch (err) {
+    console.error(`[ai/execute] ${function_name} failed:`, err);
+    return void res.status(500).json({ success: false, error: String(err) });
   }
 });
 
