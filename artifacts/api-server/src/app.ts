@@ -77,33 +77,39 @@ app.use("/api/twa", (req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// ── Proxy /api/verifications/* → Python FastAPI (port 8083) ─────────────────
+// ── Proxy /api/verifications/* and /api/factory/* → Python FastAPI (port 8083)
 // Must be registered BEFORE the Bearer middleware so it bypasses the Node.js
 // auth check — the Python server receives the headers as-is.
 const PYTHON_PORT = parseInt(process.env["PYTHON_API_PORT"] ?? "8083");
-app.use("/api/verifications", (req: Request, res: Response) => {
-  const targetPath = `/api/verifications${req.path === "/" ? "" : req.path}`;
-  const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
-  const options: http.RequestOptions = {
-    hostname: "127.0.0.1",
-    port: PYTHON_PORT,
-    path: targetPath + qs,
-    method: req.method,
-    headers: { ...req.headers, host: `127.0.0.1:${PYTHON_PORT}` },
+
+function makePythonProxy(prefix: string) {
+  return (req: Request, res: Response) => {
+    const targetPath = `${prefix}${req.path === "/" ? "" : req.path}`;
+    const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+    const options: http.RequestOptions = {
+      hostname: "127.0.0.1",
+      port: PYTHON_PORT,
+      path: targetPath + qs,
+      method: req.method,
+      headers: { ...req.headers, host: `127.0.0.1:${PYTHON_PORT}` },
+    };
+    const proxyReq = http.request(options, (proxyRes) => {
+      res.status(proxyRes.statusCode ?? 200);
+      for (const [k, v] of Object.entries(proxyRes.headers)) {
+        if (v !== undefined) res.setHeader(k, v);
+      }
+      proxyRes.pipe(res, { end: true });
+    });
+    proxyReq.on("error", (err) => {
+      logger.error({ err }, `${prefix} proxy error`);
+      if (!res.headersSent) res.status(502).json({ error: "Python API unavailable", detail: err.message });
+    });
+    req.pipe(proxyReq, { end: true });
   };
-  const proxyReq = http.request(options, (proxyRes) => {
-    res.status(proxyRes.statusCode ?? 200);
-    for (const [k, v] of Object.entries(proxyRes.headers)) {
-      if (v !== undefined) res.setHeader(k, v);
-    }
-    proxyRes.pipe(res, { end: true });
-  });
-  proxyReq.on("error", (err) => {
-    logger.error({ err }, "verifications proxy error");
-    if (!res.headersSent) res.status(502).json({ error: "Python API unavailable", detail: err.message });
-  });
-  req.pipe(proxyReq, { end: true });
-});
+}
+
+app.use("/api/verifications", makePythonProxy("/api/verifications"));
+app.use("/api/factory",       makePythonProxy("/api/factory"));
 
 // ── Bearer-token middleware — only active when API_SECRET is configured ───────
 if (API_SECRET) {

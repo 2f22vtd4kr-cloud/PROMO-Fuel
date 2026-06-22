@@ -1210,6 +1210,9 @@ app.include_router(campaigns_router)
 app.include_router(admin_router)
 app.include_router(verif_router)
 
+from account_factory import factory_router  # noqa: E402
+app.include_router(factory_router)
+
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 

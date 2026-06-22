@@ -10,6 +10,7 @@ import { GlassCard, StatusBadge } from "../components/GlassCard";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { useSse } from "../lib/useSse";
 import { haptic } from "../lib/haptics";
+import { AccountFactoryPanel } from "./AccountFactory";
 
 // ── Flood wait countdown badge ────────────────────────────────────────────────
 
@@ -1007,6 +1008,7 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
   const [showForm,       setShowForm]       = useState(false);
   const [showBulk,       setShowBulk]       = useState(false);
   const [showOverflow,   setShowOverflow]   = useState(false);
+  const [showFactory,    setShowFactory]    = useState(false);
   const [pingAllResults, setPingAllResults] = useState<Record<number, ProxyResult>>({});
   const [pingAllRunning, setPingAllRunning] = useState(false);
 
@@ -1188,6 +1190,13 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
         </div>
       )}
 
+      {/* Account Factory overlay */}
+      {showFactory && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 203 }}>
+          <AccountFactoryPanel onDone={() => { setShowFactory(false); load(); }} />
+        </div>
+      )}
+
       {/* Bulk import overlay */}
       {showBulk && (
         <div style={{ position: "absolute", inset: 0, zIndex: 200, background: "#07090f", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
@@ -1341,6 +1350,7 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
               }}
             >
               {[
+                { icon: "🏭", label: lang === "ua" ? "Фабрика акаунтів" : "Account Factory", color: "#f59e0b", action: () => { haptic.medium(); setShowFactory(true); setShowOverflow(false); } },
                 { icon: "🌐", label: lang === "ua" ? "Проксі (масово)" : "Bulk Proxy", color: "#6ba8e5", action: () => { haptic.medium(); setShowBulkProxy(true); setBulkProxyDone(null); setShowOverflow(false); } },
                 { icon: "📦", label: "Bulk Import", color: "#2de897",  action: () => { haptic.medium(); setShowBulk(s => !s); setShowOverflow(false); } },
                 { icon: "🔌", label: "Ping All",    color: "#c4aeff",  action: () => { haptic.light();  setShowOverflow(false); pingAll(); } },

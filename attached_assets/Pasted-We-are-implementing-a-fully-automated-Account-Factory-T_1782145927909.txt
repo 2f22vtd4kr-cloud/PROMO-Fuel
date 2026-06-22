@@ -1,0 +1,52 @@
+We are implementing a fully automated "Account Factory" (Telegram Account Creator/Regger) directly into our CRM backend and Mini App UI. This tool will automatically register fresh Telegram accounts using the SMSPool API (smspool.net), route all traffic through our Decodo (Smartproxy) residential SOCKS5 proxies, handle the Telethon session creation, immediately set up 2FA security, and save the resulting .session and .json files.
+
+Please implement the following complete full-stack architecture:
+
+1. STORAGE & DATABASE UPDATES:
+- Ensure we have a dedicated, secure directory on the server at `/sessions` to store the generated `.session` files and their accompanying `.json` metadata files.
+- The `.json` file for each registered account must strictly follow this exact structure:
+  {
+    "session_file_name": "string",
+    "phone": "string",
+    "api_id": 12345,
+    "api_hash": "string",
+    "device_model": "string",
+    "system_version": "string",
+    "app_version": "string",
+    "lang_code": "en",
+    "system_lang_code": "en-US",
+    "proxy_string": "socks5://username:password@ip:port"
+  }
+- Save a matching record into our main `accounts` database table with fields for phone, account status ('active'), and the reference to the session file.
+
+2. AUTOMATED REGISTRATION PIPELINE (Python / Telethon Backend):
+- Create a service endpoint `POST /api/v3/accounts/register-flow` that accepts: `smspool_api_key`, `country_id` (e.g., country code or ID for Ukraine/chosen location), `proxy_string` (Decodo SOCKS5 format), and `two_factor_password`.
+- IMPLEMENT THE EXACT STEP-BY-STEP STEPPER LOGIC:
+  * Step 1 (Purchase Number): Make a secure HTTP request to SMSPool API (`https://api.smspool.net/purchase/sms`) with params `api_key`, `service=telegram` (or ID 11), and `country`. Parse the response to get `order_id` and `number`.
+  * Step 2 (Initialize Telethon Client): Create a new Telethon `TelegramClient` instance. Generate randomized mobile hardware parameters (Device model, OS version, App version) so every session looks unique to Telegram. Inject the Decodo SOCKS5 proxy directly into the Telethon connection settings.
+  * Step 3 (Request TG Verification Code): Call `await client.send_code_request(phone_number)`.
+  * Step 4 (SMS Polling Loop with Timeout): Start a background loop that queries the SMSPool API status check endpoint (`https://api.smspool.net/sms/check?api_key=...&orderid=...`) every 5 seconds. 
+    - If the SMS code arrives: Extract the numeric code and break the loop.
+    - If 2 minutes pass without a code: Automatically trigger the SMSPool cancellation mechanism, disconnect the client safely, and return a timeout error to the frontend.
+  * Step 5 (Telegram Handshake & Account Creation): Submit the received code via Telethon. If the number is fresh and prompts for a name, generate a random realistic human first and last name to complete the Sign-Up.
+  * Step 6 (Enforce 2FA Security): Immediately after successful login/signup, call Telethon's `await client.edit_2fa_password(new_password=two_factor_password)` to set the Two-Factor Authentication password. This prevents the number from being recycled or hijacked.
+  * Step 7 (Persist & Clean Disconnect): Save the `.session` file to disk, write the customized `.json` metadata file, update the database record to 'active', and safely disconnect the client session.
+
+3. ROBUST ERROR HANDLING (Anti-Ban Guard):
+- Wrap the workflow in specific try-except blocks. If Telegram returns a `PhoneNumberBannedError` during Step 3, the script must instantly:
+  * Capture the error without crashing.
+  * Send a signal to the SMSPool API if applicable to mark the number, or gracefully cancel the order.
+  * Instantly update the frontend stepper to notify the user: "This phone number is pre-banned by Telegram. Order cancelled, no funds wasted. Please try again."
+
+4. FRONTEND PANEL UI (Mini App "Account Factory" Control Tab):
+- Create a beautifully styled dashboard view in our Mini App called "Account Factory".
+- Include inputs for: SMSPool API Key, Country selection dropdown, Textarea for the Decodo SOCKS5 Proxy string, and a text field for the desired 2FA Password.
+- Include a prominent "Launch Automated Registration" action button.
+- CRITICAL: When the button is clicked, display a real-time visual Stepper component using WebSockets or Server-Sent Events (SSE) to show the exact live progress:
+  * "⏳ Requesting an optimized number from SMSPool..."
+  * "📱 Number Acquired: +380XXXXXXXXX"
+  * "📡 Routing Telethon connection via Decodo Residential Proxy..."
+  * "💬 Waiting for Telegram SMS verification code (Timeout in Xs)..."
+  * "🔑 Code Received! Finalizing Telegram account handshake..."
+  * "🔒 Setting up 2FA Security Password..."
+  * "🎉 Account successfully generated, protected, and added to your CRM!"
