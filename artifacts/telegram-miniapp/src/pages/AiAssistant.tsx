@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Bot, Sparkles, Cpu, Paperclip, X, Trash2 } from "lucide-react";
+import { Send, Bot, Sparkles, Cpu, Paperclip, X, Trash2, Copy, Check } from "lucide-react";
 import { getStoredSecret } from "./LockScreen";
 import { useI18n } from "../lib/i18n";
 
@@ -268,6 +268,8 @@ export function AiAssistantPage() {
               backdropFilter: "blur(20px)",
               WebkitBackdropFilter: "blur(20px)",
               boxShadow: msg.role === "user" ? "0 4px 16px rgba(59,130,246,0.15)" : "0 4px 16px rgba(0,0,0,0.25)",
+              display: "flex",
+              flexDirection: "column",
             }}>
               {/* Attached image preview in bubble */}
               {msg.imageUrl && (
@@ -282,10 +284,15 @@ export function AiAssistantPage() {
                   <MessageContent text={msg.text} />
                 </div>
               )}
-              {/* Groq engine badge */}
-              {msg.engine === "groq" && (
-                <div style={{ fontSize: 9, color: "rgba(167,139,250,0.5)", marginTop: 5, paddingTop: 4, borderTop: "1px solid rgba(255,255,255,0.07)", letterSpacing: "0.04em" }}>
-                  ⚡ Groq · Llama
+              {/* Copy + Groq badge row for model messages */}
+              {msg.role === "model" && msg.text && msg.text !== "📎" && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 2 }}>
+                  <CopyButton text={msg.text} />
+                  {msg.engine === "groq" && (
+                    <div style={{ fontSize: 9, color: "rgba(167,139,250,0.5)", letterSpacing: "0.04em", paddingRight: 2 }}>
+                      ⚡ Groq · Llama
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -427,6 +434,63 @@ export function AiAssistantPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Copy button ───────────────────────────────────────────────────────────
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      title="Copy"
+      style={{
+        marginTop: 6,
+        padding: "3px 8px",
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        borderRadius: 8,
+        background: copied ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.05)",
+        border: `1px solid ${copied ? "rgba(34,197,94,0.3)" : "rgba(255,255,255,0.1)"}`,
+        cursor: "pointer",
+        transition: "all 0.18s ease",
+        fontFamily: "inherit",
+        alignSelf: "flex-start",
+      }}
+    >
+      {copied
+        ? <Check size={11} color="rgba(74,222,128,0.9)" />
+        : <Copy size={11} color="rgba(160,180,230,0.45)" />}
+      <span style={{
+        fontSize: 10,
+        color: copied ? "rgba(74,222,128,0.9)" : "rgba(160,180,230,0.4)",
+        letterSpacing: "0.03em",
+        transition: "color 0.18s",
+      }}>
+        {copied ? "Copied" : "Copy"}
+      </span>
+    </button>
   );
 }
 
