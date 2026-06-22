@@ -52488,24 +52488,52 @@ Safe limits: 15-60s delay between sends; 50-100 msg/day per account (warm-up: st
 - GET /api/twa/events \u2014 SSE stream
 
 Respond in the same language the user writes in (Russian, Ukrainian, or English). Be direct and precise.`;
-var GROQ_SYSTEM_INSTRUCTION = `You are the PROMO-Fuel System Copilot running on the emergency backup engine (Groq/Llama). The primary AI engine (Gemini) is temporarily over capacity. Politely inform the user of this at the start of your response. You can still answer general operational questions about SOCKS5 proxies, Telegram bulk messaging, account management, campaign strategy, and platform troubleshooting \u2014 but you cannot query live database metrics right now. Be helpful and direct. Respond in the same language the user writes in (Ukrainian, Russian, or English).`;
-function isOverloadError(err) {
-  const s = String(err);
-  return s.includes("503") || s.includes("UNAVAILABLE") || s.includes("overloaded") || s.includes("rate") || s.includes("quota") || s.includes("capacity") || s.includes("high demand") || s.includes("Resource has been exhausted");
-}
-async function callGroqFallback(message, history) {
+var GROQ_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "get_platform_summary",
+      description: "Returns total numbers of connected accounts, their statuses (active, banned, flood_wait), active proxies count, overall DM and group message transmission statistics, active campaigns count, and worker process health.",
+      parameters: { type: "object", properties: {} }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "check_failed_proxies",
+      description: "Queries the database for accounts with proxy connectivity errors (proxy_failed status), flood wait restrictions, and ban status. Returns detailed per-account error info including proxy strings and last error messages.",
+      parameters: { type: "object", properties: {} }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_account_status_by_country",
+      description: "Returns a breakdown of all connected accounts grouped by country prefix. Shows working vs restricted accounts per country.",
+      parameters: { type: "object", properties: {} }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_group_campaigns",
+      description: "Returns all group broadcast campaigns with status, sent/failed counts, group count, next send time, and recent errors.",
+      parameters: { type: "object", properties: {} }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_dm_campaign_performance",
+      description: "Returns all DM campaigns with status, sent/failed counts, success rate %, and archived count.",
+      parameters: { type: "object", properties: {} }
+    }
+  }
+];
+async function groqRequest(messages, withVision) {
   const GROQ_API_KEY = process.env["GROQ_API_KEY"];
   if (!GROQ_API_KEY) throw new Error("GROQ_API_KEY not configured");
-  const openaiMessages = [
-    { role: "system", content: GROQ_SYSTEM_INSTRUCTION }
-  ];
-  for (const item of history ?? []) {
-    if (item.role !== "user" && item.role !== "model") continue;
-    const text = (item.parts ?? []).filter((p) => typeof p.text === "string").map((p) => p.text).join("");
-    if (!text) continue;
-    openaiMessages.push({ role: item.role === "model" ? "assistant" : "user", content: text });
-  }
-  openaiMessages.push({ role: "user", content: message });
+  const model = withVision ? "meta-llama/llama-4-scout-17b-16e-instruct" : "llama-3.3-70b-versatile";
   const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -52513,66 +52541,110 @@ async function callGroqFallback(message, history) {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
-      messages: openaiMessages,
-      max_tokens: 1024,
+      model,
+      messages,
+      tools: GROQ_TOOLS,
+      tool_choice: "auto",
+      max_tokens: 1536,
       temperature: 0.7
     })
   });
-  if (!resp.ok) throw new Error(`Groq HTTP ${resp.status}`);
-  const data = await resp.json();
-  return data.choices[0]?.message?.content ?? "";
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => "");
+    throw new Error(`Groq HTTP ${resp.status}: ${body.slice(0, 200)}`);
+  }
+  return resp.json();
+}
+async function callGroqWithTools(message, history, imageBase64, imageMimeType) {
+  const withVision = !!imageBase64;
+  const messages = [
+    { role: "system", content: SYSTEM_INSTRUCTION }
+  ];
+  for (const item of history ?? []) {
+    if (item.role !== "user" && item.role !== "model") continue;
+    const text = (item.parts ?? []).filter((p) => typeof p.text === "string").map((p) => p.text).join("");
+    if (!text) continue;
+    messages.push({ role: item.role === "model" ? "assistant" : "user", content: text });
+  }
+  const userContent = [{ type: "text", text: message }];
+  if (imageBase64 && imageMimeType) {
+    userContent.push({
+      type: "image_url",
+      image_url: { url: `data:${imageMimeType};base64,${imageBase64}` }
+    });
+  }
+  messages.push({ role: "user", content: userContent.length === 1 ? message : userContent });
+  let iterations = 0;
+  while (iterations < 5) {
+    const data = await groqRequest(messages, withVision && iterations === 0);
+    const choice = data.choices[0];
+    const toolCalls = choice?.message?.tool_calls;
+    if (!toolCalls?.length) {
+      return choice?.message?.content ?? "";
+    }
+    messages.push(choice.message);
+    for (const tc of toolCalls) {
+      const fn = TOOL_DISPATCH[tc.function.name ?? ""];
+      let result;
+      try {
+        result = fn ? fn() : { error: `Unknown tool: ${tc.function.name}` };
+      } catch (e) {
+        result = { error: String(e) };
+      }
+      messages.push({
+        role: "tool",
+        content: JSON.stringify(result),
+        tool_call_id: tc.id,
+        name: tc.function.name
+      });
+    }
+    iterations++;
+  }
+  return "";
 }
 router12.post("/v3/ai/chat", async (req, res) => {
   const GEMINI_API_KEY = process.env["GEMINI_API_KEY"];
-  const { history, message } = req.body;
+  const { history, message, imageBase64, imageMimeType } = req.body;
   if (!message || typeof message !== "string") {
     return void res.status(400).json({ error: "message is required" });
   }
   if (GEMINI_API_KEY) {
     try {
-      const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-      const chat = ai.chats.create({
+      const genai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+      const chat = genai.chats.create({
         model: "gemini-2.5-flash",
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          tools: TOOLS
-        },
+        config: { systemInstruction: SYSTEM_INSTRUCTION, tools: TOOLS },
         history: history ?? []
       });
-      let response = await chat.sendMessage({ message });
+      const parts = [{ text: message }];
+      if (imageBase64 && imageMimeType) {
+        parts.push({ inlineData: { mimeType: imageMimeType, data: imageBase64 } });
+      }
+      let response = await chat.sendMessage({ message: parts });
       let iterations = 0;
       while (iterations < 5) {
         const fnCall = response.functionCalls?.[0];
         if (!fnCall) break;
         const fn = TOOL_DISPATCH[fnCall.name ?? ""];
         let toolResult;
-        if (fn) {
-          try {
-            toolResult = fn();
-          } catch (e) {
-            toolResult = { error: String(e) };
-          }
-        } else {
-          toolResult = { error: `Unknown tool: ${fnCall.name}` };
+        try {
+          toolResult = fn ? fn() : { error: `Unknown tool: ${fnCall.name}` };
+        } catch (e) {
+          toolResult = { error: String(e) };
         }
         response = await chat.sendMessage({
           message: [{ functionResponse: { name: fnCall.name ?? "", response: toolResult } }]
         });
         iterations++;
       }
-      const text = response.text?.() ?? "";
+      const text = response.text ?? "";
       return void res.json({ reply: text, history: chat.getHistory(), engine: "gemini" });
     } catch (err) {
-      if (!isOverloadError(err)) {
-        console.error("[ai/gemini] Non-overload error:", err);
-        return void res.status(503).json({ error: "capacity" });
-      }
-      console.warn("[ai/gemini] Overload \u2014 falling back to Groq");
+      console.warn("[ai/gemini] Error, falling back to Groq:", String(err).slice(0, 120));
     }
   }
   try {
-    const text = await callGroqFallback(message, history ?? []);
+    const text = await callGroqWithTools(message, history ?? [], imageBase64, imageMimeType);
     return void res.json({ reply: text, history: history ?? [], engine: "groq" });
   } catch (err) {
     console.error("[ai/groq] Fallback also failed:", err);

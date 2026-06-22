@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Bot, Sparkles, Cpu } from "lucide-react";
+import { Send, Bot, Sparkles, Cpu, Paperclip, X } from "lucide-react";
 import { getStoredSecret } from "./LockScreen";
 import { useI18n } from "../lib/i18n";
 
@@ -7,6 +7,7 @@ interface Message {
   role: "user" | "model";
   text: string;
   engine?: string;
+  imageUrl?: string;
 }
 
 interface HistoryPart {
@@ -22,33 +23,75 @@ interface HistoryItem {
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
+// ── File → base64 helper ──────────────────────────────────────────────────
+
+function fileToBase64(file: File): Promise<{ base64: string; mimeType: string; dataUrl: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(",")[1] ?? "";
+      resolve({ base64, mimeType: file.type, dataUrl });
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────
+
 export function AiAssistantPage() {
   const { lang } = useI18n();
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "model",
       text: lang === "ua"
-        ? "Привіт! Я PROMO-Fuel System Copilot. Можу допомогти з управлінням акаунтами, проксі SOCKS5 та моніторингом платформи. Запитай мене щось — наприклад, стан акаунтів або статус проксі."
-        : "Hi! I'm PROMO-Fuel System Copilot. I can help with account management, SOCKS5 proxies, and platform monitoring. Ask me anything — for example, account status or proxy health.",
+        ? "Привіт! Я PROMO-Fuel System Copilot. Можу допомогти з управлінням акаунтами, проксі SOCKS5 та моніторингом платформи. Запитай мене щось — наприклад, стан акаунтів або статус проксі. Також можеш прикріпити зображення для аналізу."
+        : "Hi! I'm PROMO-Fuel System Copilot. I can help with account management, SOCKS5 proxies, and platform monitoring. Ask me anything — for example, account status or proxy health. You can also attach an image for analysis.",
     },
   ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [input, setInput]             = useState("");
+  const [loading, setLoading]         = useState(false);
+  const [history, setHistory]         = useState<HistoryItem[]>([]);
+  const [attachedImage, setAttached]  = useState<{ base64: string; mimeType: string; dataUrl: string } | null>(null);
+
+  const bottomRef  = useRef<HTMLDivElement>(null);
+  const inputRef   = useRef<HTMLTextAreaElement>(null);
+  const fileRef    = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
+  // ── Image pick ──────────────────────────────────────────────────────────
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    fileToBase64(file).then(setAttached).catch(console.error);
+    e.target.value = "";
+  }
+
+  function removeAttachment() {
+    setAttached(null);
+  }
+
+  // ── Send ────────────────────────────────────────────────────────────────
+
   const send = useCallback(async () => {
     const text = input.trim();
-    if (!text || loading) return;
+    if ((!text && !attachedImage) || loading) return;
 
+    const img = attachedImage;
     setInput("");
-    setMessages(prev => [...prev, { role: "user", text }]);
+    setAttached(null);
+    setMessages(prev => [...prev, { role: "user", text: text || "📎", imageUrl: img?.dataUrl }]);
     setLoading(true);
+
+    // Reset textarea height
+    if (inputRef.current) {
+      inputRef.current.style.height = "auto";
+    }
 
     const CAPACITY_MSG = lang === "ua"
       ? "⚠️ Асистент тимчасово перевантажений. Спробуйте ще раз за хвилину."
@@ -56,13 +99,19 @@ export function AiAssistantPage() {
 
     try {
       const secret = getStoredSecret();
+      const body: Record<string, unknown> = { message: text || "Please analyze the attached image.", history };
+      if (img) {
+        body.imageBase64  = img.base64;
+        body.imageMimeType = img.mimeType;
+      }
+
       const res = await fetch(`${API_BASE}/api/v3/ai/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
         },
-        body: JSON.stringify({ message: text, history }),
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {
@@ -79,7 +128,7 @@ export function AiAssistantPage() {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [input, loading, history]);
+  }, [input, loading, history, attachedImage, lang]);
 
   function handleKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -88,15 +137,12 @@ export function AiAssistantPage() {
     }
   }
 
+  const canSend = (input.trim().length > 0 || attachedImage !== null) && !loading;
+
   return (
-    <div style={{
-      height: "100%",
-      display: "flex",
-      flexDirection: "column",
-      overflow: "hidden",
-      position: "relative",
-    }}>
-      {/* Header */}
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+      {/* ── Header ─────────────────────────────────────────────────────── */}
       <div style={{
         padding: "16px 16px 12px",
         borderBottom: "1px solid rgba(255,255,255,0.08)",
@@ -109,17 +155,12 @@ export function AiAssistantPage() {
             background: "linear-gradient(135deg, rgba(139,92,246,0.3) 0%, rgba(59,130,246,0.3) 100%)",
             border: "1px solid rgba(139,92,246,0.4)",
             display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 0 20px rgba(139,92,246,0.25)",
-            flexShrink: 0,
+            boxShadow: "0 0 20px rgba(139,92,246,0.25)", flexShrink: 0,
           }}>
             <Cpu size={18} color="#a78bfa" />
           </div>
           <div>
-            <div style={{
-              fontSize: 15, fontWeight: 700, color: "#e2e8ff",
-              letterSpacing: "0.01em",
-              display: "flex", alignItems: "center", gap: 6,
-            }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#e2e8ff", letterSpacing: "0.01em", display: "flex", alignItems: "center", gap: 6 }}>
               {lang === "ua" ? "AI Помічник" : "AI Assistant"}
               <Sparkles size={13} color="#a78bfa" style={{ opacity: 0.8 }} />
             </div>
@@ -130,40 +171,17 @@ export function AiAssistantPage() {
         </div>
       </div>
 
-      {/* Messages */}
-      <div style={{
-        flex: 1,
-        overflowY: "auto",
-        padding: "12px 12px 8px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-        scrollbarWidth: "none",
-      }}>
+      {/* ── Messages ───────────────────────────────────────────────────── */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px 8px", display: "flex", flexDirection: "column", gap: 10, scrollbarWidth: "none" }}>
         <style>{`
-          .ai-messages::-webkit-scrollbar { display: none; }
-          @keyframes aiTyping {
-            0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
-            40%            { opacity: 1;   transform: scale(1); }
-          }
-          @keyframes aiFadeIn {
-            from { opacity: 0; transform: translateY(8px); }
-            to   { opacity: 1; transform: translateY(0); }
-          }
+          @keyframes aiTyping  { 0%,80%,100%{opacity:0.3;transform:scale(0.8)} 40%{opacity:1;transform:scale(1)} }
+          @keyframes aiFadeIn  { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
         `}</style>
 
         {messages.map((msg, i) => (
-          <div
-            key={i}
-            style={{
-              display: "flex",
-              flexDirection: msg.role === "user" ? "row-reverse" : "row",
-              alignItems: "flex-end",
-              gap: 8,
-              animation: "aiFadeIn 0.3s ease both",
-            }}
-          >
-            {/* Avatar */}
+          <div key={i} style={{ display: "flex", flexDirection: msg.role === "user" ? "row-reverse" : "row", alignItems: "flex-end", gap: 8, animation: "aiFadeIn 0.3s ease both" }}>
+
+            {/* Avatar (AI only) */}
             {msg.role === "model" && (
               <div style={{
                 width: 28, height: 28, borderRadius: 9, flexShrink: 0,
@@ -179,55 +197,48 @@ export function AiAssistantPage() {
             {/* Bubble */}
             <div style={{
               maxWidth: "78%",
-              padding: "10px 13px",
-              borderRadius: msg.role === "user"
-                ? "18px 18px 4px 18px"
-                : "18px 18px 18px 4px",
+              padding: msg.imageUrl ? "6px" : "10px 13px",
+              borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
               background: msg.role === "user"
                 ? "linear-gradient(135deg, rgba(59,130,246,0.35) 0%, rgba(99,102,241,0.3) 100%)"
                 : "linear-gradient(145deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.04) 100%)",
-              border: msg.role === "user"
-                ? "1px solid rgba(99,102,241,0.35)"
-                : "1px solid rgba(255,255,255,0.12)",
+              border: msg.role === "user" ? "1px solid rgba(99,102,241,0.35)" : "1px solid rgba(255,255,255,0.12)",
               backdropFilter: "blur(20px)",
               WebkitBackdropFilter: "blur(20px)",
-              boxShadow: msg.role === "user"
-                ? "0 4px 16px rgba(59,130,246,0.15)"
-                : "0 4px 16px rgba(0,0,0,0.25)",
+              boxShadow: msg.role === "user" ? "0 4px 16px rgba(59,130,246,0.15)" : "0 4px 16px rgba(0,0,0,0.25)",
             }}>
-              <MessageContent text={msg.text} />
+              {/* Attached image preview in bubble */}
+              {msg.imageUrl && (
+                <img
+                  src={msg.imageUrl}
+                  alt="attachment"
+                  style={{ display: "block", maxWidth: "100%", maxHeight: 220, borderRadius: 12, objectFit: "contain", marginBottom: msg.text && msg.text !== "📎" ? 6 : 0 }}
+                />
+              )}
+              {msg.text && msg.text !== "📎" && (
+                <div style={{ padding: msg.imageUrl ? "4px 7px 4px" : "0" }}>
+                  <MessageContent text={msg.text} />
+                </div>
+              )}
+              {/* Groq engine badge */}
+              {msg.engine === "groq" && (
+                <div style={{ fontSize: 9, color: "rgba(167,139,250,0.5)", marginTop: 5, paddingTop: 4, borderTop: "1px solid rgba(255,255,255,0.07)", letterSpacing: "0.04em" }}>
+                  ⚡ Groq · Llama
+                </div>
+              )}
             </div>
           </div>
         ))}
 
         {/* Typing indicator */}
         {loading && (
-          <div style={{
-            display: "flex", flexDirection: "row", alignItems: "flex-end", gap: 8,
-            animation: "aiFadeIn 0.3s ease both",
-          }}>
-            <div style={{
-              width: 28, height: 28, borderRadius: 9, flexShrink: 0,
-              background: "linear-gradient(135deg, rgba(139,92,246,0.4) 0%, rgba(59,130,246,0.35) 100%)",
-              border: "1px solid rgba(139,92,246,0.3)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
+          <div style={{ display: "flex", flexDirection: "row", alignItems: "flex-end", gap: 8, animation: "aiFadeIn 0.3s ease both" }}>
+            <div style={{ width: 28, height: 28, borderRadius: 9, flexShrink: 0, background: "linear-gradient(135deg, rgba(139,92,246,0.4) 0%, rgba(59,130,246,0.35) 100%)", border: "1px solid rgba(139,92,246,0.3)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Bot size={14} color="#a78bfa" />
             </div>
-            <div style={{
-              padding: "12px 16px",
-              borderRadius: "18px 18px 18px 4px",
-              background: "linear-gradient(145deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.04) 100%)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              display: "flex", gap: 5, alignItems: "center",
-            }}>
+            <div style={{ padding: "12px 16px", borderRadius: "18px 18px 18px 4px", background: "linear-gradient(145deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.04) 100%)", border: "1px solid rgba(255,255,255,0.12)", display: "flex", gap: 5, alignItems: "center" }}>
               {[0, 1, 2].map(d => (
-                <div key={d} style={{
-                  width: 6, height: 6, borderRadius: "50%",
-                  background: "#a78bfa",
-                  animation: `aiTyping 1.4s ease-in-out infinite`,
-                  animationDelay: `${d * 0.18}s`,
-                }} />
+                <div key={d} style={{ width: 6, height: 6, borderRadius: "50%", background: "#a78bfa", animation: "aiTyping 1.4s ease-in-out infinite", animationDelay: `${d * 0.18}s` }} />
               ))}
             </div>
           </div>
@@ -236,23 +247,47 @@ export function AiAssistantPage() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input area */}
-      <div style={{
-        flexShrink: 0,
-        padding: "8px 12px 12px",
-        borderTop: "1px solid rgba(255,255,255,0.07)",
-        background: "linear-gradient(0deg, rgba(7,9,15,0.8) 0%, transparent 100%)",
-      }}>
-        <div style={{
-          display: "flex", gap: 8, alignItems: "flex-end",
-          background: "linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
-          border: "1px solid rgba(255,255,255,0.14)",
-          borderRadius: 20,
-          padding: "8px 8px 8px 14px",
-          backdropFilter: "blur(24px)",
-          WebkitBackdropFilter: "blur(24px)",
-          boxShadow: "0 4px 20px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.08) inset",
-        }}>
+      {/* ── Input area ─────────────────────────────────────────────────── */}
+      <div style={{ flexShrink: 0, padding: "8px 12px 12px", borderTop: "1px solid rgba(255,255,255,0.07)", background: "linear-gradient(0deg, rgba(7,9,15,0.8) 0%, transparent 100%)" }}>
+
+        {/* Image preview strip */}
+        {attachedImage && (
+          <div style={{ marginBottom: 8, position: "relative", display: "inline-block" }}>
+            <img
+              src={attachedImage.dataUrl}
+              alt="preview"
+              style={{ height: 64, borderRadius: 10, border: "1px solid rgba(139,92,246,0.4)", objectFit: "cover", display: "block" }}
+            />
+            <button
+              onClick={removeAttachment}
+              style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%", background: "rgba(30,30,50,0.95)", border: "1px solid rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}
+            >
+              <X size={10} color="rgba(220,235,255,0.8)" />
+            </button>
+          </div>
+        )}
+
+        {/* Input row */}
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", background: "linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 20, padding: "8px 8px 8px 14px", backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)", boxShadow: "0 4px 20px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.08) inset" }}>
+
+          {/* Attach button */}
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={loading}
+            title={lang === "ua" ? "Прикріпити зображення" : "Attach image"}
+            style={{ width: 32, height: 32, borderRadius: 10, background: attachedImage ? "rgba(139,92,246,0.2)" : "rgba(255,255,255,0.04)", border: `1px solid ${attachedImage ? "rgba(139,92,246,0.4)" : "rgba(255,255,255,0.08)"}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: loading ? "not-allowed" : "pointer", flexShrink: 0, transition: "all 0.18s" }}
+          >
+            <Paperclip size={14} color={attachedImage ? "#a78bfa" : "rgba(160,180,230,0.4)"} />
+          </button>
+
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={handleFileChange}
+          />
+
           <textarea
             ref={inputRef}
             value={input}
@@ -261,60 +296,25 @@ export function AiAssistantPage() {
             placeholder={lang === "ua" ? "Запитайте про проксі, акаунти, кампанії…" : "Ask about proxies, accounts, campaigns…"}
             rows={1}
             disabled={loading}
-            style={{
-              flex: 1,
-              background: "none",
-              border: "none",
-              outline: "none",
-              color: "rgba(220,235,255,0.92)",
-              fontSize: 14,
-              lineHeight: "1.5",
-              resize: "none",
-              maxHeight: 120,
-              overflowY: "auto",
-              scrollbarWidth: "none",
-              fontFamily: "inherit",
-              paddingTop: 2,
-            }}
+            style={{ flex: 1, background: "none", border: "none", outline: "none", color: "rgba(220,235,255,0.92)", fontSize: 14, lineHeight: "1.5", resize: "none", maxHeight: 120, overflowY: "auto", scrollbarWidth: "none", fontFamily: "inherit", paddingTop: 2 }}
             onInput={e => {
               const t = e.currentTarget;
               t.style.height = "auto";
               t.style.height = Math.min(t.scrollHeight, 120) + "px";
             }}
           />
+
+          {/* Send button */}
           <button
             onClick={() => void send()}
-            disabled={!input.trim() || loading}
-            style={{
-              width: 36, height: 36, borderRadius: 13,
-              background: input.trim() && !loading
-                ? "linear-gradient(135deg, rgba(139,92,246,0.7) 0%, rgba(59,130,246,0.65) 100%)"
-                : "rgba(255,255,255,0.06)",
-              border: input.trim() && !loading
-                ? "1px solid rgba(139,92,246,0.5)"
-                : "1px solid rgba(255,255,255,0.08)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: input.trim() && !loading ? "pointer" : "not-allowed",
-              flexShrink: 0,
-              transition: "all 0.22s ease",
-              boxShadow: input.trim() && !loading
-                ? "0 0 16px rgba(139,92,246,0.3)"
-                : "none",
-            }}
+            disabled={!canSend}
+            style={{ width: 36, height: 36, borderRadius: 13, background: canSend ? "linear-gradient(135deg, rgba(139,92,246,0.7) 0%, rgba(59,130,246,0.65) 100%)" : "rgba(255,255,255,0.06)", border: canSend ? "1px solid rgba(139,92,246,0.5)" : "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", cursor: canSend ? "pointer" : "not-allowed", flexShrink: 0, transition: "all 0.22s ease", boxShadow: canSend ? "0 0 16px rgba(139,92,246,0.3)" : "none" }}
           >
-            <Send
-              size={16}
-              color={input.trim() && !loading ? "#c4b5fd" : "rgba(160,180,230,0.3)"}
-            />
+            <Send size={16} color={canSend ? "#c4b5fd" : "rgba(160,180,230,0.3)"} />
           </button>
         </div>
-        <div style={{
-          textAlign: "center",
-          fontSize: 10,
-          color: "rgba(120,140,180,0.4)",
-          marginTop: 6,
-          letterSpacing: "0.03em",
-        }}>
+
+        <div style={{ textAlign: "center", fontSize: 10, color: "rgba(120,140,180,0.4)", marginTop: 6, letterSpacing: "0.03em" }}>
           {lang === "ua" ? "Enter — надіслати · Shift+Enter — новий рядок" : "Enter — send · Shift+Enter — new line"}
         </div>
       </div>
@@ -322,31 +322,21 @@ export function AiAssistantPage() {
   );
 }
 
+// ── Message content renderer ──────────────────────────────────────────────
+
 function MessageContent({ text }: { text: string }) {
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\n)/g);
   return (
-    <div style={{
-      fontSize: 13.5,
-      lineHeight: 1.55,
-      color: "rgba(220,235,255,0.9)",
-      whiteSpace: "pre-wrap",
-      wordBreak: "break-word",
-    }}>
+    <div style={{ fontSize: 13.5, lineHeight: 1.55, color: "rgba(220,235,255,0.9)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
       {parts.map((part, i) => {
         if (part.startsWith("**") && part.endsWith("**")) {
           return <strong key={i} style={{ color: "#e2e8ff", fontWeight: 700 }}>{part.slice(2, -2)}</strong>;
         }
         if (part.startsWith("`") && part.endsWith("`")) {
           return (
-            <code key={i} style={{
-              background: "rgba(139,92,246,0.2)",
-              border: "1px solid rgba(139,92,246,0.25)",
-              borderRadius: 5,
-              padding: "1px 5px",
-              fontSize: 12,
-              color: "#c4b5fd",
-              fontFamily: "monospace",
-            }}>{part.slice(1, -1)}</code>
+            <code key={i} style={{ background: "rgba(139,92,246,0.2)", border: "1px solid rgba(139,92,246,0.25)", borderRadius: 5, padding: "1px 5px", fontSize: 12, color: "#c4b5fd", fontFamily: "monospace" }}>
+              {part.slice(1, -1)}
+            </code>
           );
         }
         return <span key={i}>{part}</span>;
