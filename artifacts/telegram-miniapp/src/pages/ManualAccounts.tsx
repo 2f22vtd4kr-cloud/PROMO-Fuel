@@ -545,10 +545,202 @@ function Slide6({ lang }: SL) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SLIDE 7 — Quality Matrix (account vetting table)
+// ═══════════════════════════════════════════════════════════════
+function Slide7({ lang }: SL) {
+  const rows = [
+    { metric: L(lang,"Format","Формат"),       good: ".session + .json (Telethon/Pyrogram)", bad: "tdata / phone list" },
+    { metric: L(lang,"Age","Вік"),             good: L(lang,"14–90+ days (\"Aged\")","14–90+ днів (\"Відлежані\")"), bad: L(lang,"0–3 days (\"Fresh\")","0–3 дні (\"Автореги\")") },
+    { metric: L(lang,"Security","Безпека"),    good: L(lang,"2FA password included","2FA пароль в комплекті"), bad: L(lang,"No 2FA","2FA відсутній") },
+    { metric: L(lang,"Origin","Походження"),   good: L(lang,"Physical SIM / residential virtual","Фізична SIM / чистий virtual"), bad: L(lang,"Cheap VoIP / datacenter IPs","VoIP / IP дата-центру") },
+  ];
+  return (
+    <Shell>
+      <STitle icon="📊" text={L(lang,"Quality Matrix","Матриця якості акаунтів")} color={GREEN} />
+      <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", marginBottom:14, lineHeight:1.5 }}>
+        {L(lang,
+          "Buying the wrong accounts is the #1 reason networks collapse. Use this matrix before every purchase.",
+          "Неправильні акаунти — причина #1 краху мереж. Використовуйте цю матрицю перед кожною покупкою."
+        )}
+      </div>
+      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+        {rows.map(r => (
+          <div key={r.metric} style={{ background:GLASS2, border:`1px solid ${BORDER2}`, borderRadius:14, overflow:"hidden" }}>
+            <div style={{ background:"rgba(255,255,255,0.04)", padding:"7px 14px", fontSize:10, fontWeight:800, color:"rgba(255,255,255,0.55)", letterSpacing:"0.06em", textTransform:"uppercase" }}>{r.metric}</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", padding:"10px 14px", gap:8 }}>
+              <div style={{ background:"rgba(45,232,151,0.08)", border:"1px solid rgba(45,232,151,0.22)", borderRadius:9, padding:"8px 10px" }}>
+                <div style={{ fontSize:9, fontWeight:700, color:GREEN, marginBottom:3 }}>✓ {L(lang,"BUY","КУПУВАТИ")}</div>
+                <div style={{ fontSize:10, color:"rgba(255,255,255,0.75)", lineHeight:1.4 }}>{r.good}</div>
+              </div>
+              <div style={{ background:"rgba(255,107,122,0.08)", border:"1px solid rgba(255,107,122,0.22)", borderRadius:9, padding:"8px 10px" }}>
+                <div style={{ fontSize:9, fontWeight:700, color:RED, marginBottom:3 }}>✗ {L(lang,"AVOID","УНИКАТИ")}</div>
+                <div style={{ fontSize:10, color:"rgba(255,255,255,0.75)", lineHeight:1.4 }}>{r.bad}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop:12, background:"rgba(245,158,11,0.09)", border:"1px solid rgba(245,158,11,0.28)", borderRadius:13, padding:"12px 14px" }}>
+        <div style={{ fontSize:11, fontWeight:800, color:AMBER, marginBottom:5 }}>⚠️ {L(lang,"Critical Warning","Критичне попередження")}</div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", lineHeight:1.5 }}>
+          {L(lang,
+            "Never buy accounts created from the same datacenter IP range. Always ask vendors if accounts were created using residential or mobile proxies. Datacenter-registered accounts get flagged immediately.",
+            "Ніколи не купуйте акаунти з одного IP-діапазону дата-центру. Уточнюйте у продавця: residential чи мобільні проксі? Акаунти з датацентрів одразу отримують прапор."
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SLIDE 8 — Proxy Procurement Guide
+// ═══════════════════════════════════════════════════════════════
+function Slide8({ lang }: SL) {
+  return (
+    <Shell>
+      <STitle icon="🛒" text={L(lang,"Proxy Procurement","Купівля проксі")} color={BLUE} />
+
+      <div style={card(BLUE)}>
+        <div style={{ fontSize:12, fontWeight:800, color:BLUE, marginBottom:8 }}>
+          {L(lang,"Recommended Providers","Рекомендовані провайдери")}
+        </div>
+        {[
+          ["Smartproxy",    L(lang,"Large pool, ISP + residential","Великий пул, ISP + residential")],
+          ["Proxy-Seller",  L(lang,"Static ISP, stable long-term","Статичні ISP, стабільні")],
+          ["IPRoyal",       L(lang,"Mobile sticky SOCKS5, affordable","Мобільні sticky SOCKS5, доступно")],
+        ].map(([name, desc]) => (
+          <div key={name as string} style={{ display:"flex", gap:10, alignItems:"flex-start", marginBottom:9 }}>
+            <div style={{ width:6, height:6, borderRadius:"50%", background:BLUE, marginTop:4, flexShrink:0 }} />
+            <div>
+              <div style={{ fontSize:12, fontWeight:700, color:"#fff" }}>{name as string}</div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.5)" }}>{desc as string}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={card(GREEN)}>
+        <div style={{ fontSize:12, fontWeight:800, color:GREEN, marginBottom:8 }}>
+          {L(lang,"Correct Format","Правильний формат")}
+        </div>
+        <code style={{ display:"block", fontSize:11, color:GREEN, background:"rgba(16,216,138,0.08)", border:`1px solid ${GREEN}30`, borderRadius:8, padding:"10px 12px", fontFamily:"monospace", marginBottom:8 }}>
+          socks5://username:password@ip:port
+        </code>
+        <code style={{ display:"block", fontSize:11, color:"rgba(255,255,255,0.5)", background:GLASS, border:`1px solid ${BORDER}`, borderRadius:8, padding:"10px 12px", fontFamily:"monospace" }}>
+          socks5://user:pass@185.23.41.12:9000
+        </code>
+      </div>
+
+      <div style={card(PURPLE)}>
+        <div style={{ fontSize:12, fontWeight:800, color:PURPLE, marginBottom:6 }}>
+          {L(lang,"Type Selection","Вибір типу проксі")}
+        </div>
+        {[
+          [L(lang,"Static Residential (ISP)","Статичний Residential (ISP)"),
+           L(lang,"Best for aged accounts. Same IP for weeks. Expensive but reliable.","Кращі для відлежаних акаунтів. Один IP тижнями. Дорогі, але надійні.")],
+          [L(lang,"Sticky Mobile SOCKS5","Мобільний Sticky SOCKS5"),
+           L(lang,"Best for fresh accounts. Rotates like a real phone. More budget-friendly.","Кращі для свіжих акаунтів. Ротуються як реальний телефон. Бюджетніші.")],
+        ].map(([type, desc]) => (
+          <div key={type as string} style={{ marginBottom:9 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:PURPLE, marginBottom:2 }}>{type as string}</div>
+            <div style={{ fontSize:10, color:"rgba(255,255,255,0.5)", lineHeight:1.4 }}>{desc as string}</div>
+          </div>
+        ))}
+        <div style={{ fontSize:11, fontWeight:700, color:AMBER, marginTop:4 }}>
+          ⚠️ {L(lang,"Always match proxy country to account phone prefix (+7 → RU, +1 → US)","Завжди збігайте країну проксі з префіксом акаунта (+7 → RU, +1 → US)")}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SLIDE 9 — Scaling Beyond 100 Accounts
+// ═══════════════════════════════════════════════════════════════
+function Slide9({ lang }: SL) {
+  return (
+    <Shell>
+      <STitle icon="🚀" text={L(lang,"Scaling to 100+ Accounts","Масштаб 100+ акаунтів")} color={PINK} />
+
+      <div style={card(PINK)}>
+        <div style={{ fontSize:12, fontWeight:800, color:PINK, marginBottom:8 }}>
+          {L(lang,"Connection Pool Strategy","Стратегія пулу підключень")}
+        </div>
+        <code style={{ display:"block", fontSize:10, color:"rgba(255,255,255,0.7)", lineHeight:2,
+          background:GLASS, border:`1px solid ${BORDER}`, borderRadius:8, padding:"10px 12px", fontFamily:"monospace", marginBottom:8 }}>
+          {L(lang,
+`[Replit Server]
+  ├── Account #1 ──► [SOCKS5 US] ──► [DC1]
+  ├── Account #2 ──► [SOCKS5 UK] ──► [DC2]
+  └── Account #N ──► [SOCKS5 DE] ──► [DC4]`,
+`[Сервер Replit]
+  ├── Акаунт #1 ──► [SOCKS5 US] ──► [DC1]
+  ├── Акаунт #2 ──► [SOCKS5 UK] ──► [DC2]
+  └── Акаунт #N ──► [SOCKS5 DE] ──► [DC4]`
+          )}
+        </code>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.55)", lineHeight:1.5 }}>
+          {L(lang,
+            "One unique proxy per account is ideal. At scale, rotate proxies across accounts using the platform's proxy rotation engine (proxy_index in DB).",
+            "Один унікальний проксі на акаунт — ідеально. При масштабуванні — ротація проксі між акаунтами через рушій ротації (proxy_index в БД)."
+          )}
+        </div>
+      </div>
+
+      <div style={card(AMBER)}>
+        <div style={{ fontSize:12, fontWeight:800, color:AMBER, marginBottom:8 }}>
+          {L(lang,"Daily Quota Rotation","Добова ротація квот")}
+        </div>
+        {(lang === "ua" ? [
+          "Платформа скидає sent_today о 00:00 UTC щодня",
+          "Акаунти з near_limit (≥90% ліміту) позначаються — Campaign Engine їх пропускає",
+          "Функція 'Сброс' в Accounts вручну скидає лічильники",
+          "Щоденний підсумок надсилається в Telegram о 9:00 UTC",
+        ] : [
+          "Platform resets sent_today at 00:00 UTC daily",
+          "Accounts at near_limit (≥90% of quota) are flagged — Campaign Engine skips them",
+          "'Reset' button in Accounts manually resets counters",
+          "Daily digest fires to Telegram at 09:00 UTC",
+        ]).map((item, i) => (
+          <div key={i} style={{ display:"flex", gap:9, alignItems:"flex-start", marginBottom:7 }}>
+            <span style={{ fontSize:12, color:AMBER, fontWeight:800, flexShrink:0 }}>{i+1}.</span>
+            <span style={{ fontSize:11, color:"rgba(255,255,255,0.65)", lineHeight:1.4 }}>{item}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={card(GREEN)}>
+        <div style={{ fontSize:11, fontWeight:800, color:GREEN, marginBottom:6 }}>
+          {L(lang,"🌐 Bulk Proxy Update","🌐 Масова зміна проксі")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", lineHeight:1.5 }}>
+          {L(lang,
+            "In the Accounts tab, tap the 🌐 Proxy button in the toolbar to apply one proxy string to all accounts, only accounts without a proxy, or only proxy_failed accounts — in one tap.",
+            "У вкладці Акаунти натисніть 🌐 Проксі в панелі інструментів, щоб застосувати один рядок проксі до всіх акаунтів, тільки без проксі, або тільки до proxy_failed — одним дотиком."
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Slide registry
 // ═══════════════════════════════════════════════════════════════
+const KEYWORDS_ACCOUNTS: string[] = [
+  "overview pipeline accounts proxy intro",
+  "sourcing vetting purchase buy stock aged fresh quality",
+  "SOCKS5 proxy infrastructure traffic flow DC datacenter",
+  "integration guide add single bulk import ZIP upload deploy",
+  "technical session file SQLite auth key MTProto handshake",
+  "anti-ban safe limits flood wait warmup delay stagger",
+  "quality matrix buy avoid datacenter residential SIM",
+  "procurement provider Smartproxy IPRoyal format socks5",
+  "scaling 100 accounts pool rotation quota daily reset",
+];
 const SLIDES: Array<(p: SL) => React.ReactElement> = [
-  Slide1, Slide2, Slide3, Slide4, Slide5, Slide6,
+  Slide1, Slide2, Slide3, Slide4, Slide5, Slide6, Slide7, Slide8, Slide9,
 ];
 const TOTAL = SLIDES.length;
 
@@ -560,6 +752,9 @@ const TITLES: Record<Lang, string[]> = {
     "Integration Guide",
     "Technical Deep Dive",
     "Anti-Ban & Safe Limits",
+    "Quality Matrix",
+    "Proxy Procurement",
+    "Scaling to 100+",
   ],
   ua: [
     "Конвеєр акаунтів та проксі",
@@ -568,28 +763,41 @@ const TITLES: Record<Lang, string[]> = {
     "Керівництво з інтеграції",
     "Технічні деталі",
     "Антибан та безпечні ліміти",
+    "Матриця якості",
+    "Купівля проксі",
+    "Масштаб 100+",
   ],
 };
 
-const SLIDE_COLORS: string[] = [ACCENT, GREEN, BLUE, PURPLE, BLUE, RED];
+const SLIDE_COLORS: string[] = [ACCENT, GREEN, BLUE, PURPLE, BLUE, RED, GREEN, BLUE, PINK];
 
 // ═══════════════════════════════════════════════════════════════
 // ManualAccountsPage shell
 // ═══════════════════════════════════════════════════════════════
 export function ManualAccountsPage({ onClose }: Props) {
   const { lang } = useI18n();
-  const [current, setCurrent] = useState(0);
-  const touchX = useRef(0);
-  const touchY = useRef(0);
+  const [current, setCurrent]       = useState(0);
+  const [showSearch, setShowSearch]  = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const touchX   = useRef(0);
+  const touchY   = useRef(0);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const prev = useCallback(() => setCurrent(c => Math.max(0, c - 1)), []);
   const next = useCallback(() => setCurrent(c => Math.min(TOTAL - 1, c + 1)), []);
 
+  function toggleSearch() {
+    if (showSearch) { setShowSearch(false); setSearchQuery(""); }
+    else { setShowSearch(true); setTimeout(() => searchRef.current?.focus(), 60); }
+  }
+
   function onTouchStart(e: React.TouchEvent) {
+    if (showSearch) return;
     touchX.current = e.touches[0].clientX;
     touchY.current = e.touches[0].clientY;
   }
   function onTouchEnd(e: React.TouchEvent) {
+    if (showSearch) return;
     const dx = e.changedTouches[0].clientX - touchX.current;
     const dy = Math.abs(e.changedTouches[0].clientY - touchY.current);
     if (Math.abs(dx) > 48 && dy < 60) { if (dx < 0) next(); else prev(); }
@@ -599,6 +807,14 @@ export function ManualAccountsPage({ onClose }: Props) {
   const accentColor = SLIDE_COLORS[current] ?? ACCENT;
   const titles = TITLES[lang];
 
+  // Search: filter against title + keyword hints
+  const q = searchQuery.toLowerCase().trim();
+  const searchResults: Array<{ index: number; title: string }> = q.length < 1 ? [] :
+    titles.flatMap((title, i) => {
+      const hay = `${title} ${KEYWORDS_ACCOUNTS[i] ?? ""}`.toLowerCase();
+      return hay.includes(q) ? [{ index: i, title }] : [];
+    });
+
   return (
     <div
       style={{ position:"fixed", inset:0, zIndex:200, background:BG,
@@ -607,25 +823,63 @@ export function ManualAccountsPage({ onClose }: Props) {
       onTouchEnd={onTouchEnd}
     >
       {/* Top bar */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-        padding:"13px 18px 7px", borderBottom:`1px solid ${BORDER}`,
-        background:"rgba(7,9,15,0.82)", backdropFilter:"blur(16px)",
-        flexShrink:0, zIndex:2 }}>
-        <div>
-          <div style={{ display:"flex", alignItems:"center", gap:7 }}>
-            <div style={{ width:6, height:6, borderRadius:"50%", background:accentColor,
-              boxShadow:`0 0 8px ${accentColor}` }} />
-            <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.88)", letterSpacing:-0.2 }}>
-              {titles[current]}
+      <div style={{ borderBottom:`1px solid ${BORDER}`, background:"rgba(7,9,15,0.82)",
+        backdropFilter:"blur(16px)", flexShrink:0, zIndex:2 }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"13px 18px 7px" }}>
+          {showSearch ? (
+            <input
+              ref={searchRef}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder={L(lang,"Search slides…","Пошук слайдів…")}
+              style={{ flex:1, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.15)",
+                borderRadius:10, padding:"7px 12px", fontSize:13, color:"rgba(255,255,255,0.9)",
+                outline:"none", marginRight:10 }}
+            />
+          ) : (
+            <div>
+              <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+                <div style={{ width:6, height:6, borderRadius:"50%", background:accentColor, boxShadow:`0 0 8px ${accentColor}`, flexShrink:0 }} />
+                <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.88)", letterSpacing:-0.2 }}>{titles[current]}</div>
+              </div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.28)", marginTop:1, paddingLeft:13 }}>
+                {L(lang,"Account & Proxy Pipeline","Конвеєр акаунтів та проксі")} · {current + 1} / {TOTAL}
+              </div>
             </div>
-          </div>
-          <div style={{ fontSize:10, color:"rgba(255,255,255,0.28)", marginTop:1, paddingLeft:13 }}>
-            {L(lang,"Account & Proxy Pipeline","Конвеєр акаунтів та проксі")} · {current + 1} / {TOTAL}
+          )}
+          <div style={{ display:"flex", gap:6 }}>
+            <button onClick={toggleSearch} style={{ background:showSearch?`${accentColor}22`:GLASS2,
+              border:`1px solid ${showSearch?accentColor:BORDER2}`, borderRadius:10, width:33, height:33,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              color:showSearch?accentColor:"rgba(255,255,255,0.55)", fontSize:15, cursor:"pointer" }}>🔍</button>
+            <button onClick={onClose} style={{ background:GLASS2, border:`1px solid ${BORDER2}`,
+              borderRadius:10, width:33, height:33, display:"flex", alignItems:"center",
+              justifyContent:"center", color:"rgba(255,255,255,0.6)", fontSize:15, cursor:"pointer" }}>✕</button>
           </div>
         </div>
-        <button onClick={onClose} style={{ background:GLASS2, border:`1px solid ${BORDER2}`,
-          borderRadius:10, width:33, height:33, display:"flex", alignItems:"center",
-          justifyContent:"center", color:"rgba(255,255,255,0.6)", fontSize:15, cursor:"pointer" }}>✕</button>
+
+        {/* Search results */}
+        {showSearch && searchResults.length > 0 && (
+          <div style={{ maxHeight:220, overflowY:"auto", borderTop:`1px solid ${BORDER}` }}>
+            {searchResults.map(r => (
+              <div key={r.index}
+                onClick={() => { setCurrent(r.index); setShowSearch(false); setSearchQuery(""); }}
+                style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 18px",
+                  borderBottom:`1px solid rgba(255,255,255,0.04)`, cursor:"pointer",
+                  background:"rgba(255,255,255,0.02)" }}>
+                <span style={{ fontSize:10, color:accentColor, fontWeight:700, minWidth:22,
+                  background:`${accentColor}18`, border:`1px solid ${accentColor}30`, borderRadius:6,
+                  padding:"2px 5px", textAlign:"center" }}>{r.index + 1}</span>
+                <span style={{ fontSize:13, color:"rgba(255,255,255,0.85)" }}>{r.title}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {showSearch && q.length >= 1 && searchResults.length === 0 && (
+          <div style={{ padding:"12px 18px", fontSize:12, color:"rgba(255,255,255,0.3)", borderTop:`1px solid ${BORDER}` }}>
+            {L(lang,"No slides found","Слайдів не знайдено")}
+          </div>
+        )}
       </div>
 
       {/* Slide area */}

@@ -463,7 +463,7 @@ export const api = {
     fd.append("proxies", proxies);
     const r = await fetch(`${API_BASE}/api/accounts/bulk-import`, {
       method: "POST",
-      headers: { ...authHeaders() },
+      headers: { ...twaHeaders() },
       body: fd,
     });
     if (!r.ok) {

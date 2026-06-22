@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { HomePage }                 from "./pages/Home";
 import { CampaignsPage }            from "./pages/Campaigns";
 import { EditorPage }               from "./pages/Editor";
@@ -19,6 +19,9 @@ import { BottomNav }                from "./components/BottomNav";
 import { ConsumerApp }              from "./ConsumerApp";
 import { getOwnerRole }             from "./lib/twa";
 import { I18nProvider }             from "./lib/i18n";
+import { useSse }                   from "./lib/useSse";
+import { useToast }                 from "./components/Toast";
+import { useI18n }                  from "./lib/i18n";
 
 export type Tab = "home" | "campaigns" | "analytics" | "audience" | "upload" | "groups" | "workers" | "dashboard" | "ai";
 
@@ -51,6 +54,7 @@ function OwnerApp() {
   const [showAccountLogin, setShowAccountLogin]= useState(false);
   const [showManual,         setShowManual]        = useState(false);
   const [showManualAccounts, setShowManualAccounts] = useState(false);
+  const [showManualChooser,  setShowManualChooser]  = useState(false);
 
   function openEditor(id?: number) {
     setEditId(id ?? null);
@@ -78,7 +82,7 @@ function OwnerApp() {
     setTab(t as Tab);
   }
 
-  const anyOverlay = showEditor || showGroupEditor || showAccounts || showAccountLogin || showManual || showManualAccounts;
+  const anyOverlay = showEditor || showGroupEditor || showAccounts || showAccountLogin || showManual || showManualAccounts || showManualChooser;
 
   return (
     <div style={{
@@ -139,12 +143,125 @@ function OwnerApp() {
         <ManualAccountsPage onClose={() => setShowManualAccounts(false)} />
       )}
 
+      {showManualChooser && (
+        <ManualChooserPanel
+          onSystemManual={() => { setShowManualChooser(false); setShowManual(true); }}
+          onAccountsManual={() => { setShowManualChooser(false); setShowManualAccounts(true); }}
+          onClose={() => setShowManualChooser(false)}
+        />
+      )}
+
       {/* ── Bottom nav (with lang switcher + help built in) ──────────── */}
       {!anyOverlay && (
         <div style={{ position: "relative", zIndex: 2 }}>
-          <BottomNav active={tab} onNav={setTab} onNavigate={handleNavigate} onManual={() => setShowManual(true)} />
+          <BottomNav active={tab} onNav={setTab} onNavigate={handleNavigate} onManual={() => setShowManualChooser(true)} />
         </div>
       )}
+
+      {/* ── Global event toasts (always rendered, z above everything) ── */}
+      <CampaignToastWatcher />
+    </div>
+  );
+}
+
+// ─── Global campaign completion toast watcher ──────────────────────────────
+function CampaignToastWatcher() {
+  const { show, node } = useToast();
+  const { lang } = useI18n();
+  const prevCampRef  = useRef<Record<number, string>>({});
+  const prevGroupRef = useRef<Record<number, string>>({});
+  const initCamp     = useRef(false);
+  const initGroup    = useRef(false);
+
+  useSse((type, data) => {
+    if (type === "campaigns") {
+      const list = data as Array<{ id: number; name: string; status: string; sent_count: number; failed_count?: number }>;
+      if (!initCamp.current) {
+        for (const c of list) prevCampRef.current[c.id] = c.status;
+        initCamp.current = true;
+        return;
+      }
+      for (const c of list) {
+        const prev = prevCampRef.current[c.id];
+        if (prev && prev !== c.status) {
+          if (c.status === "done") {
+            show(`✅ ${c.name} — ${c.sent_count.toLocaleString()} ${lang === "ua" ? "відправлено" : "sent"}`, "success");
+          } else if (c.status === "cancelled") {
+            show(`⛔ ${c.name} — ${lang === "ua" ? "скасовано" : "cancelled"}`, "error");
+          } else if (c.status === "running" && prev !== "running") {
+            show(`🚀 ${c.name} — ${lang === "ua" ? "запущено" : "started"}`, "info");
+          }
+        }
+        prevCampRef.current[c.id] = c.status;
+      }
+    }
+
+    if (type === "group_campaigns") {
+      const list = data as Array<{ id: number; name: string; status: string; sent_count: number }>;
+      if (!initGroup.current) {
+        for (const g of list) prevGroupRef.current[g.id] = g.status;
+        initGroup.current = true;
+        return;
+      }
+      for (const g of list) {
+        const prev = prevGroupRef.current[g.id];
+        if (prev && prev !== g.status) {
+          if (g.status === "done") {
+            show(`✅ ${g.name} — ${lang === "ua" ? "групова розсилка завершена" : "group broadcast done"}`, "success");
+          } else if (g.status === "stopped") {
+            show(`⏹ ${g.name} — ${lang === "ua" ? "зупинено" : "stopped"}`, "error");
+          } else if (g.status === "running" && prev !== "running") {
+            show(`📡 ${g.name} — ${lang === "ua" ? "групова розсилка запущена" : "group broadcast live"}`, "info");
+          }
+        }
+        prevGroupRef.current[g.id] = g.status;
+      }
+    }
+  });
+
+  return <>{node}</>;
+}
+
+// ─── Unified manual chooser bottom-sheet ───────────────────────────────────
+function ManualChooserPanel({
+  onSystemManual, onAccountsManual, onClose,
+}: { onSystemManual: () => void; onAccountsManual: () => void; onClose: () => void }) {
+  const { lang } = useI18n();
+  return (
+    <div
+      style={{ position:"fixed", inset:0, zIndex:300, background:"rgba(0,0,0,0.65)", backdropFilter:"blur(10px)", WebkitBackdropFilter:"blur(10px)", display:"flex", flexDirection:"column", justifyContent:"flex-end" }}
+      onClick={onClose}
+    >
+      <style>{`@keyframes sheetUp { from { transform:translateY(100%); opacity:0; } to { transform:translateY(0); opacity:1; } }`}</style>
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background:"rgba(7,9,20,0.98)", backdropFilter:"blur(40px)", WebkitBackdropFilter:"blur(40px)", borderRadius:"24px 24px 0 0", border:"1px solid rgba(255,255,255,0.13)", padding:"16px 18px calc(env(safe-area-inset-bottom,0px) + 28px)", animation:"sheetUp 0.32s cubic-bezier(0.16,1,0.3,1) both" }}
+      >
+        <div style={{ width:40, height:4, borderRadius:2, background:"rgba(255,255,255,0.2)", margin:"0 auto 18px" }} />
+        <div style={{ fontSize:15, fontWeight:800, color:"rgba(255,255,255,0.9)", marginBottom:16, textAlign:"center", letterSpacing:"-0.01em" }}>
+          {lang === "ua" ? "📚 Обрати довідник" : "📚 Choose a Manual"}
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+          {/* System manual */}
+          <button onClick={onSystemManual} style={{ background:"linear-gradient(145deg,rgba(0,212,255,0.12),rgba(0,212,255,0.05))", border:"1px solid rgba(0,212,255,0.28)", borderRadius:18, padding:"20px 14px", cursor:"pointer", textAlign:"center", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
+            <span style={{ fontSize:32 }}>📖</span>
+            <div>
+              <div style={{ fontSize:13, fontWeight:800, color:"#00d4ff", marginBottom:3 }}>{lang === "ua" ? "Системний мануал" : "System Manual"}</div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>31 {lang === "ua" ? "сторінка" : "pages"}</div>
+              <div style={{ fontSize:9, color:"rgba(0,212,255,0.5)", marginTop:4 }}>{lang === "ua" ? "Кампанії · Воркери · API" : "Campaigns · Workers · API"}</div>
+            </div>
+          </button>
+          {/* Accounts & proxy manual */}
+          <button onClick={onAccountsManual} style={{ background:"linear-gradient(145deg,rgba(45,232,151,0.12),rgba(45,232,151,0.05))", border:"1px solid rgba(45,232,151,0.28)", borderRadius:18, padding:"20px 14px", cursor:"pointer", textAlign:"center", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
+            <span style={{ fontSize:32 }}>🔐</span>
+            <div>
+              <div style={{ fontSize:13, fontWeight:800, color:"#2de897", marginBottom:3 }}>{lang === "ua" ? "Акаунти та проксі" : "Accounts & Proxy"}</div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>9 {lang === "ua" ? "сторінок" : "pages"}</div>
+              <div style={{ fontSize:9, color:"rgba(45,232,151,0.5)", marginTop:4 }}>{lang === "ua" ? "SOCKS5 · MTProto · Масштаб" : "SOCKS5 · MTProto · Scale"}</div>
+            </div>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

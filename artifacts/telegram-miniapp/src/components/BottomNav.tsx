@@ -215,12 +215,12 @@ export function BottomNav({
                 background: "rgba(255,255,255,0.06)",
                 border: "1px solid rgba(255,255,255,0.12)",
                 color: "rgba(255,255,255,0.45)",
-                fontSize: 13, fontWeight: 700,
+                fontSize: 14,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 cursor: "pointer",
                 flexShrink: 0,
               }}
-            >?</button>
+            >📚</button>
           )}
         </div>
       </div>

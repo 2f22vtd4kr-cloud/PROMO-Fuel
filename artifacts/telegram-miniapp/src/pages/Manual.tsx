@@ -95,7 +95,7 @@ function Slide1({ lang, onOpenAccountsGuide }: SL & { onOpenAccountsGuide?: () =
         {L(lang,"User Manual","Посібник користувача")}
       </div>
       <div style={{ fontSize:12, color:"rgba(255,255,255,0.38)", marginBottom:30 }}>
-        {L(lang,"Complete system reference · 30 pages","Повний опис системи · 30 сторінок")}
+        {L(lang,"Complete system reference · 31 pages","Повний опис системи · 31 сторінка")}
       </div>
       <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"center", marginBottom:24 }}>
         {topics.map(([ic,lb]) => (
@@ -1650,14 +1650,126 @@ function SlideMonitoring({ lang }: SL) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Slide — New Features (bell panel, toasts, search, fleet health)
+// ═══════════════════════════════════════════════════════════════
+function SlideNewFeatures({ lang }: SL) {
+  const features = [
+    {
+      icon: "🔔",
+      title: L(lang,"Bell Status Panel","Панель статусу (🔔)"),
+      desc:  L(lang,
+        "Tap the bell icon on the Home screen to see live platform health: active workers, running campaigns, quota used today, banned/flood accounts.",
+        "Натисніть 🔔 на головному екрані — побачите живий стан платформи: воркери, кампанії, квоту, заблоковані акаунти.",
+      ),
+    },
+    {
+      icon: "📣",
+      title: L(lang,"Campaign Completion Toasts","Сповіщення про завершення кампаній"),
+      desc:  L(lang,
+        "When a campaign changes status — started (🚀), completed (✅), or cancelled (⛔) — a toast notification pops up automatically, even while browsing other tabs.",
+        "При зміні статусу кампанії — запущено (🚀), завершено (✅), скасовано (⛔) — автоматично з'являється сповіщення на будь-якій вкладці.",
+      ),
+    },
+    {
+      icon: "📡",
+      title: L(lang,"Group Broadcast Toasts","Сповіщення групових розсилок"),
+      desc:  L(lang,
+        "Group broadcasts also fire toasts: 📡 live, ✅ done, ⏹ stopped. Works in real time from SSE stream.",
+        "Групові розсилки також надсилають сповіщення: 📡 запущена, ✅ завершена, ⏹ зупинена — через SSE.",
+      ),
+    },
+    {
+      icon: "🔍",
+      title: L(lang,"Manual Slide Search","Пошук по слайдах довідника"),
+      desc:  L(lang,
+        "Tap 🔍 in the top bar of this manual to search across all 31 slide titles and keywords. Tap a result to jump directly to that slide.",
+        "Натисніть 🔍 у верхній панелі довідника для пошуку по всіх 31 слайдах. Торкніться результату — одразу перейдете до слайда.",
+      ),
+    },
+    {
+      icon: "💙",
+      title: L(lang,"Fleet Health Score","Здоров'я флоту акаунтів"),
+      desc:  L(lang,
+        "The Accounts header now shows a fleet health %. Green bar = ≥90% of accounts healthy. Yellow = degraded. Red = critical. Unhealthy = banned + session_invalid + proxy_failed.",
+        "У заголовку Акаунтів відображається % здоров'я флоту. Зелена смуга ≥90%. Жовта — деградація. Червона — критично. Нездорові = бан + невалідна сесія + проксі-помилка.",
+      ),
+    },
+    {
+      icon: "📊",
+      title: L(lang,"Live Daily Digest","Живий лічильник за сьогодні"),
+      desc:  L(lang,
+        "The Home dashboard \"Sent today\" row updates live via SSE — shows DM sends + group sends combined, with a green pulse dot when the counter is updating.",
+        "Рядок «Надіслано сьогодні» на дашборді оновлюється в реальному часі через SSE — сумує DM і групові розсилки, зі зеленою пульсуючою крапкою.",
+      ),
+    },
+  ];
+  return (
+    <Shell>
+      <div style={{ textAlign:"center", marginBottom:14 }}>
+        <div style={{ fontSize:28, marginBottom:4 }}>✨</div>
+        <div style={{ fontSize:16, fontWeight:800, color:"rgba(255,255,255,0.9)" }}>{L(lang,"What's New","Нові функції")}</div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.38)", marginTop:3 }}>
+          {L(lang,"Recently added features","Нещодавно додані можливості")}
+        </div>
+      </div>
+      <div style={{ display:"flex", flexDirection:"column", gap:9 }}>
+        {features.map(f => (
+          <div key={f.icon} style={{ ...card(ACCENT), display:"flex", gap:11, alignItems:"flex-start" }}>
+            <span style={{ fontSize:18, flexShrink:0, marginTop:1 }}>{f.icon}</span>
+            <div>
+              <div style={{ fontSize:11, fontWeight:700, color:ACCENT, marginBottom:3 }}>{f.title}</div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.55)", lineHeight:1.5 }}>{f.desc}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Slide registry
 // ═══════════════════════════════════════════════════════════════
+// Keyword hints per slide (English) — used by search in addition to TITLES
+const KEYWORDS: string[] = [
+  "home intro start welcome",
+  "modules tabs navigation structure",
+  "dashboard metrics KPI stats",
+  "quick actions shortcuts buttons",
+  "DM direct message bulk send",
+  "editor create template spintax message",
+  "groups channels telegram",
+  "group broadcast mass send multi-group",
+  "settings schedule delay timing",
+  "walkthrough step by step how to tutorial",
+  "analytics statistics charts graphs",
+  "audience users subscribers segments contacts",
+  "accounts sender phone sessions bot",
+  "bulk import ZIP upload sessions",
+  "authorization login code 2FA",
+  "proxy SOCKS5 health ping check",
+  "revalidation session validate check auto",
+  "tools CSV export fleet validate all reval",
+  "monitoring alerts crash flood ban daily digest",
+  "workers supervisor process restart",
+  "tasks queue pending running done",
+  "rate limits flood wait quota daily",
+  "best practices tips recommendations advice",
+  "architecture system design overview",
+  "telegram protocol MTProto DC server",
+  "sessions security HMAC token revoke",
+  "spintax variables random spin text",
+  "internals process Python supervisor",
+  "database SQLite API endpoints REST",
+  "checklist launch deploy production",
+  "new features bell toast notification fleet health search digest",
+];
 const SLIDES: Array<(p: SL) => React.ReactElement> = [
   Slide1,Slide2,Slide3,Slide4,Slide5,Slide6,Slide7,Slide8,Slide9,
   Slide10,Slide11,Slide12,Slide13,SlideAccountsBulk,Slide14,SlideProxyHealth,
   SlideAutoRevalidation,SlideAccountTools,SlideMonitoring,
   Slide15,Slide16,Slide17,Slide18,Slide19,Slide20,Slide21,Slide22,
-  Slide23,Slide24,Slide25,
+  Slide23,Slide24,Slide25,SlideNewFeatures,
 ];
 const TOTAL = SLIDES.length;
 
@@ -1670,7 +1782,7 @@ const TITLES: Record<Lang, string[]> = {
     "Auto-Revalidation","Account Tools","Monitoring & Alerts",
     "Workers","Task Queue","Rate Limits","Best Practices","Architecture",
     "Telegram Protocols","Sessions & Security","Spintax Engine",
-    "Process Internals","Database & API","Launch Checklist",
+    "Process Internals","Database & API","Launch Checklist","What's New",
   ],
   ua: [
     "Обкладинка","Огляд системи","Дашборд","Швидкі дії","DM-розсилки",
@@ -1680,7 +1792,7 @@ const TITLES: Record<Lang, string[]> = {
     "Авто-реvalidація","Інструменти акаунтів","Моніторинг і сповіщення",
     "Воркери","Черга задач","Ліміти відправки","Поради та рекомендації",
     "Архітектура","Протоколи Telegram","Сесії та безпека",
-    "Рушій спінтаксу","Внутрішня будова процесів","База даних та API","Чеклист запуску",
+    "Рушій спінтаксу","Внутрішня будова процесів","База даних та API","Чеклист запуску","Нові функції",
   ],
 };
 
@@ -1689,18 +1801,28 @@ const TITLES: Record<Lang, string[]> = {
 // ═══════════════════════════════════════════════════════════════
 export function ManualPage({ onClose, onOpenAccountsGuide }: Props) {
   const { lang } = useI18n();
-  const [current, setCurrent] = useState(0);
+  const [current, setCurrent]     = useState(0);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const touchX = useRef(0);
   const touchY = useRef(0);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const prev = useCallback(() => setCurrent(c => Math.max(0, c - 1)), []);
   const next = useCallback(() => setCurrent(c => Math.min(TOTAL - 1, c + 1)), []);
 
+  function toggleSearch() {
+    if (showSearch) { setShowSearch(false); setSearchQuery(""); }
+    else { setShowSearch(true); setTimeout(() => searchRef.current?.focus(), 60); }
+  }
+
   function onTouchStart(e: React.TouchEvent) {
+    if (showSearch) return;
     touchX.current = e.touches[0].clientX;
     touchY.current = e.touches[0].clientY;
   }
   function onTouchEnd(e: React.TouchEvent) {
+    if (showSearch) return;
     const dx = e.changedTouches[0].clientX - touchX.current;
     const dy = Math.abs(e.changedTouches[0].clientY - touchY.current);
     if (Math.abs(dx) > 48 && dy < 60) { if (dx < 0) next(); else prev(); }
@@ -1708,6 +1830,14 @@ export function ManualPage({ onClose, onOpenAccountsGuide }: Props) {
 
   const SlideComp = SLIDES[current]!;
   const titles = TITLES[lang];
+
+  // Search results: filter by title + keywords (case-insensitive)
+  const q = searchQuery.toLowerCase().trim();
+  const searchResults: Array<{ index: number; title: string }> = q.length < 1 ? [] :
+    titles.flatMap((title, i) => {
+      const haystack = `${title} ${KEYWORDS[i] ?? ""}`.toLowerCase();
+      return haystack.includes(q) ? [{ index: i, title }] : [];
+    });
 
   return (
     <div
@@ -1717,27 +1847,71 @@ export function ManualPage({ onClose, onOpenAccountsGuide }: Props) {
       onTouchEnd={onTouchEnd}
     >
       {/* Top bar */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-        padding:"13px 18px 7px", borderBottom:`1px solid ${BORDER}`,
-        background:"rgba(7,9,15,0.82)", backdropFilter:"blur(16px)",
-        flexShrink:0, zIndex:2 }}>
-        <div>
-          <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.85)", letterSpacing:-0.2 }}>
-            {titles[current]}
-          </div>
-          <div style={{ fontSize:10, color:"rgba(255,255,255,0.28)", marginTop:1 }}>
-            {current + 1} / {TOTAL}
-            {current >= 18 && (
-              <span style={{ marginLeft:6, fontSize:9, color:PURPLE, fontWeight:700, background:`${PURPLE}18`,
-                border:`1px solid ${PURPLE}33`, borderRadius:4, padding:"1px 5px" }}>
-                {L(lang,"ADVANCED","ADVANCED")}
-              </span>
-            )}
+      <div style={{ borderBottom:`1px solid ${BORDER}`, background:"rgba(7,9,15,0.82)",
+        backdropFilter:"blur(16px)", flexShrink:0, zIndex:2 }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"13px 18px 7px" }}>
+          {showSearch ? (
+            <input
+              ref={searchRef}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder={L(lang,"Search slides…","Пошук слайдів…")}
+              style={{ flex:1, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.15)",
+                borderRadius:10, padding:"7px 12px", fontSize:13, color:"rgba(255,255,255,0.9)",
+                outline:"none", marginRight:10 }}
+            />
+          ) : (
+            <div>
+              <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.85)", letterSpacing:-0.2 }}>
+                {titles[current]}
+              </div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.28)", marginTop:1 }}>
+                {current + 1} / {TOTAL}
+                {current >= 18 && (
+                  <span style={{ marginLeft:6, fontSize:9, color:PURPLE, fontWeight:700, background:`${PURPLE}18`,
+                    border:`1px solid ${PURPLE}33`, borderRadius:4, padding:"1px 5px" }}>
+                    {L(lang,"ADVANCED","ADVANCED")}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+          <div style={{ display:"flex", gap:6 }}>
+            <button onClick={toggleSearch} style={{ background:showSearch?`${ACCENT}22`:GLASS2,
+              border:`1px solid ${showSearch?ACCENT:BORDER2}`, borderRadius:10, width:33, height:33,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              color:showSearch?ACCENT:"rgba(255,255,255,0.55)", fontSize:15, cursor:"pointer" }}>
+              🔍
+            </button>
+            <button onClick={onClose} style={{ background:GLASS2, border:`1px solid ${BORDER2}`,
+              borderRadius:10, width:33, height:33, display:"flex", alignItems:"center",
+              justifyContent:"center", color:"rgba(255,255,255,0.6)", fontSize:15, cursor:"pointer" }}>✕</button>
           </div>
         </div>
-        <button onClick={onClose} style={{ background:GLASS2, border:`1px solid ${BORDER2}`,
-          borderRadius:10, width:33, height:33, display:"flex", alignItems:"center",
-          justifyContent:"center", color:"rgba(255,255,255,0.6)", fontSize:15, cursor:"pointer" }}>✕</button>
+
+        {/* Search results dropdown */}
+        {showSearch && searchResults.length > 0 && (
+          <div style={{ maxHeight:240, overflowY:"auto", borderTop:`1px solid ${BORDER}` }}>
+            {searchResults.map(r => (
+              <div key={r.index}
+                onClick={() => { setCurrent(r.index); setShowSearch(false); setSearchQuery(""); }}
+                style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 18px",
+                  borderBottom:`1px solid rgba(255,255,255,0.04)`, cursor:"pointer",
+                  background:"rgba(255,255,255,0.02)" }}>
+                <span style={{ fontSize:10, color:PURPLE, fontWeight:700, minWidth:22,
+                  background:`${PURPLE}18`, border:`1px solid ${PURPLE}30`, borderRadius:6,
+                  padding:"2px 5px", textAlign:"center" }}>{r.index + 1}</span>
+                <span style={{ fontSize:13, color:"rgba(255,255,255,0.85)" }}>{r.title}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {showSearch && q.length >= 1 && searchResults.length === 0 && (
+          <div style={{ padding:"12px 18px", fontSize:12, color:"rgba(255,255,255,0.3)",
+            borderTop:`1px solid ${BORDER}` }}>
+            {L(lang,"No slides found","Слайдів не знайдено")}
+          </div>
+        )}
       </div>
 
       {/* Slide area */}

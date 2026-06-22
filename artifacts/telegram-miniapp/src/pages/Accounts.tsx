@@ -1006,6 +1006,34 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
   const [valAllErr,     setValAllErr]     = useState("");
   const [showValAll,    setShowValAll]    = useState(false);
 
+  // Bulk proxy update
+  const [showBulkProxy, setShowBulkProxy] = useState(false);
+  const [bulkProxyVal,  setBulkProxyVal]  = useState("");
+  const [bulkProxyScope, setBulkProxyScope] = useState<"all" | "no_proxy" | "proxy_failed">("all");
+  const [bulkProxyBusy, setBulkProxyBusy] = useState(false);
+  const [bulkProxyDone, setBulkProxyDone] = useState<number | null>(null);
+
+  async function applyBulkProxy() {
+    if (!bulkProxyVal.trim()) return;
+    const proxy = bulkProxyVal.trim();
+    let targets: SenderAccount[];
+    if (bulkProxyScope === "no_proxy") {
+      targets = accounts.filter(a => !a.proxy);
+    } else if (bulkProxyScope === "proxy_failed") {
+      targets = accounts.filter(a => a.status === "proxy_failed");
+    } else {
+      targets = [...accounts];
+    }
+    if (targets.length === 0) return;
+    haptic.medium(); setBulkProxyBusy(true); setBulkProxyDone(null);
+    try {
+      await Promise.all(targets.map(a => api.patchAccount(a.id, { proxy })));
+      setBulkProxyDone(targets.length);
+      haptic.success();
+      load();
+    } catch { haptic.error(); } finally { setBulkProxyBusy(false); }
+  }
+
   const allActiveSessionIds = accounts
     .filter(a => a.is_active && !!(a as any).session_file)
     .map(a => a.id);
@@ -1150,6 +1178,67 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
         </div>
       )}
 
+      {/* Bulk proxy update overlay */}
+      {showBulkProxy && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 202, background: "rgba(7,9,15,0.97)", backdropFilter: "blur(20px)", display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "24px 16px", display: "flex", flexDirection: "column", gap: 14, flex: 1, overflowY: "auto" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: TG.text }}>🌐 {lang === "ua" ? "Масова зміна проксі" : "Bulk Proxy Update"}</div>
+              <div onClick={() => { haptic.light(); setShowBulkProxy(false); setBulkProxyDone(null); }} style={{ cursor: "pointer", color: TG.muted, padding: 6 }}><X size={18} /></div>
+            </div>
+
+            {/* Proxy input */}
+            <div>
+              <div style={{ fontSize: 11, color: TG.muted, marginBottom: 6 }}>
+                {lang === "ua" ? "Проксі-рядок (socks5://user:pass@host:port або host:port:user:pass)" : "Proxy string (socks5://user:pass@host:port or host:port:user:pass)"}
+              </div>
+              <input
+                value={bulkProxyVal}
+                onChange={e => setBulkProxyVal(e.target.value)}
+                placeholder="socks5://user:pass@1.2.3.4:1080"
+                style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 12, padding: "11px 14px", fontSize: 12, color: TG.text, outline: "none", boxSizing: "border-box", fontFamily: "monospace" }}
+              />
+            </div>
+
+            {/* Scope selector */}
+            <div>
+              <div style={{ fontSize: 11, color: TG.muted, marginBottom: 8 }}>{lang === "ua" ? "Застосувати до:" : "Apply to:"}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {([
+                  ["all",          lang === "ua" ? `Усіх акаунтів (${accounts.length})` : `All accounts (${accounts.length})`, "#6ba8e5"],
+                  ["no_proxy",     lang === "ua" ? `Без проксі (${accounts.filter(a => !a.proxy).length})` : `No proxy yet (${accounts.filter(a => !a.proxy).length})`, "#ffc946"],
+                  ["proxy_failed", lang === "ua" ? `Проблема проксі (${accounts.filter(a => a.status === "proxy_failed").length})` : `Proxy failed (${accounts.filter(a => a.status === "proxy_failed").length})`, "#ff6b7a"],
+                ] as [typeof bulkProxyScope, string, string][]).map(([scope, label, col]) => (
+                  <div key={scope} onClick={() => setBulkProxyScope(scope)}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 12, background: bulkProxyScope === scope ? `${col}18` : "rgba(255,255,255,0.04)", border: `1px solid ${bulkProxyScope === scope ? col+"50" : "rgba(255,255,255,0.08)"}`, cursor: "pointer", transition: "all 0.2s" }}>
+                    <div style={{ width: 16, height: 16, borderRadius: "50%", border: `2px solid ${col}`, background: bulkProxyScope === scope ? col : "transparent", flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, color: bulkProxyScope === scope ? col : TG.muted, fontWeight: bulkProxyScope === scope ? 700 : 400 }}>{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Result */}
+            {bulkProxyDone !== null && (
+              <div style={{ padding: "12px 14px", borderRadius: 12, background: "rgba(45,232,151,0.09)", border: "1px solid rgba(45,232,151,0.25)", fontSize: 13, color: "#2de897", fontWeight: 600 }}>
+                ✅ {lang === "ua" ? `Оновлено ${bulkProxyDone} акаунтів` : `Updated ${bulkProxyDone} accounts`}
+              </div>
+            )}
+          </div>
+
+          {/* Apply button */}
+          <div style={{ padding: "16px 16px calc(env(safe-area-inset-bottom, 0px) + 16px)" }}>
+            <button
+              onClick={applyBulkProxy}
+              disabled={bulkProxyBusy || !bulkProxyVal.trim()}
+              style={{ width: "100%", padding: "14px", borderRadius: 16, background: bulkProxyBusy || !bulkProxyVal.trim() ? "rgba(255,255,255,0.07)" : "linear-gradient(135deg,#00d4ff,#6ba8e5)", border: "none", fontSize: 14, fontWeight: 800, color: bulkProxyBusy || !bulkProxyVal.trim() ? "rgba(255,255,255,0.3)" : "#fff", cursor: bulkProxyBusy || !bulkProxyVal.trim() ? "not-allowed" : "pointer" }}
+            >
+              {bulkProxyBusy ? "⏳ " + (lang === "ua" ? "Оновлення…" : "Updating…") : "🌐 " + (lang === "ua" ? "Застосувати проксі" : "Apply Proxy")}
+            </button>
+          </div>
+        </div>
+      )}
+
     <div className="tab-content" style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingTop: 14, paddingLeft: 14, paddingRight: 14, paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 140px)" }}>
 
@@ -1160,17 +1249,25 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
                 <X size={18} />
               </div>
             )}
-            <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>{t.nav.accounts}</div>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: TG.text, letterSpacing: "-0.02em" }}>{t.nav.accounts}</div>
+              {accounts.length > 0 && (() => {
+                const unhealthy = healthCounts.banned + healthCounts.session_invalid + healthCounts.proxy_failed;
+                const score = Math.max(0, Math.round(((accounts.length - unhealthy) / accounts.length) * 100));
+                const col = score >= 90 ? "#2de897" : score >= 70 ? "#ffc946" : "#ff6b7a";
+                return (
+                  <div style={{ display:"flex", alignItems:"center", gap:5, marginTop:2 }}>
+                    <div style={{ width:28, height:3, borderRadius:2, background:"rgba(255,255,255,0.07)", overflow:"hidden" }}>
+                      <div style={{ height:"100%", width:`${score}%`, borderRadius:2, background:`linear-gradient(90deg,${col},${col}99)`, transition:"width 0.6s ease" }} />
+                    </div>
+                    <span style={{ fontSize:10, fontWeight:700, color:col }}>{score}%</span>
+                    <span style={{ fontSize:9, color:"rgba(255,255,255,0.28)" }}>{lang === "ua" ? "здоров'я флоту" : "fleet health"}</span>
+                  </div>
+                );
+              })()}
+            </div>
           </div>
           <div style={{ display: "flex", gap: 6 }}>
-            {onManualAccounts && (
-              <GlassCard style={{ padding: "8px 10px", borderRadius: 14, cursor: "pointer" }} onClick={() => { haptic.light(); onManualAccounts(); }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <span style={{ fontSize: 14 }}>📖</span>
-                  <span style={{ fontSize: 11, color: "#00d4ff", fontWeight: 700 }}>Гайд</span>
-                </div>
-              </GlassCard>
-            )}
             <GlassCard
               style={{ padding: "8px 10px", borderRadius: 14, cursor: "pointer" }}
               onClick={async () => { haptic.medium(); try { await api.resetDailyCounts(); haptic.success(); load(); } catch { haptic.error(); } }}
@@ -1204,6 +1301,12 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
                 </div>
               </GlassCard>
             )}
+            <GlassCard style={{ padding: "8px 10px", borderRadius: 14, cursor: "pointer" }} onClick={() => { haptic.medium(); setShowBulkProxy(true); setBulkProxyDone(null); }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ fontSize: 13 }}>🌐</span>
+                <span style={{ fontSize: 11, color: "#6ba8e5", fontWeight: 700 }}>{lang === "ua" ? "Проксі" : "Proxy"}</span>
+              </div>
+            </GlassCard>
             <GlassCard
               style={{ padding: "8px 10px", borderRadius: 14, cursor: "pointer" }}
               onClick={() => { haptic.light(); window.open(api.getAccountsCsvUrl(), "_blank"); }}
