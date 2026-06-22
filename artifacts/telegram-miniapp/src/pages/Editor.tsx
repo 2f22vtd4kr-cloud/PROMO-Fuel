@@ -509,13 +509,34 @@ export function EditorPage({ campaignId, onDone }: { campaignId: number | null; 
                     </div>
                   )}
 
-                  {/* Success badge */}
+                  {/* Success badge + Regenerate */}
                   {aiEngine && !aiError && !aiGenerating && (
-                    <div style={{ marginBottom: 10, padding: "7px 12px", background: "rgba(45,232,151,0.08)", border: "1px solid rgba(45,232,151,0.22)", borderRadius: 11, fontSize: 11, color: TG.green, display: "flex", alignItems: "center", gap: 6 }}>
-                      <Sparkles size={11} />
-                      {lang === "ua"
-                        ? `Спінтакс згенеровано (${aiEngine}) — шаблон оновлено ↓`
-                        : `Spintax generated (${aiEngine}) — template updated ↓`}
+                    <div style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ flex: 1, padding: "7px 12px", background: "rgba(45,232,151,0.08)", border: "1px solid rgba(45,232,151,0.22)", borderRadius: 11, fontSize: 11, color: TG.green, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                        <Sparkles size={11} style={{ flexShrink: 0 }} />
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {lang === "ua"
+                            ? `(${aiEngine}) — шаблон оновлено ↓`
+                            : `(${aiEngine}) — template updated ↓`}
+                        </span>
+                      </div>
+                      <button
+                        onClick={generateSpintax}
+                        disabled={!aiSeed.trim() || aiGenerating}
+                        className="tap"
+                        style={{
+                          display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
+                          padding: "7px 12px", borderRadius: 11, fontSize: 11, fontWeight: 800,
+                          border: "1px solid rgba(196,174,255,0.40)",
+                          background: "rgba(196,174,255,0.12)",
+                          color: "#c4aeff",
+                          cursor: aiSeed.trim() ? "pointer" : "not-allowed",
+                          opacity: aiSeed.trim() ? 1 : 0.5,
+                        }}
+                      >
+                        <Wand2 size={11} />
+                        {lang === "ua" ? "Ще раз" : "Regenerate"}
+                      </button>
                     </div>
                   )}
 

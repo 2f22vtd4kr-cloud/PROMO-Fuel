@@ -1757,6 +1757,14 @@ function SlideNewFeatures({ lang }: SL) {
       ),
     },
     {
+      icon: "🪄",
+      title: L(lang,"AI Spintax Generator","AI Генератор Спінтаксу"),
+      desc:  L(lang,
+        "New in the Campaign Editor: tap ✦ AI Spintax, enter a plain seed message, pick a tone (Casual / Professional / Direct), and hit Optimize with AI. Gemini 2.5 Flash generates a deeply nested spintax string with hundreds of unique permutations. Tap Regenerate to get a fresh variant instantly.",
+        "Новинка в Редакторі кампанії: натисніть ✦ AI Спінтакс, введіть базове повідомлення, виберіть тон (Розмовний / Офіційний / Прямий) і натисніть «Оптимізувати з AI». Gemini 2.5 Flash генерує глибоко вкладений спінтакс із сотнями унікальних варіацій. Натисніть «Ще раз», щоб миттєво отримати новий варіант.",
+      ),
+    },
+    {
       icon: "🤖",
       title: L(lang,"AI Autonomous Copilot","AI Автономний копілот"),
       desc:  L(lang,
@@ -1867,6 +1875,76 @@ function SlideAiCopilot({ lang }: SL) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Slide — AI Spintax Generator
+// ═══════════════════════════════════════════════════════════════
+function SlideAiSpintax({ lang }: SL) {
+  return (
+    <Shell>
+      {title("🪄", L(lang,"AI Spintax Generator","AI Генератор Спінтаксу"), PURPLE)}
+
+      <div style={{ ...card(PURPLE), marginBottom:12 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:PURPLE, marginBottom:6 }}>
+          {L(lang,"What it does","Що це таке")}
+        </div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.65)", lineHeight:1.6 }}>
+          {L(lang,
+            "Type a plain message seed and the AI converts it into a deeply nested Spintax string with 6–10+ variation groups — producing hundreds of unique message permutations to evade Telegram's duplicate-content detection.",
+            "Напишіть звичайне базове повідомлення, і AI перетворить його у глибоко вкладений Spintax-рядок із 6–10+ групами варіацій — сотні унікальних перестановок для обходу фільтрів дублікатів Telegram.",
+          )}
+        </div>
+      </div>
+
+      <div style={{ fontSize:11, fontWeight:700, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>
+        {L(lang,"How to use","Як використовувати")}
+      </div>
+      {[
+        { n:1, color:BLUE,  en:"Open the Campaign Editor → tap ✦ AI Spintax to expand the panel.", ua:"Відкрийте Редактор кампанії → натисніть ✦ AI Спінтакс, щоб розгорнути панель." },
+        { n:2, color:AMBER, en:"Choose a tone: Casual, Professional, or Direct.", ua:"Виберіть тон: Розмовний, Офіційний або Прямий." },
+        { n:3, color:GREEN, en:"Type your plain base message in the seed text area.", ua:"Введіть звичайне базове повідомлення у поле введення." },
+        { n:4, color:PINK,  en:"Tap «Optimize with AI» — Gemini 2.5 Flash generates the spintax. Falls back to Groq Llama if Gemini is at capacity.", ua:"Натисніть «Оптимізувати з AI» — Gemini 2.5 Flash генерує спінтакс. Якщо Gemini перевантажений — використовується Groq Llama." },
+        { n:5, color:PURPLE,en:"The generated spintax fills the message template field and the preview expands automatically showing 3 sample variants.", ua:"Згенерований спінтакс заповнює поле шаблону повідомлення, а попередній перегляд автоматично розгортається з 3 варіантами." },
+        { n:6, color:ACCENT,en:"Not satisfied? Tap «Regenerate» to get a fresh variation without clearing your seed text.", ua:"Не задоволені результатом? Натисніть «Ще раз», щоб отримати новий варіант без очищення базового тексту." },
+      ].map(s => (
+        <div key={s.n} style={{ display:"flex", gap:10, alignItems:"flex-start", marginBottom:7,
+          background:GLASS, border:`1px solid ${BORDER}`, borderRadius:11, padding:"9px 12px" }}>
+          <div style={{ width:22, height:22, borderRadius:7, background:`${s.color}18`, border:`1.5px solid ${s.color}55`,
+            display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:900, color:s.color, flexShrink:0 }}>{s.n}</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.65)", lineHeight:1.5 }}>{L(lang,s.en,s.ua)}</div>
+        </div>
+      ))}
+
+      <div style={{ ...card(GREEN), marginTop:4 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:GREEN, marginBottom:6 }}>
+          🔀 {L(lang,"Tone Modes","Режими тону")}
+        </div>
+        {[
+          { tone:L(lang,"Casual","Розмовний"),       desc:L(lang,"Conversational, warm, informal — contractions, emoji-friendly.","Розмовний, теплий, неформальний — скорочення, дружній тон.") },
+          { tone:L(lang,"Professional","Офіційний"), desc:L(lang,"Clear, respectful, business-appropriate — formal grammar, no slang.","Чіткий, поважний, діловий — офіційна граматика, без сленгу.") },
+          { tone:L(lang,"Direct","Прямий"),           desc:L(lang,"Concise, action-oriented — short punchy sentences, strong CTAs.","Лаконічний, орієнтований на дію — короткі речення, сильні заклики.") },
+        ].map(m => (
+          <div key={m.tone} style={{ display:"flex", gap:8, marginBottom:5, alignItems:"flex-start" }}>
+            <span style={{ fontSize:11, fontWeight:800, color:GREEN, minWidth:80, flexShrink:0 }}>{m.tone}</span>
+            <span style={{ fontSize:11, color:"rgba(255,255,255,0.50)", lineHeight:1.45 }}>{m.desc}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ ...card(AMBER), marginTop:8 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:AMBER, marginBottom:6 }}>
+          💡 {L(lang,"Pro Tips","Поради")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.58)", lineHeight:1.6 }}>
+          {L(lang,
+            "Keep your seed message short and natural (2–5 sentences). The AI expands it — don't try to pre-write all variations yourself. After generation, you can still manually edit the template field before saving.",
+            "Пишіть базове повідомлення коротко і природно (2–5 речень). AI сам розширить варіації — не намагайтесь переписати все вручну. Після генерації ви можете редагувати поле шаблону перед збереженням.",
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Slide registry
 // ═══════════════════════════════════════════════════════════════
 // Keyword hints per slide (English) — used by search in addition to TITLES
@@ -1903,6 +1981,7 @@ const KEYWORDS: string[] = [
   "checklist launch deploy production",
   "new features bell toast notification fleet health search digest archive group analytics overlay",
   "AI copilot autonomous assistant gemini groq mutation tools human-in-the-loop HITL approval gate",
+  "AI spintax generator wand optimize regenerate tone casual professional direct seed message",
   "what's new latest changelog",
 ];
 const SLIDES: Array<(p: SL) => React.ReactElement> = [
@@ -1910,7 +1989,7 @@ const SLIDES: Array<(p: SL) => React.ReactElement> = [
   Slide10,Slide11,Slide12,Slide13,SlideAccountsBulk,Slide14,SlideProxyHealth,
   SlideAutoRevalidation,SlideAccountTools,SlideMonitoring,
   Slide15,Slide16,Slide17,Slide18,Slide19,Slide20,Slide21,Slide22,
-  Slide23,Slide24,Slide25,SlideAiCopilot,SlideNewFeatures,
+  Slide23,Slide24,Slide25,SlideAiCopilot,SlideAiSpintax,SlideNewFeatures,
 ];
 const TOTAL = SLIDES.length;
 
@@ -1923,7 +2002,7 @@ const TITLES: Record<Lang, string[]> = {
     "Auto-Revalidation","Account Tools","Monitoring & Alerts",
     "Workers","Task Queue","Rate Limits","Best Practices","Architecture",
     "Telegram Protocols","Sessions & Security","Spintax Engine",
-    "Process Internals","Database & API","Launch Checklist","AI Copilot","What's New",
+    "Process Internals","Database & API","Launch Checklist","AI Copilot","AI Spintax","What's New",
   ],
   ua: [
     "Обкладинка","Огляд системи","Дашборд","Швидкі дії","DM-розсилки",
@@ -1933,7 +2012,7 @@ const TITLES: Record<Lang, string[]> = {
     "Авто-реvalidація","Інструменти акаунтів","Моніторинг і сповіщення",
     "Воркери","Черга задач","Ліміти відправки","Поради та рекомендації",
     "Архітектура","Протоколи Telegram","Сесії та безпека",
-    "Рушій спінтаксу","Внутрішня будова процесів","База даних та API","Чеклист запуску","AI Копілот","Нові функції",
+    "Рушій спінтаксу","Внутрішня будова процесів","База даних та API","Чеклист запуску","AI Копілот","AI Спінтакс","Нові функції",
   ],
 };
 
