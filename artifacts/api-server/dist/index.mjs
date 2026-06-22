@@ -53562,17 +53562,37 @@ function makePythonProxy(prefix) {
   return (req, res) => {
     const targetPath = `${prefix}${req.path === "/" ? "" : req.path}`;
     const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+    const bodyBuf = req.body && Object.keys(req.body).length > 0 ? Buffer.from(JSON.stringify(req.body), "utf-8") : null;
+    const forwardHeaders = {
+      ...req.headers,
+      host: `127.0.0.1:${PYTHON_PORT}`
+    };
+    if (bodyBuf) {
+      forwardHeaders["content-type"] = "application/json";
+      forwardHeaders["content-length"] = String(bodyBuf.length);
+    } else {
+      delete forwardHeaders["content-length"];
+    }
     const options = {
       hostname: "127.0.0.1",
       port: PYTHON_PORT,
       path: targetPath + qs,
       method: req.method,
-      headers: { ...req.headers, host: `127.0.0.1:${PYTHON_PORT}` }
+      headers: forwardHeaders
     };
     const proxyReq = http.request(options, (proxyRes) => {
+      const isSSE = (proxyRes.headers["content-type"] ?? "").includes("text/event-stream");
       res.status(proxyRes.statusCode ?? 200);
       for (const [k, v] of Object.entries(proxyRes.headers)) {
+        if (isSSE && k.toLowerCase() === "content-length") continue;
         if (v !== void 0) res.setHeader(k, v);
+      }
+      if (isSSE) {
+        res.setHeader("X-Accel-Buffering", "no");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.flushHeaders();
+        if (res.socket) res.socket.setNoDelay(true);
       }
       proxyRes.pipe(res, { end: true });
     });
@@ -53580,7 +53600,10 @@ function makePythonProxy(prefix) {
       logger.error({ err }, `${prefix} proxy error`);
       if (!res.headersSent) res.status(502).json({ error: "Python API unavailable", detail: err.message });
     });
-    req.pipe(proxyReq, { end: true });
+    if (bodyBuf) {
+      proxyReq.write(bodyBuf);
+    }
+    proxyReq.end();
   };
 }
 app.use("/api/verifications", makePythonProxy("/api/verifications"));

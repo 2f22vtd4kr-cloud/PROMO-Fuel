@@ -87,25 +87,63 @@ function makePythonProxy(prefix: string) {
   return (req: Request, res: Response) => {
     const targetPath = `${prefix}${req.path === "/" ? "" : req.path}`;
     const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+
+    // express.json() has already consumed req body stream — re-serialise from req.body
+    const bodyBuf: Buffer | null = req.body && Object.keys(req.body as object).length > 0
+      ? Buffer.from(JSON.stringify(req.body), "utf-8")
+      : null;
+
+    const forwardHeaders: Record<string, string | string[] | undefined> = {
+      ...req.headers,
+      host: `127.0.0.1:${PYTHON_PORT}`,
+    };
+    if (bodyBuf) {
+      forwardHeaders["content-type"]   = "application/json";
+      forwardHeaders["content-length"] = String(bodyBuf.length);
+    } else {
+      delete forwardHeaders["content-length"];
+    }
+
     const options: http.RequestOptions = {
       hostname: "127.0.0.1",
       port: PYTHON_PORT,
       path: targetPath + qs,
       method: req.method,
-      headers: { ...req.headers, host: `127.0.0.1:${PYTHON_PORT}` },
+      headers: forwardHeaders,
     };
+
     const proxyReq = http.request(options, (proxyRes) => {
+      const isSSE = (proxyRes.headers["content-type"] ?? "").includes("text/event-stream");
+
       res.status(proxyRes.statusCode ?? 200);
       for (const [k, v] of Object.entries(proxyRes.headers)) {
+        // Strip content-length for SSE — the stream has no fixed length
+        if (isSSE && k.toLowerCase() === "content-length") continue;
         if (v !== undefined) res.setHeader(k, v);
       }
+
+      if (isSSE) {
+        // Tell every proxy layer (nginx, Replit CDN) not to buffer SSE chunks
+        res.setHeader("X-Accel-Buffering", "no");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.flushHeaders();
+        if (res.socket) res.socket.setNoDelay(true);
+      }
+
       proxyRes.pipe(res, { end: true });
     });
+
     proxyReq.on("error", (err) => {
       logger.error({ err }, `${prefix} proxy error`);
       if (!res.headersSent) res.status(502).json({ error: "Python API unavailable", detail: err.message });
     });
-    req.pipe(proxyReq, { end: true });
+
+    // Write the body directly (stream already consumed by express.json)
+    if (bodyBuf) {
+      proxyReq.write(bodyBuf);
+    }
+    proxyReq.end();
   };
 }
 
