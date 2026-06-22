@@ -67,6 +67,31 @@ function AuthBadge({ status, sessionFile }: { status?: string; sessionFile?: str
   );
 }
 
+// ── Warmup status badge ───────────────────────────────────────────────────────
+
+function WarmupBadge({ status, sent, target }: { status?: string; sent?: number; target?: number }) {
+  if (!status || status === "none") return null;
+
+  const cfg: Record<string, { color: string; bg: string; border: string; icon: string; label: string }> = {
+    queued:  { color: "#c4aeff", bg: "rgba(196,174,255,0.10)", border: "rgba(196,174,255,0.3)", icon: "⏳", label: "ПРОГРІВ" },
+    warming: { color: "#ffc946", bg: "rgba(255,201,70,0.12)",  border: "rgba(255,201,70,0.35)", icon: "🔥", label: `ПРОГРІВ ${sent ?? 0}/${target ?? 10}` },
+    done:    { color: "#2de897", bg: "rgba(45,232,151,0.10)",  border: "rgba(45,232,151,0.3)", icon: "✅", label: "ПРОГРІТИЙ" },
+    partial: { color: "#ffc946", bg: "rgba(255,201,70,0.10)",  border: "rgba(255,201,70,0.3)", icon: "⚡", label: `ЧАСТКОВО ${sent ?? 0}/${target ?? 10}` },
+    failed:  { color: "#ff6b7a", bg: "rgba(255,107,122,0.10)", border: "rgba(255,107,122,0.3)", icon: "✗", label: "ПОМИЛКА" },
+  };
+
+  const c = cfg[status];
+  if (!c) return null;
+
+  return (
+    <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 8, fontWeight: 700,
+      color: c.color, background: c.bg, border: `1px solid ${c.border}`,
+      borderRadius: 20, padding: "2px 6px", whiteSpace: "nowrap" }}>
+      {c.icon} {c.label}
+    </span>
+  );
+}
+
 // ── Telethon auth flow ────────────────────────────────────────────────────────
 
 type AuthStep = "idle" | "sending" | "waiting_code" | "waiting_2fa" | "done" | "error";
@@ -526,6 +551,12 @@ function AccountCard({ acc, onRefresh, pingResult }: { acc: SenderAccount; onRef
     catch { haptic.error(); } finally { setBusy(false); }
   }
 
+  async function startWarmup() {
+    haptic.medium(); setBusy(true);
+    try { await api.startWarmup(acc.id); haptic.success(); onRefresh(); }
+    catch { haptic.error(); } finally { setBusy(false); }
+  }
+
   async function saveDailyLimit() {
     const val = parseInt(limitInput);
     if (isNaN(val) || val < 1 || val > 10000) { setLimitInput(String(limit)); setEditingLimit(false); return; }
@@ -565,6 +596,7 @@ function AccountCard({ acc, onRefresh, pingResult }: { acc: SenderAccount; onRef
               ⛔{bannedCount}
             </span>
           )}
+          <WarmupBadge status={acc.warmup_status} sent={acc.warmup_messages_sent} target={acc.warmup_target} />
           {acc.is_banned ? (
             <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, color: "#ff6b7a", background: "rgba(255,107,122,0.15)", border: "1px solid rgba(255,107,122,0.35)", borderRadius: 20, padding: "2px 7px" }}>
               🚫 БАН
@@ -701,6 +733,19 @@ function AccountCard({ acc, onRefresh, pingResult }: { acc: SenderAccount; onRef
             </button>
             <button onClick={resetDaily} disabled={busy} style={{ flex: 1, padding: "9px 6px", borderRadius: 12, background: "rgba(107,168,229,0.12)", border: "1px solid rgba(107,168,229,0.3)", fontSize: 11, fontWeight: 700, color: "#6ba8e5", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
               <RotateCcw size={11} />{t.accounts.resetLimit}
+            </button>
+            <button
+              onClick={startWarmup}
+              disabled={busy || acc.warmup_status === "warming"}
+              title={acc.warmup_status === "done" ? "Повторити прогрів" : "Почати прогрів"}
+              style={{ width: 36, padding: "9px 6px", borderRadius: 12,
+                background: acc.warmup_status === "done" ? "rgba(45,232,151,0.10)" : "rgba(255,201,70,0.10)",
+                border: `1px solid ${acc.warmup_status === "done" ? "rgba(45,232,151,0.25)" : "rgba(255,201,70,0.3)"}`,
+                cursor: (busy || acc.warmup_status === "warming") ? "not-allowed" : "pointer",
+                opacity: (busy || acc.warmup_status === "warming") ? 0.5 : 1,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 13 }}>
+              {acc.warmup_status === "warming" ? "⏳" : acc.warmup_status === "done" ? "✅" : "🔥"}
             </button>
             <button onClick={() => { haptic.light(); setShowConfirm(true); }} disabled={busy} style={{ width: 36, padding: "9px 6px", borderRadius: 12, background: "rgba(255,107,122,0.10)", border: "1px solid rgba(255,107,122,0.25)", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Trash2 size={12} color="#ff6b7a" />

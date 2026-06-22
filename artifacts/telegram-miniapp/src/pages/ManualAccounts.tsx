@@ -849,9 +849,71 @@ const KEYWORDS_ACCOUNTS: string[] = [
   "scaling 100 accounts pool rotation quota daily reset",
   "AI profile gemini avatar persona name bio automated step 7",
   "manual profile name bio photo upload branding operator persona",
+  "warmup scheduler organic messages groups aging ban risk step 8",
 ];
+// ═══════════════════════════════════════════════════════════════
+// SLIDE 12 — Account Warmup Scheduler
+// ═══════════════════════════════════════════════════════════════
+function Slide12({ lang }: SL) {
+  return (
+    <Shell>
+      <STitle icon="🔥" text={L(lang,"Account Warmup Scheduler","Планувальник прогріву акаунтів")} color={AMBER} />
+
+      <div style={card(AMBER)}>
+        <div style={{ fontSize:12, fontWeight:800, color:AMBER, marginBottom:8 }}>
+          {L(lang,"What is warmup?","Що таке прогрів?")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.65)", lineHeight:1.6 }}>
+          {L(lang,
+            "Freshly registered Telegram accounts look suspicious to anti-spam systems. The warmup scheduler automatically sends organic messages (about cars, fuel, daily topics) to public Russian groups over 48 hours, aging the account and reducing ban risk before your first campaign.",
+            "Свіжозареєстровані акаунти виглядають підозріло для антиспам-систем Telegram. Планувальник прогріву автоматично надсилає органічні повідомлення (про авто, паливо, побут) до публічних російських груп протягом 48 годин — старіє акаунт і знижує ризик бану перед першою кампанією."
+          )}
+        </div>
+      </div>
+
+      <div style={card(GREEN)}>
+        <div style={{ fontSize:12, fontWeight:800, color:GREEN, marginBottom:8 }}>
+          {L(lang,"How it runs","Як це працює")}
+        </div>
+        {[
+          [L(lang,"🚀 Auto-start","🚀 Авто-старт"),
+           L(lang,"Warmup is queued automatically after Step 8 (Persist) in the Account Factory. No manual action needed.","Прогрів ставиться в чергу автоматично після Кроку 8 (Збереження) у Фабриці акаунтів. Жодних ручних дій не потрібно.")],
+          [L(lang,"⏱ Paced delays","⏱ Паузи між повідомленнями"),
+           L(lang,"4–10 minute random delays between each message simulate natural human pacing. Burst-free and flood-safe.","4–10-хвилинні випадкові паузи між кожним повідомленням імітують природну поведінку людини. Без сплесків і флуду.")],
+          [L(lang,"💬 35 message templates","💬 35 шаблонів повідомлень"),
+           L(lang,"Russian organic messages about cars, fuel prices, road life, and daily topics. Randomly selected per message.","Органічні повідомлення про авто, ціни на паливо, дорогу та побут. Вибираються випадково.")],
+          [L(lang,"🔄 10 public groups","🔄 10 публічних груп"),
+           L(lang,"Groups are shuffled per run. If a group rejects the message (write-forbidden), it is skipped automatically.","Групи перемішуються для кожного запуску. Якщо група відхиляє (write-forbidden) — пропускається автоматично.")],
+        ].map(([title, desc]) => (
+          <div key={title as string} style={{ marginBottom:10, borderBottom:`1px solid rgba(255,255,255,0.04)`, paddingBottom:10 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:GREEN, marginBottom:3 }}>{title as string}</div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", lineHeight:1.4 }}>{desc as string}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={card(PURPLE)}>
+        <div style={{ fontSize:11, fontWeight:800, color:PURPLE, marginBottom:6 }}>
+          {L(lang,"📊 Status badges in Accounts tab","📊 Статусні значки у вкладці Акаунти")}
+        </div>
+        {[
+          ["⏳ ПРОГРІВ",  L(lang,"Queued — warmup task is waiting to start","У черзі — завдання прогріву очікує запуску")],
+          ["🔥 ПРОГРІВ N/10", L(lang,"Running — N messages sent so far","Виконується — N повідомлень надіслано")],
+          ["✅ ПРОГРІТИЙ", L(lang,"Done — account is aged and ready for campaigns","Готово — акаунт прогрітий і готовий до кампаній")],
+          ["✗ ПОМИЛКА",    L(lang,"Failed — check session/proxy; click 🔥 Start Warmup to retry","Помилка — перевірте сесію/проксі; натисніть 🔥 Старт прогріву для повтору")],
+        ].map(([badge, desc]) => (
+          <div key={badge as string} style={{ display:"flex", gap:8, alignItems:"flex-start", marginBottom:7 }}>
+            <code style={{ fontSize:9, fontWeight:800, color:PURPLE, background:`${PURPLE}15`, border:`1px solid ${PURPLE}30`, borderRadius:6, padding:"2px 6px", flexShrink:0, whiteSpace:"nowrap" }}>{badge as string}</code>
+            <span style={{ fontSize:10, color:"rgba(255,255,255,0.5)", lineHeight:1.4 }}>{desc as string}</span>
+          </div>
+        ))}
+      </div>
+    </Shell>
+  );
+}
+
 const SLIDES: Array<(p: SL) => React.ReactElement> = [
-  Slide1, Slide2, Slide3, Slide4, Slide5, Slide6, Slide7, Slide8, Slide9, Slide10, Slide11,
+  Slide1, Slide2, Slide3, Slide4, Slide5, Slide6, Slide7, Slide8, Slide9, Slide10, Slide11, Slide12,
 ];
 const TOTAL = SLIDES.length;
 

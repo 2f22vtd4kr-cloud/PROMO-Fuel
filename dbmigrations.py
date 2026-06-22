@@ -670,6 +670,33 @@ def run_migrations(db_path: str = DB_PATH) -> None:  # noqa: C901 — long but l
     conn.commit()
     logger.info("[migrations] Step 9 — pending_verifications OK")
 
+    # ── Step 10: Account warmup tracking ────────────────────────────────────
+    #
+    # Warmup status is stored on sender_accounts for fast querying.
+    # Per-message log goes into account_warmup_log.
+
+    _add_col(conn, "sender_accounts", "warmup_status",         "TEXT NOT NULL DEFAULT 'none'")
+    _add_col(conn, "sender_accounts", "warmup_messages_sent",  "INTEGER NOT NULL DEFAULT 0")
+    _add_col(conn, "sender_accounts", "warmup_target",         "INTEGER NOT NULL DEFAULT 10")
+    _add_col(conn, "sender_accounts", "warmup_started_at",     "TEXT")
+    _add_col(conn, "sender_accounts", "warmup_completed_at",   "TEXT")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS account_warmup_log (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id     INTEGER NOT NULL,
+            group_username TEXT,
+            group_title    TEXT,
+            message_text   TEXT,
+            status         TEXT NOT NULL DEFAULT 'sent',
+            error          TEXT,
+            sent_at        TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    _create_index(conn, "idx_warmup_log_account", "account_warmup_log(account_id)")
+    conn.commit()
+    logger.info("[migrations] Step 10 — account warmup tracking OK")
+
     # ── Done ─────────────────────────────────────────────────────────────────
 
     conn.close()

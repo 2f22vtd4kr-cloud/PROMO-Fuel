@@ -114,6 +114,7 @@ function AccountCard({
   activeSessions: AuthSession[];
   onSelect: (a: SenderAccount) => void;
 }) {
+  const { lang } = useI18n();
   const session  = activeSessions.find(s => s.account_id === acc.id);
   const authed   = !!acc.session_file;
   const inFlight = !!session;

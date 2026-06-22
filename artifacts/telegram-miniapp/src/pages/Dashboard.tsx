@@ -168,6 +168,7 @@ function QueueBar({ stats }: { stats: QueueStats }) {
 }
 
 function ProxyRow({ account }: { account: SenderAccount }) {
+  const { lang } = useI18n();
   const proxies = parseProxies(account.proxies ?? account.proxy);
   const color   = account.status === "proxy_failed" ? "#ff6b7a"
     : account.locked_by ? "#ffc946"

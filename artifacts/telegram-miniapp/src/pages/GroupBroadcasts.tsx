@@ -180,6 +180,7 @@ function GroupCampaignCard({
   isActive?: boolean;
   liveSends?: GroupCampaignLog[];
 }) {
+  const { t, lang } = useI18n();
   const [busy,         setBusy]         = useState(false);
   const [expanded,     setExpanded]     = useState(false);
   const [expandTab,    setExpandTab]    = useState<ExpandTab>("logs");

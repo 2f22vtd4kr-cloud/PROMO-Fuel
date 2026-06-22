@@ -13,6 +13,7 @@ import os
 import random
 import shutil
 import time
+from datetime import datetime, timezone
 from io import BytesIO
 from urllib.parse import urlparse
 
@@ -635,6 +636,29 @@ async def _registration_stream(
                             "message": "🎉 Account generated, profiled, and added to your CRM!"})
         yield _sse("complete", {"phone": phone})
 
+        # ─── Auto-queue warmup ───────────────────────────────────────────
+        try:
+            from utils.account_warmer import start_warmup_task as _start_warmup  # noqa: PLC0415
+            _now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            async with aiosqlite.connect(DB_PATH) as _wconn:
+                await _wconn.execute("PRAGMA journal_mode=WAL")
+                async with _wconn.execute(
+                    "SELECT id FROM sender_accounts WHERE phone=?", (phone,)
+                ) as _wcur:
+                    _wrow = await _wcur.fetchone()
+                if _wrow:
+                    _acc_id = int(_wrow[0])
+                    await _wconn.execute(
+                        "UPDATE sender_accounts SET warmup_status='queued', warmup_started_at=? WHERE id=?",
+                        (_now, _acc_id),
+                    )
+                    await _wconn.commit()
+                    _start_warmup(_acc_id)
+                    yield _sse("warmup_queued", {"account_id": _acc_id,
+                                                  "message": "🔥 Warmup scheduled — account aging in background"})
+        except Exception as _we:
+            logger.warning("[factory] warmup queue failed: %s", _we)
+
     except Exception as e:
         logger.exception("Account factory pipeline failed")
         yield _sse("error", {"message": f"Unexpected error: {e}"})
@@ -757,3 +781,63 @@ async def register_account(request: Request):
             "Connection": "keep-alive",
         },
     )
+
+
+# ── Warmup API ────────────────────────────────────────────────────────────────
+
+@factory_router.post("/warmup/{account_id}/start")
+async def start_account_warmup(account_id: int):
+    """Queue and start warmup for a registered account."""
+    from utils.account_warmer import is_warmup_running, start_warmup_task  # noqa: PLC0415
+
+    if is_warmup_running(account_id):
+        return JSONResponse({"ok": True, "started": False, "message": "Warmup already running"})
+
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute("PRAGMA journal_mode=WAL")
+        async with conn.execute(
+            "SELECT id, warmup_status FROM sender_accounts WHERE id=?", (account_id,)
+        ) as cur:
+            row = await cur.fetchone()
+
+    if not row:
+        return JSONResponse({"error": "Account not found"}, status_code=404)
+
+    status = row[1]
+    if status in ("warming",):
+        return JSONResponse({"ok": True, "started": False, "message": "Already warming"})
+
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute("PRAGMA journal_mode=WAL")
+        await conn.execute(
+            "UPDATE sender_accounts SET warmup_status='queued', warmup_started_at=?, "
+            "warmup_messages_sent=0, warmup_completed_at=NULL WHERE id=?",
+            (now_str, account_id),
+        )
+        await conn.commit()
+
+    started = start_warmup_task(account_id)
+    return JSONResponse({
+        "ok": True,
+        "started": started,
+        "message": "Warmup started" if started else "Warmup queued",
+    })
+
+
+@factory_router.get("/warmup/{account_id}")
+async def get_warmup_status(account_id: int):
+    """Return warmup status for a single account."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT id, warmup_status, warmup_messages_sent, warmup_target, "
+            "warmup_started_at, warmup_completed_at FROM sender_accounts WHERE id=?",
+            (account_id,),
+        ) as cur:
+            row = await cur.fetchone()
+
+    if not row:
+        return JSONResponse({"error": "Account not found"}, status_code=404)
+
+    return JSONResponse(dict(row))

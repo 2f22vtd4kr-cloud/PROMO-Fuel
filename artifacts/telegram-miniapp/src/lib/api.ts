@@ -198,6 +198,11 @@ export interface SenderAccount {
   locked_at?: string | null;
   proxy_index?: number;
   broadcasting?: number;
+  warmup_status?: string;
+  warmup_messages_sent?: number;
+  warmup_target?: number;
+  warmup_started_at?: string;
+  warmup_completed_at?: string;
 }
 
 export interface WorkerHeartbeat {
@@ -499,6 +504,8 @@ export const api = {
     post<SenderAccount>("/accounts", data),
   deleteAccount:  (id: number) => del(`/accounts/${id}`),
   clearFlood:     (id: number) => post<SenderAccount>(`/accounts/${id}/clear-flood`, {}),
+  startWarmup:    (id: number) => post<{ ok: boolean; started: boolean; message?: string }>(`/api/factory/warmup/${id}/start`, {}),
+  getWarmupStatus:(id: number) => get<{ id: number; warmup_status: string; warmup_messages_sent: number; warmup_target: number; warmup_started_at?: string; warmup_completed_at?: string }>(`/api/factory/warmup/${id}`),
   getAccountRateLimit: (id: number) => get<{
     account_id: number; window_seconds: number; window_max: number;
     count: number; remaining: number; window_start: string | null; resets_at: string | null;
