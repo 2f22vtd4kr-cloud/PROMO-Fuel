@@ -368,6 +368,7 @@ async def register_account(request: Request):
     country_id          = str(body.get("country_id", "")).strip()
     proxy_string        = str(body.get("proxy_string", "")).strip()
     two_factor_password = str(body.get("two_factor_password", "")).strip()
+    quantity            = min(max(int(body.get("quantity", 1) or 1), 1), 10)
 
     # Telethon creds — prefer env vars, fall back to request body
     api_id_raw  = os.environ.get("TELETHON_API_ID") or str(body.get("api_id", ""))
@@ -397,12 +398,59 @@ async def register_account(request: Request):
             status_code=400,
         )
 
+    INTER_REG_DELAY = 12  # seconds between batch registrations
+
     async def generate():
-        async for chunk in _registration_stream(
-            smspool_api_key, country_id, proxy_string,
-            two_factor_password, api_id, api_hash,
-        ):
-            yield chunk
+        if quantity > 1:
+            yield _sse("batch_start", {"total": quantity})
+
+        succeeded = 0
+        failed    = 0
+
+        for i in range(quantity):
+            if quantity > 1:
+                yield _sse("batch_progress", {
+                    "current": i + 1,
+                    "total": quantity,
+                    "succeeded": succeeded,
+                    "failed": failed,
+                    "message": f"🔄 Registering account {i + 1} of {quantity}…",
+                })
+                yield _sse("batch_reset", {})
+
+            got_complete = False
+            async for chunk in _registration_stream(
+                smspool_api_key, country_id, proxy_string,
+                two_factor_password, api_id, api_hash,
+            ):
+                yield chunk
+                # Track outcome for summary
+                if '"complete"' in chunk:
+                    got_complete = True
+                elif '"error"' in chunk:
+                    pass
+
+            if got_complete:
+                succeeded += 1
+            else:
+                failed += 1
+
+            # Inter-registration cooldown (skip after last)
+            if quantity > 1 and i < quantity - 1:
+                for remaining in range(INTER_REG_DELAY, 0, -1):
+                    yield _sse("batch_delay", {
+                        "remaining": remaining,
+                        "message": f"⏱ Cooling down {remaining}s before next registration…",
+                    })
+                    await asyncio.sleep(1)
+
+        if quantity > 1:
+            yield _sse("batch_done", {
+                "total": quantity,
+                "succeeded": succeeded,
+                "failed": failed,
+                "message": f"🎉 Batch complete — {succeeded}/{quantity} accounts registered",
+            })
 
     return StreamingResponse(
         generate(),

@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { X, ChevronDown, Loader } from "lucide-react";
+import { X, ChevronDown, Loader, Minus, Plus } from "lucide-react";
 import { useI18n } from "../lib/i18n";
 import { getStoredSecret } from "./LockScreen";
 
@@ -32,7 +32,7 @@ const COUNTRIES = [
   { code: "id", label: "🇮🇩 Indonesia" },
   { code: "vn", label: "🇻🇳 Vietnam" },
   { code: "ph", label: "🇵🇭 Philippines" },
-  { code: "custom", label: "✏️ Custom ID..." },
+  { code: "custom", label: "✏️ Custom ID…" },
 ];
 
 const STEP_DEFS = [
@@ -49,7 +49,7 @@ type StepStatus = "waiting" | "running" | "done" | "error";
 interface StepState { status: StepStatus; message?: string }
 type RunState = "idle" | "running" | "done" | "error";
 
-function Input({
+function LabelledInput({
   label, value, onChange, placeholder, type = "text", hint,
 }: {
   label: string; value: string; onChange: (v: string) => void;
@@ -93,8 +93,7 @@ function StepRow({ def, state, lang }: {
   const isDone    = state.status === "done";
   const isError   = state.status === "error";
   const isWaiting = state.status === "waiting";
-
-  const dotColor = isRunning ? ACCENT : isDone ? GREEN : isError ? RED : "rgba(255,255,255,0.15)";
+  const dotColor  = isRunning ? ACCENT : isDone ? GREEN : isError ? RED : "rgba(255,255,255,0.15)";
   const labelColor = isRunning ? "rgba(255,255,255,0.9)" : isDone ? "rgba(255,255,255,0.7)"
     : isError ? RED : "rgba(255,255,255,0.28)";
 
@@ -106,14 +105,12 @@ function StepRow({ def, state, lang }: {
       border: `1px solid ${isRunning ? `${ACCENT}25` : isDone ? `${GREEN}18` : isError ? `${RED}25` : "transparent"}`,
       transition: "all 0.3s ease",
     }}>
-      {/* Indicator */}
       <div style={{
         width: 28, height: 28, borderRadius: 9, flexShrink: 0,
         background: isDone ? `${GREEN}20` : isError ? `${RED}20` : isRunning ? `${ACCENT}20` : GLASS,
         border: `1.5px solid ${dotColor}`,
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: isDone || isError ? 13 : 14,
-        marginTop: 1,
+        fontSize: isDone || isError ? 13 : 14, marginTop: 1,
         boxShadow: isRunning ? `0 0 12px ${ACCENT}40` : "none",
         transition: "all 0.3s ease",
       }}>
@@ -123,18 +120,14 @@ function StepRow({ def, state, lang }: {
           isRunning ? (
             <div style={{
               width: 10, height: 10, borderRadius: "50%",
-              border: `1.5px solid ${ACCENT}44`,
-              borderTopColor: ACCENT,
+              border: `1.5px solid ${ACCENT}44`, borderTopColor: ACCENT,
               animation: "spin 0.8s linear infinite",
             }} />
           ) : def.icon
         )}
       </div>
-
-      {/* Text */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: isRunning ? 700 : 600, color: labelColor,
-          transition: "color 0.3s" }}>
+        <div style={{ fontSize: 12, fontWeight: isRunning ? 700 : 600, color: labelColor, transition: "color 0.3s" }}>
           {label}
         </div>
         {state.message && (
@@ -150,6 +143,8 @@ function StepRow({ def, state, lang }: {
   );
 }
 
+const initSteps = (): StepState[] => STEP_DEFS.map(() => ({ status: "waiting" as StepStatus }));
+
 export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const { lang } = useI18n();
   const L = (en: string, ua: string) => lang === "ua" ? ua : en;
@@ -161,15 +156,22 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [twoFa,         setTwoFa]         = useState("");
   const [apiId,         setApiId]         = useState("");
   const [apiHash,       setApiHash]       = useState("");
+  const [quantity,      setQuantity]      = useState(1);
   const [showCountry,   setShowCountry]   = useState(false);
 
-  const [runState,  setRunState]  = useState<RunState>("idle");
-  const [steps,     setSteps]     = useState<StepState[]>(
-    STEP_DEFS.map(() => ({ status: "waiting" as StepStatus }))
-  );
-  const [errorMsg,  setErrorMsg]  = useState<string | null>(null);
-  const [donePhone, setDonePhone] = useState<string | null>(null);
-  const [pollMsg,   setPollMsg]   = useState<string | null>(null);
+  const [runState,      setRunState]      = useState<RunState>("idle");
+  const [steps,         setSteps]         = useState<StepState[]>(initSteps());
+  const [errorMsg,      setErrorMsg]      = useState<string | null>(null);
+  const [pollMsg,       setPollMsg]       = useState<string | null>(null);
+
+  // Batch tracking
+  const [batchTotal,     setBatchTotal]     = useState(0);
+  const [batchCurrent,   setBatchCurrent]   = useState(0);
+  const [batchSucceeded, setBatchSucceeded] = useState(0);
+  const [batchFailed,    setBatchFailed]    = useState(0);
+  const [batchDelayMsg,  setBatchDelayMsg]  = useState<string | null>(null);
+  const [donePhones,     setDonePhones]     = useState<string[]>([]);
+  const [batchDone,      setBatchDone]      = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -188,9 +190,15 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
 
     setRunState("running");
     setErrorMsg(null);
-    setDonePhone(null);
+    setDonePhones([]);
+    setBatchDone(false);
     setPollMsg(null);
-    setSteps(STEP_DEFS.map(() => ({ status: "waiting" })));
+    setBatchDelayMsg(null);
+    setBatchTotal(0);
+    setBatchCurrent(0);
+    setBatchSucceeded(0);
+    setBatchFailed(0);
+    setSteps(initSteps());
 
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -204,6 +212,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           country_id: countryId,
           proxy_string: proxy,
           two_factor_password: twoFa,
+          quantity,
           ...(apiId   ? { api_id: parseInt(apiId) }   : {}),
           ...(apiHash ? { api_hash: apiHash }           : {}),
         }),
@@ -239,26 +248,52 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           }
           if (!data) continue;
 
-          let payload: Record<string, unknown>;
-          try { payload = JSON.parse(data); } catch { continue; }
+          let p: Record<string, unknown>;
+          try { p = JSON.parse(data); } catch { continue; }
 
-          if (event === "step") {
-            const stepIdx = (payload.step as number) - 1;
-            updateStep(stepIdx, {
-              status:  payload.status as StepStatus,
-              message: (payload.message as string) || undefined,
-            });
-            if (payload.status === "running") setPollMsg(null);
-          } else if (event === "poll") {
-            setPollMsg(payload.message as string);
-          } else if (event === "complete") {
-            setDonePhone(payload.phone as string);
+          if (event === "batch_start") {
+            setBatchTotal(p.total as number);
+          } else if (event === "batch_progress") {
+            setBatchCurrent(p.current as number);
+            setBatchTotal(p.total as number);
+            setBatchSucceeded(p.succeeded as number);
+            setBatchFailed(p.failed as number);
+            setBatchDelayMsg(null);
+          } else if (event === "batch_reset") {
+            setSteps(initSteps());
+            setPollMsg(null);
+            setErrorMsg(null);
+          } else if (event === "batch_delay") {
+            setBatchDelayMsg(p.message as string);
+          } else if (event === "batch_done") {
+            setBatchTotal(p.total as number);
+            setBatchSucceeded(p.succeeded as number);
+            setBatchFailed(p.failed as number);
+            setBatchDone(true);
             setRunState("done");
-            setPollMsg(null);
+            setBatchDelayMsg(null);
+          } else if (event === "step") {
+            const stepIdx = (p.step as number) - 1;
+            updateStep(stepIdx, {
+              status:  p.status as StepStatus,
+              message: (p.message as string) || undefined,
+            });
+            if (p.status === "running") { setPollMsg(null); setBatchDelayMsg(null); }
+          } else if (event === "poll") {
+            setPollMsg(p.message as string);
+          } else if (event === "complete") {
+            setDonePhones(prev => [...prev, p.phone as string]);
+            if (quantity === 1) {
+              setRunState("done");
+              setPollMsg(null);
+              setBatchDelayMsg(null);
+            }
           } else if (event === "error") {
-            setErrorMsg(payload.message as string);
-            setRunState("error");
-            setPollMsg(null);
+            setErrorMsg(p.message as string);
+            if (quantity === 1) {
+              setRunState("error");
+              setPollMsg(null);
+            }
           }
         }
       }
@@ -273,17 +308,24 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   function abort() {
     abortRef.current?.abort();
     setRunState("idle");
-    setSteps(STEP_DEFS.map(() => ({ status: "waiting" })));
+    setSteps(initSteps());
     setPollMsg(null);
+    setBatchDelayMsg(null);
   }
 
   function reset() {
     setRunState("idle");
     setErrorMsg(null);
-    setDonePhone(null);
+    setDonePhones([]);
+    setBatchDone(false);
     setPollMsg(null);
-    setSteps(STEP_DEFS.map(() => ({ status: "waiting" })));
+    setBatchDelayMsg(null);
+    setSteps(initSteps());
+    setBatchTotal(0);
+    setBatchCurrent(0);
   }
+
+  const isBatch = quantity > 1;
 
   return (
     <div style={{
@@ -296,8 +338,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
         padding: "18px 18px 14px",
         borderBottom: `1px solid ${BORDER}`,
         background: "rgba(255,255,255,0.025)",
-        flexShrink: 0,
-        position: "sticky", top: 0, zIndex: 10,
+        flexShrink: 0, position: "sticky", top: 0, zIndex: 10,
         backdropFilter: "blur(16px)",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -306,8 +347,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             background: `linear-gradient(135deg, ${ACCENT}30, ${ACCENT}18)`,
             border: `1.5px solid ${ACCENT}55`,
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 20,
-            boxShadow: `0 0 20px ${ACCENT}25`,
+            fontSize: 20, boxShadow: `0 0 20px ${ACCENT}25`,
           }}>🏭</div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 16, fontWeight: 800, color: "rgba(255,255,255,0.9)" }}>
@@ -333,11 +373,10 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
 
       <div style={{ padding: "20px 18px 40px", display: "flex", flexDirection: "column", gap: 18 }}>
 
-        {/* ── Config form (hidden while running/done) ── */}
+        {/* ── Config form ── */}
         {runState === "idle" && (
           <>
-            {/* SMSPool API Key */}
-            <Input
+            <LabelledInput
               label={L("SMSPool API Key", "API-ключ SMSPool")}
               value={smsKey}
               onChange={setSmsKey}
@@ -371,7 +410,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   background: "rgba(10,14,26,0.98)", border: `1px solid ${BORDER2}`,
                   borderRadius: 14, zIndex: 50, overflow: "hidden",
                   boxShadow: "0 12px 40px rgba(0,0,0,0.7)",
-                  maxHeight: 280, overflowY: "auto",
+                  maxHeight: 260, overflowY: "auto",
                 }}>
                   {COUNTRIES.map(c => (
                     <div
@@ -406,8 +445,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               )}
             </div>
 
-            {/* Proxy */}
-            <Input
+            <LabelledInput
               label={L("Decodo SOCKS5 Proxy", "Проксі Decodo SOCKS5")}
               value={proxy}
               onChange={setProxy}
@@ -415,45 +453,91 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               hint={L("Residential proxy for anti-ban protection", "Residential проксі для захисту від банів")}
             />
 
-            {/* 2FA Password */}
-            <Input
+            <LabelledInput
               label={L("2FA Password", "Пароль 2FA")}
               value={twoFa}
               onChange={setTwoFa}
               placeholder={L("Strong password…", "Надійний пароль…")}
               type="password"
-              hint={L("Set immediately after account creation", "Встановлюється одразу після реєстрації")}
+              hint={L("Applied immediately after account creation", "Встановлюється одразу після реєстрації")}
             />
 
-            {/* Telethon credentials (optional if env vars set) */}
+            {/* Quantity stepper */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.45)",
+                letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>
+                {L("Quantity (Batch Mode)", "Кількість (пакетний режим)")}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <button
+                  onClick={() => setQuantity(q => Math.max(1, q - 1))}
+                  style={{
+                    width: 40, height: 40, borderRadius: 12, background: GLASS2,
+                    border: `1px solid ${BORDER2}`, cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: "rgba(255,255,255,0.7)",
+                  }}
+                >
+                  <Minus size={14} />
+                </button>
+                <div style={{
+                  flex: 1, textAlign: "center",
+                  background: GLASS2, border: `1px solid ${quantity > 1 ? `${ACCENT}55` : BORDER2}`,
+                  borderRadius: 12, padding: "10px",
+                  fontSize: 18, fontWeight: 800,
+                  color: quantity > 1 ? ACCENT : "rgba(255,255,255,0.8)",
+                  boxShadow: quantity > 1 ? `0 0 16px ${ACCENT}25` : "none",
+                  transition: "all 0.2s",
+                }}>
+                  {quantity}
+                  <span style={{ fontSize: 11, fontWeight: 400, color: "rgba(255,255,255,0.4)", marginLeft: 6 }}>
+                    {L("account(s)", "акаунт(ів)")}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setQuantity(q => Math.min(10, q + 1))}
+                  style={{
+                    width: 40, height: 40, borderRadius: 12, background: GLASS2,
+                    border: `1px solid ${BORDER2}`, cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: "rgba(255,255,255,0.7)",
+                  }}
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+              {quantity > 1 && (
+                <div style={{ fontSize: 10, color: "rgba(245,158,11,0.6)", marginTop: 6, lineHeight: 1.4 }}>
+                  {L(
+                    `Registers ${quantity} accounts sequentially with 12s cooldown between each. Stops on error.`,
+                    `Реєструє ${quantity} акаунтів послідовно з 12с паузою між кожним. Зупиняється при помилці.`
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Telethon credentials */}
             <div style={{
               background: `${BLUE}0a`, border: `1px solid ${BLUE}22`,
               borderRadius: 14, padding: "14px 16px",
             }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: BLUE,
-                letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>
+                letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>
                 {L("Telegram API Credentials", "Облікові дані Telegram API")}
               </div>
-              <div style={{ fontSize: 10, color: "rgba(160,180,230,0.5)", marginBottom: 12, lineHeight: 1.5 }}>
+              <div style={{ fontSize: 10, color: "rgba(160,180,230,0.5)", marginBottom: 10, lineHeight: 1.5 }}>
                 {L(
-                  "Leave blank to use environment variables (TELETHON_API_ID / TELETHON_API_HASH). Get yours at my.telegram.org",
-                  "Залиште порожнім, якщо змінні середовища вже встановлені (TELETHON_API_ID / TELETHON_API_HASH). Отримайте на my.telegram.org"
+                  "Leave blank if TELETHON_API_ID / TELETHON_API_HASH env vars are set. Get yours at my.telegram.org",
+                  "Залиште порожнім, якщо змінні TELETHON_API_ID / TELETHON_API_HASH встановлені. Отримайте на my.telegram.org"
                 )}
               </div>
               <div style={{ display: "flex", gap: 10 }}>
-                <Input
-                  label="API ID"
-                  value={apiId}
-                  onChange={setApiId}
-                  placeholder="12345678"
-                  type="number"
-                />
-                <Input
-                  label="API Hash"
-                  value={apiHash}
-                  onChange={setApiHash}
-                  placeholder="abc123..."
-                />
+                <div style={{ flex: 1 }}>
+                  <LabelledInput label="API ID" value={apiId} onChange={setApiId} placeholder="12345678" type="number" />
+                </div>
+                <div style={{ flex: 2 }}>
+                  <LabelledInput label="API Hash" value={apiHash} onChange={setApiHash} placeholder="abc123…" />
+                </div>
               </div>
             </div>
 
@@ -467,7 +551,6 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               </div>
             )}
 
-            {/* Launch button */}
             <button
               onClick={() => void launch()}
               style={{
@@ -480,16 +563,89 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                 boxShadow: `0 0 28px ${ACCENT}40`,
               }}
             >
-              🚀 {L("Launch Automated Registration", "Запустити автоматичну реєстрацію")}
+              {quantity > 1
+                ? `🚀 ${L(`Launch Batch (${quantity} accounts)`, `Запустити пакет (${quantity} акаунтів)`)}`
+                : `🚀 ${L("Launch Automated Registration", "Запустити автоматичну реєстрацію")}`
+              }
             </button>
           </>
         )}
 
-        {/* ── Live stepper (running / done / error) ── */}
+        {/* ── Live stepper ── */}
         {runState !== "idle" && (
           <>
-            {/* Status banner */}
-            {runState === "done" && donePhone && (
+            {/* Batch progress banner */}
+            {isBatch && batchTotal > 0 && !batchDone && (
+              <div style={{
+                background: `${ACCENT}10`, border: `1px solid ${ACCENT}30`,
+                borderRadius: 14, padding: "12px 16px",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: ACCENT }}>
+                    {L(
+                      `Account ${batchCurrent} of ${batchTotal}`,
+                      `Акаунт ${batchCurrent} з ${batchTotal}`
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.45)" }}>
+                    ✓ {batchSucceeded} &nbsp; ✕ {batchFailed}
+                  </div>
+                </div>
+                {/* Progress bar */}
+                <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.08)" }}>
+                  <div style={{
+                    height: "100%", borderRadius: 2,
+                    background: `linear-gradient(90deg, ${ACCENT}, #d97706)`,
+                    width: `${((batchCurrent - 1) / batchTotal) * 100}%`,
+                    transition: "width 0.4s ease",
+                  }} />
+                </div>
+              </div>
+            )}
+
+            {/* Batch delay banner */}
+            {batchDelayMsg && (
+              <div style={{
+                background: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}`,
+                borderRadius: 14, padding: "12px 16px",
+                display: "flex", alignItems: "center", gap: 10,
+              }}>
+                <Loader size={14} color={ACCENT} style={{ animation: "spin 1.2s linear infinite", flexShrink: 0 }} />
+                <span style={{ fontSize: 12, color: "rgba(245,158,11,0.8)" }}>{batchDelayMsg}</span>
+              </div>
+            )}
+
+            {/* Batch done summary */}
+            {batchDone && isBatch && (
+              <div style={{
+                background: `${GREEN}12`, border: `1px solid ${GREEN}40`,
+                borderRadius: 16, padding: "16px 18px", textAlign: "center",
+              }}>
+                <div style={{ fontSize: 28, marginBottom: 6 }}>🎉</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: GREEN, marginBottom: 4 }}>
+                  {L(`Batch Complete!`, `Пакет завершено!`)}
+                </div>
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 6 }}>
+                  {L(
+                    `${batchSucceeded}/${batchTotal} accounts registered successfully`,
+                    `${batchSucceeded}/${batchTotal} акаунтів успішно зареєстровано`
+                  )}
+                </div>
+                {donePhones.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
+                    {donePhones.map(p => (
+                      <div key={p} style={{
+                        background: `${GREEN}20`, border: `1px solid ${GREEN}40`,
+                        borderRadius: 8, padding: "4px 10px", fontSize: 11, color: GREEN,
+                      }}>{p}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Single account done */}
+            {runState === "done" && !isBatch && donePhones.length > 0 && (
               <div style={{
                 background: `${GREEN}12`, border: `1px solid ${GREEN}40`,
                 borderRadius: 16, padding: "16px 18px", textAlign: "center",
@@ -498,15 +654,15 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                 <div style={{ fontSize: 15, fontWeight: 800, color: GREEN, marginBottom: 4 }}>
                   {L("Account Created!", "Акаунт створено!")}
                 </div>
-                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)" }}>{donePhone}</div>
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)" }}>{donePhones[0]}</div>
                 <div style={{ fontSize: 11, color: "rgba(160,200,180,0.55)", marginTop: 6 }}>
-                  {L("Added to your CRM — go to Accounts tab to see it.",
-                     "Додано у CRM — перейдіть на вкладку Акаунти.")}
+                  {L("Added to your CRM — go to Accounts tab.", "Додано у CRM — перейдіть на вкладку Акаунти.")}
                 </div>
               </div>
             )}
 
-            {runState === "error" && errorMsg && (
+            {/* Error banner */}
+            {errorMsg && runState === "error" && (
               <div style={{
                 background: "rgba(255,107,122,0.1)", border: "1px solid rgba(255,107,122,0.3)",
                 borderRadius: 14, padding: "14px 16px",
@@ -514,22 +670,17 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                 <div style={{ fontSize: 12, fontWeight: 700, color: RED, marginBottom: 4 }}>
                   {L("Registration Failed", "Помилка реєстрації")}
                 </div>
-                <div style={{ fontSize: 12, color: "rgba(255,180,180,0.85)", lineHeight: 1.5 }}>
-                  {errorMsg}
-                </div>
+                <div style={{ fontSize: 12, color: "rgba(255,180,180,0.85)", lineHeight: 1.5 }}>{errorMsg}</div>
               </div>
             )}
 
             {/* Steps */}
-            <div style={{
-              background: GLASS, border: `1px solid ${BORDER}`,
-              borderRadius: 18, overflow: "hidden",
-            }}>
+            <div style={{ background: GLASS, border: `1px solid ${BORDER}`, borderRadius: 18, overflow: "hidden" }}>
               <div style={{ padding: "12px 14px 6px", borderBottom: `1px solid ${BORDER}` }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.35)",
                   letterSpacing: "0.06em", textTransform: "uppercase" }}>
                   {runState === "running"
-                    ? L("⚡ Registration in progress...", "⚡ Реєстрація виконується...")
+                    ? L("⚡ Registration in progress…", "⚡ Реєстрація виконується…")
                     : runState === "done"
                     ? L("✅ Complete", "✅ Завершено")
                     : L("❌ Stopped", "❌ Зупинено")}
@@ -540,10 +691,9 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   <StepRow key={def.id} def={def} state={steps[i]!} lang={lang} />
                 ))}
               </div>
-              {pollMsg && (
+              {pollMsg && !batchDelayMsg && (
                 <div style={{
-                  padding: "10px 14px 12px",
-                  borderTop: `1px solid ${BORDER}`,
+                  padding: "10px 14px 12px", borderTop: `1px solid ${BORDER}`,
                   display: "flex", alignItems: "center", gap: 8,
                 }}>
                   <Loader size={12} color={ACCENT} style={{ animation: "spin 1.2s linear infinite", flexShrink: 0 }} />
@@ -578,7 +728,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                       cursor: "pointer", fontFamily: "inherit",
                     }}
                   >
-                    {L("🔄 Register Another", "🔄 Зареєструвати ще")}
+                    {L("🔄 Register More", "🔄 Зареєструвати ще")}
                   </button>
                   <button
                     onClick={onDone}

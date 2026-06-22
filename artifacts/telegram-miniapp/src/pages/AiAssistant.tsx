@@ -113,6 +113,12 @@ const SUGGESTIONS: Record<string, string[]> = {
     "Як налаштувати push-сповіщення для капч?",
     "Як використовувати команду /captcha?",
     "Що означають кольори часу в Хабі?",
+    "Як використовувати Фабрику акаунтів?",
+    "Які країни найкраще підходять для реєстрації акаунтів?",
+    "Що таке пакетний режим у Фабриці акаунтів?",
+    "Де знайти API ключ SMSPool?",
+    "Скільки коштує реєстрація одного акаунту?",
+    "Як прогріти новозареєстрований акаунт?",
   ],
   en: [
     "Platform summary",
@@ -127,6 +133,12 @@ const SUGGESTIONS: Record<string, string[]> = {
     "How to set up captcha push alerts?",
     "How to use the /captcha command?",
     "What do the age colours mean in the Hub?",
+    "How do I use Account Factory?",
+    "Which countries work best for account registration?",
+    "What is batch mode in Account Factory?",
+    "Where do I find my SMSPool API key?",
+    "How much does registering one account cost?",
+    "How do I warm up a freshly registered account?",
   ],
 };
 

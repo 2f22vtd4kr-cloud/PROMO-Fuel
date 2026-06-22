@@ -14,6 +14,7 @@ import { AccountLoginPage }         from "./pages/AccountLogin";
 import { ManualPage }              from "./pages/Manual";
 import { ManualAccountsPage }     from "./pages/ManualAccounts";
 import { ManualVerificationPage } from "./pages/ManualVerification";
+import { ManualFactoryPage }      from "./pages/ManualFactory";
 import { AiAssistantPage }         from "./pages/AiAssistant";
 import { VerificationHubPage }    from "./pages/VerificationHub";
 import { LockScreen, getStoredSecret } from "./pages/LockScreen";
@@ -63,10 +64,11 @@ function OwnerApp() {
   const [showGroupEditor,  setShowGroupEditor] = useState(false);
   const [showAccounts,     setShowAccounts]    = useState(false);
   const [showAccountLogin, setShowAccountLogin]= useState(false);
-  const [showManual,         setShowManual]        = useState(false);
-  const [showManualAccounts, setShowManualAccounts] = useState(false);
-  const [showManualChooser,       setShowManualChooser]       = useState(false);
-  const [showManualVerification,  setShowManualVerification]  = useState(false);
+  const [showManual,            setShowManual]            = useState(false);
+  const [showManualAccounts,    setShowManualAccounts]    = useState(false);
+  const [showManualChooser,     setShowManualChooser]     = useState(false);
+  const [showManualVerification,setShowManualVerification]= useState(false);
+  const [showManualFactory,     setShowManualFactory]     = useState(false);
   const [captchaBadge,            setCaptchaBadge]            = useState(0);
   const badgeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -112,7 +114,7 @@ function OwnerApp() {
     setTab(t as Tab);
   }
 
-  const anyOverlay = showEditor || showGroupEditor || showAccounts || showAccountLogin || showManual || showManualAccounts || showManualChooser || showManualVerification;
+  const anyOverlay = showEditor || showGroupEditor || showAccounts || showAccountLogin || showManual || showManualAccounts || showManualChooser || showManualVerification || showManualFactory;
 
   return (
     <div style={{
@@ -205,11 +207,16 @@ function OwnerApp() {
         <ManualVerificationPage onClose={() => setShowManualVerification(false)} />
       )}
 
+      {showManualFactory && (
+        <ManualFactoryPage onClose={() => setShowManualFactory(false)} />
+      )}
+
       {showManualChooser && (
         <ManualChooserPanel
           onSystemManual={() => { setShowManualChooser(false); setShowManual(true); }}
           onAccountsManual={() => { setShowManualChooser(false); setShowManualAccounts(true); }}
           onVerifManual={() => { setShowManualChooser(false); setShowManualVerification(true); }}
+          onFactoryManual={() => { setShowManualChooser(false); setShowManualFactory(true); }}
           onClose={() => setShowManualChooser(false)}
         />
       )}
@@ -287,11 +294,12 @@ function CampaignToastWatcher() {
 
 // ─── Unified manual chooser bottom-sheet ───────────────────────────────────
 function ManualChooserPanel({
-  onSystemManual, onAccountsManual, onVerifManual, onClose,
+  onSystemManual, onAccountsManual, onVerifManual, onFactoryManual, onClose,
 }: {
   onSystemManual: () => void;
   onAccountsManual: () => void;
   onVerifManual: () => void;
+  onFactoryManual: () => void;
   onClose: () => void;
 }) {
   const { lang } = useI18n();
@@ -315,7 +323,7 @@ function ManualChooserPanel({
             <span style={{ fontSize:30 }}>📖</span>
             <div>
               <div style={{ fontSize:12, fontWeight:800, color:"#00d4ff", marginBottom:3 }}>{lang === "ua" ? "Системний мануал" : "System Manual"}</div>
-              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>33 {lang === "ua" ? "сторінки" : "pages"}</div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>34 {lang === "ua" ? "сторінки" : "pages"}</div>
               <div style={{ fontSize:9, color:"rgba(0,212,255,0.5)", marginTop:4 }}>{lang === "ua" ? "Кампанії · Воркери · API" : "Campaigns · Workers · API"}</div>
             </div>
           </button>
@@ -328,16 +336,25 @@ function ManualChooserPanel({
               <div style={{ fontSize:9, color:"rgba(45,232,151,0.5)", marginTop:4 }}>{lang === "ua" ? "SOCKS5 · MTProto · Масштаб" : "SOCKS5 · MTProto · Scale"}</div>
             </div>
           </button>
+          {/* Verification manual */}
+          <button onClick={onVerifManual} style={{ background:"linear-gradient(145deg,rgba(45,212,191,0.12),rgba(20,184,166,0.06))", border:"1px solid rgba(45,212,191,0.28)", borderRadius:18, padding:"18px 12px", cursor:"pointer", textAlign:"center", display:"flex", flexDirection:"column", alignItems:"center", gap:9 }}>
+            <span style={{ fontSize:30 }}>🛡️</span>
+            <div>
+              <div style={{ fontSize:12, fontWeight:800, color:"#2dd4bf", marginBottom:3 }}>{lang === "ua" ? "Верифікація / HITL" : "Verification / HITL"}</div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>15 {lang === "ua" ? "сторінок" : "pages"}</div>
+              <div style={{ fontSize:9, color:"rgba(45,212,191,0.55)", marginTop:4 }}>{lang === "ua" ? "Капча · Слухач · Push · UI" : "Captcha · Listener · Push · UI"}</div>
+            </div>
+          </button>
+          {/* Account Factory manual */}
+          <button onClick={onFactoryManual} style={{ background:"linear-gradient(145deg,rgba(245,158,11,0.12),rgba(245,158,11,0.05))", border:"1px solid rgba(245,158,11,0.28)", borderRadius:18, padding:"18px 12px", cursor:"pointer", textAlign:"center", display:"flex", flexDirection:"column", alignItems:"center", gap:9 }}>
+            <span style={{ fontSize:30 }}>🏭</span>
+            <div>
+              <div style={{ fontSize:12, fontWeight:800, color:"#f59e0b", marginBottom:3 }}>{lang === "ua" ? "Фабрика акаунтів" : "Account Factory"}</div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>12 {lang === "ua" ? "сторінок" : "pages"}</div>
+              <div style={{ fontSize:9, color:"rgba(245,158,11,0.55)", marginTop:4 }}>SMSPool · Decodo · Batch</div>
+            </div>
+          </button>
         </div>
-        {/* Verification manual — full-width row */}
-        <button onClick={onVerifManual} style={{ width:"100%", background:"linear-gradient(145deg,rgba(45,212,191,0.12),rgba(20,184,166,0.06))", border:"1px solid rgba(45,212,191,0.28)", borderRadius:18, padding:"14px 18px", cursor:"pointer", display:"flex", alignItems:"center", gap:14 }}>
-          <span style={{ fontSize:28, flexShrink:0 }}>🛡️</span>
-          <div style={{ textAlign:"left" }}>
-            <div style={{ fontSize:12, fontWeight:800, color:"#2dd4bf", marginBottom:2 }}>{lang === "ua" ? "Верифікація / HITL Captcha" : "Verification / HITL Captcha"}</div>
-            <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>15 {lang === "ua" ? "сторінок" : "pages"}</div>
-            <div style={{ fontSize:9, color:"rgba(45,212,191,0.55)", marginTop:2 }}>{lang === "ua" ? "Капча · Слухач · Push · UI · Історія" : "Captcha · Listener · Push · UI · History"}</div>
-          </div>
-        </button>
       </div>
     </div>
   );

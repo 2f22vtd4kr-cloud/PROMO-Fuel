@@ -516,6 +516,25 @@ Safe limits: 15-60s delay between sends; 50-100 msg/day per account (warm-up: st
 - Home page shows a "Verification" activity strip card (red when pending > 0, green otherwise); tapping navigates to verify tab
 - To check if push alerts are configured: verify TELEGRAM_TOKEN and ADMIN_TELEGRAM_ID environment variables are set
 
+## Account Factory (Automated Account Registration)
+- **Location**: Accounts page → "···" overflow menu → "🏭 Account Factory"
+- **Endpoint**: POST /api/factory/register (Python FastAPI, port 8083, proxied through Node.js) — returns SSE stream (text/event-stream)
+- **Full pipeline (7 steps, fully automated)**:
+  1. Purchase real phone number from SMSPool API (service=11=Telegram)
+  2. Init Telethon client with random device fingerprint + SOCKS5 proxy tunnel
+  3. client.send_code_request(phone) — request Telegram verification code
+  4. Poll SMSPool /sms/check every 5s, auto-cancel after 120s timeout
+  5. client.sign_in(code) or client.sign_up(first_name, last_name) for fresh numbers
+  6. client.edit_2fa(new_password=...) — immediate 2FA security
+  7. Save .session + .json to ./sessions/ + INSERT into sender_accounts with auth_status='active'
+- **Batch mode**: quantity field (1–10) registers accounts sequentially with 12s cooldown between each
+- **Required env vars**: TELETHON_API_ID, TELETHON_API_HASH (can also be entered in the form)
+- **Error guards**: PhoneNumberBannedError → auto-cancel SMSPool order (no charge); SMS timeout → auto-cancel; SessionPasswordNeededError → number already registered
+- **SMSPool**: smspool.net — buy with crypto/card; service ID 11 = Telegram; Ukraine/Kazakhstan cheapest
+- **Proxy**: socks5://user:pass@ip:port format; Decodo (smartproxy.com) residential/mobile; match country to phone
+- **On success**: .session file + .json metadata written; CRM row inserted with 2FA pass, session_file, proxy, auth_status='active', is_active=1
+- **Manual**: 📚 → "🏭 Account Factory" guide (12 pages) — covers SMSPool setup, proxy selection, credentials, batch mode, error types, best practices
+
 ## Key Endpoints (for your reference)
 - GET /api/twa/campaigns — list all campaigns
 - GET /api/twa/accounts — list all sender accounts
@@ -527,6 +546,7 @@ Safe limits: 15-60s delay between sends; 50-100 msg/day per account (warm-up: st
 - GET /api/twa/events — SSE stream
 - GET /api/verifications/pending — pending captcha challenges (Python FastAPI port 8083)
 - POST /api/verifications/listeners/start-all — start Telethon captcha listeners for all active accounts
+- POST /api/factory/register — Account Factory SSE stream (Python FastAPI port 8083)
 
 Respond in the same language the user writes in (Russian, Ukrainian, or English). Be direct and precise.`;
 
