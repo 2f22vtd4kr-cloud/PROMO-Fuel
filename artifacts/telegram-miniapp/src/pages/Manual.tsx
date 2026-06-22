@@ -1696,8 +1696,8 @@ function SlideNewFeatures({ lang }: SL) {
       icon: "🔍",
       title: L(lang,"Manual Slide Search","Пошук по слайдах довідника"),
       desc:  L(lang,
-        "Tap 🔍 in the top bar of this manual to search across all 31 slide titles and keywords. Tap a result to jump directly to that slide.",
-        "Натисніть 🔍 у верхній панелі довідника для пошуку по всіх 31 слайдах. Торкніться результату — одразу перейдете до слайда.",
+        "Tap 🔍 in the top bar of this manual to search across all 33 slide titles and keywords. Tap a result to jump directly to that slide.",
+        "Натисніть 🔍 у верхній панелі довідника для пошуку по всіх 33 слайдах. Торкніться результату — одразу перейдете до слайда.",
       ),
     },
     {
@@ -1756,6 +1756,22 @@ function SlideNewFeatures({ lang }: SL) {
         "У розділі Group Broadcasts → вкладка Stats — натисніть на будь-яку групу, щоб відкрити аналітику: частота доставки, FloodWait, бани, деталі по кожній кампанії та 30-денна гістограма.",
       ),
     },
+    {
+      icon: "🤖",
+      title: L(lang,"AI Autonomous Copilot","AI Автономний копілот"),
+      desc:  L(lang,
+        "The AI Assistant now runs in Autonomous Mode with 6 mutation tools (delete accounts, update proxies, pause/resume campaigns, trigger blasts). Every action requires your explicit approval via the Human-in-the-Loop gate before execution.",
+        "AI Помічник тепер працює в автономному режимі з 6 інструментами мутації (видалення акаунтів, оновлення проксі, призупинення/відновлення кампаній, запуск бластів). Кожна дія потребує вашого явного підтвердження через вікно авторизації.",
+      ),
+    },
+    {
+      icon: "🕐",
+      title: L(lang,"AI Action History Log","Журнал дій AI"),
+      desc:  L(lang,
+        "Tap the 🕐 clock icon in the AI Assistant header to open the action history log — a full audit trail of every approved and cancelled AI operation with timestamp, exact parameters, engine badge, and outcome.",
+        "Натисніть 🕐 у заголовку AI Помічника, щоб відкрити журнал дій — повний аудит-лог кожної підтвердженої та скасованої операції AI з часом, параметрами, бейджем рушія та результатом.",
+      ),
+    },
   ];
   return (
     <Shell>
@@ -1776,6 +1792,75 @@ function SlideNewFeatures({ lang }: SL) {
             </div>
           </div>
         ))}
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Slide — AI Copilot
+// ═══════════════════════════════════════════════════════════════
+function SlideAiCopilot({ lang }: SL) {
+  return (
+    <Shell>
+      {title("🤖", L(lang,"AI Autonomous Copilot","AI Автономний копілот"), PURPLE)}
+
+      <div style={{ ...card(PURPLE), marginBottom:12 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:PURPLE, marginBottom:8 }}>
+          {L(lang,"What it does","Що він робить")}
+        </div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.65)", lineHeight:1.6 }}>
+          {L(lang,
+            "PROMO-Fuel System Copilot runs in Autonomous Mode — it can read all platform data AND take real actions on your behalf. Powered by Gemini 2.5 Flash (primary) and Groq Llama (fallback).",
+            "PROMO-Fuel System Copilot працює в автономному режимі — він може читати всі дані платформи І виконувати реальні дії. Основний рушій: Gemini 2.5 Flash, резерв: Groq Llama.",
+          )}
+        </div>
+      </div>
+
+      <div style={{ fontSize:11, fontWeight:700, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>
+        {L(lang,"6 Mutation Tools","6 Інструментів мутації")}
+      </div>
+      {[
+        { icon:"🗑️", color:PINK,  name:"delete_restricted_accounts", label:L(lang,"Delete Banned Accounts","Видалення заблокованих"), desc:L(lang,"Permanently removes banned/restricted sender accounts by ID.","Остаточно видаляє заблоковані акаунти за ID.") },
+        { icon:"🌐", color:BLUE,  name:"update_account_proxy",        label:L(lang,"Update Account Proxy","Оновити проксі акаунтів"), desc:L(lang,"Sets a new SOCKS5 proxy on a list of accounts.","Встановлює новий SOCKS5-проксі на список акаунтів.") },
+        { icon:"🧹", color:GREEN, name:"remove_dead_proxies",          label:L(lang,"Remove Dead Proxies","Очистити мертві проксі"), desc:L(lang,"Clears proxy field on all proxy_failed accounts.","Очищає проксі на всіх акаунтах зі статусом proxy_failed.") },
+        { icon:"⏸️", color:AMBER, name:"pause_active_campaign",        label:L(lang,"Pause Campaign","Призупинити кампанію"), desc:L(lang,"Pauses a currently running DM campaign.","Призупиняє запущену DM-кампанію.") },
+        { icon:"▶️", color:GREEN, name:"resume_campaign",              label:L(lang,"Resume Campaign","Відновити кампанію"), desc:L(lang,"Resumes a paused DM campaign.","Відновлює призупинену DM-кампанію.") },
+        { icon:"🚀", color:PINK,  name:"trigger_bulk_blast",           label:L(lang,"Trigger Bulk Blast","Запустити масовий бласт"), desc:L(lang,"Creates and immediately launches a new DM campaign.","Створює й одразу запускає нову DM-кампанію.") },
+      ].map(t => (
+        <div key={t.name} style={{ display:"flex", gap:11, alignItems:"flex-start", marginBottom:7,
+          background:GLASS, border:`1px solid ${BORDER}`, borderRadius:11, padding:"9px 12px" }}>
+          <div style={{ width:32, height:32, borderRadius:8, background:`${t.color}18`, border:`1.5px solid ${t.color}44`,
+            display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, flexShrink:0 }}>{t.icon}</div>
+          <div>
+            <div style={{ fontSize:12, fontWeight:700, color:t.color, marginBottom:1 }}>{t.label}</div>
+            <div style={{ fontSize:10, color:"rgba(255,255,255,0.42)", lineHeight:1.45 }}>{t.desc}</div>
+          </div>
+        </div>
+      ))}
+
+      <div style={{ ...card(AMBER), marginTop:4 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:AMBER, marginBottom:6 }}>
+          🔒 {L(lang,"Human-in-the-Loop Gate","Вікно підтвердження дій")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.58)", lineHeight:1.6 }}>
+          {L(lang,
+            "AI never executes mutations silently. When it wants to take action, it stops and shows an Authorization Card with the exact operation details. You tap Approve & Execute or Cancel — nothing runs without your explicit confirmation.",
+            "AI ніколи не виконує мутації мовчки. Коли AI хоче вжити дію, воно зупиняється і показує картку авторизації з точними деталями операції. Ви натискаєте «Підтвердити та виконати» або «Скасувати» — нічого не запускається без вашого явного підтвердження.",
+          )}
+        </div>
+      </div>
+
+      <div style={{ ...card(ACCENT), marginTop:4 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:ACCENT, marginBottom:6 }}>
+          🕐 {L(lang,"Action History Log","Журнал дій")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.58)", lineHeight:1.6 }}>
+          {L(lang,
+            "Tap the clock icon (🕐) in the AI header to view a full audit trail of every action the AI proposed — approved ✓ or cancelled ✗, with exact parameters, timestamp, and engine badge. Persists across sessions. Holds up to 100 entries.",
+            "Натисніть піктограму годинника (🕐) у заголовку AI, щоб переглянути повний журнал кожної запропонованої AI дії — підтверджена ✓ або скасована ✗, з точними параметрами, часом і бейджем рушія. Зберігається між сесіями. До 100 записів.",
+          )}
+        </div>
       </div>
     </Shell>
   );
@@ -1817,13 +1902,15 @@ const KEYWORDS: string[] = [
   "database SQLite API endpoints REST",
   "checklist launch deploy production",
   "new features bell toast notification fleet health search digest archive group analytics overlay",
+  "AI copilot autonomous assistant gemini groq mutation tools human-in-the-loop HITL approval gate",
+  "what's new latest changelog",
 ];
 const SLIDES: Array<(p: SL) => React.ReactElement> = [
   Slide1,Slide2,Slide3,Slide4,Slide5,Slide6,Slide7,Slide8,Slide9,
   Slide10,Slide11,Slide12,Slide13,SlideAccountsBulk,Slide14,SlideProxyHealth,
   SlideAutoRevalidation,SlideAccountTools,SlideMonitoring,
   Slide15,Slide16,Slide17,Slide18,Slide19,Slide20,Slide21,Slide22,
-  Slide23,Slide24,Slide25,SlideNewFeatures,
+  Slide23,Slide24,Slide25,SlideAiCopilot,SlideNewFeatures,
 ];
 const TOTAL = SLIDES.length;
 
@@ -1836,7 +1923,7 @@ const TITLES: Record<Lang, string[]> = {
     "Auto-Revalidation","Account Tools","Monitoring & Alerts",
     "Workers","Task Queue","Rate Limits","Best Practices","Architecture",
     "Telegram Protocols","Sessions & Security","Spintax Engine",
-    "Process Internals","Database & API","Launch Checklist","What's New",
+    "Process Internals","Database & API","Launch Checklist","AI Copilot","What's New",
   ],
   ua: [
     "Обкладинка","Огляд системи","Дашборд","Швидкі дії","DM-розсилки",
@@ -1846,7 +1933,7 @@ const TITLES: Record<Lang, string[]> = {
     "Авто-реvalidація","Інструменти акаунтів","Моніторинг і сповіщення",
     "Воркери","Черга задач","Ліміти відправки","Поради та рекомендації",
     "Архітектура","Протоколи Telegram","Сесії та безпека",
-    "Рушій спінтаксу","Внутрішня будова процесів","База даних та API","Чеклист запуску","Нові функції",
+    "Рушій спінтаксу","Внутрішня будова процесів","База даних та API","Чеклист запуску","AI Копілот","Нові функції",
   ],
 };
 

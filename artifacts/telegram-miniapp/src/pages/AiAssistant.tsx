@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Bot, Sparkles, Cpu, Paperclip, X, Trash2, Copy, Check, ShieldAlert, ShieldCheck, Loader2, ChevronRight } from "lucide-react";
+import { Send, Bot, Sparkles, Cpu, Paperclip, X, Trash2, Copy, Check, ShieldAlert, ShieldCheck, Loader2, ChevronRight, Clock } from "lucide-react";
 import { getStoredSecret } from "./LockScreen";
 import { useI18n } from "../lib/i18n";
 
@@ -31,6 +31,16 @@ interface PendingAction {
   action_details: ActionDetails;
   history: HistoryItem[];
   engine: string;
+}
+
+interface ActionLogEntry {
+  id: string;
+  ts: Date;
+  function_name: string;
+  engine: string;
+  description: string;
+  outcome: "approved" | "cancelled";
+  resultText: string;
 }
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
@@ -407,6 +417,87 @@ function ActionAuthorizationCard({
   );
 }
 
+// ── Action History Panel ──────────────────────────────────────────────────
+
+function ActionHistoryPanel({ log, lang, onClear }: { log: ActionLogEntry[]; lang: string; onClear: () => void }) {
+  if (log.length === 0) {
+    return (
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, opacity: 0.55, animation: "aiFadeIn 0.25s ease both" }}>
+        <Clock size={34} color="#a78bfa" />
+        <div style={{ fontSize: 13, color: "rgba(180,200,240,0.7)", textAlign: "center", lineHeight: 1.5 }}>
+          {lang === "ua" ? "Журнал дій порожній.\nТут з'являться всі підтверджені\nта скасовані операції AI." : "No actions recorded yet.\nApproved and cancelled AI operations\nwill appear here."}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px 8px", display: "flex", flexDirection: "column", gap: 8, scrollbarWidth: "none" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexShrink: 0 }}>
+        <div style={{ fontSize: 11, color: "rgba(148,163,184,0.5)", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          {lang === "ua" ? `${log.length} запис${log.length === 1 ? "" : "ів"}` : `${log.length} entr${log.length === 1 ? "y" : "ies"}`}
+        </div>
+        <button
+          onClick={onClear}
+          style={{
+            fontSize: 11, color: "rgba(252,165,165,0.7)", background: "rgba(239,68,68,0.07)",
+            border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "3px 10px",
+            cursor: "pointer", fontFamily: "inherit",
+          }}
+        >
+          {lang === "ua" ? "Очистити все" : "Clear all"}
+        </button>
+      </div>
+      {log.map(entry => {
+        const meta = TOOL_META[entry.function_name] ?? { label: entry.function_name, icon: "⚙️", danger: false, descFn: () => "" };
+        const approved = entry.outcome === "approved";
+        return (
+          <div key={entry.id} style={{
+            padding: "11px 14px", borderRadius: 16, flexShrink: 0,
+            background: approved
+              ? "linear-gradient(145deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)"
+              : "rgba(255,255,255,0.025)",
+            border: approved
+              ? `1px solid ${meta.danger ? "rgba(239,68,68,0.25)" : "rgba(139,92,246,0.25)"}`
+              : "1px solid rgba(255,255,255,0.07)",
+            animation: "aiFadeIn 0.25s ease both",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 7 }}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>{meta.icon}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: approved ? "#e2e8ff" : "rgba(180,200,230,0.45)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {meta.label}
+                </div>
+              </div>
+              <div style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", flexShrink: 0,
+                color: approved ? "rgba(74,222,128,0.85)" : "rgba(252,165,165,0.65)",
+                background: approved ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)",
+                border: approved ? "1px solid rgba(34,197,94,0.25)" : "1px solid rgba(239,68,68,0.2)",
+                borderRadius: 6, padding: "2px 7px",
+              }}>
+                {approved ? (lang === "ua" ? "✓ Виконано" : "✓ Done") : (lang === "ua" ? "✗ Скасовано" : "✗ Cancelled")}
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: "rgba(180,200,230,0.5)", lineHeight: 1.5, marginBottom: 7, whiteSpace: "pre-wrap", wordBreak: "break-all", fontFamily: "monospace", background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: "7px 9px" }}>
+              {entry.description}
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontSize: 10, color: "rgba(120,140,180,0.38)" }}>
+                {entry.ts.toLocaleDateString(lang === "ua" ? "uk-UA" : "en-GB", { day: "2-digit", month: "short" })}
+                {" · "}
+                {entry.ts.toLocaleTimeString(lang === "ua" ? "uk-UA" : "en-GB", { hour: "2-digit", minute: "2-digit" })}
+              </div>
+              <div style={{ fontSize: 9, letterSpacing: "0.04em", color: entry.engine === "groq" ? "rgba(167,139,250,0.5)" : "rgba(96,165,250,0.5)" }}>
+                {entry.engine === "groq" ? "⚡ Groq" : "✦ Gemini"}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────
 
 export function AiAssistantPage() {
@@ -426,9 +517,32 @@ export function AiAssistantPage() {
   const [attachedImage, setAttached]    = useState<{ base64: string; mimeType: string; dataUrl: string } | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
+  const [showHistory, setShowHistory] = useState(false);
+  const [actionLog, setActionLog] = useState<ActionLogEntry[]>(() => {
+    try {
+      const raw = localStorage.getItem("pf_action_log");
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as Array<ActionLogEntry & { ts: string }>;
+      return parsed.map(e => ({ ...e, ts: new Date(e.ts) }));
+    } catch { return []; }
+  });
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLTextAreaElement>(null);
   const fileRef   = useRef<HTMLInputElement>(null);
+
+  function addLogEntry(entry: ActionLogEntry) {
+    setActionLog(prev => {
+      const next = [entry, ...prev].slice(0, 100);
+      try { localStorage.setItem("pf_action_log", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
+  function clearLog() {
+    setActionLog([]);
+    try { localStorage.removeItem("pf_action_log"); } catch {}
+  }
 
   const GREETING: Message = {
     role: "model",
@@ -555,15 +669,37 @@ export function AiAssistantPage() {
   // ── Action approval/cancel handlers ─────────────────────────────────────
 
   function handleActionCancel() {
-    const cancelMsg = lang === "ua"
-      ? "❌ Дію скасовано."
-      : "❌ Action cancelled.";
+    if (pendingAction) {
+      const meta = TOOL_META[pendingAction.action_details.function_name];
+      addLogEntry({
+        id: `${Date.now()}-${Math.random()}`,
+        ts: new Date(),
+        function_name: pendingAction.action_details.function_name,
+        engine: pendingAction.engine,
+        description: meta?.descFn(pendingAction.action_details.arguments) ?? JSON.stringify(pendingAction.action_details.arguments),
+        outcome: "cancelled",
+        resultText: lang === "ua" ? "❌ Дію скасовано." : "❌ Action cancelled.",
+      });
+    }
+    const cancelMsg = lang === "ua" ? "❌ Дію скасовано." : "❌ Action cancelled.";
     setMessages(prev => [...prev, { role: "model", text: cancelMsg, ts: new Date() }]);
     setPendingAction(null);
     setTimeout(() => inputRef.current?.focus(), 50);
   }
 
   function handleActionApprove(successMsg: string) {
+    if (pendingAction) {
+      const meta = TOOL_META[pendingAction.action_details.function_name];
+      addLogEntry({
+        id: `${Date.now()}-${Math.random()}`,
+        ts: new Date(),
+        function_name: pendingAction.action_details.function_name,
+        engine: pendingAction.engine,
+        description: meta?.descFn(pendingAction.action_details.arguments) ?? JSON.stringify(pendingAction.action_details.arguments),
+        outcome: "approved",
+        resultText: successMsg,
+      });
+    }
     setPendingAction(null);
     setMessages(prev => [...prev, { role: "model", text: successMsg, ts: new Date() }]);
     setTimeout(() => inputRef.current?.focus(), 50);
@@ -607,7 +743,35 @@ export function AiAssistantPage() {
               PROMO-Fuel System Copilot · Autonomous Mode
             </div>
           </div>
-          {messages.length > 1 && (
+          {/* History toggle */}
+          <button
+            onClick={() => setShowHistory(h => !h)}
+            title={lang === "ua" ? "Журнал дій" : "Action history"}
+            style={{
+              position: "relative",
+              width: 34, height: 34, borderRadius: 11,
+              background: showHistory ? "rgba(139,92,246,0.2)" : "rgba(255,255,255,0.04)",
+              border: showHistory ? "1px solid rgba(139,92,246,0.45)" : "1px solid rgba(255,255,255,0.1)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", transition: "all 0.18s",
+            }}
+          >
+            <Clock size={15} color={showHistory ? "#a78bfa" : "rgba(160,180,230,0.5)"} />
+            {actionLog.length > 0 && !showHistory && (
+              <div style={{
+                position: "absolute", top: -4, right: -4,
+                width: 16, height: 16, borderRadius: "50%",
+                background: "linear-gradient(135deg, #a78bfa, #6366f1)",
+                border: "2px solid rgba(7,9,15,1)",
+                fontSize: 8, fontWeight: 700, color: "#fff",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                {actionLog.length > 99 ? "99" : actionLog.length}
+              </div>
+            )}
+          </button>
+
+          {messages.length > 1 && !showHistory && (
             <button
               onClick={resetChat}
               disabled={loading}
@@ -636,12 +800,19 @@ export function AiAssistantPage() {
         </div>
       </div>
 
+      <style>{`
+        @keyframes aiTyping  { 0%,80%,100%{opacity:0.3;transform:scale(0.8)} 40%{opacity:1;transform:scale(1)} }
+        @keyframes aiFadeIn  { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+      `}</style>
+
+      {/* ── History panel ──────────────────────────────────────────────── */}
+      {showHistory && (
+        <ActionHistoryPanel log={actionLog} lang={lang} onClear={clearLog} />
+      )}
+
       {/* ── Messages ───────────────────────────────────────────────────── */}
+      {!showHistory && (
       <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px 8px", display: "flex", flexDirection: "column", gap: 10, scrollbarWidth: "none" }}>
-        <style>{`
-          @keyframes aiTyping  { 0%,80%,100%{opacity:0.3;transform:scale(0.8)} 40%{opacity:1;transform:scale(1)} }
-          @keyframes aiFadeIn  { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-        `}</style>
 
         {messages.map((msg, i) => (
           <div key={i} style={{ display: "flex", flexDirection: msg.role === "user" ? "row-reverse" : "row", alignItems: "flex-end", gap: 8, animation: "aiFadeIn 0.3s ease both" }}>
@@ -767,6 +938,7 @@ export function AiAssistantPage() {
 
         <div ref={bottomRef} />
       </div>
+      )}
 
       {/* ── Input area ─────────────────────────────────────────────────── */}
       <div style={{ flexShrink: 0, padding: "8px 12px 12px", borderTop: "1px solid rgba(255,255,255,0.07)", background: "linear-gradient(0deg, rgba(7,9,15,0.8) 0%, transparent 100%)" }}>
