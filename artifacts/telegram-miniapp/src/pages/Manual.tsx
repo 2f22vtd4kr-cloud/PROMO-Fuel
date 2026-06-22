@@ -1981,7 +1981,7 @@ function SlideAiSpintax({ lang }: SL) {
 function SlideVerificationHub({ lang }: SL) {
   return (
     <Shell>
-      <STitle icon="🛡️" text={L(lang,"Verification Hub","Центр верифікації")} color="#2dd4bf" />
+      {title("🛡️", L(lang,"Verification Hub","Центр верифікації"), "#2dd4bf")}
       <div style={{ ...card("#2dd4bf"), marginBottom:12 }}>
         <div style={{ fontSize:12, color:"rgba(255,255,255,0.7)", lineHeight:1.65, marginBottom:10 }}>
           {L(lang,
