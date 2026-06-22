@@ -76,6 +76,38 @@ def _parse_proxy(proxy_string: str):
             parsed.username or None, parsed.password or None)
 
 
+async def _test_proxy_connection(proxy_string: str, timeout: float = 12.0) -> tuple[bool, str]:
+    """
+    Test a SOCKS5/SOCKS4 proxy by connecting to Telegram DC1 (149.154.167.91:443).
+    Runs the blocking socket call in a thread executor so we don't block the event loop.
+    Returns (ok: bool, message: str).
+    """
+    try:
+        proxy_tuple = _parse_proxy(proxy_string)
+        if proxy_tuple is None:
+            return False, "Invalid or empty proxy string"
+
+        stype, host, port, rdns, user, password = proxy_tuple
+
+        import socks as pysocks  # noqa: PLC0415
+
+        def _sync_connect():
+            sock = pysocks.socksocket()
+            sock.set_proxy(stype, host, port, rdns, user, password)
+            sock.settimeout(timeout)
+            sock.connect(("149.154.167.91", 443))  # Telegram DC1
+            sock.close()
+
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _sync_connect)
+        scheme_label = "SOCKS5" if stype == 2 else "SOCKS4"  # pysocks.SOCKS5 == 2
+        return True, f"✅ {scheme_label} tunnel OK via {host}:{port}"
+
+    except Exception as exc:
+        short = str(exc)[:120]
+        return False, f"Connection refused or timeout: {short}"
+
+
 async def _registration_stream(
     smspool_api_key: str,
     country_id: str,
@@ -113,6 +145,23 @@ async def _registration_stream(
             client = None
 
     try:
+        # ─── Preflight — Proxy health check ──────────────────────────────
+        yield _sse("preflight", {
+            "status": "running",
+            "message": f"🔍 Testing proxy connection to Telegram DC1…",
+        })
+        proxy_ok, proxy_msg = await _test_proxy_connection(proxy_string)
+        if not proxy_ok:
+            yield _sse("preflight", {"status": "error", "message": proxy_msg})
+            yield _sse("error", {
+                "message": (
+                    f"🔌 Proxy pre-check failed — {proxy_msg}. "
+                    "Fix your proxy before proceeding so you don't waste SMSPool balance."
+                )
+            })
+            return
+        yield _sse("preflight", {"status": "done", "message": proxy_msg})
+
         # ─── Step 1 — Purchase number ────────────────────────────────────
         yield _sse("step", {"step": 1, "status": "running",
                             "message": "⏳ Requesting an optimized number from SMSPool..."})

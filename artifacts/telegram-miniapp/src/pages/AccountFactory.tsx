@@ -159,10 +159,12 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [quantity,      setQuantity]      = useState(1);
   const [showCountry,   setShowCountry]   = useState(false);
 
-  const [runState,      setRunState]      = useState<RunState>("idle");
-  const [steps,         setSteps]         = useState<StepState[]>(initSteps());
-  const [errorMsg,      setErrorMsg]      = useState<string | null>(null);
-  const [pollMsg,       setPollMsg]       = useState<string | null>(null);
+  const [runState,        setRunState]        = useState<RunState>("idle");
+  const [steps,           setSteps]           = useState<StepState[]>(initSteps());
+  const [errorMsg,        setErrorMsg]        = useState<string | null>(null);
+  const [pollMsg,         setPollMsg]         = useState<string | null>(null);
+  const [preflightStatus, setPreflightStatus] = useState<"idle"|"running"|"done"|"error">("idle");
+  const [preflightMsg,    setPreflightMsg]    = useState<string | null>(null);
 
   // Batch tracking
   const [batchTotal,     setBatchTotal]     = useState(0);
@@ -199,6 +201,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setBatchSucceeded(0);
     setBatchFailed(0);
     setSteps(initSteps());
+    setPreflightStatus("idle");
+    setPreflightMsg(null);
 
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -259,10 +263,15 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             setBatchSucceeded(p.succeeded as number);
             setBatchFailed(p.failed as number);
             setBatchDelayMsg(null);
+          } else if (event === "preflight") {
+            setPreflightStatus(p.status as "running" | "done" | "error");
+            setPreflightMsg(p.message as string ?? null);
           } else if (event === "batch_reset") {
             setSteps(initSteps());
             setPollMsg(null);
             setErrorMsg(null);
+            setPreflightStatus("idle");
+            setPreflightMsg(null);
           } else if (event === "batch_delay") {
             setBatchDelayMsg(p.message as string);
           } else if (event === "batch_done") {
@@ -323,6 +332,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setSteps(initSteps());
     setBatchTotal(0);
     setBatchCurrent(0);
+    setPreflightStatus("idle");
+    setPreflightMsg(null);
   }
 
   const isBatch = quantity > 1;
@@ -574,6 +585,75 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
         {/* ── Live stepper ── */}
         {runState !== "idle" && (
           <>
+            {/* ── Preflight proxy check banner ── */}
+            {preflightStatus !== "idle" && (
+              <div style={{
+                display: "flex", alignItems: "flex-start", gap: 12,
+                padding: "12px 16px", borderRadius: 14,
+                background: preflightStatus === "done"
+                  ? `${GREEN}0d`
+                  : preflightStatus === "error"
+                  ? "rgba(255,107,122,0.08)"
+                  : `${ACCENT}0a`,
+                border: `1px solid ${
+                  preflightStatus === "done" ? `${GREEN}30`
+                  : preflightStatus === "error" ? "rgba(255,107,122,0.30)"
+                  : `${ACCENT}30`
+                }`,
+                transition: "all 0.3s ease",
+              }}>
+                {/* Icon */}
+                <div style={{
+                  width: 32, height: 32, borderRadius: 9, flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 15,
+                  background: preflightStatus === "done"
+                    ? `${GREEN}20` : preflightStatus === "error"
+                    ? "rgba(255,107,122,0.15)" : `${ACCENT}18`,
+                  border: `1.5px solid ${
+                    preflightStatus === "done" ? `${GREEN}55`
+                    : preflightStatus === "error" ? "rgba(255,107,122,0.45)"
+                    : `${ACCENT}55`
+                  }`,
+                  boxShadow: preflightStatus === "running" ? `0 0 12px ${ACCENT}30` : "none",
+                }}>
+                  {preflightStatus === "running" ? (
+                    <div style={{
+                      width: 12, height: 12, borderRadius: "50%",
+                      border: `2px solid ${ACCENT}44`, borderTopColor: ACCENT,
+                      animation: "spin 0.8s linear infinite",
+                    }} />
+                  ) : preflightStatus === "done" ? "🔌" : "⚠️"}
+                </div>
+                {/* Text */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 11, fontWeight: 700,
+                    color: preflightStatus === "done" ? GREEN
+                      : preflightStatus === "error" ? RED : ACCENT,
+                    marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.05em",
+                  }}>
+                    {preflightStatus === "running"
+                      ? L("Proxy Pre-check", "Перевірка проксі")
+                      : preflightStatus === "done"
+                      ? L("Proxy OK", "Проксі OK")
+                      : L("Proxy Failed", "Проксі не доступний")}
+                  </div>
+                  <div style={{
+                    fontSize: 12,
+                    color: preflightStatus === "done"
+                      ? "rgba(45,232,151,0.8)"
+                      : preflightStatus === "error"
+                      ? "rgba(255,180,180,0.85)"
+                      : "rgba(255,255,255,0.65)",
+                    lineHeight: 1.45,
+                  }}>
+                    {preflightMsg ?? (L("Testing SOCKS5 tunnel to Telegram DC1…", "Тестування SOCKS5 тунелю до Telegram DC1…"))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Batch progress banner */}
             {isBatch && batchTotal > 0 && !batchDone && (
               <div style={{

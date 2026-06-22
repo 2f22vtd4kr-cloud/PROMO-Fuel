@@ -519,6 +519,7 @@ Safe limits: 15-60s delay between sends; 50-100 msg/day per account (warm-up: st
 ## Account Factory (Automated Account Registration)
 - **Location**: Accounts page → "···" overflow menu → "🏭 Account Factory"
 - **Endpoint**: POST /api/factory/register (Python FastAPI, port 8083, proxied through Node.js) — returns SSE stream (text/event-stream)
+- **Proxy pre-check (runs BEFORE Step 1)**: factory opens a real SOCKS5 socket to Telegram DC1 (149.154.167.91:443, timeout 12s) before purchasing any SMSPool number. SSE event: `preflight` with status "running"→"done"/"error". If it fails → pipeline aborts with no SMSPool balance spent. User must fix proxy string and retry.
 - **Full pipeline (7 steps, fully automated)**:
   1. Purchase real phone number from SMSPool API (service=11=Telegram)
   2. Init Telethon client with random device fingerprint + SOCKS5 proxy tunnel

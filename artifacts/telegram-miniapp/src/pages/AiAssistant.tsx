@@ -119,6 +119,8 @@ const SUGGESTIONS: Record<string, string[]> = {
     "Де знайти API ключ SMSPool?",
     "Скільки коштує реєстрація одного акаунту?",
     "Як прогріти новозареєстрований акаунт?",
+    "Що таке перевірка проксі у Фабриці акаунтів?",
+    "Чому не пройшла перевірка проксі?",
   ],
   en: [
     "Platform summary",
@@ -139,6 +141,8 @@ const SUGGESTIONS: Record<string, string[]> = {
     "Where do I find my SMSPool API key?",
     "How much does registering one account cost?",
     "How do I warm up a freshly registered account?",
+    "What does proxy pre-check mean in Account Factory?",
+    "Why did my proxy pre-check fail?",
   ],
 };
 

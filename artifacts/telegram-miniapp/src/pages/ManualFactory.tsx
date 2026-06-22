@@ -249,6 +249,17 @@ function Slide5({ lang }: SL) {
         desc={L(lang, "Best for fresh account registration. Rotates like a real phone. Highest success rate.", "Найкраще для реєстрації свіжих акаунтів. Ротація як реальний телефон. Найвищий показник успіху.")} />
       <Row icon="🚫" label={L(lang, "Datacenter — Avoid!", "Datacenter — Уникайте!")} color={RED}
         desc={L(lang, "Telegram immediately flags and restricts accounts connected via datacenter IPs during registration.", "Telegram миттєво помічає та обмежує акаунти, підключені через datacenter-IP під час реєстрації.")} />
+      <div style={card(TEAL)}>
+        <div style={{ fontSize:12, fontWeight:700, color:TEAL, marginBottom:6 }}>
+          🔌 {L(lang, "Automatic Proxy Pre-check", "Автоматична перевірка проксі")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", lineHeight:1.6 }}>
+          {L(lang,
+            "Before buying any SMSPool number, the factory tests your proxy by opening a real SOCKS5 socket to Telegram DC1 (149.154.167.91:443). If it fails, the pipeline aborts immediately — no SMS balance wasted. Fix your proxy string and try again.",
+            "Перед купівлею будь-якого SMSPool-номера фабрика перевіряє проксі, відкриваючи реальне SOCKS5-з'єднання до Telegram DC1 (149.154.167.91:443). Якщо перевірка не вдається — конвеєр негайно зупиняється без витрати SMSPool балансу. Виправте рядок проксі та повторіть спробу."
+          )}
+        </div>
+      </div>
       <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginTop:4 }}>
         💡 {L(lang, "Match proxy country to the number country for best results.", "Для найкращих результатів підбирайте країну проксі до країни номера.")}
       </div>
@@ -457,14 +468,16 @@ function Slide11({ lang }: SL) {
         {L(lang, "The factory handles all known failure modes automatically:", "Фабрика автоматично обробляє всі відомі збої:")}
       </div>
       {[
+        { icon:"🔌", color:TEAL, en:"Proxy Pre-check Failed (before Step 1)", ua:"Помилка перевірки проксі (до кроку 1)",
+          desc: L(lang, "Factory tests SOCKS5 to Telegram DC1 (149.154.167.91:443) before buying any number. If it fails → pipeline aborts instantly, no SMSPool balance spent. Fix proxy string and retry.", "Фабрика тестує SOCKS5 до Telegram DC1 (149.154.167.91:443) перед купівлею будь-якого номера. Якщо не вдається → конвеєр зупиняється миттєво, баланс SMSPool не витрачається. Виправте рядок проксі та повторіть.") },
         { icon:"🚫", color:RED, en:"PhoneNumberBannedError", ua:"PhoneNumberBannedError",
           desc: L(lang, "Telegram instantly bans the number → SMSPool order auto-cancelled → no charge. Try again with a different country.", "Telegram миттєво банить номер → замовлення SMSPool автоматично скасовується → без оплати. Спробуйте іншу країну.") },
         { icon:"⏱", color:ACCENT, en:"SMS Timeout (120s)", ua:"Таймаут SMS (120с)",
           desc: L(lang, "No code received in 2 minutes → SMSPool order cancelled → Telethon disconnected safely. Reattempt.", "Код не надійшов за 2 хвилини → замовлення SMSPool скасовано → Telethon відключено безпечно. Повторіть спробу.") },
         { icon:"🔐", color:PURPLE, en:"SessionPasswordNeededError", ua:"SessionPasswordNeededError",
           desc: L(lang, "Number already has 2FA → can't auto-register. The number was previously registered. Use a fresh number.", "Номер вже має 2FA → автоматична реєстрація неможлива. Номер був раніше зареєстрований. Використайте свіжий номер.") },
-        { icon:"🌐", color:BLUE, en:"Proxy / Network Error", ua:"Помилка проксі / мережі",
-          desc: L(lang, "Connection via proxy fails → error shown, client disconnected. Check proxy format and availability.", "Підключення через проксі не вдалося → відображається помилка, клієнт відключено. Перевірте формат та доступність проксі.") },
+        { icon:"🌐", color:BLUE, en:"Proxy / Network Error (during pipeline)", ua:"Помилка проксі / мережі (під час конвеєру)",
+          desc: L(lang, "Proxy passes pre-check but drops mid-registration → error shown, client disconnected. Intermittent proxies cause this.", "Проксі проходить перевірку, але відключається під час реєстрації → відображається помилка, клієнт відключено. Викликається нестабільними проксі.") },
         { icon:"📱", color:GREEN, en:"PhoneNumberUnoccupiedError", ua:"PhoneNumberUnoccupiedError",
           desc: L(lang, "Fresh number with no Telegram account → factory auto-generates a random name and calls sign_up(). Normal flow.", "Свіжий номер без акаунту Telegram → фабрика автоматично генерує випадкове ім'я та викликає sign_up(). Нормальний процес.") },
       ].map(e => (
