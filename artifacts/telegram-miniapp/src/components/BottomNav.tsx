@@ -1,20 +1,17 @@
-import { LayoutGrid, Megaphone, BarChart2, Users2, Radio, Cpu, LayoutDashboard, Key, Sparkles, BookOpen } from "lucide-react";
+import { LayoutGrid, Megaphone, BarChart2, Users2, Radio, Cpu, LayoutDashboard, Key, Sparkles } from "lucide-react";
 import type { Tab } from "../App";
 import { TG } from "../lib/theme";
 import { haptic } from "../lib/haptics";
 import { useI18n } from "../lib/i18n";
-import { LangSwitcher } from "./LangSwitcher";
 
 export function BottomNav({
   active,
   onNav,
   onNavigate,
-  onManual,
 }: {
   active: Tab;
   onNav: (t: Tab) => void;
   onNavigate?: (t: string) => void;
-  onManual?: () => void;
 }) {
   const { t } = useI18n();
 
@@ -76,7 +73,7 @@ export function BottomNav({
           pointerEvents: "none", zIndex: 1,
         }} />
 
-        {/* Scrollable nav items — paddingRight reserves space for the right controls */}
+        {/* Scrollable nav items */}
         <div
           className="bottom-nav-scroll"
           style={{
@@ -84,7 +81,6 @@ export function BottomNav({
             overflowY: "hidden",
             WebkitOverflowScrolling: "touch",
             scrollbarWidth: "none",
-            paddingRight: 100,
           }}
         >
           <div style={{ display: "flex", width: "max-content", padding: "4px 4px" }}>
@@ -191,41 +187,6 @@ export function BottomNav({
           </div>
         </div>
 
-        {/* Fixed right controls — always visible, doesn't scroll */}
-        <div style={{
-          position: "absolute", right: 0, top: 0, bottom: 0,
-          width: 100,
-          display: "flex", alignItems: "center", justifyContent: "flex-end",
-          gap: 5,
-          paddingRight: 10,
-          paddingLeft: 8,
-          background: "linear-gradient(to right, transparent 0%, rgba(10,14,26,0.55) 25%, rgba(10,14,26,0.82) 48%, rgba(10,14,26,0.95) 65%)",
-          backdropFilter: "blur(24px)",
-          WebkitBackdropFilter: "blur(24px)",
-          zIndex: 8,
-          borderRadius: "0 28px 28px 0",
-          pointerEvents: "auto",
-        }}>
-          <LangSwitcher />
-          {onManual && (
-            <button
-              onClick={() => { haptic.light(); onManual(); }}
-              style={{
-                width: 28, height: 28, borderRadius: 8,
-                background: "linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
-                border: "1px solid rgba(255,255,255,0.10)",
-                boxShadow: "0 1px 0 rgba(255,255,255,0.10) inset",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer",
-                flexShrink: 0,
-                backdropFilter: "blur(12px)",
-                WebkitBackdropFilter: "blur(12px)",
-              }}
-            >
-              <BookOpen size={13} color="rgba(149,196,245,0.55)" strokeWidth={1.8} />
-            </button>
-          )}
-        </div>
       </div>
     </div>
   );

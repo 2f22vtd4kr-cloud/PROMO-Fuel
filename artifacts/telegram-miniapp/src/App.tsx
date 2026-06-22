@@ -16,12 +16,15 @@ import { ManualAccountsPage }     from "./pages/ManualAccounts";
 import { AiAssistantPage }         from "./pages/AiAssistant";
 import { LockScreen, getStoredSecret } from "./pages/LockScreen";
 import { BottomNav }                from "./components/BottomNav";
+import { LangSwitcher }             from "./components/LangSwitcher";
 import { ConsumerApp }              from "./ConsumerApp";
 import { getOwnerRole }             from "./lib/twa";
 import { I18nProvider }             from "./lib/i18n";
 import { useSse }                   from "./lib/useSse";
 import { useToast }                 from "./components/Toast";
 import { useI18n }                  from "./lib/i18n";
+import { BookOpen }                 from "lucide-react";
+import { haptic }                   from "./lib/haptics";
 
 export type Tab = "home" | "campaigns" | "analytics" | "audience" | "upload" | "groups" | "workers" | "dashboard" | "ai";
 
@@ -151,10 +154,36 @@ function OwnerApp() {
         />
       )}
 
-      {/* ── Bottom nav (with lang switcher + help built in) ──────────── */}
+      {/* ── Global top-right controls — lang + manual ──────────────── */}
+      <div style={{
+        position: "absolute", top: 0, right: 0,
+        zIndex: 60,
+        display: "flex", alignItems: "center", gap: 6,
+        padding: "10px 12px 0 0",
+        pointerEvents: "auto",
+      }}>
+        <LangSwitcher />
+        <button
+          onClick={() => { haptic.light(); setShowManualChooser(true); }}
+          style={{
+            width: 30, height: 30, borderRadius: 10,
+            background: "linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            boxShadow: "0 1px 0 rgba(255,255,255,0.10) inset",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+          }}
+        >
+          <BookOpen size={14} color="rgba(149,196,245,0.65)" strokeWidth={1.8} />
+        </button>
+      </div>
+
+      {/* ── Bottom nav ───────────────────────────────────────────────── */}
       {!anyOverlay && (
         <div style={{ position: "relative", zIndex: 2 }}>
-          <BottomNav active={tab} onNav={setTab} onNavigate={handleNavigate} onManual={() => setShowManualChooser(true)} />
+          <BottomNav active={tab} onNav={setTab} onNavigate={handleNavigate} />
         </div>
       )}
 

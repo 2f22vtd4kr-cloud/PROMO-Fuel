@@ -49784,7 +49784,9 @@ router3.post("/campaigns/:id/action", (req, res) => {
   if (action === "start") action = "running";
   if (action === "cancel") action = "cancelled";
   if (action === "schedule") action = "scheduled";
-  const allowed = ["running", "paused", "cancelled", "draft", "scheduled"];
+  if (action === "archive") action = "archived";
+  if (action === "unarchive") action = "draft";
+  const allowed = ["running", "paused", "cancelled", "draft", "scheduled", "archived"];
   if (!action || !allowed.includes(action)) return void res.status(400).json({ error: "invalid action" });
   try {
     const db = new Database2(DB_PATH);
@@ -51701,6 +51703,68 @@ router10.post("/group-campaigns/:id/test-send", (req, res) => {
     res.status(500).json({ error: String(err) });
   }
 });
+router10.get("/group-campaigns/groups/:group_id/analytics", (req, res) => {
+  try {
+    const db = getDb6();
+    const groupId = decodeURIComponent(req.params.group_id);
+    const totals = db.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status='ok' OR status='sent' THEN 1 ELSE 0 END) AS ok,
+        SUM(CASE WHEN status='failed' OR status='error' THEN 1 ELSE 0 END) AS failed,
+        SUM(CASE WHEN status='banned' THEN 1 ELSE 0 END) AS bans,
+        SUM(CASE WHEN error LIKE '%FloodWait%' OR error LIKE '%flood_wait%' OR error LIKE '%FLOOD%' OR error LIKE '%FloodError%' THEN 1 ELSE 0 END) AS flood_wait,
+        MIN(sent_at) AS first_seen,
+        MAX(sent_at) AS last_seen,
+        MAX(group_title) AS group_title
+      FROM group_sends WHERE group_id = ?
+    `).get(groupId);
+    const campaigns = db.prepare(`
+      SELECT gc.id, gc.name, gc.status,
+        SUM(CASE WHEN gs.status='ok' OR gs.status='sent' THEN 1 ELSE 0 END) AS sent,
+        SUM(CASE WHEN gs.status='failed' OR gs.status='error' THEN 1 ELSE 0 END) AS failed,
+        SUM(CASE WHEN gs.status='banned' THEN 1 ELSE 0 END) AS bans,
+        MAX(gs.sent_at) AS last_sent_at
+      FROM group_sends gs
+      JOIN group_campaigns gc ON gc.id = gs.campaign_id
+      WHERE gs.group_id = ?
+      GROUP BY gc.id ORDER BY last_sent_at DESC LIMIT 20
+    `).all(groupId);
+    const recentErrors = db.prepare(`
+      SELECT error, status, sent_at FROM group_sends
+      WHERE group_id = ? AND (status='failed' OR status='error' OR status='banned')
+      ORDER BY sent_at DESC LIMIT 10
+    `).all(groupId);
+    const dailyHistory = db.prepare(`
+      SELECT substr(sent_at,1,10) AS day,
+        SUM(CASE WHEN status='ok' OR status='sent' THEN 1 ELSE 0 END) AS sent,
+        SUM(CASE WHEN status='failed' OR status='error' THEN 1 ELSE 0 END) AS failed
+      FROM group_sends WHERE group_id = ?
+      GROUP BY day ORDER BY day DESC LIMIT 30
+    `).all(groupId);
+    db.close();
+    const total = totals?.total ?? 0;
+    const ok = totals?.ok ?? 0;
+    const deliveryRate = total > 0 ? Math.round(ok / total * 100) : 0;
+    res.json({
+      group_id: groupId,
+      group_title: totals?.group_title ?? groupId,
+      total_sends: total,
+      ok,
+      failed: totals?.failed ?? 0,
+      bans: totals?.bans ?? 0,
+      flood_wait_events: totals?.flood_wait ?? 0,
+      delivery_rate: deliveryRate,
+      first_seen: totals?.first_seen ?? null,
+      last_seen: totals?.last_seen ?? null,
+      campaigns,
+      recent_errors: recentErrors,
+      daily_history: dailyHistory
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
 var group_campaigns_default = router10;
 
 // src/routes/workers.ts
@@ -52230,6 +52294,63 @@ function checkFailedProxies() {
     db.close();
   }
 }
+function getGroupCampaigns() {
+  const db = getDb8();
+  try {
+    const camps = db.prepare(
+      "SELECT id, name, status, sent_count, failed_count, selected_groups, interval_seconds, next_send_at, last_sent_at FROM group_campaigns ORDER BY status, name"
+    ).all();
+    let recentErrors = [];
+    try {
+      recentErrors = db.prepare(
+        "SELECT group_title, error, sent_at FROM group_sends WHERE (status='failed' OR status='error' OR status='banned') ORDER BY sent_at DESC LIMIT 20"
+      ).all();
+    } catch {
+    }
+    return {
+      campaigns: camps.map((c) => ({
+        ...c,
+        group_count: (() => {
+          try {
+            return JSON.parse(c.selected_groups).length;
+          } catch {
+            return 0;
+          }
+        })()
+      })),
+      total: camps.length,
+      running: camps.filter((c) => c.status === "running").length,
+      paused: camps.filter((c) => c.status === "paused").length,
+      draft: camps.filter((c) => c.status === "draft").length,
+      recent_errors: recentErrors
+    };
+  } finally {
+    db.close();
+  }
+}
+function getDmCampaignPerformance() {
+  const db = getDb8();
+  try {
+    const camps = db.prepare(
+      "SELECT id, name, status, sent_count, failed_count, target_count, created_at FROM campaigns WHERE status != 'archived' ORDER BY sent_count DESC LIMIT 30"
+    ).all();
+    const archived = db.prepare("SELECT COUNT(*) as n FROM campaigns WHERE status='archived'").get().n;
+    return {
+      campaigns: camps.map((c) => {
+        const total = c.sent_count + c.failed_count;
+        return { ...c, success_rate: total > 0 ? Math.round(c.sent_count / total * 100) : null };
+      }),
+      total: camps.length,
+      archived,
+      running: camps.filter((c) => c.status === "running").length,
+      paused: camps.filter((c) => c.status === "paused").length,
+      draft: camps.filter((c) => c.status === "draft").length,
+      done: camps.filter((c) => c.status === "done" || c.status === "cancelled").length
+    };
+  } finally {
+    db.close();
+  }
+}
 function getAccountStatusByCountry() {
   const db = getDb8();
   try {
@@ -52292,7 +52413,9 @@ function getAccountStatusByCountry() {
 var TOOL_DISPATCH = {
   get_platform_summary: getPlatformSummary,
   check_failed_proxies: checkFailedProxies,
-  get_account_status_by_country: getAccountStatusByCountry
+  get_account_status_by_country: getAccountStatusByCountry,
+  get_group_campaigns: getGroupCampaigns,
+  get_dm_campaign_performance: getDmCampaignPerformance
 };
 var TOOLS = [
   {
@@ -52308,6 +52431,14 @@ var TOOLS = [
       {
         name: "get_account_status_by_country",
         description: "Returns a breakdown of all connected accounts grouped by country prefix (e.g., Russia +7, UK +44, Poland +48). Shows working vs restricted (banned/flood_wait/proxy_failed) accounts per country."
+      },
+      {
+        name: "get_group_campaigns",
+        description: "Returns all group broadcast campaigns with their status (running/paused/draft), sent/failed counts, group count, next scheduled send time, and recent errors across all group sends. Use this to answer questions about group broadcast health, what campaigns are active, or what errors are occurring in group sends."
+      },
+      {
+        name: "get_dm_campaign_performance",
+        description: "Returns all DM (direct message) campaigns with status, sent/failed counts, success rate %, and how many campaigns are archived. Use this to answer questions about DM campaign performance, success rates, archived campaigns, or which campaigns have errors."
       }
     ]
   }
@@ -52335,6 +52466,8 @@ var SYSTEM_INSTRUCTION = `You are the PROMO-Fuel System Copilot \u2014 an expert
 - **Manual Search** (\u{1F50D} in both manuals): tap search icon to filter all slides by title or keyword, tap result to jump directly. Both System Manual and Accounts & Proxy guide have search
 - **Unified Manual Chooser**: tap ? button in bottom nav \u2192 bottom sheet appears with two cards: \u{1F4D6} System Manual (31 slides) and \u{1F510} Accounts & Proxy (9 slides). No more scattered guide buttons
 - **Campaign Sparklines**: each campaign card shows a 7-bar mini chart of the last 7 days' sends
+- **Campaign Archive**: DM campaigns can be archived (soft-delete) via \xB7\xB7\xB7 menu \u2192 Archive. Archived tab hides them from main view; they can be restored via Unarchive
+- **Group Analytics Overlay**: tap any group name in the Group Broadcasts stats tab \u2192 full-screen overlay shows all-time delivery rate, FloodWait frequency, ban events, per-campaign breakdown, and 30-day daily history for that group
 - **What's New slide**: Manual slide 31 summarizes all recently added features
 
 ## Proxy & Account Knowledge
