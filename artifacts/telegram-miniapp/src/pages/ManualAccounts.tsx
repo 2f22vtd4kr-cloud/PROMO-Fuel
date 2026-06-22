@@ -726,6 +726,115 @@ function Slide9({ lang }: SL) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SLIDE 10 — AI-Automated Profile Setup
+// ═══════════════════════════════════════════════════════════════
+function Slide10({ lang }: SL) {
+  return (
+    <Shell>
+      <STitle icon="🤖" text={L(lang,"AI Profile Setup (Step 7)","AI-профіль акаунта (Крок 7)")} color={PURPLE} />
+
+      <div style={card(PURPLE)}>
+        <div style={{ fontSize:12, fontWeight:800, color:PURPLE, marginBottom:8 }}>
+          {L(lang,"How it works","Як це працює")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.65)", lineHeight:1.6, marginBottom:10 }}>
+          {L(lang,
+            "After 2FA is confirmed (Step 6), the Account Factory runs Profile Setup automatically. In AI mode, Gemini generates a realistic Russian-audience persona — first name, last name, and a natural bio — then sets it on the Telegram account via MTProto.",
+            "Після підтвердження 2FA (Крок 6), Фабрика акаунтів автоматично виконує налаштування профілю. В режимі AI — Gemini генерує реалістичну персону для російської аудиторії: ім'я, прізвище та органічне біо — і застосовує їх до акаунта через MTProto."
+          )}
+        </div>
+        {[
+          [L(lang,"🎲 Name & Bio","🎲 Ім'я та біо"),
+           L(lang,"Gemini 2.5 Flash generates a believable Russian first/last name + 1–2 sentence bio describing a real-world interest (fuel, auto, travel, etc.).",
+              "Gemini 2.5 Flash генерує переконливе ім'я та 1–2-речення біо з реальними інтересами (паливо, авто, мандрівки тощо).")],
+          [L(lang,"🖼️ Avatar Pool","🖼️ Пул аватарів"),
+           L(lang,"Drop portrait images (.jpg/.png) into assets/pending_avatars/. The pipeline randomly picks one, sets it as the profile photo, then moves it to assets/used_avatars/ to prevent reuse.",
+              "Помістіть портрети (.jpg/.png) у assets/pending_avatars/. Конвеєр випадково вибирає один, встановлює аватар і переміщує файл до assets/used_avatars/, щоб уникнути повторного використання.")],
+          [L(lang,"✅ Fallback","✅ Резерв"),
+           L(lang,"If the avatar pool is empty or Gemini is unavailable, the account is registered without a photo. Profile name/bio still apply if AI call succeeds.",
+              "Якщо пул порожній або Gemini недоступний — акаунт реєструється без фото. Ім'я/біо від AI застосовуються, якщо виклик Gemini успішний.")],
+        ].map(([title, desc]) => (
+          <div key={title as string} style={{ marginBottom:10 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:PURPLE, marginBottom:3 }}>{title as string}</div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.55)", lineHeight:1.4 }}>{desc as string}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={card(ACCENT)}>
+        <div style={{ fontSize:11, fontWeight:800, color:ACCENT, marginBottom:6 }}>
+          {L(lang,"Avatar Pool Management","Керування пулом аватарів")}
+        </div>
+        <code style={{ display:"block", fontSize:10, color:"rgba(255,255,255,0.7)", lineHeight:2,
+          background:GLASS, border:`1px solid ${BORDER}`, borderRadius:8, padding:"10px 12px", fontFamily:"monospace" }}>
+{`assets/
+  pending_avatars/   ← add new portraits here
+  used_avatars/      ← consumed photos land here`}
+        </code>
+        <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", marginTop:7, lineHeight:1.5 }}>
+          {L(lang,
+            "Keep at least 1 image per account you plan to register. Refill pending_avatars/ from your photo library whenever the folder empties.",
+            "Тримайте мінімум 1 фото на кожен акаунт, який плануєте зареєструвати. Поповнюйте pending_avatars/ з вашої бібліотеки, коли папка спорожніє."
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SLIDE 11 — Manual Profile Setup
+// ═══════════════════════════════════════════════════════════════
+function Slide11({ lang }: SL) {
+  return (
+    <Shell>
+      <STitle icon="✍️" text={L(lang,"Manual Profile Setup (Step 7)","Ручний профіль акаунта (Крок 7)")} color={GREEN} />
+
+      <div style={card(GREEN)}>
+        <div style={{ fontSize:12, fontWeight:800, color:GREEN, marginBottom:8 }}>
+          {L(lang,"When to use Manual mode","Коли обирати ручний режим")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.65)", lineHeight:1.6 }}>
+          {L(lang,
+            "Use Manual mode when you need precise brand control — e.g. creating operator accounts, test accounts, or accounts tied to a specific persona you manage.",
+            "Обирайте ручний режим, коли потрібен точний контроль над брендом — наприклад, для операторських акаунтів, тестових або акаунтів із конкретною персоною, яку ви ведете."
+          )}
+        </div>
+      </div>
+
+      <div style={card(AMBER)}>
+        <div style={{ fontSize:12, fontWeight:800, color:AMBER, marginBottom:8 }}>
+          {L(lang,"Fields & Uploads","Поля та завантаження")}
+        </div>
+        {[
+          [L(lang,"First Name *","Ім'я *"),        L(lang,"Required. Applied to the Telegram account name.","Обов'язкове. Встановлюється як ім'я в Telegram.")],
+          [L(lang,"Last Name","Прізвище"),         L(lang,"Optional. Fills the last name field on the profile.","Необов'язкове. Заповнює поле прізвища профілю.")],
+          [L(lang,"Bio","Біо"),                    L(lang,"Up to 70 chars. Appears under the username in profile view.","До 70 символів. Відображається під ніком у профілі.")],
+          [L(lang,"Photos (multi-upload)","Фото (мульти-завантаження)"), L(lang,"Upload 1–5 images. They are base64-encoded and sent to the server. The pipeline sets each photo in order — Telegram shows the first as primary.","Завантажте 1–5 зображень. Кодуються в base64 і відправляються на сервер. Конвеєр встановлює кожне фото по черзі — Telegram показує перше як основне.")],
+        ].map(([field, desc]) => (
+          <div key={field as string} style={{ marginBottom:9, borderBottom:`1px solid rgba(255,255,255,0.05)`, paddingBottom:9 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:AMBER, marginBottom:2 }}>{field as string}</div>
+            <div style={{ fontSize:10, color:"rgba(255,255,255,0.5)", lineHeight:1.4 }}>{desc as string}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={card(PINK)}>
+        <div style={{ fontSize:11, fontWeight:800, color:PINK, marginBottom:6 }}>
+          {L(lang,"🔄 Selecting the mode","🔄 Вибір режиму")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", lineHeight:1.5 }}>
+          {L(lang,
+            "In the Account Factory (Accounts → Factory icon), Step 7 shows a toggle: «🤖 AI Auto» / «✍️ Manual». AI Auto is the default. Switch to Manual to reveal the name/bio/photo upload form before launching the factory.",
+            "У Фабриці акаунтів (Акаунти → іконка Factory), Крок 7 показує перемикач: «🤖 AI Auto» / «✍️ Вручну». AI Auto — за замовчуванням. Перемкніться на Вручну, щоб відкрити форму імені/біо/фото перед запуском фабрики."
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Slide registry
 // ═══════════════════════════════════════════════════════════════
 const KEYWORDS_ACCOUNTS: string[] = [
@@ -738,9 +847,11 @@ const KEYWORDS_ACCOUNTS: string[] = [
   "quality matrix buy avoid datacenter residential SIM",
   "procurement provider Smartproxy IPRoyal format socks5",
   "scaling 100 accounts pool rotation quota daily reset",
+  "AI profile gemini avatar persona name bio automated step 7",
+  "manual profile name bio photo upload branding operator persona",
 ];
 const SLIDES: Array<(p: SL) => React.ReactElement> = [
-  Slide1, Slide2, Slide3, Slide4, Slide5, Slide6, Slide7, Slide8, Slide9,
+  Slide1, Slide2, Slide3, Slide4, Slide5, Slide6, Slide7, Slide8, Slide9, Slide10, Slide11,
 ];
 const TOTAL = SLIDES.length;
 

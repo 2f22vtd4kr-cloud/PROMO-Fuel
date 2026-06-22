@@ -6,11 +6,14 @@ Streams progress via SSE (text/event-stream) over a POST request.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
 import random
+import shutil
 import time
+from io import BytesIO
 from urllib.parse import urlparse
 
 import aiohttp
@@ -24,6 +27,8 @@ from telethon.errors import (
     PhoneNumberUnoccupiedError,
     SessionPasswordNeededError,
 )
+from telethon.tl.functions.account import UpdateProfileRequest
+from telethon.tl.functions.photos import UploadProfilePhotoRequest
 
 logger = logging.getLogger("account_factory")
 
@@ -62,6 +67,110 @@ LAST_NAMES = [
     "Melnyk", "Petrenko", "Savchenko", "Moroz", "Lytvyn", "Rudenko",
     "Ponomarenko", "Hrytsenko", "Boyko", "Marchenko",
 ]
+
+
+PENDING_AVATARS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "pending_avatars")
+USED_AVATARS_DIR    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "used_avatars")
+GEMINI_API_URL      = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+
+_AVATAR_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+
+
+def _pick_pending_avatar() -> str | None:
+    """Grab one image from pending_avatars/, move it to used_avatars/, return dest path or None."""
+    os.makedirs(PENDING_AVATARS_DIR, exist_ok=True)
+    os.makedirs(USED_AVATARS_DIR, exist_ok=True)
+    try:
+        candidates = [
+            f for f in os.listdir(PENDING_AVATARS_DIR)
+            if os.path.splitext(f)[1].lower() in _AVATAR_EXTS
+        ]
+    except OSError:
+        return None
+    if not candidates:
+        return None
+    chosen = random.choice(candidates)
+    src = os.path.join(PENDING_AVATARS_DIR, chosen)
+    dst = os.path.join(USED_AVATARS_DIR, chosen)
+    try:
+        shutil.move(src, dst)
+    except Exception:
+        return None
+    return dst
+
+
+async def _generate_ai_profile(http_session: aiohttp.ClientSession) -> dict[str, str]:
+    """Call Gemini to generate a Russian-audience Telegram profile.
+
+    Returns {"first_name": ..., "last_name": ..., "bio": ...}.
+    Falls back to static name lists on any error or missing API key.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return {
+            "first_name": random.choice(FIRST_NAMES),
+            "last_name":  random.choice(LAST_NAMES),
+            "bio":        "",
+        }
+
+    # Four name styles with weighted random selection
+    _styles = [
+        ("classic",    40,
+         "a traditional Russian Cyrillic first + last name (e.g. Алексей Громов, Ольга Захарова). "
+         "first_name MUST be Cyrillic."),
+        ("latin",      25,
+         "a Latinized/transliterated Russian name (e.g. Oliya, Kirill Morozov, Sonya). "
+         "Mix Latin letters naturally. last_name is optional."),
+        ("nickname",   25,
+         "a modern informal Russian Telegram nickname (e.g. x_vlad_x, toxic_masha, real_nikitos). "
+         "last_name should be empty string."),
+        ("subculture", 10,
+         "a Russian patriotic or subculture name with Z, V or Cyrillic patriotic markers "
+         "(e.g. Z_Алексей, Витя🔱, Zа_Победу). last_name can be short or empty."),
+    ]
+    _, _, style_desc = random.choices(_styles, weights=[s[1] for s in _styles], k=1)[0]
+
+    include_bio = random.random() < 0.35
+    bio_instr = (
+        "Also generate a short Russian/English bio phrase (max 70 chars) matching the style."
+        if include_bio else
+        "Set bio to empty string."
+    )
+
+    prompt = (
+        f"Generate a realistic Russian Telegram user profile.\n"
+        f"Style: {style_desc}\n"
+        f"{bio_instr}\n"
+        f"Return ONLY valid JSON with no markdown:\n"
+        f'{{\"first_name\": \"...\", \"last_name\": \"...\", \"bio\": \"...\"}}'
+    )
+
+    try:
+        async with http_session.post(
+            f"{GEMINI_API_URL}?key={api_key}",
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"responseMimeType": "application/json"},
+            },
+            timeout=aiohttp.ClientTimeout(total=18),
+        ) as resp:
+            if resp.status != 200:
+                raise ValueError(f"Gemini HTTP {resp.status}")
+            raw_data = await resp.json()
+            text = raw_data["candidates"][0]["content"]["parts"][0]["text"]
+            parsed = json.loads(text.strip())
+            return {
+                "first_name": str(parsed.get("first_name") or ""),
+                "last_name":  str(parsed.get("last_name")  or ""),
+                "bio":        str(parsed.get("bio")        or ""),
+            }
+    except Exception as exc:
+        logger.warning(f"AI profile generation failed ({exc}) — using static fallback")
+        return {
+            "first_name": random.choice(FIRST_NAMES),
+            "last_name":  random.choice(LAST_NAMES),
+            "bio":        "",
+        }
 
 
 def _sse(event: str, data: dict) -> str:
@@ -169,8 +278,13 @@ async def _registration_stream(
     two_factor_password: str,
     api_id: int,
     api_hash: str,
+    profile_mode: str = "ai",
+    first_name: str = "",
+    last_name: str = "",
+    bio: str = "",
+    avatars: list | None = None,
 ):
-    """Async generator yielding SSE chunks for the full 7-step pipeline."""
+    """Async generator yielding SSE chunks for the full 8-step pipeline."""
     os.makedirs(SESSION_DIR, exist_ok=True)
 
     order_id: str | None = None
@@ -398,8 +512,77 @@ async def _registration_stream(
             yield _sse("step", {"step": 6, "status": "done",
                                 "message": f"🔒 2FA attempted (note: {str(e)[:60]})"})
 
-        # ─── Step 7 — Persist ────────────────────────────────────────────
+        # ─── Step 7 — Profile Setup & Warming ───────────────────────────
         yield _sse("step", {"step": 7, "status": "running",
+                            "message": "🪪 Configuring account profile…"})
+
+        _profile_display = ""
+
+        if profile_mode == "manual":
+            _fn = (first_name or "").strip()
+            _ln = (last_name  or "").strip()
+            _ab = (bio        or "").strip()
+            try:
+                await client(UpdateProfileRequest(
+                    first_name=_fn, last_name=_ln, about=_ab,
+                ))
+                _profile_display = f"{_fn} {_ln}".strip() or phone
+            except Exception as _pe:
+                logger.warning(f"Manual profile update warning: {_pe}")
+                _profile_display = phone or ""
+
+            _av_list = list(avatars or [])
+            for _i, _av_b64 in enumerate(_av_list):
+                try:
+                    _img_bytes = base64.b64decode(_av_b64)
+                    _uploaded  = await client.upload_file(
+                        BytesIO(_img_bytes), file_name=f"photo_{_i}.jpg"
+                    )
+                    await client(UploadProfilePhotoRequest(file=_uploaded))
+                    yield _sse("step", {"step": 7, "status": "running",
+                                        "message": f"📸 Uploaded photo {_i + 1}/{len(_av_list)} — building photo history"})
+                    await asyncio.sleep(1.5)
+                except Exception as _ape:
+                    logger.warning(f"Photo upload {_i + 1} failed: {_ape}")
+
+            yield _sse("step", {"step": 7, "status": "done",
+                                "message": f"✅ Custom profile applied — {_profile_display}"})
+
+        else:  # AI mode
+            async with aiohttp.ClientSession() as _ai_http:
+                _ai_prof = await _generate_ai_profile(_ai_http)
+
+            _fn = _ai_prof.get("first_name") or random.choice(FIRST_NAMES)
+            _ln = _ai_prof.get("last_name")  or ""
+            _ab = _ai_prof.get("bio")        or ""
+
+            try:
+                await client(UpdateProfileRequest(first_name=_fn, last_name=_ln, about=_ab))
+                _profile_display = f"{_fn} {_ln}".strip()
+                yield _sse("step", {"step": 7, "status": "running",
+                                    "message": f"🤖 AI identity: {_profile_display}"})
+            except Exception as _pe:
+                logger.warning(f"AI profile update failed: {_pe}")
+                _profile_display = phone or ""
+
+            _av_path = _pick_pending_avatar()
+            if _av_path:
+                try:
+                    _uploaded = await client.upload_file(_av_path)
+                    await client(UploadProfilePhotoRequest(file=_uploaded))
+                    yield _sse("step", {"step": 7, "status": "running",
+                                        "message": "📸 Avatar assigned from pool"})
+                except Exception as _ape:
+                    logger.warning(f"AI avatar upload failed: {_ape}")
+            else:
+                yield _sse("step", {"step": 7, "status": "running",
+                                    "message": "📁 No pending avatars — add images to assets/pending_avatars/"})
+
+            yield _sse("step", {"step": 7, "status": "done",
+                                "message": f"✅ AI profile applied — {_profile_display}"})
+
+        # ─── Step 8 — Persist ────────────────────────────────────────────
+        yield _sse("step", {"step": 8, "status": "running",
                             "message": "💾 Saving session file and updating CRM database..."})
 
         # Write JSON metadata
@@ -423,7 +606,6 @@ async def _registration_stream(
         async with aiosqlite.connect(DB_PATH) as conn:
             await conn.execute("PRAGMA journal_mode=WAL")
             await conn.execute("PRAGMA busy_timeout=15000")
-            # Check if phone already exists
             async with conn.execute(
                 "SELECT id FROM sender_accounts WHERE phone=?", (phone,)
             ) as cur:
@@ -449,8 +631,8 @@ async def _registration_stream(
                 )
             await conn.commit()
 
-        yield _sse("step", {"step": 7, "status": "done",
-                            "message": "🎉 Account successfully generated, protected, and added to your CRM!"})
+        yield _sse("step", {"step": 8, "status": "done",
+                            "message": "🎉 Account generated, profiled, and added to your CRM!"})
         yield _sse("complete", {"phone": phone})
 
     except Exception as e:
@@ -474,6 +656,14 @@ async def register_account(request: Request):
     proxy_string        = str(body.get("proxy_string", "")).strip()
     two_factor_password = str(body.get("two_factor_password", "")).strip()
     quantity            = min(max(int(body.get("quantity", 1) or 1), 1), 10)
+
+    # Profile setup params
+    profile_mode = str(body.get("profile_mode", "ai")).strip() or "ai"
+    first_name   = str(body.get("first_name",   "")).strip()
+    last_name    = str(body.get("last_name",    "")).strip()
+    bio          = str(body.get("bio",          "")).strip()
+    _avatars_raw = body.get("avatars") or []
+    avatars: list[str] = [str(a) for a in _avatars_raw if isinstance(a, str) and a]
 
     # Telethon creds — prefer env vars, fall back to request body
     api_id_raw  = os.environ.get("TELETHON_API_ID") or str(body.get("api_id", ""))
@@ -527,6 +717,7 @@ async def register_account(request: Request):
             async for chunk in _registration_stream(
                 smspool_api_key, country_id, proxy_string,
                 two_factor_password, api_id, api_hash,
+                profile_mode, first_name, last_name, bio, avatars,
             ):
                 yield chunk
                 # Track outcome for summary

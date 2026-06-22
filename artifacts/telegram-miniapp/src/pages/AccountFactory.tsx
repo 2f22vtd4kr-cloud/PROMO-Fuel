@@ -42,7 +42,8 @@ const STEP_DEFS = [
   { id: 4, icon: "⏳", en: "Waiting for SMS code",            ua: "Очікування SMS-коду" },
   { id: 5, icon: "🤝", en: "Telegram account handshake",      ua: "Рукостискання з Telegram" },
   { id: 6, icon: "🔒", en: "Enable 2FA security",             ua: "Активація 2FA-захисту" },
-  { id: 7, icon: "💾", en: "Save & add to CRM",               ua: "Збереження в CRM" },
+  { id: 7, icon: "🪪", en: "Profile setup & warming",         ua: "Профіль та прогрівання" },
+  { id: 8, icon: "💾", en: "Save & add to CRM",               ua: "Збереження в CRM" },
 ];
 
 type StepStatus = "waiting" | "running" | "done" | "error";
@@ -168,6 +169,14 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
       .then((d: { has_smspool_key?: boolean }) => setServerHasKey(d.has_smspool_key ?? false))
       .catch(() => setServerHasKey(false));
   }, []);
+
+  // Profile Setup state
+  const [profileMode,        setProfileMode]        = useState<"ai" | "manual">("ai");
+  const [profFirstName,      setProfFirstName]      = useState("");
+  const [profLastName,       setProfLastName]       = useState("");
+  const [profBio,            setProfBio]            = useState("");
+  const [profAvatars,        setProfAvatars]        = useState<string[]>([]);       // base64 payloads
+  const [profAvatarPreviews, setProfAvatarPreviews] = useState<string[]>([]);       // data-URLs for display
 
   // Balance / connection test
   const [balanceLoading, setBalanceLoading] = useState(false);
@@ -312,6 +321,13 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           quantity,
           ...(apiId   ? { api_id: parseInt(apiId) }   : {}),
           ...(apiHash ? { api_hash: apiHash }           : {}),
+          profile_mode: profileMode,
+          ...(profileMode === "manual" ? {
+            first_name: profFirstName,
+            last_name:  profLastName,
+            bio:        profBio,
+            avatars:    profAvatars,
+          } : {}),
         }),
         signal: ctrl.signal,
       });
@@ -922,6 +938,182 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   <LabelledInput label="API Hash" value={apiHash} onChange={setApiHash} placeholder="abc123…" />
                 </div>
               </div>
+            </div>
+
+            {/* ─── Profile Setup & Warming ─────────────────────────────── */}
+            <div style={{
+              background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.22)",
+              borderRadius: 16, overflow: "hidden",
+            }}>
+              {/* Header + mode toggle */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
+                borderBottom: "1px solid rgba(168,85,247,0.12)" }}>
+                <div style={{ fontSize: 18 }}>🪪</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#c084fc" }}>
+                    {L("Profile Setup & Warming", "Налаштування профілю")}
+                  </div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>
+                    {L("Runs after registration — builds account credibility", "Після реєстрації — підвищує довіру")}
+                  </div>
+                </div>
+                <div style={{ display: "flex", background: GLASS2,
+                  border: `1px solid ${BORDER2}`, borderRadius: 10, padding: 2, gap: 2 }}>
+                  {(["ai", "manual"] as const).map(m => (
+                    <button key={m} onClick={() => setProfileMode(m)} style={{
+                      padding: "5px 9px", borderRadius: 8,
+                      background: profileMode === m ? "rgba(168,85,247,0.28)" : "transparent",
+                      border: profileMode === m ? "1px solid rgba(168,85,247,0.5)" : "1px solid transparent",
+                      color: profileMode === m ? "#c084fc" : "rgba(255,255,255,0.38)",
+                      fontSize: 10, fontWeight: 700, cursor: "pointer", transition: "all .15s",
+                    }}>
+                      {m === "ai" ? `🤖 ${L("AI Auto", "AI Авто")}` : `✏️ ${L("Manual", "Вручну")}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* AI mode — info cards */}
+              {profileMode === "ai" && (
+                <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 7 }}>
+                  {([
+                    { icon: "🤖", title: L("AI-generated Russian name", "AI-ім'я (рос. аудиторія)"),
+                      desc: L("Cyrillic / Latinized / Nickname / Patriotic — weighted random per account",
+                              "Кирилиця / транслітерація / нікнейм / патріотичний — зважена рандомізація") },
+                    { icon: "📝", title: L("Bio — 35 % chance", "Біо — 35 % ймовірність"),
+                      desc: L("Short Russian/English phrase; rest of accounts stay blank for organic look",
+                              "Короткий рос./англ. вираз; решта акаунтів без біо для органічності") },
+                    { icon: "📸", title: L("Avatar pool", "Пул аватарів"),
+                      desc: L("Picks from assets/pending_avatars/ → moves to used_avatars/ (never reused)",
+                              "Бере з assets/pending_avatars/ → переміщує в used_avatars/ (без повторів)") },
+                  ] as const).map((row, i) => (
+                    <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
+                      <div style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>{row.icon}</div>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.68)" }}>{row.title}</div>
+                        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.32)", marginTop: 2, lineHeight: 1.4 }}>{row.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Manual mode fields */}
+              {profileMode === "manual" && (
+                <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <LabelledInput label={L("First Name", "Ім'я")} value={profFirstName}
+                        onChange={setProfFirstName} placeholder={L("Ivan", "Іван")} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <LabelledInput label={L("Last Name (opt.)", "Прізвище (необов.)")} value={profLastName}
+                        onChange={setProfLastName} placeholder={L("Petrov", "Петров")} />
+                    </div>
+                  </div>
+
+                  {/* Bio */}
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.45)",
+                      letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>
+                      {L("Bio (optional)", "Статус (необов.)")}
+                    </div>
+                    <textarea
+                      value={profBio} onChange={e => setProfBio(e.target.value)}
+                      placeholder={L("Short bio…", "Короткий статус…")}
+                      rows={2} maxLength={70}
+                      style={{
+                        width: "100%", boxSizing: "border-box",
+                        background: GLASS2, border: `1px solid ${BORDER2}`,
+                        borderRadius: 12, padding: "10px 14px",
+                        fontSize: 13, color: "rgba(226,232,255,0.9)",
+                        fontFamily: "inherit", outline: "none", resize: "none",
+                      }}
+                    />
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", marginTop: 3, textAlign: "right" }}>
+                      {profBio.length}/70
+                    </div>
+                  </div>
+
+                  {/* Multi-image uploader */}
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.45)",
+                      letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>
+                      📸 {L("Profile Photos", "Фото профілю")}
+                      <span style={{ fontWeight: 400, textTransform: "none",
+                        color: "rgba(255,255,255,0.28)", marginLeft: 6 }}>
+                        {L("(multiple = photo history)", "(декілька = історія фото)")}
+                      </span>
+                    </div>
+
+                    {profAvatarPreviews.length > 0 && (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                        {profAvatarPreviews.map((src, i) => (
+                          <div key={i} style={{ position: "relative" }}>
+                            <img src={src} alt="" style={{
+                              width: 52, height: 52, borderRadius: 11, objectFit: "cover",
+                              border: "1.5px solid rgba(168,85,247,0.4)",
+                            }} />
+                            <button
+                              onClick={() => {
+                                setProfAvatars(prev => prev.filter((_, j) => j !== i));
+                                setProfAvatarPreviews(prev => prev.filter((_, j) => j !== i));
+                              }}
+                              style={{ position: "absolute", top: -5, right: -5,
+                                width: 17, height: 17, borderRadius: "50%",
+                                background: RED, border: "none", cursor: "pointer",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: 8, color: "#fff", lineHeight: 1 }}>✕</button>
+                            {i === 0 && (
+                              <div style={{ position: "absolute", bottom: -2, left: 0, right: 0,
+                                textAlign: "center", fontSize: 8, color: "#c084fc", fontWeight: 700,
+                                textShadow: "0 1px 3px #000" }}>
+                                {L("main", "головне")}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <label style={{
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                      background: GLASS2, border: "1.5px dashed rgba(168,85,247,0.38)",
+                      borderRadius: 12, padding: "10px 16px", cursor: "pointer",
+                      fontSize: 12, color: "rgba(255,255,255,0.45)",
+                    }}>
+                      <span style={{ fontSize: 18 }}>+</span>
+                      {L("Add photos…", "Додати фото…")}
+                      <input type="file" accept="image/*" multiple style={{ display: "none" }}
+                        onChange={e => {
+                          const files = Array.from(e.target.files ?? []);
+                          if (!files.length) return;
+                          void Promise.all(files.map(f => new Promise<{ b64: string; preview: string }>(res => {
+                            const r = new FileReader();
+                            r.onload = () => {
+                              const d = r.result as string;
+                              res({ b64: d.split(",")[1] ?? "", preview: d });
+                            };
+                            r.readAsDataURL(f);
+                          }))).then(results => {
+                            setProfAvatars(prev => [...prev, ...results.map(r => r.b64)]);
+                            setProfAvatarPreviews(prev => [...prev, ...results.map(r => r.preview)]);
+                          });
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                    {profAvatars.length > 1 && (
+                      <div style={{ fontSize: 10, color: "rgba(168,85,247,0.65)", marginTop: 5, lineHeight: 1.4 }}>
+                        💡 {L(
+                          `${profAvatars.length} photos → uploaded in order, creating a real Telegram photo history.`,
+                          `${profAvatars.length} фото → завантажуються по черзі, формуючи реальну історію фото.`
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {errorMsg && (
