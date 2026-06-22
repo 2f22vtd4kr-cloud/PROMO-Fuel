@@ -235,12 +235,14 @@ router.post("/accounts/reset-all-daily", (_req, res) => {
 router.post("/campaigns/:id/action", (req, res) => {
   let { action } = req.body as { action: string };
   const scheduled_at_body = (req.body as any).scheduled_at as string | undefined;
-  if (action === "pause")    action = "paused";
-  if (action === "resume")   action = "running";
-  if (action === "start")    action = "running";
-  if (action === "cancel")   action = "cancelled";
-  if (action === "schedule") action = "scheduled";
-  const allowed = ["running", "paused", "cancelled", "draft", "scheduled"];
+  if (action === "pause")     action = "paused";
+  if (action === "resume")    action = "running";
+  if (action === "start")     action = "running";
+  if (action === "cancel")    action = "cancelled";
+  if (action === "schedule")  action = "scheduled";
+  if (action === "archive")   action = "archived";
+  if (action === "unarchive") action = "draft";
+  const allowed = ["running", "paused", "cancelled", "draft", "scheduled", "archived"];
   if (!action || !allowed.includes(action)) return void res.status(400).json({ error: "invalid action" });
   try {
     const db = new Database(DB_PATH);

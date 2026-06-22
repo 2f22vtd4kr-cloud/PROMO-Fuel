@@ -100,6 +100,62 @@ function checkFailedProxies(): object {
   }
 }
 
+function getGroupCampaigns(): object {
+  const db = getDb();
+  try {
+    const camps = db.prepare(
+      "SELECT id, name, status, sent_count, failed_count, selected_groups, interval_seconds, next_send_at, last_sent_at FROM group_campaigns ORDER BY status, name"
+    ).all() as { id: number; name: string; status: string; sent_count: number; failed_count: number; selected_groups: string; interval_seconds: number; next_send_at: string | null; last_sent_at: string | null }[];
+
+    let recentErrors: { group_title: string | null; error: string | null; sent_at: string }[] = [];
+    try {
+      recentErrors = db.prepare(
+        "SELECT group_title, error, sent_at FROM group_sends WHERE (status='failed' OR status='error' OR status='banned') ORDER BY sent_at DESC LIMIT 20"
+      ).all() as { group_title: string | null; error: string | null; sent_at: string }[];
+    } catch {}
+
+    return {
+      campaigns: camps.map(c => ({
+        ...c,
+        group_count: (() => { try { return (JSON.parse(c.selected_groups) as unknown[]).length; } catch { return 0; } })(),
+      })),
+      total: camps.length,
+      running: camps.filter(c => c.status === "running").length,
+      paused: camps.filter(c => c.status === "paused").length,
+      draft: camps.filter(c => c.status === "draft").length,
+      recent_errors: recentErrors,
+    };
+  } finally {
+    db.close();
+  }
+}
+
+function getDmCampaignPerformance(): object {
+  const db = getDb();
+  try {
+    const camps = db.prepare(
+      "SELECT id, name, status, sent_count, failed_count, target_count, created_at FROM campaigns WHERE status != 'archived' ORDER BY sent_count DESC LIMIT 30"
+    ).all() as { id: number; name: string; status: string; sent_count: number; failed_count: number; target_count: number; created_at: string }[];
+
+    const archived = (db.prepare("SELECT COUNT(*) as n FROM campaigns WHERE status='archived'").get() as { n: number }).n;
+
+    return {
+      campaigns: camps.map(c => {
+        const total = c.sent_count + c.failed_count;
+        return { ...c, success_rate: total > 0 ? Math.round((c.sent_count / total) * 100) : null };
+      }),
+      total: camps.length,
+      archived,
+      running: camps.filter(c => c.status === "running").length,
+      paused: camps.filter(c => c.status === "paused").length,
+      draft: camps.filter(c => c.status === "draft").length,
+      done: camps.filter(c => c.status === "done" || c.status === "cancelled").length,
+    };
+  } finally {
+    db.close();
+  }
+}
+
 function getAccountStatusByCountry(): object {
   const db = getDb();
   try {
@@ -170,6 +226,8 @@ const TOOL_DISPATCH: Record<string, () => object> = {
   get_platform_summary: getPlatformSummary,
   check_failed_proxies: checkFailedProxies,
   get_account_status_by_country: getAccountStatusByCountry,
+  get_group_campaigns: getGroupCampaigns,
+  get_dm_campaign_performance: getDmCampaignPerformance,
 };
 
 // ── Gemini tool definitions ────────────────────────────────────────────────
@@ -188,6 +246,14 @@ const TOOLS: Tool[] = [
       {
         name: "get_account_status_by_country",
         description: "Returns a breakdown of all connected accounts grouped by country prefix (e.g., Russia +7, UK +44, Poland +48). Shows working vs restricted (banned/flood_wait/proxy_failed) accounts per country.",
+      },
+      {
+        name: "get_group_campaigns",
+        description: "Returns all group broadcast campaigns with their status (running/paused/draft), sent/failed counts, group count, next scheduled send time, and recent errors across all group sends. Use this to answer questions about group broadcast health, what campaigns are active, or what errors are occurring in group sends.",
+      },
+      {
+        name: "get_dm_campaign_performance",
+        description: "Returns all DM (direct message) campaigns with status, sent/failed counts, success rate %, and how many campaigns are archived. Use this to answer questions about DM campaign performance, success rates, archived campaigns, or which campaigns have errors.",
       },
     ],
   },
@@ -216,6 +282,8 @@ const SYSTEM_INSTRUCTION = `You are the PROMO-Fuel System Copilot — an expert 
 - **Manual Search** (🔍 in both manuals): tap search icon to filter all slides by title or keyword, tap result to jump directly. Both System Manual and Accounts & Proxy guide have search
 - **Unified Manual Chooser**: tap ? button in bottom nav → bottom sheet appears with two cards: 📖 System Manual (31 slides) and 🔐 Accounts & Proxy (9 slides). No more scattered guide buttons
 - **Campaign Sparklines**: each campaign card shows a 7-bar mini chart of the last 7 days' sends
+- **Campaign Archive**: DM campaigns can be archived (soft-delete) via ··· menu → Archive. Archived tab hides them from main view; they can be restored via Unarchive
+- **Group Analytics Overlay**: tap any group name in the Group Broadcasts stats tab → full-screen overlay shows all-time delivery rate, FloodWait frequency, ban events, per-campaign breakdown, and 30-day daily history for that group
 - **What's New slide**: Manual slide 31 summarizes all recently added features
 
 ## Proxy & Account Knowledge

@@ -1740,6 +1740,22 @@ function SlideNewFeatures({ lang }: SL) {
         "Натисніть ℹ на будь-якій картці воркера — відкривається повноекранна панель: heartbeat, метрики, акаунт, активна задача, історія крешів, таблиця сесій.",
       ),
     },
+    {
+      icon: "🗂",
+      title: L(lang,"Campaign Archive","Архів кампаній"),
+      desc:  L(lang,
+        "DM campaigns can now be soft-deleted via ··· → Archive. They move to a dedicated 🗂 Архив tab and are hidden from all other views. Restore anytime via Unarchive.",
+        "DM-кампанії можна архівувати через ··· → «В архів». Вони переходять у вкладку 🗂 Архів і зникають з усіх інших режимів. Відновити можна будь-коли через «Восстановить».",
+      ),
+    },
+    {
+      icon: "📊",
+      title: L(lang,"Group Analytics Overlay","Аналітика групи"),
+      desc:  L(lang,
+        "In Group Broadcasts → Stats tab, tap any group row to open a full-screen analytics overlay: all-time delivery rate, FloodWait count, ban events, per-campaign breakdown, and a 30-day daily history chart.",
+        "У розділі Group Broadcasts → вкладка Stats — натисніть на будь-яку групу, щоб відкрити аналітику: частота доставки, FloodWait, бани, деталі по кожній кампанії та 30-денна гістограма.",
+      ),
+    },
   ];
   return (
     <Shell>
@@ -1800,7 +1816,7 @@ const KEYWORDS: string[] = [
   "internals process Python supervisor",
   "database SQLite API endpoints REST",
   "checklist launch deploy production",
-  "new features bell toast notification fleet health search digest",
+  "new features bell toast notification fleet health search digest archive group analytics overlay",
 ];
 const SLIDES: Array<(p: SL) => React.ReactElement> = [
   Slide1,Slide2,Slide3,Slide4,Slide5,Slide6,Slide7,Slide8,Slide9,

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useI18n } from "../lib/i18n";
 import { Plus, Play, Pause, Square, Copy, Trash2, Radio, ChevronRight, ChevronDown, ChevronUp, Clock, Send, AlertCircle, CheckCircle, BarChart2, X } from "lucide-react";
 import { api, GroupCampaign, GroupCampaignLog, GroupSendStat, DailyStat, AccountGroup } from "../lib/api";
+import { GroupAnalyticsOverlay } from "../components/GroupAnalyticsOverlay";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
 import { ConfirmModal } from "../components/ConfirmModal";
@@ -191,7 +192,8 @@ function GroupCampaignCard({
   const [testGroupId,  setTestGroupId]  = useState<string | null>(null);
   const [acctGroups,   setAcctGroups]   = useState<AccountGroup[]>([]);
   const [logFilter,    setLogFilter]    = useState<"all"|"ok"|"failed"|"banned">("all");
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showDeleteConfirm,  setShowDeleteConfirm]  = useState(false);
+  const [analyticsGroupId,   setAnalyticsGroupId]   = useState<string | null>(null);
 
   const color  = STATUS_COLOR[campaign.status] ?? "#7c8db0";
   const groups: string[] = (() => { try { return JSON.parse(campaign.selected_groups || "[]"); } catch { return []; } })();
@@ -574,14 +576,19 @@ function GroupCampaignCard({
                   const total = s.sent + s.failed;
                   const pct   = total > 0 ? Math.round((s.sent / total) * 100) : 0;
                   return (
-                    <div key={s.group_id} style={{ padding: "7px 8px", borderRadius: 8, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                    <div
+                      key={s.group_id}
+                      onClick={() => { haptic.light(); setAnalyticsGroupId(s.group_id); }}
+                      style={{ padding: "7px 8px", borderRadius: 8, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", cursor: "pointer" }}
+                    >
                       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 11, color: TG.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.group_title || s.group_id}</div>
                         </div>
-                        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                        <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
                           <span style={{ fontSize: 10, color: "#2de897" }}>✓ {s.sent}</span>
                           {s.failed > 0 && <span style={{ fontSize: 10, color: "#ff6b7a" }}>✗ {s.failed}</span>}
+                          <span style={{ fontSize: 9, color: TG.muted }}>›</span>
                         </div>
                       </div>
                       <div style={{ height: 3, borderRadius: 3, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
@@ -605,6 +612,12 @@ function GroupCampaignCard({
           confirmLabel="Удалить"
           onConfirm={doRemove}
           onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
+      {analyticsGroupId && (
+        <GroupAnalyticsOverlay
+          groupId={analyticsGroupId}
+          onClose={() => setAnalyticsGroupId(null)}
         />
       )}
     </GlassCard>

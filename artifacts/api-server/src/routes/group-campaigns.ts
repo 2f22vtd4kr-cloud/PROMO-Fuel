@@ -420,4 +420,74 @@ router.post("/group-campaigns/:id/test-send", (req, res) => {
   }
 });
 
+router.get("/group-campaigns/groups/:group_id/analytics", (req, res) => {
+  try {
+    const db      = getDb();
+    const groupId = decodeURIComponent(req.params.group_id);
+
+    const totals = db.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status='ok' OR status='sent' THEN 1 ELSE 0 END) AS ok,
+        SUM(CASE WHEN status='failed' OR status='error' THEN 1 ELSE 0 END) AS failed,
+        SUM(CASE WHEN status='banned' THEN 1 ELSE 0 END) AS bans,
+        SUM(CASE WHEN error LIKE '%FloodWait%' OR error LIKE '%flood_wait%' OR error LIKE '%FLOOD%' OR error LIKE '%FloodError%' THEN 1 ELSE 0 END) AS flood_wait,
+        MIN(sent_at) AS first_seen,
+        MAX(sent_at) AS last_seen,
+        MAX(group_title) AS group_title
+      FROM group_sends WHERE group_id = ?
+    `).get(groupId) as { total: number; ok: number; failed: number; bans: number; flood_wait: number; first_seen: string | null; last_seen: string | null; group_title: string | null } | undefined;
+
+    const campaigns = db.prepare(`
+      SELECT gc.id, gc.name, gc.status,
+        SUM(CASE WHEN gs.status='ok' OR gs.status='sent' THEN 1 ELSE 0 END) AS sent,
+        SUM(CASE WHEN gs.status='failed' OR gs.status='error' THEN 1 ELSE 0 END) AS failed,
+        SUM(CASE WHEN gs.status='banned' THEN 1 ELSE 0 END) AS bans,
+        MAX(gs.sent_at) AS last_sent_at
+      FROM group_sends gs
+      JOIN group_campaigns gc ON gc.id = gs.campaign_id
+      WHERE gs.group_id = ?
+      GROUP BY gc.id ORDER BY last_sent_at DESC LIMIT 20
+    `).all(groupId) as { id: number; name: string; status: string; sent: number; failed: number; bans: number; last_sent_at: string | null }[];
+
+    const recentErrors = db.prepare(`
+      SELECT error, status, sent_at FROM group_sends
+      WHERE group_id = ? AND (status='failed' OR status='error' OR status='banned')
+      ORDER BY sent_at DESC LIMIT 10
+    `).all(groupId) as { error: string | null; status: string; sent_at: string }[];
+
+    const dailyHistory = db.prepare(`
+      SELECT substr(sent_at,1,10) AS day,
+        SUM(CASE WHEN status='ok' OR status='sent' THEN 1 ELSE 0 END) AS sent,
+        SUM(CASE WHEN status='failed' OR status='error' THEN 1 ELSE 0 END) AS failed
+      FROM group_sends WHERE group_id = ?
+      GROUP BY day ORDER BY day DESC LIMIT 30
+    `).all(groupId) as { day: string; sent: number; failed: number }[];
+
+    db.close();
+
+    const total        = totals?.total       ?? 0;
+    const ok           = totals?.ok          ?? 0;
+    const deliveryRate = total > 0 ? Math.round((ok / total) * 100) : 0;
+
+    res.json({
+      group_id:        groupId,
+      group_title:     totals?.group_title ?? groupId,
+      total_sends:     total,
+      ok,
+      failed:          totals?.failed      ?? 0,
+      bans:            totals?.bans        ?? 0,
+      flood_wait_events: totals?.flood_wait ?? 0,
+      delivery_rate:   deliveryRate,
+      first_seen:      totals?.first_seen  ?? null,
+      last_seen:       totals?.last_seen   ?? null,
+      campaigns,
+      recent_errors:   recentErrors,
+      daily_history:   dailyHistory,
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 export default router;

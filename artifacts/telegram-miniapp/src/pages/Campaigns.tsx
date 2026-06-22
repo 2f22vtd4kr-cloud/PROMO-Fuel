@@ -247,6 +247,14 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
   async function doDeleteCampaign() {
     try { await api.deleteCampaign(campaign.id); haptic.success(); onRefresh(); } catch { haptic.error(); }
   }
+  async function doArchive() {
+    haptic.medium(); setMenuOpen(false);
+    try { await api.archiveCampaign(campaign.id); haptic.success(); onRefresh(); } catch { haptic.error(); }
+  }
+  async function doUnarchive() {
+    haptic.medium(); setMenuOpen(false);
+    try { await api.unarchiveCampaign(campaign.id); haptic.success(); onRefresh(); } catch { haptic.error(); }
+  }
 
   const d = new Date(campaign.scheduled_at ?? campaign.created_at);
   const dateStr = campaign.scheduled_at
@@ -323,10 +331,20 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
           <div onClick={() => { haptic.light(); setMenuOpen(o => !o); }} style={{ width: 28, height: 28, borderRadius: 9, background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
             <MoreHorizontal size={13} color={TG.muted} />
             {menuOpen && (
-              <div onClick={e => e.stopPropagation()} style={{ position: "absolute", top: 32, right: 0, zIndex: 50, background: "rgba(7,9,20,0.95)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 14, overflow: "hidden", minWidth: 160, boxShadow: "0 12px 40px rgba(0,0,0,0.5)" }}>
+              <div onClick={e => e.stopPropagation()} style={{ position: "absolute", top: 32, right: 0, zIndex: 50, background: "rgba(7,9,20,0.95)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 14, overflow: "hidden", minWidth: 172, boxShadow: "0 12px 40px rgba(0,0,0,0.5)" }}>
                 <div onClick={duplicate} style={{ padding: "11px 14px", display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}>
                   <Copy size={13} color={TG.muted} /><span style={{ fontSize: 13, color: TG.text }}>Дублировать</span>
                 </div>
+                <div style={{ height: 1, background: "rgba(255,255,255,0.07)" }} />
+                {campaign.status === "archived" ? (
+                  <div onClick={doUnarchive} style={{ padding: "11px 14px", display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}>
+                    <span style={{ fontSize: 13 }}>📤</span><span style={{ fontSize: 13, color: "#6ba8e5" }}>Восстановить</span>
+                  </div>
+                ) : (
+                  <div onClick={doArchive} style={{ padding: "11px 14px", display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}>
+                    <span style={{ fontSize: 13 }}>🗂</span><span style={{ fontSize: 13, color: TG.muted }}>В архив</span>
+                  </div>
+                )}
                 <div style={{ height: 1, background: "rgba(255,255,255,0.07)" }} />
                 <div onClick={deleteCampaign} style={{ padding: "11px 14px", display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}>
                   <Trash2 size={13} color="#ff6b7a" /><span style={{ fontSize: 13, color: "#ff6b7a" }}>Удалить</span>
@@ -465,7 +483,7 @@ function CampaignCard({ campaign, index, onEdit, onRefresh, sparkline }: {
   );
 }
 
-const STATUS_TAB_KEYS = ["all", "active", "draft", "done"] as const;
+const STATUS_TAB_KEYS = ["all", "active", "draft", "done", "archived"] as const;
 type StatusTab = typeof STATUS_TAB_KEYS[number];
 
 export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
@@ -505,10 +523,11 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
   });
 
   const STATUS_TABS = [
-    { key: "all" as StatusTab,    label: t.campaigns.tabAll },
-    { key: "active" as StatusTab, label: t.campaigns.tabActive },
-    { key: "draft" as StatusTab,  label: t.campaigns.tabDraft },
-    { key: "done" as StatusTab,   label: t.campaigns.tabDone },
+    { key: "all"      as StatusTab, label: t.campaigns.tabAll },
+    { key: "active"   as StatusTab, label: t.campaigns.tabActive },
+    { key: "draft"    as StatusTab, label: t.campaigns.tabDraft },
+    { key: "done"     as StatusTab, label: t.campaigns.tabDone },
+    { key: "archived" as StatusTab, label: "🗂 Архив" },
   ];
 
   const active    = campaigns.filter(c => c.status === "running" || c.status === "sending").length;
@@ -537,7 +556,8 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
       if (tab === "active")   return c.status === "running" || c.status === "sending" || c.status === "paused" || c.status === "scheduled";
       if (tab === "draft")    return c.status === "draft";
       if (tab === "done")     return c.status === "done" || c.status === "cancelled";
-      return true;
+      if (tab === "archived") return c.status === "archived";
+      return c.status !== "archived";
     })
     .sort((a, b) => {
       if (sortBy === "sent") return (b.sent_count ?? 0) - (a.sent_count ?? 0);
@@ -577,9 +597,11 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
         <div style={{ display: "flex", gap: 6, overflowX: "auto", overflowY: "hidden", paddingBottom: 2, marginRight: -14, paddingRight: 14 }}>
           {STATUS_TABS.map(st => {
             const isActive = st.key === tab;
-            const cnt = st.key === "all" ? campaigns.length
+            const cnt =
+              st.key === "all"      ? campaigns.filter(c => c.status !== "archived").length
               : st.key === "active" ? campaigns.filter(c => ["running","sending","paused","scheduled"].includes(c.status)).length
               : st.key === "draft"  ? campaigns.filter(c => c.status === "draft").length
+              : st.key === "archived"? campaigns.filter(c => c.status === "archived").length
               : campaigns.filter(c => c.status === "done" || c.status === "cancelled").length;
             return (
               <button key={st.key} onClick={() => { haptic.light(); setTab(st.key); setSearch(""); }} style={{
@@ -619,9 +641,10 @@ export function CampaignsPage({ onEdit }: { onEdit: (id?: number) => void }) {
 
         {/* Campaign totals strip */}
         {!loading && campaigns.length > 0 && (() => {
-          const totSent   = campaigns.reduce((s, c) => s + (c.sent_count ?? 0), 0);
-          const totFailed = campaigns.reduce((s, c) => s + (c.failed_count ?? 0), 0);
-          const totTarget = campaigns.reduce((s, c) => s + (c.target_count ?? 0), 0);
+          const activeCampaigns = campaigns.filter(c => c.status !== "archived");
+          const totSent   = activeCampaigns.reduce((s, c) => s + (c.sent_count ?? 0), 0);
+          const totFailed = activeCampaigns.reduce((s, c) => s + (c.failed_count ?? 0), 0);
+          const totTarget = activeCampaigns.reduce((s, c) => s + (c.target_count ?? 0), 0);
           const totAll    = totSent + totFailed;
           const sr        = totAll > 0 ? Math.round((totSent / totAll) * 100) : null;
           return (
