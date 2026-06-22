@@ -45,3 +45,12 @@ python-telegram-bot
 requests
 telethon
 uvicorn
+aiohttp
+aiosqlite
+fastapi
+filelock
+pydantic
+python-telegram-bot
+requests
+telethon
+uvicorn
