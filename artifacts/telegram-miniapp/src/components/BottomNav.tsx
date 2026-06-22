@@ -199,7 +199,7 @@ export function BottomNav({
           gap: 5,
           paddingRight: 10,
           paddingLeft: 8,
-          background: "linear-gradient(to right, transparent 0%, rgba(10,14,26,0.92) 30%)",
+          background: "linear-gradient(to right, transparent 0%, rgba(10,14,26,0.55) 25%, rgba(10,14,26,0.82) 48%, rgba(10,14,26,0.95) 65%)",
           backdropFilter: "blur(24px)",
           WebkitBackdropFilter: "blur(24px)",
           zIndex: 8,
