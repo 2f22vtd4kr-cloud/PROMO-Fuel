@@ -8,6 +8,7 @@ interface Message {
   text: string;
   engine?: string;
   imageUrl?: string;
+  ts: Date;
 }
 
 interface HistoryPart {
@@ -67,6 +68,7 @@ export function AiAssistantPage() {
       text: lang === "ua"
         ? "Привіт! Я PROMO-Fuel System Copilot. Можу допомогти з управлінням акаунтами, проксі SOCKS5 та моніторингом платформи. Запитай мене щось — наприклад, стан акаунтів або статус проксі. Також можеш прикріпити зображення для аналізу."
         : "Hi! I'm PROMO-Fuel System Copilot. I can help with account management, SOCKS5 proxies, and platform monitoring. Ask me anything — for example, account status or proxy health. You can also attach an image for analysis.",
+      ts: new Date(),
     },
   ]);
   const [input, setInput]             = useState("");
@@ -83,6 +85,7 @@ export function AiAssistantPage() {
     text: lang === "ua"
       ? "Привіт! Я PROMO-Fuel System Copilot. Можу допомогти з управлінням акаунтами, проксі SOCKS5 та моніторингом платформи. Запитай мене щось — наприклад, стан акаунтів або статус проксі. Також можеш прикріпити зображення для аналізу."
       : "Hi! I'm PROMO-Fuel System Copilot. I can help with account management, SOCKS5 proxies, and platform monitoring. Ask me anything — for example, account status or proxy health. You can also attach an image for analysis.",
+    ts: new Date(),
   };
 
   function resetChat() {
@@ -118,9 +121,10 @@ export function AiAssistantPage() {
     if ((!text && !attachedImage) || loading) return;
 
     const img = attachedImage;
+    const sentAt = new Date();
     if (!override) setInput("");
     setAttached(null);
-    setMessages(prev => [...prev, { role: "user", text: text || "📎", imageUrl: img?.dataUrl }]);
+    setMessages(prev => [...prev, { role: "user", text: text || "📎", imageUrl: img?.dataUrl, ts: sentAt }]);
     setLoading(true);
 
     // Reset textarea height
@@ -150,15 +154,15 @@ export function AiAssistantPage() {
       });
 
       if (!res.ok) {
-        setMessages(prev => [...prev, { role: "model", text: CAPACITY_MSG }]);
+        setMessages(prev => [...prev, { role: "model", text: CAPACITY_MSG, ts: new Date() }]);
         return;
       }
 
       const data = await res.json() as { reply: string; history: HistoryItem[]; engine?: string };
-      setMessages(prev => [...prev, { role: "model", text: data.reply, engine: data.engine }]);
+      setMessages(prev => [...prev, { role: "model", text: data.reply, engine: data.engine, ts: new Date() }]);
       setHistory(data.history ?? []);
     } catch {
-      setMessages(prev => [...prev, { role: "model", text: CAPACITY_MSG }]);
+      setMessages(prev => [...prev, { role: "model", text: CAPACITY_MSG, ts: new Date() }]);
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 50);
@@ -243,6 +247,7 @@ export function AiAssistantPage() {
         {messages.map((msg, i) => (
           <div key={i} style={{ display: "flex", flexDirection: msg.role === "user" ? "row-reverse" : "row", alignItems: "flex-end", gap: 8, animation: "aiFadeIn 0.3s ease both" }}>
 
+
             {/* Avatar (AI only) */}
             {msg.role === "model" && (
               <div style={{
@@ -256,45 +261,63 @@ export function AiAssistantPage() {
               </div>
             )}
 
-            {/* Bubble */}
+            {/* Bubble + timestamp column */}
             <div style={{
               maxWidth: "78%",
-              padding: msg.imageUrl ? "6px" : "10px 13px",
-              borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-              background: msg.role === "user"
-                ? "linear-gradient(135deg, rgba(59,130,246,0.35) 0%, rgba(99,102,241,0.3) 100%)"
-                : "linear-gradient(145deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.04) 100%)",
-              border: msg.role === "user" ? "1px solid rgba(99,102,241,0.35)" : "1px solid rgba(255,255,255,0.12)",
-              backdropFilter: "blur(20px)",
-              WebkitBackdropFilter: "blur(20px)",
-              boxShadow: msg.role === "user" ? "0 4px 16px rgba(59,130,246,0.15)" : "0 4px 16px rgba(0,0,0,0.25)",
               display: "flex",
               flexDirection: "column",
+              alignItems: msg.role === "user" ? "flex-end" : "flex-start",
+              gap: 3,
             }}>
-              {/* Attached image preview in bubble */}
-              {msg.imageUrl && (
-                <img
-                  src={msg.imageUrl}
-                  alt="attachment"
-                  style={{ display: "block", maxWidth: "100%", maxHeight: 220, borderRadius: 12, objectFit: "contain", marginBottom: msg.text && msg.text !== "📎" ? 6 : 0 }}
-                />
-              )}
-              {msg.text && msg.text !== "📎" && (
-                <div style={{ padding: msg.imageUrl ? "4px 7px 4px" : "0" }}>
-                  <MessageContent text={msg.text} />
-                </div>
-              )}
-              {/* Copy + Groq badge row for model messages */}
-              {msg.role === "model" && msg.text && msg.text !== "📎" && (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 2 }}>
-                  <CopyButton text={msg.text} />
-                  {msg.engine === "groq" && (
-                    <div style={{ fontSize: 9, color: "rgba(167,139,250,0.5)", letterSpacing: "0.04em", paddingRight: 2 }}>
-                      ⚡ Groq · Llama
-                    </div>
-                  )}
-                </div>
-              )}
+              <div style={{
+                padding: msg.imageUrl ? "6px" : "10px 13px",
+                borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                background: msg.role === "user"
+                  ? "linear-gradient(135deg, rgba(59,130,246,0.35) 0%, rgba(99,102,241,0.3) 100%)"
+                  : "linear-gradient(145deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.04) 100%)",
+                border: msg.role === "user" ? "1px solid rgba(99,102,241,0.35)" : "1px solid rgba(255,255,255,0.12)",
+                backdropFilter: "blur(20px)",
+                WebkitBackdropFilter: "blur(20px)",
+                boxShadow: msg.role === "user" ? "0 4px 16px rgba(59,130,246,0.15)" : "0 4px 16px rgba(0,0,0,0.25)",
+                display: "flex",
+                flexDirection: "column",
+              }}>
+                {/* Attached image preview in bubble */}
+                {msg.imageUrl && (
+                  <img
+                    src={msg.imageUrl}
+                    alt="attachment"
+                    style={{ display: "block", maxWidth: "100%", maxHeight: 220, borderRadius: 12, objectFit: "contain", marginBottom: msg.text && msg.text !== "📎" ? 6 : 0 }}
+                  />
+                )}
+                {msg.text && msg.text !== "📎" && (
+                  <div style={{ padding: msg.imageUrl ? "4px 7px 4px" : "0" }}>
+                    <MessageContent text={msg.text} />
+                  </div>
+                )}
+                {/* Copy + Groq badge row for model messages */}
+                {msg.role === "model" && msg.text && msg.text !== "📎" && (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 2 }}>
+                    <CopyButton text={msg.text} />
+                    {msg.engine === "groq" && (
+                      <div style={{ fontSize: 9, color: "rgba(167,139,250,0.5)", letterSpacing: "0.04em", paddingRight: 2 }}>
+                        ⚡ Groq · Llama
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Timestamp */}
+              <div style={{
+                fontSize: 10,
+                color: "rgba(120,140,180,0.38)",
+                letterSpacing: "0.02em",
+                paddingLeft: msg.role === "user" ? 0 : 2,
+                paddingRight: msg.role === "user" ? 2 : 0,
+              }}>
+                {msg.ts.toLocaleTimeString(lang === "ua" ? "uk-UA" : "en-GB", { hour: "2-digit", minute: "2-digit" })}
+              </div>
             </div>
           </div>
         ))}
