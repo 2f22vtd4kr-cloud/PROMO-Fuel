@@ -53123,11 +53123,42 @@ var routes_default = router13;
 var import_express14 = __toESM(require_express2(), 1);
 var router14 = (0, import_express14.Router)();
 var SMSPOOL_STOCK_URL = "https://api.smspool.net/request/countrystock";
+var SMSPOOL_BALANCE_URL = "https://api.smspool.net/request/balance";
 var CACHE_TTL_MS = 6e4;
 var _cache = /* @__PURE__ */ new Map();
 router14.get("/config", (_req, res) => {
   const hasSmsPoolKey = Boolean(process.env["SMSPOOL_API_KEY"]?.trim());
   return void res.json({ has_smspool_key: hasSmsPoolKey });
+});
+router14.get("/balance", async (req, res) => {
+  const apiKey = String(req.query["api_key"] ?? process.env["SMSPOOL_API_KEY"] ?? "").trim();
+  if (!apiKey) {
+    return void res.status(400).json({ error: "api_key is required" });
+  }
+  try {
+    const url = new URL(SMSPOOL_BALANCE_URL);
+    url.searchParams.set("key", apiKey);
+    const resp = await fetch(url.toString(), {
+      signal: AbortSignal.timeout(12e3)
+    });
+    if (!resp.ok) {
+      return void res.status(502).json({ error: `SMSPool returned HTTP ${resp.status}` });
+    }
+    const raw = await resp.json();
+    if (!raw || typeof raw !== "object") {
+      return void res.status(502).json({ error: "Unexpected SMSPool response" });
+    }
+    const obj = raw;
+    const balance = obj["balance"] !== void 0 ? Number(obj["balance"]) : null;
+    const requests = obj["request"] !== void 0 ? Number(obj["request"]) : null;
+    const success = obj["success"] !== void 0 ? Number(obj["success"]) : null;
+    if (balance === null && obj["error"]) {
+      return void res.status(401).json({ error: String(obj["error"]) });
+    }
+    return void res.json({ balance, requests, success, raw: obj });
+  } catch (err) {
+    return void res.status(502).json({ error: `SMSPool unreachable: ${String(err)}` });
+  }
 });
 router14.get("/countries", async (req, res) => {
   const apiKey = String(req.query["api_key"] ?? process.env["SMSPOOL_API_KEY"] ?? "").trim();

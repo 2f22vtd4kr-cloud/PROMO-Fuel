@@ -2,7 +2,8 @@ import { Router, type Request, type Response } from "express";
 
 const router = Router();
 
-const SMSPOOL_STOCK_URL = "https://api.smspool.net/request/countrystock";
+const SMSPOOL_STOCK_URL    = "https://api.smspool.net/request/countrystock";
+const SMSPOOL_BALANCE_URL  = "https://api.smspool.net/request/balance";
 const CACHE_TTL_MS = 60_000;
 
 interface CountryItem {
@@ -23,6 +24,59 @@ const _cache = new Map<string, { ts: number; data: CountryItem[] }>();
 router.get("/config", (_req: Request, res: Response) => {
   const hasSmsPoolKey = Boolean(process.env["SMSPOOL_API_KEY"]?.trim());
   return void res.json({ has_smspool_key: hasSmsPoolKey });
+});
+
+/**
+ * GET /api/factory/balance?api_key=KEY
+ *
+ * Returns SMSPool account balance and order history stats.
+ * Falls back to SMSPOOL_API_KEY env var when api_key is omitted.
+ */
+router.get("/balance", async (req: Request, res: Response) => {
+  const apiKey =
+    String(req.query["api_key"] ?? process.env["SMSPOOL_API_KEY"] ?? "").trim();
+
+  if (!apiKey) {
+    return void res.status(400).json({ error: "api_key is required" });
+  }
+
+  try {
+    const url = new URL(SMSPOOL_BALANCE_URL);
+    url.searchParams.set("key", apiKey);
+
+    const resp = await fetch(url.toString(), {
+      signal: AbortSignal.timeout(12_000),
+    });
+
+    if (!resp.ok) {
+      return void res
+        .status(502)
+        .json({ error: `SMSPool returned HTTP ${resp.status}` });
+    }
+
+    const raw = (await resp.json()) as unknown;
+
+    if (!raw || typeof raw !== "object") {
+      return void res.status(502).json({ error: "Unexpected SMSPool response" });
+    }
+
+    const obj = raw as Record<string, unknown>;
+
+    // SMSPool balance endpoint returns { balance, request, success, ... }
+    const balance = obj["balance"] !== undefined ? Number(obj["balance"]) : null;
+    const requests = obj["request"] !== undefined ? Number(obj["request"]) : null;
+    const success  = obj["success"]  !== undefined ? Number(obj["success"])  : null;
+
+    if (balance === null && obj["error"]) {
+      return void res.status(401).json({ error: String(obj["error"]) });
+    }
+
+    return void res.json({ balance, requests, success, raw: obj });
+  } catch (err: unknown) {
+    return void res
+      .status(502)
+      .json({ error: `SMSPool unreachable: ${String(err)}` });
+  }
 });
 
 /**

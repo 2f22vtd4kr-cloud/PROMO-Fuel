@@ -169,6 +169,45 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
       .catch(() => setServerHasKey(false));
   }, []);
 
+  // Balance / connection test
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [balanceData,    setBalanceData]    = useState<{
+    balance: number | null;
+    requests: number | null;
+    success: number | null;
+  } | null>(null);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
+
+  const testConnection = useCallback(async (apiKey?: string) => {
+    setBalanceLoading(true);
+    setBalanceError(null);
+    setBalanceData(null);
+    try {
+      const qs = apiKey ? `api_key=${encodeURIComponent(apiKey)}` : "";
+      const resp = await fetch(`/api/factory/balance${qs ? "?" + qs : ""}`,
+        { headers: authHeaders() });
+      const json = await resp.json() as {
+        balance?: number | null;
+        requests?: number | null;
+        success?: number | null;
+        error?: string;
+      };
+      if (!resp.ok || json.error) {
+        setBalanceError(json.error ?? `HTTP ${resp.status}`);
+      } else {
+        setBalanceData({
+          balance:  json.balance  ?? null,
+          requests: json.requests ?? null,
+          success:  json.success  ?? null,
+        });
+      }
+    } catch {
+      setBalanceError(L("Connection failed", "Помилка з'єднання"));
+    } finally {
+      setBalanceLoading(false);
+    }
+  }, []);
+
   // Stock checker
   const [showStock,    setShowStock]    = useState(false);
   const [stockLoading, setStockLoading] = useState(false);
@@ -442,24 +481,100 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
         {runState === "idle" && (
           <>
             {serverHasKey ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 10,
-                background: "rgba(45,232,151,0.07)", border: "1px solid rgba(45,232,151,0.25)",
-                borderRadius: 14, padding: "12px 16px" }}>
-                <div style={{ fontSize: 20, flexShrink: 0 }}>🔑</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: GREEN }}>
-                    {L("Server API Key Active", "Серверний API ключ активний")}
+              <div style={{ background: "rgba(45,232,151,0.06)", border: "1px solid rgba(45,232,151,0.22)",
+                borderRadius: 14, overflow: "hidden" }}>
+                {/* Key header row */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 20, flexShrink: 0 }}>🔑</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: GREEN }}>
+                      {L("Server API Key Active", "Серверний API ключ активний")}
+                    </div>
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.38)", marginTop: 2, lineHeight: 1.4 }}>
+                      {L("SMSPOOL_API_KEY configured on the server.",
+                         "SMSPOOL_API_KEY налаштовано на сервері.")}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.38)", marginTop: 2, lineHeight: 1.4 }}>
-                    {L("SMSPOOL_API_KEY is configured on the server — no need to enter it here.",
-                       "SMSPOOL_API_KEY налаштовано на сервері — вводити тут не потрібно.")}
+                  <button
+                    onClick={() => void testConnection()}
+                    disabled={balanceLoading}
+                    style={{
+                      flexShrink: 0, display: "flex", alignItems: "center", gap: 5,
+                      background: balanceData ? "rgba(45,232,151,0.15)" : GLASS2,
+                      border: `1px solid ${balanceData ? "rgba(45,232,151,0.35)" : BORDER2}`,
+                      borderRadius: 9, padding: "5px 11px",
+                      fontSize: 11, fontWeight: 700,
+                      color: balanceData ? GREEN : "rgba(255,255,255,0.6)",
+                      cursor: balanceLoading ? "default" : "pointer",
+                      transition: "all .18s",
+                    }}
+                  >
+                    {balanceLoading
+                      ? <><Loader size={11} style={{ animation: "spin 0.9s linear infinite" }} /> {L("Testing…", "Перевірка…")}</>
+                      : balanceData
+                        ? <>✓ {L("Connected", "З'єднано")}</>
+                        : <>{L("Test Connection", "Перевірити")}</>}
+                  </button>
+                </div>
+
+                {/* Balance result row */}
+                {(balanceData || balanceError) && (
+                  <div style={{
+                    borderTop: "1px solid rgba(45,232,151,0.12)",
+                    padding: "10px 14px",
+                    background: balanceError ? "rgba(255,80,80,0.06)" : "rgba(45,232,151,0.04)",
+                  }}>
+                    {balanceError ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 14 }}>⚠️</span>
+                        <span style={{ fontSize: 11, color: "#ff6060" }}>{balanceError}</span>
+                      </div>
+                    ) : balanceData && (
+                      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                        {balanceData.balance !== null && (
+                          <div style={{ textAlign: "center" }}>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: GREEN, lineHeight: 1 }}>
+                              ${balanceData.balance?.toFixed(2)}
+                            </div>
+                            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", marginTop: 3, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                              {L("Balance", "Баланс")}
+                            </div>
+                          </div>
+                        )}
+                        {balanceData.requests !== null && (
+                          <div style={{ textAlign: "center" }}>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: "rgba(255,255,255,0.75)", lineHeight: 1 }}>
+                              {balanceData.requests}
+                            </div>
+                            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", marginTop: 3, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                              {L("Orders", "Замовлень")}
+                            </div>
+                          </div>
+                        )}
+                        {balanceData.success !== null && (
+                          <div style={{ textAlign: "center" }}>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: "rgba(255,255,255,0.75)", lineHeight: 1 }}>
+                              {balanceData.success}
+                            </div>
+                            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", marginTop: 3, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                              {L("Success", "Успішних")}
+                            </div>
+                          </div>
+                        )}
+                        {balanceData.requests !== null && balanceData.success !== null && balanceData.requests > 0 && (
+                          <div style={{ textAlign: "center" }}>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: "rgba(255,210,80,0.85)", lineHeight: 1 }}>
+                              {Math.round((balanceData.success / balanceData.requests) * 100)}%
+                            </div>
+                            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", marginTop: 3, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                              {L("Rate", "Успіх")}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
-                <div style={{ flexShrink: 0, background: "rgba(45,232,151,0.15)",
-                  border: "1px solid rgba(45,232,151,0.35)", borderRadius: 8,
-                  padding: "3px 9px", fontSize: 10, fontWeight: 700, color: GREEN }}>
-                  ✓ {L("SET", "ВСТАНОВЛЕНО")}
-                </div>
+                )}
               </div>
             ) : (
               <LabelledInput
