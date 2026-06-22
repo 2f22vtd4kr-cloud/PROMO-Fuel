@@ -8,10 +8,12 @@ export function BottomNav({
   active,
   onNav,
   onNavigate,
+  captchaBadge = 0,
 }: {
   active: Tab;
   onNav: (t: Tab) => void;
   onNavigate?: (t: string) => void;
+  captchaBadge?: number;
 }) {
   const { t } = useI18n();
 
@@ -143,6 +145,23 @@ export function BottomNav({
 
                   {/* Icon */}
                   <div style={{ position: "relative", zIndex: 1 }}>
+                    {/* Captcha notification badge */}
+                    {id === "verify" && captchaBadge > 0 && (
+                      <div style={{
+                        position: "absolute", top: -4, right: -5,
+                        minWidth: 14, height: 14, borderRadius: 7,
+                        background: "linear-gradient(135deg, #ff6b7a, #ef4444)",
+                        border: "1.5px solid #07090f",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 8, fontWeight: 900, color: "#fff",
+                        padding: "0 3px",
+                        boxShadow: "0 0 8px rgba(255,107,122,0.7)",
+                        zIndex: 3,
+                        animation: "authPulse 2s ease-in-out infinite",
+                      }}>
+                        {captchaBadge > 9 ? "9+" : captchaBadge}
+                      </div>
+                    )}
                     <Icon
                       size={isActive ? 26 : 22}
                       color={isActive ? color : kind === "action" ? `${color}90` : "rgba(160,190,230,0.72)"}

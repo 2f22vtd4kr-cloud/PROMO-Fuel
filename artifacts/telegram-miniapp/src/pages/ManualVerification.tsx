@@ -563,6 +563,166 @@ function Slide13({ lang }: SL) {
   );
 }
 
+function Slide14({ lang }: SL) {
+  return (
+    <Shell>
+      <STitle icon="🎨" text={L(lang, "Smart Hub UI", "Розумний інтерфейс Хабу")} />
+
+      <div style={{ fontSize:12, color:"rgba(255,255,255,0.55)", lineHeight:1.6, marginBottom:12 }}>
+        {L(lang,
+          "Six live-feedback features keep you fully oriented without ever refreshing manually.",
+          "Шість функцій живого зворотнього зв'язку — без ручного оновлення."
+        )}
+      </div>
+
+      <div style={{ ...card(TEAL), marginBottom:8 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:TEAL, marginBottom:7 }}>
+          🕐 {L(lang,"Age Colour Indicator","Кольоровий індикатор віку")}
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+          {([
+            ["#2de897", L(lang,"< 2 min","< 2 хв"), L(lang,"Fresh — act normally","Свіже — дій звично")],
+            ["#f59e0b", L(lang,"2 – 5 min","2 – 5 хв"), L(lang,"Aging — solve soon","Старіє — вирішіть скоро")],
+            ["#ff6b7a", L(lang,"> 5 min","> 5 хв"), L(lang,"Expired — dismiss or retry","Застаріло — відхили або повтори")],
+          ] as [string,string,string][]).map(([color, range, hint]) => (
+            <div key={range} style={{ display:"flex", alignItems:"center", gap:9 }}>
+              <div style={{ width:7, height:7, borderRadius:"50%", background:color, flexShrink:0, boxShadow:`0 0 5px ${color}80` }} />
+              <span style={{ fontSize:11, fontWeight:700, color, minWidth:48 }}>{range}</span>
+              <span style={{ fontSize:11, color:"rgba(255,255,255,0.45)" }}>{hint}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ ...card(RED), marginBottom:8 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:RED, marginBottom:5 }}>
+          ⏰ {L(lang,"Dismiss Expired Button","Кнопка «Відхилити застарілі»")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", lineHeight:1.5 }}>
+          {L(lang,
+            "Appears in the header when any captcha is >5 min old. Bulk-dismisses all stale challenges in parallel.",
+            "З'являється в заголовку коли будь-яка капча >5 хв. Разом відхиляє всі застарілі виклики."
+          )}
+        </div>
+      </div>
+
+      <div style={{ ...card("#3b82f6"), marginBottom:8 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:"#3b82f6", marginBottom:5 }}>
+          🎙️ {L(lang,"Listener Control","Управління слухачем")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", lineHeight:1.5 }}>
+          {L(lang,
+            "The listener card shows how many accounts are active (green badge). Use Start All to launch all or Stop All (red button) to halt them at once.",
+            "Картка слухача показує кількість активних акаунтів (зелений бейдж). «Запустити всі» або «Зупинити» (червона кнопка) — управління одним натисканням."
+          )}
+        </div>
+      </div>
+
+      <div style={{ ...card(TEAL), marginBottom:8 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:TEAL, marginBottom:5 }}>
+          📊 {L(lang,"Live Stats Row + All Clear Panel","Live-статистика + Панель «Все чисто»")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", lineHeight:1.5 }}>
+          {L(lang,
+            "The header subtitle shows today's solved / dismissed / total counts in real time. When the queue is empty the All Clear panel shows the same breakdown as a mini scoreboard.",
+            "Підзаголовок показує вирішено / відхилено / всього в реальному часі. Коли черга порожня — панель «Все чисто» показує підсумок дня як міні-дошку рахунку."
+          )}
+        </div>
+      </div>
+
+      <div style={{ background:`${PURPLE}10`, border:`1px solid ${PURPLE}30`, borderRadius:12, padding:"10px 13px", marginBottom:8 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:PURPLE, marginBottom:4 }}>
+          🔔 {L(lang,"Sound Ping","Звуковий сигнал")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", lineHeight:1.5 }}>
+          {L(lang,
+            "940 Hz sine tone fires automatically when a new captcha arrives while the tab is open. No permissions needed.",
+            "Тон 940 Гц спрацьовує автоматично при новій капчі поки вкладка відкрита. Дозволи не потрібні."
+          )}
+        </div>
+      </div>
+
+      <div style={{ background:"rgba(255,107,122,0.08)", border:"1px solid rgba(255,107,122,0.22)", borderRadius:12, padding:"10px 13px" }}>
+        <div style={{ fontSize:11, fontWeight:700, color:"#ff6b7a", marginBottom:4 }}>
+          🔴 {L(lang,"BottomNav Badge","Бейдж в навігації")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", lineHeight:1.5 }}>
+          {L(lang,
+            "The 🛡️ icon in the bottom bar shows an animated red badge with the pending count. Refreshes every 30 seconds from anywhere in the app.",
+            "Іконка 🛡️ в нижній навігації показує анімований червоний бейдж з кількістю очікуючих. Оновлюється кожні 30 сек з будь-якого місця в застосунку."
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Slide 15 — History Tab
+// ═══════════════════════════════════════════════════════════════
+
+function Slide15({ lang }: SL) {
+  return (
+    <Shell>
+      <STitle icon="📋" text={L(lang, "History Tab", "Вкладка «Історія»")} />
+
+      <div style={{ fontSize:12, color:"rgba(255,255,255,0.55)", lineHeight:1.6, marginBottom:14 }}>
+        {L(lang,
+          "The History tab keeps a live-updated log of the last 50 solved and dismissed captchas. Switch tabs at the top of the Verification Hub to access it.",
+          "Вкладка «Історія» зберігає живий журнал останніх 50 вирішених і відхилених капч. Перемикайте вкладки вверху Центру верифікації."
+        )}
+      </div>
+
+      <div style={{ ...card(TEAL), marginBottom:12 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:TEAL, marginBottom:9 }}>
+          {L(lang,"What each row shows","Що показує кожен рядок")}
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:9 }}>
+          {([
+            [TEAL,    L(lang,"✅ solved","✅ вирішено"),    L(lang,"Green icon — human solved via button or text reply","Зелена іконка — вирішено людиною через кнопку або відповідь")],
+            ["rgba(148,163,184,0.55)", L(lang,"❌ dismissed","❌ відхилено"), L(lang,"Grey icon — bulk-dismissed, timed out or manually resolved","Сіра іконка — масово відхилено, час вийшов або вручну")],
+            [TEAL,    L(lang,"Account","Акаунт"),  L(lang,"Label or phone number of the Telethon sender account","Мітка або номер телефону акаунта-відправника")],
+            [TEAL,    L(lang,"Captcha type","Тип капчі"), L(lang,"captcha_type field + group name if available","Поле captcha_type + назва групи якщо є")],
+            [TEAL,    L(lang,"Age","Вік"),          L(lang,"Minutes (Xm) or hours (Xh) since the challenge was created","Хвилини (Xm) або години (Xh) від створення виклику")],
+          ] as [string,string,string][]).map(([color, label, hint]) => (
+            <div key={label} style={{ display:"flex", gap:8, alignItems:"flex-start" }}>
+              <div style={{ width:5, height:5, borderRadius:"50%", background:color, marginTop:5, flexShrink:0 }} />
+              <div>
+                <span style={{ fontSize:11, fontWeight:700, color }}>{label}</span>
+                <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginLeft:6 }}>{hint}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ ...card("#3b82f6"), marginBottom:12 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:"#3b82f6", marginBottom:6 }}>
+          🔄 {L(lang,"Auto-refresh","Авто-оновлення")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", lineHeight:1.5 }}>
+          {L(lang,
+            "History refreshes every 4 seconds alongside the pending queue — no manual reload needed. The tab label shows the count of loaded items.",
+            "Журнал оновлюється кожні 4 секунди разом з чергою очікуючих — без ручного перезавантаження. Назва вкладки показує кількість записів."
+          )}
+        </div>
+      </div>
+
+      <div style={{ background:"rgba(45,232,151,0.07)", border:"1px solid rgba(45,232,151,0.2)", borderRadius:12, padding:"11px 13px" }}>
+        <div style={{ fontSize:11, fontWeight:700, color:TEAL, marginBottom:5 }}>
+          💡 {L(lang,"Use case","Сценарій")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", lineHeight:1.5 }}>
+          {L(lang,
+            "After a bulk-join session switch to History to confirm all accounts resolved their captchas. If you see many 'dismissed' rows for one account it may need a manual check.",
+            "Після масового вступу перейдіть в «Історію» щоб переконатися що всі акаунти вирішили капчі. Якщо бачите багато «відхилено» для одного акаунта — перевірте його вручну."
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Registry
 // ═══════════════════════════════════════════════════════════════
@@ -581,11 +741,13 @@ const KEYWORDS_VERIF: string[] = [
   "best practices tips residential proxy aged accounts",
   "FAQ questions answers troubleshoot dismiss stale auto-solve",
   "push alerts notifications telegram bot token admin ID MINIAPP_URL rate limit /captcha command deep link",
+  "smart hub UI age colour indicator green amber red dismiss expired button sound ping Web Audio API stats badge stop all",
+  "history tab log solved dismissed captchas account type group age auto-refresh",
 ];
 
 const SLIDES_V: Array<(p: SL) => React.ReactElement> = [
   Slide1,Slide2,Slide3,Slide4,Slide5,Slide6,
-  Slide7,Slide8,Slide9,Slide10,Slide11,Slide12,Slide13,
+  Slide7,Slide8,Slide9,Slide10,Slide11,Slide12,Slide13,Slide14,Slide15,
 ];
 const TOTAL_V = SLIDES_V.length;
 
@@ -594,13 +756,13 @@ const TITLES_V: Record<Lang, string[]> = {
     "Cover","Why Captchas Happen","Architecture","DB Table Schema",
     "Telethon Listener","Hub UI Walkthrough","Button Captchas","Text Reply Captchas",
     "API Reference","Bulk Join + Verify Workflow","Best Practices","FAQ",
-    "Push Alerts",
+    "Push Alerts","Smart Hub UI","History Tab",
   ],
   ua: [
     "Обкладинка","Чому виникають капчі","Архітектура","Схема таблиці БД",
     "Telethon-слухач","Огляд інтерфейсу","Кнопкові капчі","Текстові капчі",
     "Довідник API","Масовий вступ + верифікація","Поради","Часті запитання",
-    "Push-сповіщення",
+    "Push-сповіщення","Розумний UI","Вкладка «Історія»",
   ],
 };
 

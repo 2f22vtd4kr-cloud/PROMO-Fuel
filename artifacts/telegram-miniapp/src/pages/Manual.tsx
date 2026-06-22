@@ -2015,7 +2015,15 @@ function SlideVerificationHub({ lang }: SL) {
           ["⏱️", "#2dd4bf", L(lang,"60 s rate-limit per account","60 с ліміт на акаунт"),
             L(lang,"Multiple captchas on the same account don't spam — one alert/minute maximum","Кілька капч від одного акаунта не спамлять — максимум одне сповіщення/хвилину")],
           ["🤖", "#10d88a", L(lang,"/captcha command","Команда /captcha"),
-            L(lang,"Send /captcha in bot chat → shows pending count + WebApp button that opens the Hub directly","Надішліть /captcha у чаті бота → кількість очікуючих + кнопка WebApp, що відкриває Хаб одразу")],
+            L(lang,"Send /captcha → pending count + last 3 solved history + expired count + one-tap WebApp button","Надішліть /captcha → кількість + 3 останніх вирішених + застарілі + кнопка WebApp")],
+          ["🕐", "#a78bfa", L(lang,"Smart Hub UI","Розумний UI Хабу"),
+            L(lang,"Age colour, Dismiss Expired, 940 Hz ping, live stats row, Stop All listeners, All Clear scoreboard","Колір віку, «Відхилити застарілі», пінг, live-статистика, «Зупинити», підсумок «Все чисто»")],
+          ["📋", "#3b82f6", L(lang,"History Tab","Вкладка «Історія»"),
+            L(lang,"Switch to History to see last 50 solved/dismissed captchas with account, type, group and age","Вкладка «Історія» — останні 50 вирішених/відхилених з акаунтом, типом, групою та часом")],
+          ["🔴", "#ff6b7a", L(lang,"BottomNav Badge","Бейдж навігації"),
+            L(lang,"The 🛡️ icon in the nav bar shows an animated red badge with the live pending count (refreshes every 30 s)","Іконка 🛡️ в навігації — анімований червоний бейдж з кількістю очікуючих (оновлення кожні 30 с)")],
+          ["🏠", "#2dd4bf", L(lang,"Home Activity Strip","Смужка на головній"),
+            L(lang,"Home page shows a captcha strip card — red when captchas are pending, green when all clear — tap to jump to Verify tab","Головна показує картку капч — червона при очікуючих, зелена якщо чисто — натисніть для переходу")],
         ].map(([icon,color,title,desc]) => (
           <div key={title as string} style={{ display:"flex", gap:10, alignItems:"flex-start",
             background:`${color as string}0f`, border:`1px solid ${color as string}28`,
@@ -2034,8 +2042,8 @@ function SlideVerificationHub({ lang }: SL) {
         </div>
         <div style={{ fontSize:11, color:"rgba(255,255,255,0.55)", lineHeight:1.55 }}>
           {L(lang,
-            "Open the 📚 manual chooser (top-right button) and select the 🛡️ Verification / HITL Captcha guide for the full 13-slide documentation.",
-            "Відкрийте вибір 📚 мануалу (кнопка у правому верхньому куті) і оберіть посібник 🛡️ Верифікація / HITL Captcha для повної 13-слайдової документації."
+            "Open the 📚 manual chooser (top-right button) and select the 🛡️ Verification / HITL Captcha guide for the full 15-slide documentation.",
+            "Відкрийте вибір 📚 мануалу (кнопка у правому верхньому куті) і оберіть посібник 🛡️ Верифікація / HITL Captcha для повної 15-слайдової документації."
           )}
         </div>
       </div>

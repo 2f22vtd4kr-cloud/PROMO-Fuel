@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { HomePage }                 from "./pages/Home";
 import { CampaignsPage }            from "./pages/Campaigns";
 import { EditorPage }               from "./pages/Editor";
@@ -67,6 +67,24 @@ function OwnerApp() {
   const [showManualAccounts, setShowManualAccounts] = useState(false);
   const [showManualChooser,       setShowManualChooser]       = useState(false);
   const [showManualVerification,  setShowManualVerification]  = useState(false);
+  const [captchaBadge,            setCaptchaBadge]            = useState(0);
+  const badgeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const pollCaptchaBadge = useCallback(async () => {
+    try {
+      const res = await fetch("/api/verifications/stats");
+      if (res.ok) {
+        const data = await res.json() as { current_pending?: number };
+        setCaptchaBadge(data.current_pending ?? 0);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    void pollCaptchaBadge();
+    badgeTimerRef.current = setInterval(() => void pollCaptchaBadge(), 30_000);
+    return () => { if (badgeTimerRef.current) clearInterval(badgeTimerRef.current); };
+  }, [pollCaptchaBadge]);
 
   function openEditor(id?: number) {
     setEditId(id ?? null);
@@ -199,7 +217,7 @@ function OwnerApp() {
       {/* ── Bottom nav ───────────────────────────────────────────────── */}
       {!anyOverlay && (
         <div style={{ position: "relative", zIndex: 2 }}>
-          <BottomNav active={tab} onNav={setTab} onNavigate={handleNavigate} />
+          <BottomNav active={tab} onNav={setTab} onNavigate={handleNavigate} captchaBadge={captchaBadge} />
         </div>
       )}
 
@@ -316,8 +334,8 @@ function ManualChooserPanel({
           <span style={{ fontSize:28, flexShrink:0 }}>🛡️</span>
           <div style={{ textAlign:"left" }}>
             <div style={{ fontSize:12, fontWeight:800, color:"#2dd4bf", marginBottom:2 }}>{lang === "ua" ? "Верифікація / HITL Captcha" : "Verification / HITL Captcha"}</div>
-            <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>13 {lang === "ua" ? "сторінок" : "pages"}</div>
-            <div style={{ fontSize:9, color:"rgba(45,212,191,0.55)", marginTop:2 }}>{lang === "ua" ? "Капча · Слухач · Push-сповіщення" : "Captcha · Listener · Push Alerts"}</div>
+            <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>15 {lang === "ua" ? "сторінок" : "pages"}</div>
+            <div style={{ fontSize:9, color:"rgba(45,212,191,0.55)", marginTop:2 }}>{lang === "ua" ? "Капча · Слухач · Push · UI · Історія" : "Captcha · Listener · Push · UI · History"}</div>
           </div>
         </button>
       </div>

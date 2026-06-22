@@ -1,9 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { ShieldCheck, RefreshCw, AlertCircle, ChevronDown, ChevronUp, Send, X } from "lucide-react";
+import { ShieldCheck, RefreshCw, AlertCircle, ChevronDown, ChevronUp, Send, X, Clock, CheckCircle2, XCircle } from "lucide-react";
 import { useI18n } from "../lib/i18n";
 import { getStoredSecret } from "./LockScreen";
 
 const API = "";
+
+interface VHStats {
+  today_solved:    number;
+  today_dismissed: number;
+  current_pending: number;
+  all_time_solved: number;
+  all_time_total:  number;
+}
 
 const ACCENT  = "#2de897";
 const PURPLE  = "#a855f7";
@@ -48,6 +56,30 @@ function parseButtons(json: string | null): ButtonRow[][] {
   if (!json) return [];
   try { return JSON.parse(json) as ButtonRow[][]; }
   catch { return []; }
+}
+
+function ageColor(ts: string): string {
+  const min = (Date.now() - new Date(ts).getTime()) / 60000;
+  if (min < 2)  return "#2de897";
+  if (min < 5)  return "#f59e0b";
+  return "#ff6b7a";
+}
+
+function playPing() {
+  try {
+    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 940;
+    osc.type = "sine";
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.4);
+    setTimeout(() => void ctx.close(), 600);
+  } catch {}
 }
 
 // ── Single captcha card ─────────────────────────────────────────────────────
@@ -193,7 +225,7 @@ function VerifCard({
           }}>
             {item.captcha_type === "button" ? L("Button", "Кнопка") : L("Text", "Текст")}
           </div>
-          <div style={{ fontSize: 9, color: "rgba(148,163,184,0.4)" }}>{timeAgo(item.created_at)}</div>
+          <div style={{ fontSize: 9, color: ageColor(item.created_at), fontWeight: 600, transition: "color 2s" }}>{timeAgo(item.created_at)}</div>
           {expanded ? <ChevronUp size={14} color="rgba(148,163,184,0.4)" /> : <ChevronDown size={14} color="rgba(148,163,184,0.4)" />}
         </div>
       </div>
@@ -332,7 +364,14 @@ export function VerificationHubPage() {
   const [error, setError]         = useState<string | null>(null);
   const [listenerBusy, setLBusy]  = useState(false);
   const [listenerMsg, setLMsg]    = useState<string | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [dismissBusy,    setDismissBusy]    = useState(false);
+  const [stats,          setStats]          = useState<VHStats | null>(null);
+  const [activeListeners,  setActiveListeners]  = useState<number[]>([]);
+  const [stopAllBusy,      setStopAllBusy]      = useState(false);
+  const [hubTab,           setHubTab]           = useState<"pending" | "history">("pending");
+  const [history,          setHistory]          = useState<VerifItem[]>([]);
+  const timerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevCountRef = useRef<number>(-1);
 
   const fetchPending = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -342,6 +381,11 @@ export function VerificationHubPage() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json() as VerifItem[];
+      const newPending = data.filter(x => x.status === "pending").length;
+      if (prevCountRef.current >= 0 && newPending > prevCountRef.current) {
+        playPing();
+      }
+      prevCountRef.current = newPending;
       setItems(data);
       setError(null);
     } catch (e) {
@@ -351,11 +395,66 @@ export function VerificationHubPage() {
     }
   }, []);
 
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/api/verifications/stats`, { headers: authHeaders() });
+      if (res.ok) setStats(await res.json() as VHStats);
+    } catch {}
+  }, []);
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const [solved, dismissed] = await Promise.all([
+        fetch(`${API}/api/verifications/pending?status=solved`,    { headers: authHeaders() }).then(r => r.ok ? r.json() as Promise<VerifItem[]> : []),
+        fetch(`${API}/api/verifications/pending?status=dismissed`, { headers: authHeaders() }).then(r => r.ok ? r.json() as Promise<VerifItem[]> : []),
+      ]);
+      const merged = [...solved, ...dismissed]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 50);
+      setHistory(merged);
+    } catch {}
+  }, []);
+
+  const fetchListeners = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/api/verifications/listeners`, { headers: authHeaders() });
+      if (res.ok) {
+        const data = await res.json() as { active: number[] };
+        setActiveListeners(data.active ?? []);
+      }
+    } catch {}
+  }, []);
+
+  async function handleStopAll() {
+    setStopAllBusy(true);
+    try {
+      await Promise.all(activeListeners.map(id =>
+        fetch(`${API}/api/verifications/listeners/stop`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ account_id: id }),
+        }).catch(() => {}),
+      ));
+      setActiveListeners([]);
+      setLMsg(L("✓ All listeners stopped", "✓ Всі слухачі зупинені"));
+      setTimeout(() => setLMsg(null), 4000);
+    } catch (e) { setLMsg(String(e)); }
+    finally { setStopAllBusy(false); }
+  }
+
   useEffect(() => {
     void fetchPending();
-    timerRef.current = setInterval(() => void fetchPending(true), 4000);
+    void fetchStats();
+    void fetchListeners();
+    void fetchHistory();
+    timerRef.current = setInterval(() => {
+      void fetchPending(true);
+      void fetchStats();
+      void fetchListeners();
+      void fetchHistory();
+    }, 4000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [fetchPending]);
+  }, [fetchPending, fetchStats, fetchListeners, fetchHistory]);
 
   function handleSolved(id: number) {
     setItems(prev => prev.filter(x => x.id !== id));
@@ -377,8 +476,22 @@ export function VerificationHubPage() {
     finally { setLBusy(false); }
   }
 
-  const pending   = items.filter(i => i.status === "pending");
-  const allClear  = !loading && pending.length === 0;
+  const pending      = items.filter(i => i.status === "pending");
+  const allClear     = !loading && pending.length === 0;
+  const expiredCount = pending.filter(i => (Date.now() - new Date(i.created_at).getTime()) > 5 * 60 * 1000).length;
+
+  async function handleDismissExpired() {
+    const expired = pending.filter(i => (Date.now() - new Date(i.created_at).getTime()) > 5 * 60 * 1000);
+    if (!expired.length) return;
+    setDismissBusy(true);
+    await Promise.all(expired.map(i =>
+      fetch(`${API}/api/verifications/resolve/${i.id}?action=dismissed`, {
+        method: "POST", headers: authHeaders(),
+      }).catch(() => {})
+    ));
+    setItems(prev => prev.filter(i => !expired.some(e => e.id === i.id)));
+    setDismissBusy(false);
+  }
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -400,13 +513,27 @@ export function VerificationHubPage() {
           }}>
             <ShieldCheck size={18} color={ACCENT} />
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: "#e2e8ff", letterSpacing: "0.01em" }}>
               {L("Verification Hub", "Верифікація")}
             </div>
-            <div style={{ fontSize: 11, color: "rgba(160,180,230,0.5)", marginTop: 1 }}>
-              {L("Human-in-the-Loop captcha solver", "Вирішення капчі оператором")}
-            </div>
+            {stats ? (
+              <div style={{ display: "flex", gap: 10, marginTop: 3, flexWrap: "wrap" }}>
+                {[
+                  { val: stats.today_solved,    label: L("solved","вирішено"),     color: ACCENT },
+                  { val: stats.today_dismissed, label: L("dismissed","відхилено"), color: "rgba(148,163,184,0.5)" },
+                  { val: stats.all_time_total,  label: L("total","всього"),        color: "rgba(148,163,184,0.35)" },
+                ].map(({ val, label, color }) => (
+                  <span key={label} style={{ fontSize: 10, color, fontWeight: 600 }}>
+                    {val} {label}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: "rgba(160,180,230,0.5)", marginTop: 1 }}>
+                {L("Human-in-the-Loop captcha solver", "Вирішення капчі оператором")}
+              </div>
+            )}
           </div>
 
           <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
@@ -427,7 +554,7 @@ export function VerificationHubPage() {
 
             {/* Refresh button */}
             <button
-              onClick={() => void fetchPending()}
+              onClick={() => { void fetchPending(); void fetchHistory(); }}
               style={{
                 width: 34, height: 34, borderRadius: 11,
                 background: "rgba(255,255,255,0.05)",
@@ -439,6 +566,26 @@ export function VerificationHubPage() {
               <RefreshCw size={14} color="rgba(160,180,230,0.5)" style={{ animation: loading ? "spin 0.8s linear infinite" : "none" }} />
             </button>
           </div>
+        </div>
+
+        {/* Tab selector */}
+        <div style={{ display: "flex", gap: 3, marginTop: 10, background: "rgba(255,255,255,0.04)", borderRadius: 11, padding: "3px" }}>
+          {(["pending", "history"] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setHubTab(tab)}
+              style={{
+                flex: 1, padding: "5px 0", borderRadius: 9, fontSize: 11, fontWeight: 700,
+                border: "none", fontFamily: "inherit", cursor: "pointer", transition: "all 0.15s",
+                background: hubTab === tab ? "rgba(255,255,255,0.1)" : "transparent",
+                color: hubTab === tab ? "#e2e8ff" : "rgba(148,163,184,0.45)",
+              }}
+            >
+              {tab === "pending"
+                ? `${L("Pending","Очікують")}${pending.length > 0 ? ` (${pending.length})` : ""}`
+                : `${L("History","Історія")}${history.length > 0 ? ` (${history.length})` : ""}`}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -455,37 +602,67 @@ export function VerificationHubPage() {
         <div style={{
           background: GLASS2, border: `1px solid ${BORDER2}`,
           borderRadius: 16, padding: "12px 14px", marginBottom: 14,
-          display: "flex", alignItems: "center", gap: 10,
         }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(226,232,255,0.85)", marginBottom: 2 }}>
-              {L("Captcha Listener", "Слухач капч")}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(226,232,255,0.85)" }}>
+                  {L("Captcha Listener", "Слухач капч")}
+                </div>
+                {activeListeners.length > 0 && (
+                  <div style={{
+                    fontSize: 9, fontWeight: 800, padding: "1px 6px", borderRadius: 6,
+                    background: "rgba(45,232,151,0.15)", border: "1px solid rgba(45,232,151,0.3)",
+                    color: ACCENT, letterSpacing: "0.04em",
+                  }}>
+                    {activeListeners.length} {L("active","активних")}
+                  </div>
+                )}
+              </div>
+              <div style={{ fontSize: 10, color: "rgba(148,163,184,0.5)", lineHeight: 1.4, marginTop: 2 }}>
+                {L(
+                  "Monitors all active accounts for incoming captcha messages",
+                  "Відстежує всі активні акаунти на вхідні капча-повідомлення",
+                )}
+              </div>
             </div>
-            <div style={{ fontSize: 10, color: "rgba(148,163,184,0.5)", lineHeight: 1.4 }}>
-              {L(
-                "Monitors all active accounts for incoming captcha messages",
-                "Відстежує всі активні акаунти на вхідні капча-повідомлення",
+            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+              {activeListeners.length > 0 && (
+                <button
+                  onClick={() => void handleStopAll()}
+                  disabled={stopAllBusy}
+                  style={{
+                    padding: "8px 12px", borderRadius: 12, fontSize: 11, fontWeight: 700,
+                    background: stopAllBusy ? "rgba(255,107,122,0.06)" : "rgba(255,107,122,0.12)",
+                    border: "1px solid rgba(255,107,122,0.3)",
+                    color: stopAllBusy ? "rgba(255,107,122,0.35)" : "rgba(255,107,122,0.85)",
+                    cursor: stopAllBusy ? "not-allowed" : "pointer",
+                    fontFamily: "inherit",
+                    letterSpacing: "0.03em", transition: "all 0.18s",
+                  }}
+                >
+                  {stopAllBusy ? "…" : L("Stop All", "Зупинити")}
+                </button>
               )}
+              <button
+                onClick={() => void handleStartAll()}
+                disabled={listenerBusy}
+                style={{
+                  padding: "8px 14px", borderRadius: 12, fontSize: 11, fontWeight: 700,
+                  background: listenerBusy
+                    ? "rgba(45,232,151,0.08)"
+                    : "linear-gradient(135deg, rgba(45,232,151,0.3), rgba(16,185,129,0.25))",
+                  border: "1px solid rgba(45,232,151,0.35)",
+                  color: listenerBusy ? "rgba(45,232,151,0.4)" : "rgba(45,232,151,0.9)",
+                  cursor: listenerBusy ? "not-allowed" : "pointer",
+                  fontFamily: "inherit",
+                  letterSpacing: "0.03em", transition: "all 0.18s",
+                }}
+              >
+                {listenerBusy ? L("Starting…", "Запуск…") : L("Start All", "Запустити всі")}
+              </button>
             </div>
           </div>
-          <button
-            onClick={() => void handleStartAll()}
-            disabled={listenerBusy}
-            style={{
-              padding: "8px 14px", borderRadius: 12, fontSize: 11, fontWeight: 700,
-              background: listenerBusy
-                ? "rgba(45,232,151,0.08)"
-                : "linear-gradient(135deg, rgba(45,232,151,0.3), rgba(16,185,129,0.25))",
-              border: "1px solid rgba(45,232,151,0.35)",
-              color: listenerBusy ? "rgba(45,232,151,0.4)" : "rgba(45,232,151,0.9)",
-              cursor: listenerBusy ? "not-allowed" : "pointer",
-              fontFamily: "inherit", flexShrink: 0,
-              letterSpacing: "0.03em",
-              transition: "all 0.18s",
-            }}
-          >
-            {listenerBusy ? L("Starting…", "Запуск…") : L("Start All", "Запустити всі")}
-          </button>
         </div>
 
         {/* Listener message */}
@@ -514,7 +691,7 @@ export function VerificationHubPage() {
         )}
 
         {/* Loading */}
-        {loading && items.length === 0 && (
+        {hubTab === "pending" && loading && items.length === 0 && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, paddingTop: 40, opacity: 0.55 }}>
             <div style={{ width: 40, height: 40, borderRadius: "50%", border: "2px solid rgba(45,232,151,0.3)", borderTopColor: ACCENT, animation: "spin 0.8s linear infinite" }} />
             <div style={{ fontSize: 13, color: "rgba(148,163,184,0.6)" }}>
@@ -524,7 +701,7 @@ export function VerificationHubPage() {
         )}
 
         {/* All Clear */}
-        {allClear && (
+        {hubTab === "pending" && allClear && (
           <div style={{
             display: "flex", flexDirection: "column", alignItems: "center", gap: 14,
             paddingTop: 40, animation: "vhFadeIn 0.4s ease both",
@@ -550,6 +727,37 @@ export function VerificationHubPage() {
                 )}
               </div>
             </div>
+            {stats && (stats.today_solved > 0 || stats.today_dismissed > 0) && (
+              <div style={{
+                display: "flex", gap: 14, padding: "8px 16px", borderRadius: 12,
+                background: "rgba(45,232,151,0.06)", border: "1px solid rgba(45,232,151,0.14)",
+              }}>
+                {stats.today_solved > 0 && (
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: ACCENT }}>{stats.today_solved}</div>
+                    <div style={{ fontSize: 9, color: "rgba(45,232,151,0.55)", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                      {L("solved","вирішено")}
+                    </div>
+                  </div>
+                )}
+                {stats.today_dismissed > 0 && (
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "rgba(148,163,184,0.6)" }}>{stats.today_dismissed}</div>
+                    <div style={{ fontSize: 9, color: "rgba(148,163,184,0.4)", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                      {L("dismissed","відхилено")}
+                    </div>
+                  </div>
+                )}
+                {stats.all_time_total > 0 && (
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "rgba(148,163,184,0.4)" }}>{stats.all_time_total}</div>
+                    <div style={{ fontSize: 9, color: "rgba(148,163,184,0.3)", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                      {L("total","всього")}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div style={{
               display: "flex", gap: 6, alignItems: "center",
               fontSize: 10, color: "rgba(45,232,151,0.45)",
@@ -560,14 +768,98 @@ export function VerificationHubPage() {
           </div>
         )}
 
+        {/* History tab */}
+        {hubTab === "history" && (
+          <div style={{ animation: "vhFadeIn 0.3s ease both" }}>
+            {history.length === 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, paddingTop: 44, opacity: 0.5 }}>
+                <Clock size={28} color="rgba(148,163,184,0.45)" />
+                <div style={{ fontSize: 13, color: "rgba(148,163,184,0.55)" }}>
+                  {L("No solved captchas yet", "Немає вирішених капч")}
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(148,163,184,0.4)", marginBottom: 4, paddingLeft: 2 }}>
+                  {L(`Last ${history.length} captchas`, `Останні ${history.length} капч`)}
+                </div>
+                {history.map(item => {
+                  const solved    = item.status === "solved";
+                  const color     = solved ? ACCENT : "rgba(148,163,184,0.45)";
+                  const age       = Math.floor((Date.now() - new Date(item.created_at).getTime()) / 60000);
+                  const ageStr    = age < 60 ? `${age}m` : `${Math.floor(age/60)}h`;
+                  return (
+                    <div key={item.id} style={{
+                      background: GLASS2, border: `1px solid ${BORDER2}`,
+                      borderRadius: 13, padding: "10px 12px",
+                      display: "flex", alignItems: "center", gap: 10,
+                    }}>
+                      <div style={{
+                        width: 28, height: 28, borderRadius: 9, flexShrink: 0,
+                        background: solved ? "rgba(45,232,151,0.1)" : "rgba(148,163,184,0.08)",
+                        border: `1px solid ${color}30`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>
+                        {solved
+                          ? <CheckCircle2 size={14} color={ACCENT} />
+                          : <XCircle      size={14} color="rgba(148,163,184,0.4)" />}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: color, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {item.label || item.phone || `#${item.account_id}`}
+                        </div>
+                        <div style={{ fontSize: 10, color: "rgba(148,163,184,0.45)", marginTop: 1 }}>
+                          {item.captcha_type || "captcha"}
+                          {item.group_title ? ` · ${item.group_title}` : ""}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 10, color: "rgba(148,163,184,0.4)", flexShrink: 0, textAlign: "right" }}>
+                        <div style={{ fontWeight: 600, color }}>{L(item.status, item.status)}</div>
+                        <div>{ageStr} {L("ago","тому")}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Captcha cards */}
-        {pending.length > 0 && (
+        {hubTab === "pending" && pending.length > 0 && (
           <div style={{ animation: "vhFadeIn 0.3s ease both" }}>
             <div style={{
-              fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
-              color: "rgba(148,163,184,0.45)", marginBottom: 10, paddingLeft: 2,
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              marginBottom: 10, paddingLeft: 2, gap: 8,
             }}>
-              {L(`${pending.length} pending`, `${pending.length} очікує`)}
+              <div style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
+                color: "rgba(148,163,184,0.45)",
+              }}>
+                {L(`${pending.length} pending`, `${pending.length} очікує`)}
+              </div>
+              {expiredCount > 0 && (
+                <button
+                  onClick={() => void handleDismissExpired()}
+                  disabled={dismissBusy}
+                  style={{
+                    fontSize: 10, fontWeight: 700,
+                    background: "rgba(255,107,122,0.10)",
+                    border: "1px solid rgba(255,107,122,0.30)",
+                    borderRadius: 9, padding: "3px 10px",
+                    color: dismissBusy ? "rgba(255,107,122,0.35)" : "rgba(255,107,122,0.85)",
+                    cursor: dismissBusy ? "not-allowed" : "pointer",
+                    fontFamily: "inherit", flexShrink: 0,
+                    transition: "all 0.18s",
+                    letterSpacing: "0.03em",
+                  }}
+                >
+                  {dismissBusy
+                    ? L("Dismissing…", "Відхиляємо…")
+                    : L(`⏰ Dismiss expired (${expiredCount})`, `⏰ Відхилити застарілі (${expiredCount})`)
+                  }
+                </button>
+              )}
             </div>
             {pending.map(item => (
               <VerifCard key={item.id} item={item} onSolved={handleSolved} lang={lang} />

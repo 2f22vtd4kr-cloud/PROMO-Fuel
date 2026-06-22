@@ -22,6 +22,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
   const [bannedAcctCount, setBannedAcctCount] = useState(0);
   const [quotaPct,        setQuotaPct]        = useState<number | null>(null);
   const [floodedCount,    setFloodedCount]    = useState(0);
+  const [captchaStats,    setCaptchaStats]    = useState<{ current_pending: number; today_solved: number } | null>(null);
   const [lastRefreshed,  setLastRefreshed]  = useState<Date | null>(null);
   const [upcomingCamps,  setUpcomingCamps]  = useState<{ id: number; name: string; scheduled_at: string; target_count: number }[]>([]);
   const [showNotifs,     setShowNotifs]     = useState(false);
@@ -60,6 +61,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
       })
       .catch(() => {})
       .finally(() => { setLoading(false); setLastRefreshed(new Date()); });
+    fetch("/api/verifications/stats").then(r => r.ok ? r.json() : null).then(d => d && setCaptchaStats(d)).catch(() => {});
     const t = setInterval(() => {
       api.getOverview().then(setOverview).catch(() => {});
       api.getDailyDigest().then(setDigest).catch(() => {});
@@ -377,6 +379,40 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
                 </div>
               </div>
               <ArrowUpRight size={12} color={TG.muted} />
+            </GlassCard>
+          </div>
+        )}
+
+        {/* Captcha activity strip */}
+        {captchaStats && (captchaStats.current_pending > 0 || captchaStats.today_solved > 0) && (
+          <div onClick={() => { haptic.light(); onNavigate("verify"); }} style={{ cursor: "pointer", animation: "slideUp 0.4s ease-out 0.45s both" }}>
+            <GlassCard
+              glow={captchaStats.current_pending > 0 ? "rgba(255,107,122,0.2)" : "rgba(45,232,151,0.12)"}
+              style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 12 }}
+            >
+              <div style={{
+                width: 28, height: 28, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center",
+                background: captchaStats.current_pending > 0 ? "rgba(255,107,122,0.12)" : "rgba(45,232,151,0.12)",
+                border: `1px solid ${captchaStats.current_pending > 0 ? "rgba(255,107,122,0.35)" : "rgba(45,232,151,0.35)"}`,
+              }}>
+                <Shield size={14} color={captchaStats.current_pending > 0 ? "#ff6b7a" : "#2de897"} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: TG.text }}>
+                  {lang === "ua" ? "Верифікація" : "Verification"}
+                  {captchaStats.current_pending > 0 && (
+                    <span style={{ color: "#ff6b7a", marginLeft: 6 }}>
+                      · {captchaStats.current_pending} {lang === "ua" ? "очікує" : "pending"}
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 10, color: TG.muted, marginTop: 1 }}>
+                  {lang === "ua"
+                    ? `${captchaStats.today_solved} вирішено сьогодні`
+                    : `${captchaStats.today_solved} solved today`}
+                </div>
+              </div>
+              <ArrowUpRight size={12} color={captchaStats.current_pending > 0 ? "#ff6b7a" : TG.muted} />
             </GlassCard>
           </div>
         )}

@@ -504,7 +504,16 @@ Safe limits: 15-60s delay between sends; 50-100 msg/day per account (warm-up: st
 - API: GET /api/verifications/pending — list challenges; POST /api/verifications/click — click button; POST /api/verifications/reply — send text answer
 - When a user asks "any pending captchas?" query /api/verifications/pending to check (or advise them to go to the Verify tab)
 - **Push Alerts**: when a new captcha is detected the system sends a Telegram bot message to ADMIN_TELEGRAM_ID (env var). Requires TELEGRAM_TOKEN + ADMIN_TELEGRAM_ID to be set. Rate-limited: max one alert per account per 60 seconds. Optionally set MINIAPP_URL for a deep link in the alert.
-- **/captcha bot command**: typing /captcha in the bot chat shows the pending captcha count and (when MINIAPP_URL is set) a one-tap WebApp button that opens the Verification Hub directly at the #verify hash. The Mini App reads the URL hash on load and auto-jumps to the Verify tab.
+- **/captcha bot command**: typing /captcha shows pending count + expired count (>5 min) + last 3 solved/dismissed history (account, type, status) + one-tap WebApp button at MINIAPP_URL#verify. Switched to HTML parse_mode for safe formatting.
+- **Smart Hub UI**: age colour on timestamp (green <2min, amber 2–5min, red >5min smooth CSS); ⏰ Dismiss Expired (N) bulk-dismiss button when any captcha >5min; 940 Hz Web Audio ping on new arrival; live stats row in header (today solved / dismissed / all-time total) from GET /api/verifications/stats; BottomNav ShieldCheck icon shows animated red badge with pending count (polls every 30s from App.tsx)
+- GET /api/verifications/stats returns { today_solved, today_dismissed, current_pending, all_time_solved, all_time_total }
+- GET /api/verifications/listeners returns { active: [account_id, ...] } — list of account IDs with running listeners
+- POST /api/verifications/listeners/stop with { account_id } stops a single listener; Stop All calls this for each active ID in parallel
+- Listener card shows green "N active" pill badge; Stop All (red) appears only when activeListeners.length > 0
+- All Clear panel shows today solved/dismissed/total scoreboard when stats are non-zero
+- VerificationHub has two tabs: Pending (active challenges) and History (last 50 solved/dismissed); fetched every 4s
+- History tab shows compact list: account label/phone, captcha_type, group_title, status, age in minutes/hours
+- Home page shows a "Verification" activity strip card (red when pending > 0, green otherwise); tapping navigates to verify tab
 - To check if push alerts are configured: verify TELEGRAM_TOKEN and ADMIN_TELEGRAM_ID environment variables are set
 
 ## Key Endpoints (for your reference)

@@ -1180,6 +1180,28 @@ async def verif_listeners() -> dict:
     return {"active": get_active_listener_ids()}
 
 
+@verif_router.get("/stats")
+async def verif_stats() -> dict:
+    """Return captcha activity statistics."""
+    conn = _verif_db()
+    try:
+        row = conn.execute("""
+            SELECT
+              COUNT(CASE WHEN status='solved'    AND date(created_at,'localtime')=date('now','localtime') THEN 1 END) AS today_solved,
+              COUNT(CASE WHEN status='dismissed' AND date(created_at,'localtime')=date('now','localtime') THEN 1 END) AS today_dismissed,
+              COUNT(CASE WHEN status='pending'  THEN 1 END) AS current_pending,
+              COUNT(CASE WHEN status='solved'   THEN 1 END) AS all_time_solved,
+              COUNT(*)                                       AS all_time_total
+            FROM pending_verifications
+        """).fetchone()
+        return dict(row) if row else {
+            "today_solved": 0, "today_dismissed": 0,
+            "current_pending": 0, "all_time_solved": 0, "all_time_total": 0,
+        }
+    finally:
+        conn.close()
+
+
 # ── Mount all routers ─────────────────────────────────────────────────────────
 
 app.include_router(auth_router)

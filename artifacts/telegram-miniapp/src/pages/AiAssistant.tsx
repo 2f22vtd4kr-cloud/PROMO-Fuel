@@ -107,8 +107,12 @@ const SUGGESTIONS: Record<string, string[]> = {
     "Які кампанії активні?",
     "Статус воркерів",
     "Є очікуючі капчі?",
+    "Статистика капч сьогодні",
+    "Переглянути історію капч",
+    "Зупинити всі слухачі капч",
     "Як налаштувати push-сповіщення для капч?",
     "Як використовувати команду /captcha?",
+    "Що означають кольори часу в Хабі?",
   ],
   en: [
     "Platform summary",
@@ -117,8 +121,12 @@ const SUGGESTIONS: Record<string, string[]> = {
     "Active campaigns?",
     "Worker status",
     "Any pending captchas?",
+    "Captcha stats for today",
+    "Show captcha history",
+    "Stop all captcha listeners",
     "How to set up captcha push alerts?",
     "How to use the /captcha command?",
+    "What do the age colours mean in the Hub?",
   ],
 };
 
@@ -553,8 +561,8 @@ export function AiAssistantPage() {
   const GREETING: Message = {
     role: "model",
     text: lang === "ua"
-      ? "Привіт! Я PROMO-Fuel System Copilot. Можу допомогти з управлінням акаунтами, проксі SOCKS5, кампаніями та моніторингом платформи. Можу виконувати дії — призупиняти кампанії, оновлювати проксі, видаляти заблоковані акаунти. Є вкладка **Captcha** для вирішення капч вручну — з push-сповіщеннями та командою **/captcha** у боті, яка одразу відкриває Хаб з кількістю очікуючих капч. Перед виконанням дій завжди буде запит на підтвердження."
-      : "Hi! I'm PROMO-Fuel System Copilot. I can help with account management, SOCKS5 proxies, campaigns, and platform monitoring. I can take actions — pause campaigns, update proxies, delete restricted accounts. There's a **Verify** tab for solving captchas manually — with push alerts and a **/captcha** bot command that opens the Hub directly showing the pending count. Every action requires your approval before execution.",
+      ? "Привіт! Я PROMO-Fuel System Copilot. Можу допомогти з управлінням акаунтами, проксі SOCKS5, кампаніями та моніторингом платформи. Є вкладка **Captcha** з live-статистикою (вирішено/відхилено/всього), кольоровим індикатором часу ⏰, груповим відхиленням застарілих та звуковим сигналом при новій капчі. Команда **/captcha** у боті миттєво відкриває Хаб з повним звітом. Значок 🛡️ в навігації показує кількість очікуючих. Перед виконанням дій завжди буде запит на підтвердження."
+      : "Hi! I'm PROMO-Fuel System Copilot. I can help with account management, SOCKS5 proxies, campaigns, and platform monitoring. The **Verify** tab features live stats (solved/dismissed/total), colour-coded age badges, bulk-dismiss for expired captchas, and a sound ping on new arrivals. Use **/captcha** in the bot for a full status report with one-tap Hub access. The 🛡️ nav icon shows a live red badge when captchas are pending. Every action requires your approval.",
     ts: new Date(),
   };
 

@@ -255,34 +255,67 @@ async def fuel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def captcha_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Open the Verification Hub in the Mini App + show pending captcha count."""
+    """Open the Verification Hub in the Mini App + pending count + last 3 solved."""
+    import html as _html
     miniapp_url = os.getenv("MINIAPP_URL", "").rstrip("/")
 
-    # Count pending challenges
     pending_count = 0
+    history_lines: list[str] = []
+    expired_count = 0
     try:
-        import sqlite3 as _sq
+        import sqlite3 as _sq, time as _t
         _conn = _sq.connect(os.getenv("DB_PATH", "campaigns.db"), timeout=5)
-        _row = _conn.execute(
-            "SELECT COUNT(*) FROM pending_verifications WHERE status='pending'"
-        ).fetchone()
-        pending_count = _row[0] if _row else 0
+        # Pending count + expired (>5 min)
+        _rows_p = _conn.execute(
+            "SELECT created_at FROM pending_verifications WHERE status='pending'"
+        ).fetchall()
+        pending_count = len(_rows_p)
+        _now = _t.time()
+        for (_ts,) in _rows_p:
+            try:
+                from datetime import datetime, timezone
+                _dt = datetime.fromisoformat(_ts.replace("Z","")).replace(tzinfo=timezone.utc)
+                if (_now - _dt.timestamp()) > 300:
+                    expired_count += 1
+            except Exception:
+                pass
+        # Last 3 solved/dismissed
+        _hist = _conn.execute("""
+            SELECT COALESCE(sa.label, sa.phone, CAST(pv.account_id AS TEXT)),
+                   pv.captcha_type, pv.status, pv.updated_at
+            FROM pending_verifications pv
+            LEFT JOIN sender_accounts sa ON sa.id = pv.account_id
+            WHERE pv.status IN ('solved', 'dismissed')
+            ORDER BY pv.updated_at DESC
+            LIMIT 3
+        """).fetchall()
         _conn.close()
+        for (_acc, _ctype, _status, _ts) in _hist:
+            s_icon = "✅" if _status == "solved" else "🚫"
+            t_icon = "🔘" if _ctype == "button" else "✏️"
+            safe = _html.escape((_acc or "Unknown")[:20])
+            history_lines.append(f"{s_icon} {t_icon} <code>{safe}</code>")
     except Exception:
         pass
 
     if pending_count > 0:
-        status_line = (
-            f"⚠️ *{pending_count} очікуюч{'ий' if pending_count == 1 else 'их'} "
-            f"капча-виклик{'' if pending_count == 1 else 'ів'}*"
-        )
+        noun = "виклик" if pending_count == 1 else "викликів"
+        adj  = "очікуючий" if pending_count == 1 else "очікуючих"
+        status_line = f"⚠️ <b>{pending_count} {adj} капча-{noun}</b>"
+        if expired_count > 0:
+            status_line += f"\n⏰ з них застарілих (&gt;5хв): <b>{expired_count}</b>"
     else:
         status_line = "✅ Активних капч немає"
 
+    history_block = ""
+    if history_lines:
+        history_block = "\n\n<b>Останні вирішені:</b>\n" + "\n".join(history_lines)
+
     text = (
-        f"🛡️ *Центр верифікації*\n\n"
-        f"{status_line}\n\n"
-        f"Відкрийте вкладку Captcha, щоб переглянути та вирішити виклики\\."
+        f"🛡️ <b>Центр верифікації</b>\n\n"
+        f"{status_line}"
+        f"{history_block}\n\n"
+        f"Відкрийте вкладку Captcha, щоб переглянути та вирішити виклики."
     )
 
     if miniapp_url:
@@ -293,14 +326,15 @@ async def captcha_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         ]])
         await update.effective_message.reply_text(
-            text, parse_mode="MarkdownV2", reply_markup=keyboard
+            text, parse_mode="HTML", reply_markup=keyboard
         )
     else:
         fallback = (
-            f"🛡️ *Центр верифікації*\n\n{status_line}\n\n"
-            "⚠️ `MINIAPP_URL` не налаштовано\\. Відкрийте Mini App вручну\\."
+            f"🛡️ <b>Центр верифікації</b>\n\n{status_line}"
+            f"{history_block}\n\n"
+            "⚠️ <code>MINIAPP_URL</code> не налаштовано. Відкрийте Mini App вручну."
         )
-        await update.effective_message.reply_text(fallback, parse_mode="MarkdownV2")
+        await update.effective_message.reply_text(fallback, parse_mode="HTML")
 
 
 @admin_only
