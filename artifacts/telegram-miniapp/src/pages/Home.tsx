@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Bell, Megaphone, BarChart2, ArrowUpRight, Gift, Users2, TrendingUp, Shield, Flame, Radio, Cpu, Fuel } from "lucide-react";
+import { Bell, Megaphone, BarChart2, ArrowUpRight, Gift, Users2, TrendingUp, Shield, Flame, Radio, Cpu, Fuel, X, CheckCircle2, AlertTriangle, Ban, Clock, Zap } from "lucide-react";
 import { api, Campaign, AnalyticsOverview, WorkersSummary, DailyDigest } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
@@ -23,6 +23,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
   const [floodedCount,    setFloodedCount]    = useState(0);
   const [lastRefreshed,  setLastRefreshed]  = useState<Date | null>(null);
   const [upcomingCamps,  setUpcomingCamps]  = useState<{ id: number; name: string; scheduled_at: string; target_count: number }[]>([]);
+  const [showNotifs,     setShowNotifs]     = useState(false);
   const { t, lang } = useI18n();
 
   useEffect(() => {
@@ -126,15 +127,22 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
               </div>
             </div>
             <div style={{ position: "relative" }}>
-              <GlassCard style={{ padding: "8px 10px", borderRadius: 14 }}>
-                <Bell size={17} color={TG.accent ?? "#6ba8e5"} style={{ display: "block" }} />
+              <GlassCard
+                style={{ padding: "8px 10px", borderRadius: 14, cursor: "pointer" }}
+                onClick={() => { haptic.light(); setShowNotifs(v => !v); }}
+              >
+                <Bell
+                  size={17}
+                  color={showNotifs ? "#fff" : (TG.accent ?? "#6ba8e5")}
+                  style={{ display: "block", transition: "color 0.2s" }}
+                />
               </GlassCard>
-              {!loading && (overview?.activeCampaigns ?? 0) > 0 && (
+              {!loading && ((overview?.activeCampaigns ?? 0) > 0 || bannedAcctCount > 0 || floodedCount > 0) && (
                 <div style={{
                   position: "absolute", top: -3, right: -3,
                   width: 8, height: 8, borderRadius: "50%",
-                  background: TG.green,
-                  boxShadow: `0 0 6px 2px ${TG.greenGlow}`,
+                  background: bannedAcctCount > 0 ? "#ff6b7a" : floodedCount > 0 ? "#ffc946" : TG.green,
+                  boxShadow: `0 0 6px 2px ${bannedAcctCount > 0 ? "rgba(255,107,122,0.6)" : floodedCount > 0 ? "rgba(255,201,70,0.6)" : TG.greenGlow}`,
                   border: "1.5px solid #07090f",
                 }} />
               )}
@@ -492,6 +500,202 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
           </div>
         </div>
       </div>
+
+      {/* ── Status Panel overlay ───────────────────────────────────────── */}
+      {showNotifs && (
+        <div
+          onClick={() => setShowNotifs(false)}
+          style={{
+            position: "absolute", inset: 0, zIndex: 60,
+            background: "rgba(0,0,0,0.35)",
+            backdropFilter: "blur(2px)",
+            WebkitBackdropFilter: "blur(2px)",
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: "absolute", top: 64, right: 12, left: 12,
+              borderRadius: 22,
+              background: "linear-gradient(145deg,rgba(18,24,42,0.97) 0%,rgba(12,17,32,0.97) 100%)",
+              border: "1px solid rgba(255,255,255,0.13)",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.10) inset",
+              overflow: "hidden",
+              animation: "notifDrop 0.28s cubic-bezier(0.16,1,0.3,1) both",
+            }}
+          >
+            <style>{`
+              @keyframes notifDrop {
+                from { opacity: 0; transform: translateY(-14px) scale(0.97); }
+                to   { opacity: 1; transform: translateY(0) scale(1); }
+              }
+            `}</style>
+
+            {/* Top specular line */}
+            <div style={{ position:"absolute", top:0, left:0, right:0, height:1, background:"linear-gradient(90deg,transparent 5%,rgba(255,255,255,0.42) 35%,rgba(255,255,255,0.55) 50%,rgba(255,255,255,0.42) 65%,transparent 95%)", pointerEvents:"none" }} />
+
+            {/* Header */}
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 16px 10px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+                <Bell size={14} color="#6ba8e5" />
+                <span style={{ fontSize:13, fontWeight:800, color:"rgba(220,235,255,0.95)", letterSpacing:"-0.01em" }}>
+                  {lang === "ua" ? "Статус платформи" : "Platform Status"}
+                </span>
+              </div>
+              <button
+                onClick={() => setShowNotifs(false)}
+                style={{ width:24, height:24, borderRadius:8, border:"1px solid rgba(255,255,255,0.1)", background:"rgba(255,255,255,0.05)", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}
+              >
+                <X size={12} color="rgba(160,180,230,0.6)" />
+              </button>
+            </div>
+
+            <div style={{ height:1, background:"rgba(255,255,255,0.06)", margin:"0 16px" }} />
+
+            <div style={{ padding:"10px 16px 14px", display:"flex", flexDirection:"column", gap:9 }}>
+
+              {/* Workers */}
+              <StatusRow
+                icon={<Cpu size={13} color={workers && workers.alive_workers > 0 ? "#2de897" : "#ff6b7a"} />}
+                iconBg={workers && workers.alive_workers > 0 ? "rgba(45,232,151,0.15)" : "rgba(255,107,122,0.15)"}
+                iconBorder={workers && workers.alive_workers > 0 ? "rgba(45,232,151,0.35)" : "rgba(255,107,122,0.35)"}
+                label={lang === "ua" ? "Воркери" : "Workers"}
+                value={workers ? `${workers.alive_workers} / ${workers.alive_workers + workers.dead_workers}` : "—"}
+                valueColor={workers && workers.alive_workers > 0 ? "#2de897" : "#ff6b7a"}
+                sub={workers && workers.tasks_pending > 0 ? `${workers.tasks_pending} задач в очереди` : lang === "ua" ? "Черга пуста" : "Queue empty"}
+                onClick={() => { setShowNotifs(false); haptic.light(); onNavigate("workers"); }}
+              />
+
+              {/* Active campaigns */}
+              <StatusRow
+                icon={<Megaphone size={13} color="#ffc946" />}
+                iconBg="rgba(255,201,70,0.15)"
+                iconBorder="rgba(255,201,70,0.35)"
+                label={lang === "ua" ? "Активних кампаній" : "Active campaigns"}
+                value={overview ? String((overview.activeCampaigns ?? 0) + groupCampaigns) : "—"}
+                valueColor="#ffc946"
+                sub={overview ? `${(overview.totalSent ?? 0).toLocaleString()} ${lang === "ua" ? "відправлено всього" : "sent total"}` : ""}
+                onClick={() => { setShowNotifs(false); haptic.light(); onNavigate("campaigns"); }}
+              />
+
+              {/* Today's sends */}
+              {digest && (
+                <StatusRow
+                  icon={<Zap size={13} color="#a78bfa" />}
+                  iconBg="rgba(167,139,250,0.15)"
+                  iconBorder="rgba(167,139,250,0.35)"
+                  label={lang === "ua" ? "Відправлено сьогодні" : "Sent today"}
+                  value={String(digest.total_sent_today)}
+                  valueColor="#a78bfa"
+                  sub={`DM: ${digest.dm_sent_today} · ${lang === "ua" ? "Групи" : "Groups"}: ${digest.group_sent_today}`}
+                  onClick={() => { setShowNotifs(false); haptic.light(); onNavigate("analytics"); }}
+                />
+              )}
+
+              {/* Daily quota */}
+              {quotaPct !== null && (
+                <div
+                  onClick={() => { setShowNotifs(false); haptic.light(); onNavigate("accounts"); }}
+                  style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer", padding:"6px 0" }}
+                >
+                  <div style={{ width:30, height:30, borderRadius:10, background: quotaPct >= 90 ? "rgba(255,107,122,0.15)" : quotaPct >= 70 ? "rgba(255,201,70,0.15)" : "rgba(45,232,151,0.15)", border:`1px solid ${quotaPct >= 90 ? "rgba(255,107,122,0.35)" : quotaPct >= 70 ? "rgba(255,201,70,0.35)" : "rgba(45,232,151,0.35)"}`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    <Clock size={13} color={quotaPct >= 90 ? "#ff6b7a" : quotaPct >= 70 ? "#ffc946" : "#2de897"} />
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+                      <span style={{ fontSize:12, fontWeight:600, color:"rgba(200,220,255,0.85)" }}>
+                        {lang === "ua" ? "Денна квота" : "Daily quota"}
+                      </span>
+                      <span style={{ fontSize:11, fontWeight:800, color: quotaPct >= 90 ? "#ff6b7a" : quotaPct >= 70 ? "#ffc946" : "#2de897" }}>{quotaPct}%</span>
+                    </div>
+                    <div style={{ height:3, borderRadius:2, background:"rgba(255,255,255,0.07)", overflow:"hidden" }}>
+                      <div style={{ height:"100%", borderRadius:2, width:`${quotaPct}%`, background: quotaPct >= 90 ? "linear-gradient(90deg,#ff6b7a,#ff9f7a)" : quotaPct >= 70 ? "linear-gradient(90deg,#ffc946,#ffdd86)" : "linear-gradient(90deg,#2de897,#6ba8e5)", transition:"width 0.6s ease" }} />
+                    </div>
+                  </div>
+                  <ArrowUpRight size={12} color="rgba(160,180,230,0.35)" style={{ flexShrink:0 }} />
+                </div>
+              )}
+
+              {/* Warnings */}
+              {bannedAcctCount > 0 && (
+                <StatusRow
+                  icon={<Ban size={13} color="#ff6b7a" />}
+                  iconBg="rgba(255,107,122,0.15)"
+                  iconBorder="rgba(255,107,122,0.35)"
+                  label={lang === "ua" ? "Заблокованих акаунтів" : "Banned accounts"}
+                  value={String(bannedAcctCount)}
+                  valueColor="#ff6b7a"
+                  sub={lang === "ua" ? "Потрібна увага" : "Action required"}
+                  onClick={() => { setShowNotifs(false); haptic.medium(); onNavigate("accounts"); }}
+                  warn
+                />
+              )}
+
+              {floodedCount > 0 && (
+                <StatusRow
+                  icon={<AlertTriangle size={13} color="#ffc946" />}
+                  iconBg="rgba(255,201,70,0.15)"
+                  iconBorder="rgba(255,201,70,0.35)"
+                  label="Flood wait"
+                  value={`${floodedCount} ${lang === "ua" ? "акаунтів" : "accounts"}`}
+                  valueColor="#ffc946"
+                  sub={lang === "ua" ? "Тимчасове обмеження Telegram" : "Telegram rate limit active"}
+                  onClick={() => { setShowNotifs(false); haptic.light(); onNavigate("accounts"); }}
+                />
+              )}
+
+              {/* All clear */}
+              {!loading && bannedAcctCount === 0 && floodedCount === 0 && (
+                <div style={{ display:"flex", alignItems:"center", gap:8, padding:"4px 0" }}>
+                  <CheckCircle2 size={14} color="#2de897" />
+                  <span style={{ fontSize:12, color:"rgba(45,232,151,0.85)" }}>
+                    {lang === "ua" ? "Проблем не виявлено" : "No issues detected"}
+                  </span>
+                </div>
+              )}
+
+            </div>
+          </div>
+        </div>
+      )}
     </>
+  );
+}
+
+function StatusRow({ icon, iconBg, iconBorder, label, value, valueColor, sub, onClick, warn }: {
+  icon: React.ReactNode;
+  iconBg: string;
+  iconBorder: string;
+  label: string;
+  value: string;
+  valueColor: string;
+  sub?: string;
+  onClick?: () => void;
+  warn?: boolean;
+}) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        display:"flex", alignItems:"center", gap:10,
+        cursor: onClick ? "pointer" : "default",
+        padding:"5px 0",
+        borderLeft: warn ? "2px solid rgba(255,107,122,0.5)" : "2px solid transparent",
+        paddingLeft: warn ? 8 : 0,
+        transition: "opacity 0.15s",
+      }}
+    >
+      <div style={{ width:30, height:30, borderRadius:10, background:iconBg, border:`1px solid ${iconBorder}`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+        {icon}
+      </div>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <span style={{ fontSize:12, fontWeight:600, color:"rgba(200,220,255,0.82)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{label}</span>
+          <span style={{ fontSize:13, fontWeight:800, color:valueColor, flexShrink:0, marginLeft:8 }}>{value}</span>
+        </div>
+        {sub && <div style={{ fontSize:10, color:"rgba(140,165,210,0.55)", marginTop:2, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{sub}</div>}
+      </div>
+      {onClick && <ArrowUpRight size={11} color="rgba(160,180,230,0.28)" style={{ flexShrink:0 }} />}
+    </div>
   );
 }
