@@ -753,6 +753,26 @@ async def _registration_stream(
                         # All credential strategies exhausted for this number
                         _app_stuck_count += 1
                         _nums_left = MAX_NUM_RETRIES - _num_attempt - 1
+                        # After 2 consecutive app-stuck failures the whole country
+                        # pool is recycled — stop wasting balance, fail fast.
+                        if _app_stuck_count >= 2:
+                            yield _sse("step", {"step": 3, "status": "error",
+                                                "message": (
+                                                    f"🚫 {_app_stuck_count} numbers in a row from this country are recycled "
+                                                    "(existing Telegram accounts). Stopping — switch to a different country."
+                                                )})
+                            await cancel_order()
+                            await safe_disconnect()
+                            yield _sse("sms_retry_prompt", {
+                                "country_id": country_id,
+                                "message": (
+                                    f"🚫 {_app_stuck_count} numbers in a row from this country returned SentCodeTypeApp — "
+                                    "the number pool is recycled (existing Telegram accounts). "
+                                    "Switch to a different country: Kazakhstan (KZ), Ukraine (UA), "
+                                    "Philippines (PH), Georgia (GE), or Bangladesh (BD) have fresher pools."
+                                ),
+                            })
+                            return
                         yield _sse("step", {"step": 3, "status": "running",
                                             "message": (
                                                 f"🔄 {code_type_name} stuck — number has existing Telegram account. "

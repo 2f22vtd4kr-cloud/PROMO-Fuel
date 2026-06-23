@@ -185,8 +185,11 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [warmupMode,    setWarmupMode]    = useState<"none" | "all" | "ask">("all");
   // Popup for "ask" mode — shown when backend emits warmup_prompt
   const [warmupPrompt,  setWarmupPrompt]  = useState<{ accountId: number; phone: string } | null>(null);
-  // Popup shown on SMS timeout — ask to retry with a fresh number from the same country
-  const [smsRetryPrompt, setSmsRetryPrompt] = useState(false);
+  // Popup shown on SMS timeout or recycled-number failure
+  const [smsRetryPrompt, setSmsRetryPrompt] = useState<{
+    reason: "timeout" | "recycled";
+    message: string;
+  } | null>(null);
 
   const [profileMode,        setProfileMode]        = useState<"ai" | "manual">("ai");
   const [profFirstName,      setProfFirstName]      = useState("");
@@ -516,8 +519,13 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               phone:     p.phone     as string,
             });
           } else if (event === "sms_retry_prompt") {
-            // SMS timeout — show "try fresh number?" popup; stream closes after this
-            setSmsRetryPrompt(true);
+            // SMS timeout or recycled-number failure
+            const msg  = (p.message as string | undefined) ?? "";
+            const isRecycled = msg.includes("SentCodeTypeApp") || msg.includes("recycled");
+            setSmsRetryPrompt({
+              reason:  isRecycled ? "recycled" : "timeout",
+              message: msg,
+            });
             setRunState("idle");
             setPollMsg(null);
             setBatchDelayMsg(null);
@@ -545,7 +553,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setPollMsg(null);
     setBatchDelayMsg(null);
     setWarmupPrompt(null);
-    setSmsRetryPrompt(false);
+    setSmsRetryPrompt(null);
   }
 
   function reset() {
@@ -561,11 +569,11 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setPreflightStatus("idle");
     setPreflightMsg(null);
     setWarmupPrompt(null);
-    setSmsRetryPrompt(false);
+    setSmsRetryPrompt(null);
   }
 
   function handleSmsRetry(yes: boolean) {
-    setSmsRetryPrompt(false);
+    setSmsRetryPrompt(null);
     if (yes) {
       void launch();
     }
@@ -630,74 +638,125 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
         </div>
       </div>
 
-      {/* ── SMS Retry Prompt Popup ──────────────────────────────────────── */}
-      {smsRetryPrompt && (
-        <div style={{
-          position: "fixed", inset: 0, zIndex: 999,
-          background: "rgba(0,0,0,0.78)", backdropFilter: "blur(12px)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          padding: "0 24px",
-        }}>
+      {/* ── SMS Retry / Recycled Pool Popup ────────────────────────────── */}
+      {smsRetryPrompt && (() => {
+        const isRecycled = smsRetryPrompt.reason === "recycled";
+        return (
           <div style={{
-            background: "rgba(12,15,26,0.98)",
-            border: "1px solid rgba(255,107,122,0.4)",
-            borderRadius: 22, padding: "28px 24px", maxWidth: 360, width: "100%",
-            boxShadow: "0 0 56px rgba(255,107,122,0.2)",
+            position: "fixed", inset: 0, zIndex: 999,
+            background: "rgba(0,0,0,0.82)", backdropFilter: "blur(12px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "0 24px",
           }}>
-            <div style={{ fontSize: 44, textAlign: "center", marginBottom: 14 }}>📵</div>
-            <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", textAlign: "center", marginBottom: 8 }}>
-              {L("SMS Timeout", "Час очікування SMS вичерпано")}
-            </div>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", textAlign: "center", lineHeight: 1.6, marginBottom: 6 }}>
-              {L("No code received within 2 minutes.", "Код не отримано протягом 2 хвилин.")}
-            </div>
             <div style={{
-              background: "rgba(255,107,122,0.08)", border: "1px solid rgba(255,107,122,0.2)",
-              borderRadius: 12, padding: "10px 14px", marginBottom: 20, textAlign: "center",
+              background: "rgba(12,15,26,0.98)",
+              border: `1px solid ${isRecycled ? "rgba(255,200,50,0.45)" : "rgba(255,107,122,0.4)"}`,
+              borderRadius: 22, padding: "28px 24px", maxWidth: 360, width: "100%",
+              boxShadow: `0 0 56px ${isRecycled ? "rgba(255,200,50,0.15)" : "rgba(255,107,122,0.2)"}`,
             }}>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.38)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                {L("Country", "Країна")}
+              <div style={{ fontSize: 44, textAlign: "center", marginBottom: 14 }}>
+                {isRecycled ? "♻️" : "📵"}
               </div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: "#fff" }}>
-                {selectedCountryLabel}
+              <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", textAlign: "center", marginBottom: 8 }}>
+                {isRecycled
+                  ? L("Recycled Number Pool", "Пул переробленних номерів")
+                  : L("SMS Timeout", "Час очікування SMS вичерпано")}
               </div>
-              <div style={{ fontSize: 10, color: "rgba(255,107,122,0.7)", marginTop: 4 }}>
-                {L("A fresh number will be purchased from the same country",
-                   "Новий номер буде куплений із тієї самої країни")}
-              </div>
-            </div>
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.38)", textAlign: "center", lineHeight: 1.6, marginBottom: 24 }}>
-              {L(
-                "Try registering with a brand new number from the same country?",
-                "Спробувати реєстрацію з новим номером із тієї самої країни?"
+
+              {isRecycled ? (
+                <>
+                  <div style={{
+                    background: "rgba(255,200,50,0.07)", border: "1px solid rgba(255,200,50,0.2)",
+                    borderRadius: 12, padding: "12px 14px", marginBottom: 16,
+                  }}>
+                    <div style={{ fontSize: 12, color: "rgba(255,200,50,0.9)", lineHeight: 1.6, fontWeight: 600 }}>
+                      {L(
+                        "Numbers from this country already have Telegram accounts. " +
+                        "The SMSPool success rate measures SMS delivery, not whether a number is fresh.",
+                        "Номери цієї країни вже мають акаунти Telegram. " +
+                        "Показник успіху SMSPool вимірює доставку SMS, а не «свіжість» номеру."
+                      )}
+                    </div>
+                  </div>
+                  <div style={{
+                    background: "rgba(12,15,26,0.6)", border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: 10, padding: "10px 13px", marginBottom: 20,
+                  }}>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      {L("Suggested alternatives", "Рекомендовані альтернативи")}
+                    </div>
+                    {["Kazakhstan (KZ)", "Ukraine (UA)", "Philippines (PH)", "Georgia (GE)", "Bangladesh (BD)"].map(c => (
+                      <div key={c} style={{
+                        fontSize: 12, color: "rgba(226,232,255,0.75)", padding: "3px 0",
+                        borderBottom: "1px solid rgba(255,255,255,0.05)",
+                      }}>🌍 {c}</div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setSmsRetryPrompt(null)}
+                    style={{
+                      width: "100%", padding: "14px 0", borderRadius: 14,
+                      background: "linear-gradient(135deg, rgba(255,200,50,0.25), rgba(255,200,50,0.12))",
+                      border: "1px solid rgba(255,200,50,0.45)",
+                      color: "#ffc832", fontSize: 14, fontWeight: 800, cursor: "pointer",
+                    }}
+                  >
+                    🌍 {L("OK — I'll switch country", "OK — зміню країну")}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", textAlign: "center", lineHeight: 1.6, marginBottom: 6 }}>
+                    {L("No code received within 2 minutes.", "Код не отримано протягом 2 хвилин.")}
+                  </div>
+                  <div style={{
+                    background: "rgba(255,107,122,0.08)", border: "1px solid rgba(255,107,122,0.2)",
+                    borderRadius: 12, padding: "10px 14px", marginBottom: 20, textAlign: "center",
+                  }}>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.38)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      {L("Country", "Країна")}
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: "#fff" }}>{selectedCountryLabel}</div>
+                    <div style={{ fontSize: 10, color: "rgba(255,107,122,0.7)", marginTop: 4 }}>
+                      {L("A fresh number will be purchased from the same country",
+                         "Новий номер буде куплений із тієї самої країни")}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.38)", textAlign: "center", lineHeight: 1.6, marginBottom: 24 }}>
+                    {L(
+                      "Try registering with a brand new number from the same country?",
+                      "Спробувати реєстрацію з новим номером із тієї самої країни?"
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button
+                      onClick={() => handleSmsRetry(false)}
+                      style={{
+                        flex: 1, padding: "12px 0", borderRadius: 13,
+                        background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)",
+                        color: "rgba(255,255,255,0.6)", fontSize: 13, fontWeight: 700, cursor: "pointer",
+                      }}
+                    >
+                      {L("Cancel", "Скасувати")}
+                    </button>
+                    <button
+                      onClick={() => handleSmsRetry(true)}
+                      style={{
+                        flex: 1, padding: "12px 0", borderRadius: 13,
+                        background: "linear-gradient(135deg, rgba(255,107,122,0.35), rgba(255,107,122,0.2))",
+                        border: "1px solid rgba(255,107,122,0.55)",
+                        color: "#ff6b7a", fontSize: 13, fontWeight: 800, cursor: "pointer",
+                      }}
+                    >
+                      🔄 {L("Try Fresh Number", "Новий номер")}
+                    </button>
+                  </div>
+                </>
               )}
             </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button
-                onClick={() => handleSmsRetry(false)}
-                style={{
-                  flex: 1, padding: "12px 0", borderRadius: 13,
-                  background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)",
-                  color: "rgba(255,255,255,0.6)", fontSize: 13, fontWeight: 700, cursor: "pointer",
-                }}
-              >
-                {L("Cancel", "Скасувати")}
-              </button>
-              <button
-                onClick={() => handleSmsRetry(true)}
-                style={{
-                  flex: 1, padding: "12px 0", borderRadius: 13,
-                  background: "linear-gradient(135deg, rgba(255,107,122,0.35), rgba(255,107,122,0.2))",
-                  border: "1px solid rgba(255,107,122,0.55)",
-                  color: "#ff6b7a", fontSize: 13, fontWeight: 800, cursor: "pointer",
-                }}
-              >
-                🔄 {L("Try Fresh Number", "Новий номер")}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Warmup Prompt Popup (ask mode) ─────────────────────────────── */}
       {warmupPrompt && (
