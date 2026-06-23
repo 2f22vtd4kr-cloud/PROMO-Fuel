@@ -38,6 +38,11 @@ from telethon.tl.functions.photos import UploadProfilePhotoRequest
 
 logger = logging.getLogger("account_factory")
 
+
+def _strip_html(text: str) -> str:
+    """Remove HTML tags from a string (SMSPool sometimes returns HTML in error messages)."""
+    return re.sub(r"<[^>]+>", "", str(text or "")).strip()
+
 factory_router = APIRouter(prefix="/api/factory", tags=["factory"])
 
 DB_PATH      = os.environ.get("DB_PATH", "campaigns.db")
@@ -437,7 +442,7 @@ async def _registration_stream(
 
             if not result.get("success") and "number" not in result:
                 yield _sse("error", {
-                    "message": f"SMSPool purchase failed: {result.get('message') or result}"
+                    "message": f"SMSPool purchase failed: {_strip_html(result.get('message') or str(result))}"
                 })
                 return
 
@@ -557,18 +562,82 @@ async def _registration_stream(
                         yield _sse("step", {"step": 3, "status": "running",
                                             "message": f"⚠️ Resend {_rs+1}/3: {type(e_rs).__name__}"})
 
-                # Still non-SMS after all resends — cancel and try a new number from the same country
+                # Still non-SMS after all resends — try official Telegram Desktop creds before
+                # giving up on this number.  Official api_id=2040 (Telegram Desktop) bypasses
+                # the SentCodeTypeApp routing that Telegram applies to unknown app credentials.
                 if any(t in code_type_name for t in _non_sms):
-                    _app_stuck_count += 1
-                    _nums_left = MAX_NUM_RETRIES - _num_attempt - 1
                     yield _sse("step", {"step": 3, "status": "running",
-                                        "message": (
-                                            f"🔄 {code_type_name} — number has existing Telegram account. "
-                                            f"Cancelling, buying new number... ({_nums_left} left)"
-                                        )})
-                    await cancel_order()
-                    await safe_disconnect()
-                    continue  # try next number, same country
+                                        "message": "🔑 Trying official Telegram Desktop creds to force SMS…"})
+                    _switched_to_official = False
+                    for _off_api_id, _off_api_hash in _OFFICIAL_CLIENT_CREDS:
+                        await safe_disconnect()
+                        # Wipe any session leftovers before opening a new client on the same path
+                        for _ext in (".session", ".session-journal"):
+                            try:
+                                os.remove(session_path + _ext)
+                            except FileNotFoundError:
+                                pass
+                        _off_client = TelegramClient(
+                            session_path, _off_api_id, _off_api_hash,
+                            proxy=proxy_tuple,
+                            device_model=device_model,
+                            system_version=system_version,
+                            app_version=app_version,
+                            lang_code="en",
+                            system_lang_code="en-US",
+                        )
+                        client = _off_client
+                        try:
+                            await client.connect()
+                            raw_result = await client(RawSendCodeRequest(
+                                phone_number=phone,
+                                api_id=_off_api_id,
+                                api_hash=_off_api_hash,
+                                settings=tl_types.CodeSettings(
+                                    allow_flashcall=False,
+                                    allow_missed_call=False,
+                                    allow_firebase=False,
+                                    current_number=False,
+                                ),
+                            ))
+                            phone_code_hash = raw_result.phone_code_hash
+                            code_type_name  = type(raw_result.type).__name__ if raw_result.type else code_type_name
+                            if not any(t in code_type_name for t in _non_sms):
+                                yield _sse("step", {"step": 3, "status": "running",
+                                                    "message": f"✅ Official creds (api_id={_off_api_id}) → {code_type_name} — polling SMS…"})
+                                _switched_to_official = True
+                                break
+                            else:
+                                yield _sse("step", {"step": 3, "status": "running",
+                                                    "message": f"🔄 Official creds (api_id={_off_api_id}) also got {code_type_name}…"})
+                        except PhoneNumberBannedError:
+                            _banned = True
+                            break
+                        except Exception as _e_off:
+                            yield _sse("step", {"step": 3, "status": "running",
+                                                "message": f"⚠️ Official creds (api_id={_off_api_id}): {type(_e_off).__name__}"})
+
+                    # Official creds switched to SMS — continue to step 4
+                    if _switched_to_official:
+                        pass  # fall through to the polling block below
+                    elif _banned:
+                        yield _sse("step", {"step": 3, "status": "running",
+                                            "message": "🚫 Number banned — cancelling, buying new number…"})
+                        await cancel_order()
+                        await safe_disconnect()
+                        continue
+                    else:
+                        # All credential strategies exhausted for this number
+                        _app_stuck_count += 1
+                        _nums_left = MAX_NUM_RETRIES - _num_attempt - 1
+                        yield _sse("step", {"step": 3, "status": "running",
+                                            "message": (
+                                                f"🔄 {code_type_name} stuck — number has existing Telegram account. "
+                                                f"Cancelling, buying new number… ({_nums_left} left)"
+                                            )})
+                        await cancel_order()
+                        await safe_disconnect()
+                        continue  # try next number, same country
 
             yield _sse("step", {"step": 3, "status": "done",
                                 "message": f"✅ Code sent via {code_type_name} — polling SMSPool..."})
