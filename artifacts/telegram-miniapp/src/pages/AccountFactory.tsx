@@ -782,6 +782,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [pollMsg,         setPollMsg]         = useState<string | null>(null);
   const [preflightStatus, setPreflightStatus] = useState<"idle"|"running"|"done"|"error">("idle");
   const [preflightMsg,    setPreflightMsg]    = useState<string | null>(null);
+  const [exitIp,          setExitIp]          = useState<string | null>(null);
 
   // Batch tracking
   const [batchTotal,     setBatchTotal]     = useState(0);
@@ -994,12 +995,14 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           } else if (event === "preflight") {
             setPreflightStatus(p.status as "running" | "done" | "error");
             setPreflightMsg(p.message as string ?? null);
+            if (p.exit_ip) setExitIp(p.exit_ip as string);
           } else if (event === "batch_reset") {
             setSteps(initSteps());
             setPollMsg(null);
             setErrorMsg(null);
             setPreflightStatus("idle");
             setPreflightMsg(null);
+            setExitIp(null);
           } else if (event === "batch_delay") {
             setBatchDelayMsg(p.message as string);
           } else if (event === "batch_done") {
@@ -3019,6 +3022,21 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   }}>
                     {preflightMsg ?? (L("Testing SOCKS5 tunnel to Telegram DC1…", "Тестування SOCKS5 тунелю до Telegram DC1…"))}
                   </div>
+                  {preflightStatus === "done" && exitIp && (
+                    <div style={{
+                      marginTop: 6,
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                      background: "rgba(0,0,0,0.25)",
+                      border: "1px solid rgba(45,232,151,0.25)",
+                      borderRadius: 8, padding: "3px 10px",
+                    }}>
+                      <span style={{ fontSize: 10, opacity: 0.55 }}>EXIT IP</span>
+                      <span style={{
+                        fontFamily: "monospace", fontSize: 13, fontWeight: 700,
+                        color: "#2de897", letterSpacing: "0.04em",
+                      }}>{exitIp}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

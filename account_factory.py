@@ -448,6 +448,42 @@ async def _test_proxy_connection(proxy_string: str, timeout: float = 12.0) -> tu
         return False, f"Connection refused or timeout: {short}"
 
 
+async def _get_exit_ip_via_proxy(proxy_string: str, timeout: float = 10.0) -> tuple[str | None, str]:
+    """
+    Make a real HTTP GET through the SOCKS5 proxy to api.ipify.org.
+    Returns (exit_ip_or_None, human_readable_message).
+    Runs blocking requests call in a thread executor.
+    If this passes, HTTP traffic is genuinely routed through the proxy.
+    """
+    try:
+        proxy_tuple = _parse_proxy(proxy_string)
+        if proxy_tuple is None:
+            return None, "Cannot parse proxy string"
+
+        _stype, host, port, _rdns, user, password = proxy_tuple
+
+        import requests as _req  # noqa: PLC0415
+
+        if user and password:
+            proxy_url = f"socks5h://{user}:{password}@{host}:{port}"
+        else:
+            proxy_url = f"socks5h://{host}:{port}"
+
+        proxies = {"https": proxy_url, "http": proxy_url}
+
+        def _sync_get() -> str:
+            r = _req.get("https://api.ipify.org", proxies=proxies, timeout=timeout)
+            r.raise_for_status()
+            return r.text.strip()
+
+        loop = asyncio.get_event_loop()
+        exit_ip = await loop.run_in_executor(None, _sync_get)
+        return exit_ip, f"🌍 Exit IP: {exit_ip}"
+
+    except Exception as exc:
+        return None, f"IP check failed: {str(exc)[:100]}"
+
+
 async def _registration_stream(
     smspool_api_key: str,
     country_id: str,
@@ -507,7 +543,21 @@ async def _registration_stream(
                 )
             })
             return
-        yield _sse("preflight", {"status": "done", "message": proxy_msg})
+
+        # ─── HTTP exit-IP verification ────────────────────────────────────
+        # TCP check above proves the port is reachable. This check proves
+        # actual HTTP traffic routes through the proxy — confirms the exit IP
+        # is NOT the Replit datacenter IP before spending SMSPool balance.
+        yield _sse("preflight", {
+            "status": "running",
+            "message": "🌍 Verifying exit IP through proxy…",
+        })
+        exit_ip, ip_msg = await _get_exit_ip_via_proxy(proxy_string)
+        yield _sse("preflight", {
+            "status": "done",
+            "message": f"{proxy_msg} · {ip_msg}",
+            "exit_ip": exit_ip,
+        })
 
         # ─── python-socks guard ───────────────────────────────────────────
         # Telethon needs `python-socks[asyncio]` to actually route through a
