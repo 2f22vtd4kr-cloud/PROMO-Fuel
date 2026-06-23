@@ -472,7 +472,7 @@ async def _registration_stream(
             yield _sse("step", {"step": 3, "status": "running",
                                 "message": f"📲 App delivery detected — forcing SMS switch (next: {next_name})..."})
             try:
-                forced = await client(ResendCodeRequest(phone=phone, phone_code_hash=phone_code_hash))
+                forced = await client(ResendCodeRequest(phone_number=phone, phone_code_hash=phone_code_hash))
                 phone_code_hash = forced.phone_code_hash
                 code_type_name = type(forced.type).__name__ if forced.type else code_type_name
                 yield _sse("step", {"step": 3, "status": "done",
@@ -513,7 +513,7 @@ async def _registration_stream(
                 if not resent_code and remaining <= 60:
                     resent_code = True
                     try:
-                        resent = await client(ResendCodeRequest(phone=phone, phone_code_hash=phone_code_hash))
+                        resent = await client(ResendCodeRequest(phone_number=phone, phone_code_hash=phone_code_hash))
                         phone_code_hash = resent.phone_code_hash
                         yield _sse("poll", {
                             "remaining": remaining,
