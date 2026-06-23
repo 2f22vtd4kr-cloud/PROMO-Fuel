@@ -389,23 +389,53 @@ async def _registration_stream(
         # ─── Steps 1–4 retry loop ─────────────────────────────────────────
         # If a purchased number fails (SentCodeTypeApp / SMS timeout), automatically
         # cancel it, buy a fresh number and retry — up to MAX_NUM_RETRIES times.
-        MAX_NUM_RETRIES = 5
+        MAX_NUM_RETRIES = 6
         code: str | None = None
         raw_num: str = ""
 
+        # Countries tried in order when the primary one consistently returns SentCodeTypeApp.
+        # UK/EU VoIP numbers are blocked by Telegram from SMS delivery; KZ/UA/PL work reliably.
+        _APP_STUCK_THRESHOLD = 2          # switch country after this many consecutive App-type stalls
+        _COUNTRY_FALLBACKS   = ["kz", "ua", "pl", "in"]  # tried in order when primary fails
+        _app_stuck_count     = 0          # consecutive SentCodeTypeApp stalls across attempts
+        _primary_country     = country_id # remember original selection for the retry prompt
+
+        def _pick_country() -> str:
+            """Return the country ID to use for the next number purchase."""
+            if _app_stuck_count < _APP_STUCK_THRESHOLD:
+                return country_id
+            fb_idx = _app_stuck_count - _APP_STUCK_THRESHOLD
+            fallbacks = [c for c in _COUNTRY_FALLBACKS if c != _primary_country]
+            if fb_idx < len(fallbacks):
+                return fallbacks[fb_idx]
+            return fallbacks[-1]  # keep using last fallback
+
         for _num_attempt in range(MAX_NUM_RETRIES):
 
+            _current_country = _pick_country()
+
             # ─── Step 1 — Purchase number ─────────────────────────────────
-            _retry_label = f" (retry {_num_attempt}/{MAX_NUM_RETRIES-1})" if _num_attempt else ""
+            _is_fallback = _current_country != _primary_country
+            _country_note = f" [{_current_country.upper()} fallback]" if _is_fallback else ""
+            _retry_label  = f" (attempt {_num_attempt+1}/{MAX_NUM_RETRIES}){_country_note}" if _num_attempt else _country_note
             yield _sse("step", {"step": 1, "status": "running",
-                                "message": f"⏳ Requesting number from SMSPool{_retry_label}..."})
+                                "message": f"⏳ Buying number from SMSPool{_retry_label}..."})
+            if _is_fallback and _app_stuck_count == _APP_STUCK_THRESHOLD:
+                yield _sse("poll", {
+                    "remaining": 0,
+                    "message": (
+                        f"⚠️ {_primary_country.upper()} numbers keep returning SentCodeTypeApp "
+                        f"(Telegram blocks SMS to these VoIP ranges). "
+                        f"Switching to {_current_country.upper()} numbers which deliver SMS reliably..."
+                    ),
+                })
 
             try:
                 async with aiohttp.ClientSession() as http:
                     async with http.post(
                         SMSPOOL_BUY,
                         data={"key": smspool_api_key, "service": TELEGRAM_SERVICE_ID,
-                              "country": country_id, "pricing_option": "1"},
+                              "country": _current_country, "pricing_option": "1"},
                         timeout=aiohttp.ClientTimeout(total=30),
                     ) as resp:
                         raw = await resp.text()
@@ -545,13 +575,20 @@ async def _registration_stream(
                 # If STILL a non-SMS type after all resends, this recycled virtual number
                 # already has an existing Telegram account — the code went to a Telegram
                 # app, not SMS. SMSPool will never receive it. Cancel immediately and
-                # auto-retry with a fresh number rather than wasting 180 s of polling.
+                # auto-retry. After _APP_STUCK_THRESHOLD consecutive stalls, the country
+                # is switched automatically to one with reliable SMS delivery (KZ/UA/PL).
                 if any(t in code_type_name for t in _non_sms):
+                    _app_stuck_count += 1
                     _nums_left = MAX_NUM_RETRIES - _num_attempt - 1
+                    _next_country = _pick_country()
+                    _switch_note = (
+                        f" → switching to {_next_country.upper()} numbers"
+                        if _next_country != _current_country else ""
+                    )
                     yield _sse("step", {"step": 3, "status": "running",
                                         "message": (
-                                            f"🔄 {code_type_name} stuck — number likely recycled. "
-                                            f"Cancelling & buying new one ({_nums_left} left)..."
+                                            f"🔄 {code_type_name} stuck (#{_app_stuck_count}) — "
+                                            f"cancelling{_switch_note}... ({_nums_left} left)"
                                         )})
                     await cancel_order()
                     await safe_disconnect()
