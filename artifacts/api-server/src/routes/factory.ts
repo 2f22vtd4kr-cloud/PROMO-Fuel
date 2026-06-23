@@ -363,4 +363,122 @@ router.get("/best-country", async (req: Request, res: Response) => {
   }
 });
 
+// ── AI-powered country freshness analysis ────────────────────────────────────
+
+interface AiCountryEntry {
+  rank:        number;
+  id:          string;   // SMSPool country code / ID
+  name:        string;
+  freshness:   number;   // 0–100 estimated chance of unregistered number
+  reasoning:   string;   // 1–2 sentence justification
+}
+
+interface AiCountryCacheEntry {
+  ts:      number;
+  entries: AiCountryEntry[];
+  model:   string;
+}
+
+const _aiCountryCache = new Map<string, AiCountryCacheEntry>();
+const AI_CACHE_TTL_MS = 30 * 60_000; // 30 min — AI knowledge doesn't change often
+
+router.get("/ai-countries", async (_req: Request, res: Response) => {
+  const cached = _aiCountryCache.get("default");
+  if (cached && Date.now() - cached.ts < AI_CACHE_TTL_MS) {
+    return void res.json({ entries: cached.entries, model: cached.model, cached: true });
+  }
+
+  const GEMINI_API_KEY = process.env["GEMINI_API_KEY"];
+  const GROQ_API_KEY   = process.env["GROQ_API_KEY"];
+
+  if (!GEMINI_API_KEY && !GROQ_API_KEY) {
+    return void res.status(503).json({ error: "No AI API key configured (GEMINI_API_KEY or GROQ_API_KEY required)" });
+  }
+
+  const prompt = `You are an expert on SMSPool.net and Telegram account registration.
+
+Your task: Rank the TOP 10 countries on SMSPool.net where a buyer is MOST LIKELY to receive a phone number that is NOT already registered on Telegram (i.e., a truly fresh, unused number for new account creation).
+
+Key factors to consider:
+- Countries with LOWER Telegram penetration/adoption → more numbers are unregistered
+- Countries where SMSPool number pools are freshly allocated (telecom operators frequently reissue numbers)
+- Countries with large mobile subscriber bases → larger number pools, less recycling
+- Avoid countries notorious for recycled/resold Telegram numbers (e.g., Liberia, some African nations that show 100% SMS delivery but numbers are pre-owned)
+- Consider real-world SMSPool user reports about registration success rates for new accounts (not SMS delivery rate, which is different)
+
+Important distinction: "Success rate" on SMSPool = SMS delivery rate, NOT whether the number is unused. A country can have 100% delivery but ALL numbers already have Telegram accounts.
+
+Return ONLY valid JSON (no markdown, no explanation outside the JSON), exactly this shape:
+{
+  "entries": [
+    {
+      "rank": 1,
+      "id": "KZ",
+      "name": "Kazakhstan",
+      "freshness": 82,
+      "reasoning": "Large telecom market with frequent number reissuance; relatively low Telegram penetration outside major cities."
+    }
+  ],
+  "model": "gemini-2.5-flash"
+}
+
+Rules:
+- Exactly 10 entries, rank 1 (best) to 10
+- "id" must be the SMSPool country code (2-letter ISO or known SMSPool code)
+- "freshness" is your estimated probability (0-100) that a purchased number has never been used for Telegram
+- "reasoning" must be 1-2 sentences, specific and actionable
+- Do NOT include countries like Russia, China, US, UK — they have notoriously recycled pools or are blocked
+- Focus on realistic choices available on SMSPool: Central Asia, Southeast Asia, Africa (fresh-pool ones), Eastern Europe`;
+
+  try {
+    let raw = "";
+    let modelUsed = "unknown";
+
+    if (GEMINI_API_KEY) {
+      const { GoogleGenAI } = await import("@google/genai");
+      const genai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+      const response = await genai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      });
+      raw = response.text ?? "";
+      modelUsed = "gemini-2.5-flash";
+    } else {
+      // Fallback: Groq
+      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${GROQ_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.3,
+          max_tokens: 2000,
+        }),
+      });
+      const json = await resp.json() as { choices?: { message?: { content?: string } }[] };
+      raw = json.choices?.[0]?.message?.content ?? "";
+      modelUsed = "groq-llama-3.3-70b";
+    }
+
+    // Strip markdown fences if any
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+    const parsed = JSON.parse(cleaned) as { entries?: AiCountryEntry[]; model?: string };
+
+    if (!Array.isArray(parsed.entries) || parsed.entries.length === 0) {
+      return void res.status(502).json({ error: "AI returned no entries" });
+    }
+
+    const entries = parsed.entries.slice(0, 10);
+    modelUsed = parsed.model ?? modelUsed;
+    _aiCountryCache.set("default", { ts: Date.now(), entries, model: modelUsed });
+    return void res.json({ entries, model: modelUsed, cached: false });
+
+  } catch (err: unknown) {
+    return void res.status(502).json({ error: `AI analysis failed: ${String(err)}` });
+  }
+});
+
 export default router;

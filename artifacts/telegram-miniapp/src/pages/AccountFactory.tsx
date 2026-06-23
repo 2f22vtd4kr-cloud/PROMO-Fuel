@@ -146,6 +146,159 @@ function StepRow({ def, state, lang }: {
 
 const initSteps = (): StepState[] => STEP_DEFS.map(() => ({ status: "waiting" as StepStatus }));
 
+// ── RecycledPopupBody ─────────────────────────────────────────────────────────
+// Inline component used inside the recycled-pool popup. Lets the user swap
+// both country AND proxy in one place before retrying.
+function RecycledPopupBody({
+  lang, L, currentProxy, currentCountry, customCountry, COUNTRIES, onSwitch, onCancel,
+}: {
+  lang: string;
+  L: (en: string, ua: string) => string;
+  currentProxy: string;
+  currentCountry: string;
+  customCountry: string;
+  COUNTRIES: { code: string; label: string }[];
+  onSwitch: (country: string, proxy: string) => void;
+  onCancel: () => void;
+}) {
+  const [newCountry, setNewCountry] = React.useState(currentCountry);
+  const [newCustom,  setNewCustom]  = React.useState(customCountry);
+  const [newProxy,   setNewProxy]   = React.useState(currentProxy);
+
+  const effectiveId = newCountry === "custom" ? newCustom.trim() : newCountry;
+  const canSwitch   = Boolean(effectiveId) && Boolean(newProxy.trim());
+
+  // Extract country code hint from Decodo-style proxy URL
+  // e.g. socks5://user-sp8eeeap0s-session-1-country-lr:... → "lr"
+  const proxyCountryHint = React.useMemo(() => {
+    const m = newProxy.match(/country-([a-z]{2})/i);
+    return m ? m[1]!.toUpperCase() : null;
+  }, [newProxy]);
+
+  return (
+    <>
+      <div style={{
+        background: "rgba(255,200,50,0.07)", border: "1px solid rgba(255,200,50,0.2)",
+        borderRadius: 12, padding: "11px 14px", marginBottom: 14,
+        fontSize: 12, color: "rgba(255,200,50,0.9)", lineHeight: 1.6, fontWeight: 600,
+      }}>
+        {L(
+          "Numbers from this country are recycled — they already have Telegram accounts. " +
+          "Switch country AND update your proxy URL for the new country, then retry.",
+          "Номери цієї країни переробленні — вони вже мають акаунти Telegram. " +
+          "Змініть країну та проксі-URL для нової країни, потім спробуйте ще раз."
+        )}
+      </div>
+
+      {/* Country selector */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)",
+          letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 5 }}>
+          {L("New Country", "Нова країна")}
+        </div>
+        <select
+          value={newCountry}
+          onChange={e => setNewCountry(e.target.value)}
+          style={{
+            width: "100%", boxSizing: "border-box",
+            background: "rgba(7,9,20,0.9)",
+            border: "1px solid rgba(255,200,50,0.3)",
+            borderRadius: 10, padding: "9px 12px",
+            fontSize: 13, color: "rgba(226,232,255,0.9)",
+            fontFamily: "inherit", outline: "none", appearance: "none",
+          }}
+        >
+          {COUNTRIES.map(c => (
+            <option key={c.code} value={c.code}>{c.label}</option>
+          ))}
+          <option value="custom">{L("✏️ Custom ID…", "✏️ Власний ID…")}</option>
+        </select>
+        {newCountry === "custom" && (
+          <input
+            type="text"
+            value={newCustom}
+            onChange={e => setNewCustom(e.target.value)}
+            placeholder={L("SMSPool country ID (e.g. 106)", "ID країни SMSPool (напр. 106)")}
+            style={{
+              width: "100%", boxSizing: "border-box", marginTop: 6,
+              background: "rgba(7,9,20,0.9)",
+              border: "1px solid rgba(255,200,50,0.25)",
+              borderRadius: 8, padding: "8px 12px",
+              fontSize: 12, color: "rgba(226,232,255,0.85)",
+              fontFamily: "inherit", outline: "none",
+            }}
+          />
+        )}
+      </div>
+
+      {/* Proxy input */}
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)",
+          letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 5 }}>
+          {L("Proxy for new country", "Проксі для нової країни")}
+        </div>
+        <textarea
+          rows={2}
+          value={newProxy}
+          onChange={e => setNewProxy(e.target.value)}
+          placeholder="socks5://user:pass@host:port"
+          style={{
+            width: "100%", boxSizing: "border-box",
+            background: "rgba(7,9,20,0.9)",
+            border: `1px solid ${newProxy.trim() ? "rgba(255,200,50,0.3)" : "rgba(255,107,122,0.35)"}`,
+            borderRadius: 10, padding: "9px 12px",
+            fontSize: 11, color: "rgba(226,232,255,0.85)",
+            fontFamily: "monospace", outline: "none", resize: "none",
+            lineHeight: 1.5,
+          }}
+        />
+        {proxyCountryHint && proxyCountryHint !== effectiveId.toUpperCase() && effectiveId && (
+          <div style={{ fontSize: 10, color: "rgba(255,200,50,0.7)", marginTop: 4, lineHeight: 1.4 }}>
+            ⚠️ {L(
+              `Proxy URL contains country-${proxyCountryHint.toLowerCase()} but selected country is ${effectiveId.toUpperCase()}. Make sure they match.`,
+              `Проксі URL містить country-${proxyCountryHint.toLowerCase()}, але вибрана країна — ${effectiveId.toUpperCase()}. Переконайтесь, що вони збігаються.`
+            )}
+          </div>
+        )}
+        {!newProxy.trim() && (
+          <div style={{ fontSize: 10, color: "rgba(255,107,122,0.7)", marginTop: 4 }}>
+            {L("Proxy required — get a country-specific URL from your proxy provider", "Потрібен проксі — отримайте URL для конкретної країни у вашого провайдера")}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <button
+          onClick={onCancel}
+          style={{
+            flex: 1, padding: "12px 0", borderRadius: 13,
+            background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)",
+            color: "rgba(255,255,255,0.55)", fontSize: 13, fontWeight: 700, cursor: "pointer",
+          }}
+        >
+          {L("Cancel", "Скасувати")}
+        </button>
+        <button
+          onClick={() => onSwitch(effectiveId, newProxy)}
+          disabled={!canSwitch}
+          style={{
+            flex: 2, padding: "12px 0", borderRadius: 13,
+            background: canSwitch
+              ? "linear-gradient(135deg, rgba(255,200,50,0.35), rgba(255,200,50,0.18))"
+              : "rgba(255,255,255,0.05)",
+            border: `1px solid ${canSwitch ? "rgba(255,200,50,0.55)" : "rgba(255,255,255,0.1)"}`,
+            color: canSwitch ? "#ffc832" : "rgba(255,255,255,0.25)",
+            fontSize: 13, fontWeight: 800,
+            cursor: canSwitch ? "pointer" : "default",
+          }}
+        >
+          🔄 {L("Switch & Retry", "Змінити й повторити")}
+        </button>
+      </div>
+    </>
+  );
+}
+
 export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const { lang } = useI18n();
   const L = (en: string, ua: string) => lang === "ua" ? ua : en;
@@ -287,6 +440,15 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     id: string; name: string; success_rate: number; quantity: number; rank: number;
   }[]>([]);
 
+  // AI-powered country freshness analysis
+  const [aiCountryLoading, setAiCountryLoading] = useState(false);
+  const [aiCountryError,   setAiCountryError]   = useState<string | null>(null);
+  const [aiCountryModel,   setAiCountryModel]   = useState<string>("");
+  const [showAiCountries,  setShowAiCountries]  = useState(false);
+  const [aiCountryData,    setAiCountryData]    = useState<{
+    rank: number; id: string; name: string; freshness: number; reasoning: string;
+  }[]>([]);
+
   const [runState,        setRunState]        = useState<RunState>("idle");
   const [steps,           setSteps]           = useState<StepState[]>(initSteps());
   const [errorMsg,        setErrorMsg]        = useState<string | null>(null);
@@ -375,6 +537,31 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
       setAutoCountryMsg(String(e));
     } finally {
       setAutoCountryLoading(false);
+    }
+  }
+
+  async function fetchAiCountries() {
+    setAiCountryLoading(true);
+    setAiCountryError(null);
+    setShowAiCountries(true);
+    try {
+      const resp = await fetch("/api/factory/ai-countries", { headers: authHeaders() });
+      const json = await resp.json() as {
+        entries?: typeof aiCountryData;
+        model?: string;
+        error?: string;
+        cached?: boolean;
+      };
+      if (!resp.ok || json.error) {
+        setAiCountryError(json.error ?? `HTTP ${resp.status}`);
+      } else {
+        setAiCountryData(json.entries ?? []);
+        setAiCountryModel(json.model ?? "");
+      }
+    } catch (e) {
+      setAiCountryError(String(e));
+    } finally {
+      setAiCountryLoading(false);
     }
   }
 
@@ -664,46 +851,23 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               </div>
 
               {isRecycled ? (
-                <>
-                  <div style={{
-                    background: "rgba(255,200,50,0.07)", border: "1px solid rgba(255,200,50,0.2)",
-                    borderRadius: 12, padding: "12px 14px", marginBottom: 16,
-                  }}>
-                    <div style={{ fontSize: 12, color: "rgba(255,200,50,0.9)", lineHeight: 1.6, fontWeight: 600 }}>
-                      {L(
-                        "Numbers from this country already have Telegram accounts. " +
-                        "The SMSPool success rate measures SMS delivery, not whether a number is fresh.",
-                        "Номери цієї країни вже мають акаунти Telegram. " +
-                        "Показник успіху SMSPool вимірює доставку SMS, а не «свіжість» номеру."
-                      )}
-                    </div>
-                  </div>
-                  <div style={{
-                    background: "rgba(12,15,26,0.6)", border: "1px solid rgba(255,255,255,0.08)",
-                    borderRadius: 10, padding: "10px 13px", marginBottom: 20,
-                  }}>
-                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      {L("Suggested alternatives", "Рекомендовані альтернативи")}
-                    </div>
-                    {["Kazakhstan (KZ)", "Ukraine (UA)", "Philippines (PH)", "Georgia (GE)", "Bangladesh (BD)"].map(c => (
-                      <div key={c} style={{
-                        fontSize: 12, color: "rgba(226,232,255,0.75)", padding: "3px 0",
-                        borderBottom: "1px solid rgba(255,255,255,0.05)",
-                      }}>🌍 {c}</div>
-                    ))}
-                  </div>
-                  <button
-                    onClick={() => setSmsRetryPrompt(null)}
-                    style={{
-                      width: "100%", padding: "14px 0", borderRadius: 14,
-                      background: "linear-gradient(135deg, rgba(255,200,50,0.25), rgba(255,200,50,0.12))",
-                      border: "1px solid rgba(255,200,50,0.45)",
-                      color: "#ffc832", fontSize: 14, fontWeight: 800, cursor: "pointer",
-                    }}
-                  >
-                    🌍 {L("OK — I'll switch country", "OK — зміню країну")}
-                  </button>
-                </>
+                <RecycledPopupBody
+                  lang={lang}
+                  L={L}
+                  currentProxy={proxy}
+                  currentCountry={country}
+                  customCountry={customCountry}
+                  COUNTRIES={COUNTRIES}
+                  onSwitch={(newCountry, newProxy) => {
+                    setSmsRetryPrompt(null);
+                    // Apply new proxy
+                    if (newProxy.trim()) setProxy(newProxy.trim());
+                    // Apply new country
+                    applyCountry(newCountry);
+                    setSmsPoolCountryId(newCountry);
+                  }}
+                  onCancel={() => setSmsRetryPrompt(null)}
+                />
               ) : (
                 <>
                   <div style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", textAlign: "center", lineHeight: 1.6, marginBottom: 6 }}>
@@ -1054,6 +1218,32 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     ) : "📊"}
                     {L("Check Stock", "Наявність")}
                   </button>
+                  {/* AI freshness analysis */}
+                  <button
+                    onClick={() => showAiCountries ? setShowAiCountries(false) : void fetchAiCountries()}
+                    disabled={aiCountryLoading}
+                    title={L("AI analysis: best countries for fresh (unregistered) numbers", "AI аналіз: найкращі країни для «свіжих» номерів")}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 5,
+                      background: showAiCountries && aiCountryData.length > 0
+                        ? "rgba(140,100,255,0.18)" : GLASS2,
+                      border: `1px solid ${showAiCountries && aiCountryData.length > 0
+                        ? "rgba(140,100,255,0.5)" : BORDER2}`,
+                      borderRadius: 8, padding: "4px 10px",
+                      cursor: aiCountryLoading ? "default" : "pointer",
+                      fontSize: 11,
+                      color: showAiCountries && aiCountryData.length > 0
+                        ? "#a78bfa" : "rgba(255,255,255,0.5)",
+                      fontFamily: "inherit", fontWeight: 600, transition: "all 0.2s",
+                    }}
+                  >
+                    {aiCountryLoading ? (
+                      <div style={{ width: 10, height: 10, borderRadius: "50%",
+                        border: "1.5px solid rgba(140,100,255,0.4)", borderTopColor: "#a78bfa",
+                        animation: "spin 0.8s linear infinite" }} />
+                    ) : "✦"}
+                    {L("AI Pick", "AI Вибір")}
+                  </button>
                 </div>
               </div>
               <button
@@ -1384,6 +1574,155 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   {autoCountryTop5.length === 0 && autoCountryMsg && !autoCountryMsg.startsWith("✅") && (
                     <div style={{ padding: "10px 13px", fontSize: 11, color: RED, lineHeight: 1.5 }}>
                       {autoCountryMsg}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── AI freshness analysis panel ── */}
+              {showAiCountries && (
+                <div style={{
+                  marginTop: 8,
+                  background: "rgba(7,6,24,0.98)",
+                  border: `1px solid ${aiCountryError ? "rgba(255,107,122,0.3)" : "rgba(140,100,255,0.35)"}`,
+                  borderRadius: 14, overflow: "hidden",
+                }}>
+                  {/* Header */}
+                  <div style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "9px 13px",
+                    borderBottom: `1px solid rgba(140,100,255,0.15)`,
+                    background: "rgba(140,100,255,0.06)",
+                  }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#a78bfa" }}>
+                        {aiCountryLoading
+                          ? (lang === "ua" ? "✦ AI аналізує…" : "✦ AI analysing…")
+                          : (lang === "ua"
+                              ? "✦ AI: Топ-10 країн з «свіжими» номерами"
+                              : "✦ AI: Top 10 countries for fresh numbers")}
+                      </div>
+                      {aiCountryModel && !aiCountryLoading && (
+                        <div style={{ fontSize: 9, color: "rgba(167,139,250,0.5)" }}>
+                          {aiCountryModel}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      {!aiCountryLoading && aiCountryData.length > 0 && (
+                        <button
+                          onClick={() => void fetchAiCountries()}
+                          title={L("Refresh AI analysis", "Оновити AI аналіз")}
+                          style={{
+                            background: "none", border: "none", cursor: "pointer",
+                            color: "rgba(167,139,250,0.5)", fontSize: 13, lineHeight: 1, padding: 0,
+                          }}
+                        >↻</button>
+                      )}
+                      <button
+                        onClick={() => setShowAiCountries(false)}
+                        style={{ background: "none", border: "none", cursor: "pointer",
+                          color: "rgba(255,255,255,0.35)", fontSize: 15, lineHeight: 1, padding: 0 }}>
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Loading skeleton */}
+                  {aiCountryLoading && (
+                    <div style={{ padding: "14px 13px" }}>
+                      {[1,2,3].map(i => (
+                        <div key={i} style={{
+                          height: 38, borderRadius: 8, marginBottom: 6,
+                          background: "rgba(140,100,255,0.06)",
+                          animation: "pulse 1.4s ease-in-out infinite",
+                          animationDelay: `${i * 0.15}s`,
+                        }} />
+                      ))}
+                      <div style={{ fontSize: 11, color: "rgba(167,139,250,0.5)", textAlign: "center", marginTop: 8 }}>
+                        {L("Asking AI to analyse fresh number pools…", "AI аналізує пули свіжих номерів…")}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Error */}
+                  {aiCountryError && !aiCountryLoading && (
+                    <div style={{ padding: "12px 13px", fontSize: 11, color: RED, lineHeight: 1.5 }}>
+                      {aiCountryError}
+                    </div>
+                  )}
+
+                  {/* AI country rows */}
+                  {!aiCountryLoading && aiCountryData.map((c, idx) => {
+                    const freshColor = c.freshness >= 70 ? GREEN : c.freshness >= 45 ? ACCENT : RED;
+                    const rankColors = ["#ffd700","#c0c0c0","#cd7f32"];
+                    const rankColor  = rankColors[idx] ?? "rgba(167,139,250,0.45)";
+                    const isSelected =
+                      country.toLowerCase() === c.id.toLowerCase() ||
+                      customCountry.toLowerCase() === c.id.toLowerCase();
+                    return (
+                      <div
+                        key={c.id}
+                        onClick={() => { applyCountry(c.id); setSmsPoolCountryId(c.id); }}
+                        style={{
+                          padding: "10px 13px",
+                          borderBottom: idx < aiCountryData.length - 1 ? `1px solid rgba(140,100,255,0.1)` : "none",
+                          cursor: "pointer",
+                          background: isSelected ? "rgba(140,100,255,0.1)" : "transparent",
+                          transition: "background 0.15s",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                          {/* Rank */}
+                          <div style={{
+                            width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+                            background: `${rankColor}18`,
+                            border: `1.5px solid ${rankColor}55`,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 9, fontWeight: 800, color: rankColor,
+                          }}>{c.rank}</div>
+                          {/* Name */}
+                          <div style={{
+                            flex: 1, fontSize: 12, fontWeight: isSelected ? 700 : 600,
+                            color: isSelected ? "#a78bfa" : "rgba(226,232,255,0.88)",
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          }}>
+                            {c.name}
+                            {isSelected && <span style={{ marginLeft: 6, fontSize: 10, color: "#a78bfa" }}>● {L("selected","обрано")}</span>}
+                          </div>
+                          {/* Freshness bar + % */}
+                          <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                            <div style={{ width: 48, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                              <div style={{ width: `${c.freshness}%`, height: "100%", background: freshColor, borderRadius: 2 }} />
+                            </div>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: freshColor, minWidth: 28 }}>
+                              {c.freshness}%
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", flexShrink: 0 }}>›</div>
+                        </div>
+                        {/* Reasoning */}
+                        <div style={{
+                          fontSize: 10, color: "rgba(255,255,255,0.38)", lineHeight: 1.5,
+                          paddingLeft: 28,
+                        }}>
+                          {c.reasoning}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Disclaimer */}
+                  {!aiCountryLoading && aiCountryData.length > 0 && (
+                    <div style={{
+                      padding: "8px 13px",
+                      borderTop: `1px solid rgba(140,100,255,0.1)`,
+                      fontSize: 9, color: "rgba(255,255,255,0.22)", lineHeight: 1.5,
+                    }}>
+                      {L(
+                        "AI estimates based on training data — actual availability may vary. Cached 30 min.",
+                        "AI-оцінки на основі навчальних даних — реальна доступність може відрізнятися. Кеш 30 хв."
+                      )}
                     </div>
                   )}
                 </div>
