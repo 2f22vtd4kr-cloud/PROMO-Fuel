@@ -19,3 +19,13 @@ requests
 telegram
 telethon
 uvicorn
+aiohttp
+aiosqlite
+fastapi
+filelock
+pydantic
+pysocks
+python-telegram-bot
+requests
+telethon
+uvicorn
