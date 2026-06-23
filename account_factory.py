@@ -391,7 +391,7 @@ async def _registration_stream(
             async with http.post(
                 SMSPOOL_BUY,
                 data={"key": smspool_api_key, "service": TELEGRAM_SERVICE_ID,
-                      "country": country_id},
+                      "country": country_id, "pricing_option": "1"},
                 timeout=aiohttp.ClientTimeout(total=30),
             ) as resp:
                 raw = await resp.text()
