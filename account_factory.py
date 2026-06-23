@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import random
+import re
 import shutil
 import time
 from datetime import datetime, timezone
@@ -457,22 +458,48 @@ async def _registration_stream(
             })
             return
 
+        # Log the code type Telegram chose (SMS vs app-based)
+        code_type_name = type(sent.type).__name__ if sent.type else "Unknown"
         yield _sse("step", {"step": 3, "status": "done",
-                            "message": "💬 Code requested — waiting for SMS..."})
+                            "message": f"💬 Code requested — delivery type: {code_type_name}"})
 
         # ─── Step 4 — Poll for SMS code ──────────────────────────────────
         yield _sse("step", {"step": 4, "status": "running",
                             "message": "💬 Waiting for Telegram SMS verification code (Timeout in 120s)..."})
 
         code: str | None = None
-        deadline = time.time() + 120
+        deadline    = time.time() + 120
+        resent_code = False  # whether we've already tried resending
+
+        def _extract_code(raw_sms: str) -> str | None:
+            """Extract a 5-digit (or 4-8 digit) code from a raw SMS string."""
+            s = str(raw_sms or "").strip()
+            if s and s.isdigit() and 4 <= len(s) <= 8:
+                return s
+            # Try parsing from full SMS text (e.g. "Your code is 12345")
+            m = re.search(r"\b(\d{4,8})\b", s)
+            return m.group(1) if m else None
 
         async with aiohttp.ClientSession() as http:
             while time.time() < deadline:
                 remaining = int(deadline - time.time())
+
+                # After 60 s with no code, resend the code request once
+                if not resent_code and remaining <= 60:
+                    resent_code = True
+                    try:
+                        resent = await client.resend_code(phone, phone_code_hash)
+                        phone_code_hash = resent.phone_code_hash
+                        yield _sse("poll", {
+                            "remaining": remaining,
+                            "message": f"🔄 Resending code request to Telegram... ({remaining}s remaining)",
+                        })
+                    except Exception:
+                        pass  # resend failed silently — keep polling
+
                 yield _sse("poll", {
                     "remaining": remaining,
-                    "message": f"💬 Polling SMS... ({remaining}s remaining)"
+                    "message": f"💬 Polling SMS... ({remaining}s remaining)",
                 })
                 await asyncio.sleep(5)
                 try:
@@ -482,12 +509,31 @@ async def _registration_stream(
                         timeout=aiohttp.ClientTimeout(total=10),
                     ) as resp:
                         data = await resp.json(content_type=None)
-                    sms = str(data.get("sms") or data.get("code") or "").strip()
-                    if sms and sms.isdigit() and len(sms) >= 4:
-                        code = sms
+
+                    # Primary: structured `sms` field
+                    # Fallback: regex extract from `full_sms` (full message text)
+                    code = (
+                        _extract_code(data.get("sms"))
+                        or _extract_code(data.get("full_sms"))
+                        or _extract_code(data.get("code"))
+                    )
+                    if code:
                         break
-                except Exception:
-                    pass
+
+                    # Stream the raw SMSPool status for UI debugging
+                    status = str(data.get("status", "")).lower()
+                    yield _sse("poll", {
+                        "remaining": remaining,
+                        "message": (
+                            f"💬 Polling SMS... ({remaining}s remaining) "
+                            f"[SMSPool: status={status or '?'}]"
+                        ),
+                    })
+                except Exception as exc:
+                    yield _sse("poll", {
+                        "remaining": remaining,
+                        "message": f"💬 Polling SMS... ({remaining}s remaining) [check error: {exc}]",
+                    })
 
         if not code:
             await cancel_order()
