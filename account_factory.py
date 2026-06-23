@@ -389,7 +389,7 @@ async def _registration_stream(
         # ─── Steps 1–4 retry loop ─────────────────────────────────────────
         # If a purchased number fails (SentCodeTypeApp / SMS timeout), automatically
         # cancel it, buy a fresh number and retry — up to MAX_NUM_RETRIES times.
-        MAX_NUM_RETRIES = 3
+        MAX_NUM_RETRIES = 5
         code: str | None = None
         raw_num: str = ""
 
@@ -523,6 +523,7 @@ async def _registration_stream(
             if any(t in code_type_name for t in _non_sms):
                 yield _sse("step", {"step": 3, "status": "running",
                                     "message": f"📲 Got {code_type_name} — forcing SMS switch..."})
+                _resend_err: str | None = None
                 for _rs in range(3):
                     await asyncio.sleep(2)
                     try:
@@ -532,13 +533,29 @@ async def _registration_stream(
                         phone_code_hash = forced.phone_code_hash
                         code_type_name  = type(forced.type).__name__ if forced.type else code_type_name
                         if not any(t in code_type_name for t in _non_sms):
+                            _resend_err = None
                             break
                         yield _sse("step", {"step": 3, "status": "running",
                                             "message": f"🔄 Still {code_type_name}, resend {_rs+1}/3..."})
                     except Exception as e_rs:
+                        _resend_err = type(e_rs).__name__
                         yield _sse("step", {"step": 3, "status": "running",
-                                            "message": f"⚠️ Resend {_rs+1}/3: {type(e_rs).__name__} — polling anyway..."})
-                        break  # SMS may have been triggered as fallback; proceed to poll
+                                            "message": f"⚠️ Resend {_rs+1}/3: {_resend_err}"})
+
+                # If STILL a non-SMS type after all resends, this recycled virtual number
+                # already has an existing Telegram account — the code went to a Telegram
+                # app, not SMS. SMSPool will never receive it. Cancel immediately and
+                # auto-retry with a fresh number rather than wasting 180 s of polling.
+                if any(t in code_type_name for t in _non_sms):
+                    _nums_left = MAX_NUM_RETRIES - _num_attempt - 1
+                    yield _sse("step", {"step": 3, "status": "running",
+                                        "message": (
+                                            f"🔄 {code_type_name} stuck — number likely recycled. "
+                                            f"Cancelling & buying new one ({_nums_left} left)..."
+                                        )})
+                    await cancel_order()
+                    await safe_disconnect()
+                    continue  # jump to next _num_attempt
 
             yield _sse("step", {"step": 3, "status": "done",
                                 "message": f"✅ Code sent via {code_type_name} — polling SMSPool..."})
@@ -656,7 +673,7 @@ async def _registration_stream(
         if not code:
             yield _sse("sms_retry_prompt", {
                 "country_id": country_id,
-                "message": "⏱️ SMS code not received after 3 number attempts. Please try again.",
+                "message": "⏱️ SMS code not received after 5 number attempts. UK virtual numbers may be restricted — try a different country (e.g. Russia, Kazakhstan, Poland).",
             })
             return
 
