@@ -23,6 +23,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
   const [quotaPct,        setQuotaPct]        = useState<number | null>(null);
   const [floodedCount,    setFloodedCount]    = useState(0);
   const [captchaStats,    setCaptchaStats]    = useState<{ current_pending: number; today_solved: number } | null>(null);
+  const [factoryHealth,   setFactoryHealth]   = useState<{ python_socks: boolean; proxy_count: number; smspool_key_set: boolean; python_online: boolean } | null>(null);
   const [lastRefreshed,  setLastRefreshed]  = useState<Date | null>(null);
   const [upcomingCamps,  setUpcomingCamps]  = useState<{ id: number; name: string; scheduled_at: string; target_count: number }[]>([]);
   const [showNotifs,     setShowNotifs]     = useState(false);
@@ -62,6 +63,7 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
       .catch(() => {})
       .finally(() => { setLoading(false); setLastRefreshed(new Date()); });
     fetch("/api/verifications/stats").then(r => r.ok ? r.json() : null).then(d => d && setCaptchaStats(d)).catch(() => {});
+    fetch("/api/factory/health").then(r => r.ok ? r.json() : null).then(d => d && setFactoryHealth(d)).catch(() => {});
     const t = setInterval(() => {
       api.getOverview().then(setOverview).catch(() => {});
       api.getDailyDigest().then(setDigest).catch(() => {});
@@ -416,6 +418,43 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
             </GlassCard>
           </div>
         )}
+
+        {/* Factory Health strip */}
+        {factoryHealth && (() => {
+          const allOk = factoryHealth.python_socks && factoryHealth.proxy_count > 0 && factoryHealth.smspool_key_set;
+          const hasError = !factoryHealth.python_socks;
+          const color = hasError ? "#ff6b7a" : allOk ? "#2de897" : "#ffc946";
+          const glow  = hasError ? "rgba(255,107,122,0.18)" : allOk ? "rgba(45,232,151,0.14)" : "rgba(255,201,70,0.18)";
+          return (
+            <div onClick={() => { haptic.light(); onNavigate("account-factory"); }} style={{ cursor: "pointer", animation: "slideUp 0.4s ease-out 0.5s both" }}>
+              <GlassCard glow={glow} style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 9, background: `${color}18`, border: `1px solid ${color}40`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Building2 size={14} color={color} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: TG.text }}>
+                    {lang === "ua" ? "Фабрика акаунтів" : "Account Factory"}
+                    {!factoryHealth.python_online && (
+                      <span style={{ color: "#ff6b7a", marginLeft: 6 }}>· {lang === "ua" ? "бот офлайн" : "bot offline"}</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 10, color: TG.muted, marginTop: 2, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ color: factoryHealth.python_socks ? "#2de897" : "#ff6b7a" }}>
+                      {factoryHealth.python_socks ? "✓" : "✗"} python-socks
+                    </span>
+                    <span style={{ color: factoryHealth.proxy_count > 0 ? "#2de897" : "#ffc946" }}>
+                      · {factoryHealth.proxy_count} {lang === "ua" ? "проксі" : "proxies"}
+                    </span>
+                    <span style={{ color: factoryHealth.smspool_key_set ? "#2de897" : "#ffc946" }}>
+                      · SMSPool {factoryHealth.smspool_key_set ? (lang === "ua" ? "✓ ключ" : "✓ key") : (lang === "ua" ? "без ключа" : "no key")}
+                    </span>
+                  </div>
+                </div>
+                <ArrowUpRight size={12} color={color} />
+              </GlassCard>
+            </div>
+          );
+        })()}
 
         {/* Quick actions */}
         <div>

@@ -244,6 +244,33 @@ router.get("/config", (_req: Request, res: Response) => {
   return void res.json({ has_smspool_key: hasSmsPoolKey });
 });
 
+router.get("/health", async (_req: Request, res: Response) => {
+  const smspool_key_set = Boolean(process.env["SMSPOOL_API_KEY"]?.trim());
+  const pythonPort = process.env["PYTHON_API_PORT"] ?? "8083";
+
+  let python_socks = false;
+  let python_socks_version: string | null = null;
+  let proxy_count = 0;
+  let python_online = false;
+
+  try {
+    const pyResp = await fetch(`http://127.0.0.1:${pythonPort}/api/factory/health`, {
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (pyResp.ok) {
+      const d = (await pyResp.json()) as Record<string, unknown>;
+      python_socks         = Boolean(d["python_socks"]);
+      python_socks_version = (d["python_socks_version"] as string | null) ?? null;
+      proxy_count          = Number(d["proxy_count"] ?? 0);
+      python_online        = true;
+    }
+  } catch {
+    /* Python offline or timeout — return partial data */
+  }
+
+  return void res.json({ smspool_key_set, python_socks, python_socks_version, proxy_count, python_online });
+});
+
 router.get("/balance", async (req: Request, res: Response) => {
   const apiKey =
     String(req.query["api_key"] ?? process.env["SMSPOOL_API_KEY"] ?? "").trim();

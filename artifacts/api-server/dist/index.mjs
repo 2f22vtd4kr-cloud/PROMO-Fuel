@@ -53441,6 +53441,28 @@ router15.get("/config", (_req, res) => {
   const hasSmsPoolKey = Boolean(process.env["SMSPOOL_API_KEY"]?.trim());
   return void res.json({ has_smspool_key: hasSmsPoolKey });
 });
+router15.get("/health", async (_req, res) => {
+  const smspool_key_set = Boolean(process.env["SMSPOOL_API_KEY"]?.trim());
+  const pythonPort = process.env["PYTHON_API_PORT"] ?? "8083";
+  let python_socks = false;
+  let python_socks_version = null;
+  let proxy_count = 0;
+  let python_online = false;
+  try {
+    const pyResp = await fetch(`http://127.0.0.1:${pythonPort}/api/factory/health`, {
+      signal: AbortSignal.timeout(3e3)
+    });
+    if (pyResp.ok) {
+      const d = await pyResp.json();
+      python_socks = Boolean(d["python_socks"]);
+      python_socks_version = d["python_socks_version"] ?? null;
+      proxy_count = Number(d["proxy_count"] ?? 0);
+      python_online = true;
+    }
+  } catch {
+  }
+  return void res.json({ smspool_key_set, python_socks, python_socks_version, proxy_count, python_online });
+});
 router15.get("/balance", async (req, res) => {
   const apiKey = String(req.query["api_key"] ?? process.env["SMSPOOL_API_KEY"] ?? "").trim();
   if (!apiKey) {

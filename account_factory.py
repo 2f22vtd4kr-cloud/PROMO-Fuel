@@ -1187,6 +1187,39 @@ async def _registration_stream(
         await safe_disconnect()
 
 
+@factory_router.get("/health")
+async def factory_health():
+    """Quick environment check: python-socks installed? saved proxy count? SMSPool key set?"""
+    ps_ok = False
+    ps_version: str | None = None
+    try:
+        import python_socks as _ps  # noqa: F401
+        ps_ok = True
+        ps_version = getattr(_ps, "__version__", "ok")
+    except ImportError:
+        pass
+
+    proxy_count = 0
+    try:
+        async with aiosqlite.connect(DB_PATH) as conn:
+            async with conn.execute(
+                "SELECT COUNT(*) FROM saved_proxies WHERE proxy_string IS NOT NULL AND proxy_string != ''"
+            ) as cur:
+                row = await cur.fetchone()
+                proxy_count = int(row[0]) if row else 0
+    except Exception:
+        pass
+
+    smspool_key_set = bool(os.environ.get("SMSPOOL_API_KEY", "").strip())
+
+    return {
+        "python_socks": ps_ok,
+        "python_socks_version": ps_version,
+        "proxy_count": proxy_count,
+        "smspool_key_set": smspool_key_set,
+    }
+
+
 @factory_router.post("/register")
 async def register_account(request: Request):
     try:
