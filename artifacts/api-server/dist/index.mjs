@@ -53129,6 +53129,7 @@ var router14 = (0, import_express14.Router)();
 var SMSPOOL_STOCK_URL = "https://api.smspool.net/country/retrieve_all";
 var SMSPOOL_BALANCE_URL = "https://api.smspool.net/request/balance";
 var SMSPOOL_PRICE_URL = "https://api.smspool.net/request/price";
+var SMSPOOL_SUCCESS_RATE_URL = "https://api.smspool.net/request/success_rate";
 var CACHE_TTL_MS = 6e4;
 var TELEGRAM_SERVICE_ID = "907";
 var _cache = /* @__PURE__ */ new Map();
@@ -53261,6 +53262,72 @@ router14.get("/service-stock", async (req, res) => {
       cached: false
     };
     _serviceCache.set(cacheKey, { ts: Date.now(), data: result });
+    return void res.json(result);
+  } catch (err) {
+    return void res.status(502).json({ error: `SMSPool unreachable: ${String(err)}` });
+  }
+});
+var _bestCountryCache = /* @__PURE__ */ new Map();
+router14.get("/best-country", async (req, res) => {
+  const apiKey = String(req.query["api_key"] ?? process.env["SMSPOOL_API_KEY"] ?? "").trim();
+  const service = String(req.query["service"] ?? TELEGRAM_SERVICE_ID).trim();
+  if (!apiKey) {
+    return void res.status(400).json({ error: "api_key is required" });
+  }
+  const cacheKey = `${apiKey}:${service}`;
+  const cached = _bestCountryCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    return void res.json({ ...cached.data, cached: true });
+  }
+  try {
+    const body = new URLSearchParams({ key: apiKey, service });
+    const resp = await fetch(SMSPOOL_SUCCESS_RATE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+      signal: AbortSignal.timeout(15e3)
+    });
+    if (!resp.ok) {
+      return void res.status(502).json({ error: `SMSPool returned HTTP ${resp.status}` });
+    }
+    const raw = await resp.json();
+    if (raw && typeof raw === "object" && "errors" in raw) {
+      const errObj = raw;
+      const msgs = Array.isArray(errObj["errors"]) ? errObj["errors"].map((e) => String(e["message"] ?? "")).join(", ") : "API key rejected";
+      return void res.status(401).json({ error: msgs });
+    }
+    const items = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? Object.values(raw) : [];
+    if (items.length === 0) {
+      return void res.status(404).json({ error: "No success rate data returned from SMSPool" });
+    }
+    const parsed = [];
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      const obj = item;
+      const country_id = String(obj["country_id"] ?? obj["ID"] ?? obj["id"] ?? "").trim();
+      const country_name = String(obj["country_name"] ?? obj["name"] ?? obj["country"] ?? country_id).trim();
+      const success_rate = Number(obj["success_rate"] ?? obj["successRate"] ?? obj["rate"] ?? 0);
+      const quantity = Number(obj["quantity"] ?? obj["stock"] ?? obj["count"] ?? 0);
+      if (!country_id) continue;
+      if (quantity <= 0) continue;
+      if (success_rate <= 0) continue;
+      parsed.push({ country_id, country_name, success_rate, quantity });
+    }
+    if (parsed.length === 0) {
+      return void res.status(404).json({ error: "No countries with available stock found" });
+    }
+    parsed.sort(
+      (a, b) => b.success_rate - a.success_rate || b.quantity - a.quantity
+    );
+    const best = parsed[0];
+    const result = {
+      id: best.country_id,
+      name: best.country_name,
+      success_rate: best.success_rate,
+      quantity: best.quantity,
+      cached: false
+    };
+    _bestCountryCache.set(cacheKey, { ts: Date.now(), data: result });
     return void res.json(result);
   } catch (err) {
     return void res.status(502).json({ error: `SMSPool unreachable: ${String(err)}` });

@@ -2,9 +2,10 @@ import { Router, type Request, type Response } from "express";
 
 const router = Router();
 
-const SMSPOOL_STOCK_URL    = "https://api.smspool.net/country/retrieve_all";
-const SMSPOOL_BALANCE_URL  = "https://api.smspool.net/request/balance";
-const SMSPOOL_PRICE_URL    = "https://api.smspool.net/request/price";
+const SMSPOOL_STOCK_URL       = "https://api.smspool.net/country/retrieve_all";
+const SMSPOOL_BALANCE_URL     = "https://api.smspool.net/request/balance";
+const SMSPOOL_PRICE_URL       = "https://api.smspool.net/request/price";
+const SMSPOOL_SUCCESS_RATE_URL = "https://api.smspool.net/request/success_rate";
 const CACHE_TTL_MS = 60_000;
 
 // Telegram service ID on SMSPool (verified: 907 = Telegram, NOT 11 which is 7-Eleven)
@@ -237,6 +238,117 @@ router.get("/service-stock", async (req: Request, res: Response) => {
     };
 
     _serviceCache.set(cacheKey, { ts: Date.now(), data: result });
+    return void res.json(result);
+  } catch (err: unknown) {
+    return void res.status(502).json({ error: `SMSPool unreachable: ${String(err)}` });
+  }
+});
+
+/**
+ * GET /api/factory/best-country?api_key=KEY
+ *
+ * Queries SMSPool /request/success_rate for Telegram (service 907) across
+ * all available countries, then returns the single country with the highest
+ * success_rate that also has stock available.
+ * Result is cached 60 s per API key.
+ * Falls back to SMSPOOL_API_KEY env var when api_key is omitted.
+ */
+
+interface SuccessRateItem {
+  country_id:   string;
+  country_name: string;
+  success_rate: number;
+  quantity:     number;
+}
+
+const _bestCountryCache = new Map<string, { ts: number; data: { id: string; name: string; success_rate: number } }>();
+
+router.get("/best-country", async (req: Request, res: Response) => {
+  const apiKey  = String(req.query["api_key"] ?? process.env["SMSPOOL_API_KEY"] ?? "").trim();
+  const service = String(req.query["service"] ?? TELEGRAM_SERVICE_ID).trim();
+
+  if (!apiKey) {
+    return void res.status(400).json({ error: "api_key is required" });
+  }
+
+  const cacheKey = `${apiKey}:${service}`;
+  const cached = _bestCountryCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    return void res.json({ ...cached.data, cached: true });
+  }
+
+  try {
+    const body = new URLSearchParams({ key: apiKey, service });
+    const resp = await fetch(SMSPOOL_SUCCESS_RATE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!resp.ok) {
+      return void res.status(502).json({ error: `SMSPool returned HTTP ${resp.status}` });
+    }
+
+    const raw = (await resp.json()) as unknown;
+
+    // SMSPool returns either an array or object with an "errors" key on failure
+    if (raw && typeof raw === "object" && "errors" in (raw as object)) {
+      const errObj = raw as Record<string, unknown>;
+      const msgs = Array.isArray(errObj["errors"])
+        ? (errObj["errors"] as Array<Record<string, unknown>>).map(e => String(e["message"] ?? "")).join(", ")
+        : "API key rejected";
+      return void res.status(401).json({ error: msgs });
+    }
+
+    // Normalise to array — SMSPool may return an array or a keyed object
+    const items: unknown[] = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === "object"
+        ? Object.values(raw as Record<string, unknown>)
+        : [];
+
+    if (items.length === 0) {
+      return void res.status(404).json({ error: "No success rate data returned from SMSPool" });
+    }
+
+    // Parse and filter to countries with stock > 0
+    const parsed: SuccessRateItem[] = [];
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      const obj = item as Record<string, unknown>;
+
+      const country_id   = String(obj["country_id"]   ?? obj["ID"]         ?? obj["id"]   ?? "").trim();
+      const country_name = String(obj["country_name"] ?? obj["name"]        ?? obj["country"] ?? country_id).trim();
+      const success_rate = Number(obj["success_rate"] ?? obj["successRate"] ?? obj["rate"]  ?? 0);
+      const quantity     = Number(obj["quantity"]     ?? obj["stock"]       ?? obj["count"] ?? 0);
+
+      if (!country_id) continue;
+      if (quantity <= 0) continue;          // skip out-of-stock countries
+      if (success_rate <= 0) continue;      // skip zero-rate entries
+
+      parsed.push({ country_id, country_name, success_rate, quantity });
+    }
+
+    if (parsed.length === 0) {
+      return void res.status(404).json({ error: "No countries with available stock found" });
+    }
+
+    // Pick the country with the highest success_rate; break ties by quantity
+    parsed.sort((a, b) =>
+      b.success_rate - a.success_rate || b.quantity - a.quantity
+    );
+
+    const best = parsed[0]!;
+    const result = {
+      id:           best.country_id,
+      name:         best.country_name,
+      success_rate: best.success_rate,
+      quantity:     best.quantity,
+      cached:       false,
+    };
+
+    _bestCountryCache.set(cacheKey, { ts: Date.now(), data: result });
     return void res.json(result);
   } catch (err: unknown) {
     return void res.status(502).json({ error: `SMSPool unreachable: ${String(err)}` });

@@ -938,26 +938,52 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   letterSpacing: "0.06em", textTransform: "uppercase" }}>
                   {L("Country", "Країна")}
                 </div>
-                <button
-                  onClick={() => void fetchStock()}
-                  disabled={stockLoading}
-                  title={L("Check real-time availability & price from SMSPool", "Перевірити доступність та ціну в SMSPool")}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 5,
-                    background: showStock ? `${ACCENT}20` : GLASS2,
-                    border: `1px solid ${showStock ? `${ACCENT}55` : BORDER2}`,
-                    borderRadius: 8, padding: "4px 10px", cursor: stockLoading ? "default" : "pointer",
-                    fontSize: 11, color: showStock ? ACCENT : "rgba(255,255,255,0.5)",
-                    fontFamily: "inherit", fontWeight: 600, transition: "all 0.2s",
-                  }}
-                >
-                  {stockLoading ? (
-                    <div style={{ width: 10, height: 10, borderRadius: "50%",
-                      border: `1.5px solid ${ACCENT}44`, borderTopColor: ACCENT,
-                      animation: "spin 0.8s linear infinite" }} />
-                  ) : "📊"}
-                  {L("Check Stock", "Наявність")}
-                </button>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {/* Auto-pick best country by success rate */}
+                  <button
+                    onClick={() => void fetchBestCountry()}
+                    disabled={autoCountryLoading}
+                    title={L("Auto-pick the country with highest Telegram success rate", "Автоматично обрати країну з найвищим успіхом Telegram")}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 5,
+                      background: autoCountryMsg?.startsWith("✅") ? "rgba(45,232,151,0.15)" : GLASS2,
+                      border: `1px solid ${autoCountryMsg?.startsWith("✅") ? "rgba(45,232,151,0.4)" : BORDER2}`,
+                      borderRadius: 8, padding: "4px 10px",
+                      cursor: autoCountryLoading ? "default" : "pointer",
+                      fontSize: 11,
+                      color: autoCountryMsg?.startsWith("✅") ? GREEN : "rgba(255,255,255,0.5)",
+                      fontFamily: "inherit", fontWeight: 600, transition: "all 0.2s",
+                    }}
+                  >
+                    {autoCountryLoading ? (
+                      <div style={{ width: 10, height: 10, borderRadius: "50%",
+                        border: `1.5px solid ${GREEN}44`, borderTopColor: GREEN,
+                        animation: "spin 0.8s linear infinite" }} />
+                    ) : "⚡"}
+                    {L("Auto Pick", "Авто")}
+                  </button>
+                  {/* Check stock panel */}
+                  <button
+                    onClick={() => void fetchStock()}
+                    disabled={stockLoading}
+                    title={L("Check real-time availability & price from SMSPool", "Перевірити доступність та ціну в SMSPool")}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 5,
+                      background: showStock ? `${ACCENT}20` : GLASS2,
+                      border: `1px solid ${showStock ? `${ACCENT}55` : BORDER2}`,
+                      borderRadius: 8, padding: "4px 10px", cursor: stockLoading ? "default" : "pointer",
+                      fontSize: 11, color: showStock ? ACCENT : "rgba(255,255,255,0.5)",
+                      fontFamily: "inherit", fontWeight: 600, transition: "all 0.2s",
+                    }}
+                  >
+                    {stockLoading ? (
+                      <div style={{ width: 10, height: 10, borderRadius: "50%",
+                        border: `1.5px solid ${ACCENT}44`, borderTopColor: ACCENT,
+                        animation: "spin 0.8s linear infinite" }} />
+                    ) : "📊"}
+                    {L("Check Stock", "Наявність")}
+                  </button>
+                </div>
               </div>
               <button
                 onClick={() => setShowCountry(v => !v)}
@@ -1163,6 +1189,24 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                       </div>
                     </>
                   )}
+                </div>
+              )}
+
+              {/* ── Auto-pick result feedback ── */}
+              {autoCountryMsg && (
+                <div style={{
+                  marginTop: 8,
+                  padding: "9px 13px",
+                  borderRadius: 10,
+                  background: autoCountryMsg.startsWith("✅")
+                    ? "rgba(45,232,151,0.08)"
+                    : "rgba(255,107,122,0.08)",
+                  border: `1px solid ${autoCountryMsg.startsWith("✅") ? "rgba(45,232,151,0.28)" : "rgba(255,107,122,0.28)"}`,
+                  fontSize: 11,
+                  color: autoCountryMsg.startsWith("✅") ? GREEN : RED,
+                  lineHeight: 1.5,
+                }}>
+                  {autoCountryMsg}
                 </div>
               )}
             </div>
