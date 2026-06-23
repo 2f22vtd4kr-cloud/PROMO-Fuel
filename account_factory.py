@@ -54,7 +54,8 @@ SMSPOOL_CHECK  = "https://api.smspool.net/sms/check"
 SMSPOOL_CANCEL = "https://api.smspool.net/sms/cancel"
 SMSPOOL_STOCK  = "https://api.smspool.net/country/retrieve_all"
 SMSPOOL_PRICE  = "https://api.smspool.net/request/price"
-SMSPOOL_SVC    = "https://api.smspool.net/service/retrieve_all"
+SMSPOOL_SVC           = "https://api.smspool.net/service/retrieve_all"
+SMSPOOL_SUCCESS_RATE  = "https://api.smspool.net/request/success_rate"
 
 # Telegram service ID on SMSPool (verified: service 907 = Telegram)
 TELEGRAM_SERVICE_ID = "907"
@@ -313,6 +314,105 @@ async def get_service_stock(country: str = "", service: str = TELEGRAM_SERVICE_I
         "stock":     success_rate,   # 0-100 success-rate used as stock indicator
         "price":     price,
     }
+
+
+async def _get_best_country(api_key: str, service: str = TELEGRAM_SERVICE_ID) -> dict | None:
+    """
+    Query SMSPool /request/success_rate and return the country with the highest
+    success rate for Telegram. Returns {"id": str, "name": str, "success_rate": int}
+    or None on failure.
+    """
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.post(
+                SMSPOOL_SUCCESS_RATE,
+                data={"key": api_key, "service": service},
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                raw = await resp.json(content_type=None)
+    except Exception:
+        return None
+
+    candidates: list[dict] = []
+    if isinstance(raw, dict):
+        for code, data in raw.items():
+            if not isinstance(data, dict):
+                continue
+            sr   = int(data.get("success_rate", data.get("average_success_rate", 0)) or 0)
+            name = str(data.get("country", data.get("name", code)))
+            candidates.append({"id": code.lower(), "name": name, "success_rate": sr})
+    elif isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            code = str(item.get("short_name", item.get("id", ""))).lower()
+            sr   = int(item.get("success_rate", item.get("average_success_rate", 0)) or 0)
+            name = str(item.get("country", item.get("name", code)))
+            if code:
+                candidates.append({"id": code, "name": name, "success_rate": sr})
+
+    if not candidates:
+        return None
+    candidates.sort(key=lambda x: x["success_rate"], reverse=True)
+    return candidates[0]
+
+
+@factory_router.get("/best-country")
+async def get_best_country(api_key: str = "", service: str = TELEGRAM_SERVICE_ID):
+    """
+    Returns the SMSPool country with the highest Telegram registration success rate.
+    Queries POST /request/success_rate and returns the top result.
+    """
+    resolved_key = (api_key.strip() or os.environ.get("SMSPOOL_API_KEY", "").strip())
+    if not resolved_key:
+        return JSONResponse({"error": "api_key is required"}, status_code=400)
+
+    best = await _get_best_country(resolved_key, service)
+    if not best:
+        return JSONResponse({"error": "Could not retrieve success rates from SMSPool"}, status_code=502)
+    return best
+
+
+@factory_router.get("/top-countries")
+async def get_top_countries(api_key: str = "", service: str = TELEGRAM_SERVICE_ID, limit: int = 5):
+    """
+    Returns the top N countries by Telegram registration success rate on SMSPool.
+    """
+    resolved_key = (api_key.strip() or os.environ.get("SMSPOOL_API_KEY", "").strip())
+    if not resolved_key:
+        return JSONResponse({"error": "api_key is required"}, status_code=400)
+
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.post(
+                SMSPOOL_SUCCESS_RATE,
+                data={"key": resolved_key, "service": service},
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                raw = await resp.json(content_type=None)
+    except Exception as exc:
+        return JSONResponse({"error": f"SMSPool unreachable: {exc}"}, status_code=502)
+
+    candidates: list[dict] = []
+    if isinstance(raw, dict):
+        for code, data in raw.items():
+            if not isinstance(data, dict):
+                continue
+            sr   = int(data.get("success_rate", data.get("average_success_rate", 0)) or 0)
+            name = str(data.get("country", data.get("name", code)))
+            candidates.append({"id": code.lower(), "name": name, "success_rate": sr})
+    elif isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            code = str(item.get("short_name", item.get("id", ""))).lower()
+            sr   = int(item.get("success_rate", item.get("average_success_rate", 0)) or 0)
+            name = str(item.get("country", item.get("name", code)))
+            if code:
+                candidates.append({"id": code, "name": name, "success_rate": sr})
+
+    candidates.sort(key=lambda x: x["success_rate"], reverse=True)
+    return {"countries": candidates[:limit]}
 
 
 async def _test_proxy_connection(proxy_string: str, timeout: float = 12.0) -> tuple[bool, str]:

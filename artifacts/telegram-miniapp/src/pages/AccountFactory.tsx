@@ -277,6 +277,10 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [stockCached,  setStockCached]  = useState(false);
   const [stockSearch,  setStockSearch]  = useState("");
 
+  // Auto-country: best success-rate country from SMSPool
+  const [autoCountryLoading, setAutoCountryLoading] = useState(false);
+  const [autoCountryMsg,     setAutoCountryMsg]     = useState<string | null>(null);
+
   const [runState,        setRunState]        = useState<RunState>("idle");
   const [steps,           setSteps]           = useState<StepState[]>(initSteps());
   const [errorMsg,        setErrorMsg]        = useState<string | null>(null);
@@ -324,6 +328,38 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
       setStockError(String(e));
     } finally {
       setStockLoading(false);
+    }
+  }
+
+  async function fetchBestCountry() {
+    if (!serverHasKey && !smsKey.trim()) {
+      setAutoCountryMsg(L("Enter your SMSPool API key first.", "Спочатку введіть API ключ SMSPool."));
+      return;
+    }
+    setAutoCountryLoading(true);
+    setAutoCountryMsg(null);
+    try {
+      const qs = serverHasKey ? "" : `?api_key=${encodeURIComponent(smsKey.trim())}`;
+      const resp = await fetch(`/api/factory/best-country${qs}`, { headers: authHeaders() });
+      const json = await resp.json() as { id?: string; name?: string; success_rate?: number; error?: string };
+      if (!resp.ok || json.error) {
+        setAutoCountryMsg(json.error ?? `HTTP ${resp.status}`);
+      } else if (json.id) {
+        const known = COUNTRIES.find(c => c.code.toLowerCase() === json.id!.toLowerCase());
+        if (known) {
+          setCountry(known.code);
+          setSmsPoolCountryId("");
+        } else {
+          setCountry("custom");
+          setCustomCountry(json.id);
+        }
+        const sr = json.success_rate != null ? ` (${json.success_rate}% success)` : "";
+        setAutoCountryMsg(`✅ ${json.name ?? json.id}${sr}`);
+      }
+    } catch (e) {
+      setAutoCountryMsg(String(e));
+    } finally {
+      setAutoCountryLoading(false);
     }
   }
 
