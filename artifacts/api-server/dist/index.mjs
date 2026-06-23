@@ -53693,16 +53693,27 @@ Rules:
 - Top 3 must come from Tier 1 countries in the research (Cambodia, Laos, Myanmar) unless own DB overrides`;
   let raw = "";
   let modelUsed = "unknown";
+  let geminiError = null;
   if (GEMINI_API_KEY) {
-    const { GoogleGenAI: GoogleGenAI2 } = await import("@google/genai");
-    const genai = new GoogleGenAI2({ apiKey: GEMINI_API_KEY });
-    const response = await genai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts: [{ text: prompt }] }]
-    });
-    raw = response.text ?? "";
-    modelUsed = "gemini-2.5-flash";
-  } else {
+    try {
+      const { GoogleGenAI: GoogleGenAI2 } = await import("@google/genai");
+      const genai = new GoogleGenAI2({ apiKey: GEMINI_API_KEY });
+      const response = await genai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{ role: "user", parts: [{ text: prompt }] }]
+      });
+      raw = response.text ?? "";
+      modelUsed = "gemini-2.5-flash";
+    } catch (err) {
+      geminiError = String(err);
+      const isTransient = /503|502|UNAVAILABLE|high demand|overloaded|quota|rate.?limit|exceeded/i.test(geminiError);
+      if (!isTransient || !GROQ_API_KEY) {
+        throw err;
+      }
+      console.warn("[factory/gemini] Transient error, falling back to Groq:", geminiError.slice(0, 160));
+    }
+  }
+  if (!raw && GROQ_API_KEY) {
     const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -53716,9 +53727,16 @@ Rules:
         max_tokens: 3e3
       })
     });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`Groq HTTP ${resp.status}: ${errText.slice(0, 200)}`);
+    }
     const json = await resp.json();
     raw = json.choices?.[0]?.message?.content ?? "";
-    modelUsed = "groq-llama-3.3-70b";
+    modelUsed = `groq-llama-3.3-70b${geminiError ? " (gemini-fallback)" : ""}`;
+  }
+  if (!raw) {
+    throw new Error(geminiError ?? "No AI key configured");
   }
   const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
   const parsed = JSON.parse(cleaned);

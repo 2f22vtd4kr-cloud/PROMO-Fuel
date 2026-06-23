@@ -599,17 +599,32 @@ Rules:
 
   let raw = "";
   let modelUsed = "unknown";
+  let geminiError: string | null = null;
 
+  // ── Try Gemini first ───────────────────────────────────────────────────────
   if (GEMINI_API_KEY) {
-    const { GoogleGenAI } = await import("@google/genai");
-    const genai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-    const response = await genai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-    });
-    raw = response.text ?? "";
-    modelUsed = "gemini-2.5-flash";
-  } else {
+    try {
+      const { GoogleGenAI } = await import("@google/genai");
+      const genai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+      const response = await genai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      });
+      raw = response.text ?? "";
+      modelUsed = "gemini-2.5-flash";
+    } catch (err: unknown) {
+      geminiError = String(err);
+      const isTransient = /503|502|UNAVAILABLE|high demand|overloaded|quota|rate.?limit|exceeded/i.test(geminiError);
+      if (!isTransient || !GROQ_API_KEY) {
+        // Non-transient error, or no Groq fallback available — rethrow
+        throw err;
+      }
+      console.warn("[factory/gemini] Transient error, falling back to Groq:", geminiError.slice(0, 160));
+    }
+  }
+
+  // ── Fallback to Groq (runs when Gemini key absent OR Gemini had a transient error) ──
+  if (!raw && GROQ_API_KEY) {
     const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -623,9 +638,17 @@ Rules:
         max_tokens: 3000,
       }),
     });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`Groq HTTP ${resp.status}: ${errText.slice(0, 200)}`);
+    }
     const json = await resp.json() as { choices?: { message?: { content?: string } }[] };
     raw = json.choices?.[0]?.message?.content ?? "";
-    modelUsed = "groq-llama-3.3-70b";
+    modelUsed = `groq-llama-3.3-70b${geminiError ? " (gemini-fallback)" : ""}`;
+  }
+
+  if (!raw) {
+    throw new Error(geminiError ?? "No AI key configured");
   }
 
   const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
