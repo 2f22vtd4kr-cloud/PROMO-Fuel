@@ -53143,9 +53143,11 @@ router14.get("/balance", async (req, res) => {
     return void res.status(400).json({ error: "api_key is required" });
   }
   try {
-    const url = new URL(SMSPOOL_BALANCE_URL);
-    url.searchParams.set("key", apiKey);
-    const resp = await fetch(url.toString(), {
+    const body = new URLSearchParams({ key: apiKey });
+    const resp = await fetch(SMSPOOL_BALANCE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
       signal: AbortSignal.timeout(12e3)
     });
     if (!resp.ok) {
@@ -53229,11 +53231,13 @@ router14.get("/service-stock", async (req, res) => {
     return void res.json({ ...cached.data, cached: true });
   }
   try {
-    const url = new URL(SMSPOOL_PRICE_URL);
-    url.searchParams.set("key", apiKey);
-    url.searchParams.set("service", service);
-    url.searchParams.set("country", country);
-    const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(12e3) });
+    const body = new URLSearchParams({ key: apiKey, service, country });
+    const resp = await fetch(SMSPOOL_PRICE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+      signal: AbortSignal.timeout(12e3)
+    });
     if (!resp.ok) {
       return void res.status(502).json({ error: `SMSPool returned HTTP ${resp.status}` });
     }

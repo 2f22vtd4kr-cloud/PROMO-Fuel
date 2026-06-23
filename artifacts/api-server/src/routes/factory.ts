@@ -54,10 +54,12 @@ router.get("/balance", async (req: Request, res: Response) => {
   }
 
   try {
-    const url = new URL(SMSPOOL_BALANCE_URL);
-    url.searchParams.set("key", apiKey);
-
-    const resp = await fetch(url.toString(), {
+    // SMSPool balance endpoint is POST (not GET)
+    const body = new URLSearchParams({ key: apiKey });
+    const resp = await fetch(SMSPOOL_BALANCE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
       signal: AbortSignal.timeout(12_000),
     });
 
@@ -197,13 +199,14 @@ router.get("/service-stock", async (req: Request, res: Response) => {
   }
 
   try {
-    // Use /request/price — the only SMSPool endpoint that returns actual price + success_rate
-    const url = new URL(SMSPOOL_PRICE_URL);
-    url.searchParams.set("key",     apiKey);
-    url.searchParams.set("service", service);
-    url.searchParams.set("country", country);
-
-    const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(12_000) });
+    // Use /request/price — returns actual price + success_rate; must be POST per SMSPool API spec
+    const body = new URLSearchParams({ key: apiKey, service, country });
+    const resp = await fetch(SMSPOOL_PRICE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+      signal: AbortSignal.timeout(12_000),
+    });
 
     if (!resp.ok) {
       return void res.status(502).json({ error: `SMSPool returned HTTP ${resp.status}` });

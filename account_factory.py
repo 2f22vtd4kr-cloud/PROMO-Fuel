@@ -350,7 +350,7 @@ async def _registration_stream(
                 async with aiohttp.ClientSession() as h:
                     await h.post(
                         SMSPOOL_CANCEL,
-                        data={"key": smspool_api_key, "id": order_id},
+                        data={"key": smspool_api_key, "orderid": order_id},
                         timeout=aiohttp.ClientTimeout(total=10),
                     )
             except Exception:
@@ -391,7 +391,7 @@ async def _registration_stream(
             async with http.post(
                 SMSPOOL_BUY,
                 data={"key": smspool_api_key, "service": TELEGRAM_SERVICE_ID,
-                      "country": country_id, "platform": "2"},
+                      "country": country_id},
                 timeout=aiohttp.ClientTimeout(total=30),
             ) as resp:
                 raw = await resp.text()
@@ -408,7 +408,8 @@ async def _registration_stream(
             })
             return
 
-        order_id = str(result.get("order_id") or result.get("id") or "")
+        # SMSPool returns order_id (or orderid) — check both forms
+        order_id = str(result.get("order_id") or result.get("orderid") or result.get("id") or "")
         raw_num  = str(result.get("number", "")).replace("+", "").strip()
         phone    = f"+{raw_num}"
 
@@ -522,9 +523,11 @@ async def _registration_stream(
                 })
                 await asyncio.sleep(5)
                 try:
-                    async with http.get(
+                    # sms/check is POST (not GET) per SMSPool API spec
+                    # parameter is "orderid" (no underscore)
+                    async with http.post(
                         SMSPOOL_CHECK,
-                        params={"key": smspool_api_key, "id": order_id},
+                        data={"key": smspool_api_key, "orderid": order_id},
                         timeout=aiohttp.ClientTimeout(total=10),
                     ) as resp:
                         data = await resp.json(content_type=None)
