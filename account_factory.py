@@ -592,21 +592,45 @@ async def _registration_stream(
                             system_lang_code="en-US",
                         )
                         client = _off_client
-                        try:
-                            await client.connect()
-                            raw_result = await client(RawSendCodeRequest(
-                                phone_number=phone,
-                                api_id=_off_api_id,
-                                api_hash=_off_api_hash,
-                                settings=tl_types.CodeSettings(
-                                    allow_flashcall=False,
-                                    allow_missed_call=False,
-                                    allow_firebase=False,
-                                    current_number=False,
-                                ),
-                            ))
-                            phone_code_hash = raw_result.phone_code_hash
-                            code_type_name  = type(raw_result.type).__name__ if raw_result.type else code_type_name
+                        _off_result = None
+                        for _off_try in range(2):  # retry once on network errors
+                            try:
+                                if not client.is_connected():
+                                    await client.connect()
+                                _off_result = await client(RawSendCodeRequest(
+                                    phone_number=phone,
+                                    api_id=_off_api_id,
+                                    api_hash=_off_api_hash,
+                                    settings=tl_types.CodeSettings(
+                                        allow_flashcall=False,
+                                        allow_missed_call=False,
+                                        allow_firebase=False,
+                                        current_number=False,
+                                    ),
+                                ))
+                                break  # success
+                            except PhoneNumberBannedError:
+                                _banned = True
+                                break
+                            except Exception as _e_off:
+                                if _off_try == 0:
+                                    # Network hiccup (IncompleteReadError, ConnectionError, etc.)
+                                    # — disconnect cleanly, wait 2s, retry once
+                                    yield _sse("step", {"step": 3, "status": "running",
+                                                        "message": f"⚠️ Official creds ({type(_e_off).__name__}) — retrying in 2s…"})
+                                    try:
+                                        await client.disconnect()
+                                    except Exception:
+                                        pass
+                                    await asyncio.sleep(2)
+                                else:
+                                    yield _sse("step", {"step": 3, "status": "running",
+                                                        "message": f"⚠️ Official creds (api_id={_off_api_id}): {type(_e_off).__name__}"})
+                        if _banned:
+                            break
+                        if _off_result is not None:
+                            phone_code_hash = _off_result.phone_code_hash
+                            code_type_name  = type(_off_result.type).__name__ if _off_result.type else code_type_name
                             if not any(t in code_type_name for t in _non_sms):
                                 yield _sse("step", {"step": 3, "status": "running",
                                                     "message": f"✅ Official creds (api_id={_off_api_id}) → {code_type_name} — polling SMS…"})
@@ -615,12 +639,6 @@ async def _registration_stream(
                             else:
                                 yield _sse("step", {"step": 3, "status": "running",
                                                     "message": f"🔄 Official creds (api_id={_off_api_id}) also got {code_type_name}…"})
-                        except PhoneNumberBannedError:
-                            _banned = True
-                            break
-                        except Exception as _e_off:
-                            yield _sse("step", {"step": 3, "status": "running",
-                                                "message": f"⚠️ Official creds (api_id={_off_api_id}): {type(_e_off).__name__}"})
 
                     # Official creds switched to SMS — continue to step 4
                     if _switched_to_official:
@@ -763,9 +781,18 @@ async def _registration_stream(
 
         # ── After retry loop ──────────────────────────────────────────────
         if not code:
+            _all_app = _app_stuck_count >= MAX_NUM_RETRIES
             yield _sse("sms_retry_prompt", {
                 "country_id": country_id,
-                "message": "⏱️ SMS code not received after 5 number attempts. All purchased numbers returned SentCodeTypeApp (existing Telegram accounts on these numbers). Please top up SMSPool balance and try again.",
+                "message": (
+                    f"⏱️ All {MAX_NUM_RETRIES} numbers from this country returned SentCodeTypeApp — "
+                    "these are recycled numbers with existing Telegram accounts. "
+                    "Switch to a different country: Kazakhstan (KZ), Ukraine (UA), Philippines (PH), "
+                    "or Georgia (GE) have much fresher number pools."
+                ) if _all_app else (
+                    f"⏱️ SMS code not received after {MAX_NUM_RETRIES} attempts. "
+                    "Try a different country or check your SMSPool balance."
+                ),
             })
             return
 
