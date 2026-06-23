@@ -225,12 +225,12 @@ function ProxyGenHelper({
   initialValue: string;
   onApply: (url: string) => void;
 }) {
-  const [rawInput,   setRawInput]   = React.useState(initialValue);
-  const [countryCode, setCountryCode] = React.useState("");
-  const [copied,     setCopied]     = React.useState(false);
+  const [rawInput,   setRawInput]   = useState(initialValue);
+  const [countryCode, setCountryCode] = useState("");
+  const [copied,     setCopied]     = useState(false);
 
-  const parsed = React.useMemo(() => parseDecodoProxy(rawInput), [rawInput]);
-  const generated = React.useMemo(() => {
+  const parsed = useMemo(() => parseDecodoProxy(rawInput), [rawInput]);
+  const generated = useMemo(() => {
     if (!parsed || !countryCode.trim()) return "";
     return buildDecodoProxy(parsed, countryCode.trim());
   }, [parsed, countryCode]);
@@ -383,16 +383,16 @@ function RecycledPopupBody({
   onSwitch: (country: string, proxy: string) => void;
   onCancel: () => void;
 }) {
-  const [newCountry, setNewCountry] = React.useState(currentCountry);
-  const [newCustom,  setNewCustom]  = React.useState(customCountry);
-  const [newProxy,   setNewProxy]   = React.useState(currentProxy);
-  const [autoUpdated, setAutoUpdated] = React.useState(false);
+  const [newCountry, setNewCountry] = useState(currentCountry);
+  const [newCustom,  setNewCustom]  = useState(customCountry);
+  const [newProxy,   setNewProxy]   = useState(currentProxy);
+  const [autoUpdated, setAutoUpdated] = useState(false);
 
   const effectiveId = newCountry === "custom" ? newCustom.trim() : newCountry;
   const canSwitch   = Boolean(effectiveId) && Boolean(newProxy.trim());
 
   // When country changes, if proxy is a Decodo URL, auto-rebuild it for the new country
-  React.useEffect(() => {
+  useEffect(() => {
     const p = parseDecodoProxy(newProxy);
     if (!p || !effectiveId || effectiveId.length !== 2) return;
     if (p.countryCode === effectiveId.toLowerCase()) return; // already correct

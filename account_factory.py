@@ -34,7 +34,7 @@ from telethon.tl.functions.auth import (
     ResendCodeRequest, SendCodeRequest as RawSendCodeRequest, CancelCodeRequest,
 )
 from telethon.tl import types as tl_types
-from telethon.tl.functions.account import UpdateProfileRequest, UpdatePrivacyRequest
+from telethon.tl.functions.account import UpdateProfileRequest, SetPrivacyRequest
 from telethon.tl.types import InputPrivacyKeyPhoneNumber, PrivacyValueDisallowAll
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
 
@@ -972,7 +972,7 @@ async def _registration_stream(
 
         # Hide phone number from public Telegram profile
         try:
-            await client(UpdatePrivacyRequest(
+            await client(SetPrivacyRequest(
                 key=InputPrivacyKeyPhoneNumber(),
                 rules=[PrivacyValueDisallowAll()],
             ))
