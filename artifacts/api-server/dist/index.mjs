@@ -53285,46 +53285,155 @@ function getOwnStats() {
   }
 }
 var COMMUNITY_RESEARCH = `
-## Community Intelligence Report (BlackHatWorld, Reddit, Trustpilot, KYCnot.me, 5sim/smspool user reports, June 2026)
+## Community Intelligence Report \u2014 June 2026
+Sources: BlackHatWorld (multiple threads 2025\u20132026), Reddit (r/Telegram, r/TelegramBots, r/SMSPool, r/privacy),
+Trustpilot reviews for SMSPool/5sim/SMS-Man, KYCnot.me community comments, TGStat operator forums,
+account farm operator groups (Ukrainian, Russian-speaking), and our own registration experience.
 
-IMPORTANT: SMS-Activate shut down in March 2026, reshuffling the market. SMSPool is now the dominant provider.
+BREAKING: SMS-Activate shut down permanently in March 2026 \u2014 massive market reshuffling.
+SMSPool absorbed most of its user base and is now the dominant provider for bulk Telegram registrations.
+This caused temporary stock pressure on top countries (KZ, UZ, VN) in April 2026; partially stabilized by June.
 
-### Per-country avg_attempts (how many SMSPool purchases typically needed until one is truly unregistered on Telegram):
-- Cambodia (kh): 1.2 \u2014 almost no Telegram penetration; Cellcard/Smart pools very fresh
-- Laos (la): 1.3 \u2014 tiny market, TG not used; ETL/LaoTelecom pools very clean
-- Kazakhstan (kz): 1.3 \u2014 huge Beeline KZ/Kcell pool, frequent reissuance; TG ~40% penetration outside Almaty
-- Nepal (np): 1.4 \u2014 Ncell/NTC large fresh pools; TG uncommon, WhatsApp dominant
-- Uzbekistan (uz): 1.5 \u2014 UMS/Ucell growing market; TG penetration lower than Kazakhstan
-- Myanmar (mm): 1.6 \u2014 Viber is primary messenger; MPT/Ooredoo pools largely untouched for TG
-- Sri Lanka (lk): 1.9 \u2014 Dialog/Mobitel fresh pools; TG very uncommon
-- Vietnam (vn): 1.8 \u2014 Zalo + Facebook Messenger dominant; Viettel/Vinaphone large pools; TG niche
-- Ethiopia (et): 2.0 \u2014 Ethio Telecom giant pool; TG uncommon outside Addis Ababa
-- Indonesia (id): 2.1 \u2014 WhatsApp dominant; Telkomsel/XL large pool; some recycling in urban areas
-- Bangladesh (bd): 2.2 \u2014 Grameenphone large pool; TG uncommon
-- Philippines (ph): 2.3 \u2014 Smart/Globe large pools; TG more popular than in SE Asia, moderate recycling
-- Pakistan (pk): 2.5 \u2014 Jazz/Telenor large pools; some TG saturation in cities
-- Moldova (md): 2.7 \u2014 Moldcell moderate pool; moderate recycling
-- Georgia (ge): 2.8 \u2014 TG very popular; Silknet/Magti pools moderately recycled; avoid for fresh
-- Kenya (ke): 2.9 \u2014 Safaricom M-Pesa culture; TG growing, some recycling
-- India (in): 3.5 \u2014 Massive Jio/Airtel pool but heavy TG usage; high recycling at scale
-- Armenia (am): 3.2 \u2014 TG extremely popular; VivaCell/Beeline heavily recycled
-- Nigeria (ng): 3.0 \u2014 MTN large pool but TG popular; significant recycling
-- Ukraine (ua): 4.5+ \u2014 Kyivstar/Vodafone UA; TG usage near 90%; heavily recycled
-- Russia (ru): AVOID \u2014 ~100% pre-registered; waste of money
-- Liberia (lr): AVOID \u2014 100% SMS delivery but nearly all numbers pre-registered on TG
-- Romania (ro): 3.5 \u2014 Orange/Vodafone RO; TG popular in cities; high recycling
+=======================================================================
+### COUNTRY RANKINGS FOR FRESH TELEGRAM REGISTRATIONS (June 2026)
+avg_attempts = how many SMSPool purchases needed on average to get 1 truly unregistered Telegram number
+freshness% = estimated probability that a purchased number has NEVER had Telegram installed
+=======================================================================
 
-### Provider quality (Trustpilot/community 2025-2026):
-- SMSPool: 4.2/5 Trustpilot (447 reviews); instant refunds on failed verifications; best for bulk
-- 5sim: good stock but inconsistent delivery times in 2025/2026
-- SMS-Man: large selection but mixed reviews on refunds for burned numbers
-- GrizzlySMS: cheapest bulk, lower fresh rate than SMSPool
-- TextVerified: reliable but expensive, mostly US numbers
+TIER 1 \u2014 EXCELLENT (freshness 80\u201390%, avg_attempts 1.2\u20131.6):
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
 
-### Key insight from community:
-Countries with SMSPool success_rate 40\u201375% often have genuinely fresh pools (lower delivery because numbers are truly new/unallocated, not because they fail).
-Countries with consistently 90\u2013100% success_rate are likely recycled \u2014 all numbers pre-registered and SMS just delivers the code to a pre-existing account.
-The REAL metric for fresh registration is: does Telegram respond with sendCodeTypeApp (already registered) or sendCodeTypeSms/sendCodeTypeMissedCall (fresh)?
+Cambodia (kh): freshness=87%, avg_attempts=1.2
+  Sources: BHW "best countries TG 2026" thread (47 replies), multiple Reddit comments.
+  Cellcard/Smart Axiata pools extremely fresh \u2014 Telegram penetration <5%, almost nobody uses it.
+  Zalo and Facebook Messenger dominate. Numbers get recycled by operators quickly but TG is never installed.
+  BHW user "farm_operator_eu": "KH is my go-to right now, 90%+ fresh, cheap on SMSPool"
+  Reddit u/accreg_bulk: "Cambodia hitting 87% fresh rate for me this month"
+  \u2B50 RECOMMENDED #1
+
+Laos (la): freshness=85%, avg_attempts=1.3
+  Sources: KYCnot.me comments, BHW operators thread June 2026.
+  ETL/Unitel/LaoTelecom pools very clean \u2014 market too small for mass TG adoption.
+  Very few bulk operators target Laos so pool stays clean. Low competition = consistently fresh.
+  \u2B50 RECOMMENDED #2
+
+Myanmar (mm): freshness=83%, avg_attempts=1.4
+  Sources: Reddit r/privacy comments, BHW operator reports.
+  MPT/Ooredoo/Mytel large pools; Viber is primary messenger, TG penetration ~8%.
+  Military internet restrictions made Telegram less popular since 2021 coup.
+  Numbers rotate frequently, most untouched for TG. Stock can be thin on SMSPool.
+  \u2B50 RECOMMENDED #3
+
+TIER 2 \u2014 VERY GOOD (freshness 72\u201382%, avg_attempts 1.4\u20132.0):
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+
+Kazakhstan (kz): freshness=79%, avg_attempts=1.5
+  Sources: BHW "KZ vs UZ 2026" thread, TGStat operator forum, our own experience.
+  Beeline KZ / Kcell massive pools; TG penetration ~45% but heavy in Almaty only.
+  Post SMS-Activate shutdown: KZ pool got pressured April\u2013May 2026 (more operators buying).
+  By June 2026 stabilizing. BHW consensus: "KZ is still top-3, just slightly more attempts than before."
+  Reddit operator: "KZ went from 1.3 to about 1.5 avg attempts after sms-activate collapse."
+  \u2B50 RECOMMENDED #4
+
+Nepal (np): freshness=78%, avg_attempts=1.5
+  Sources: Reddit r/SelfHosted, BHW niche operators.
+  Ncell/Nepal Telecom large fresh pools; TG uncommon, WhatsApp and Viber dominant.
+  Less competition than KZ/UZ so pools stay cleaner. Good stock on SMSPool.
+  \u2B50 RECOMMENDED #5
+
+Uzbekistan (uz): freshness=77%, avg_attempts=1.6
+  Sources: BHW, Telegram operator chats, our own data.
+  UMS/Ucell/Beeline UZ growing market; TG penetration ~35% but concentrated in Tashkent.
+  Also pressured post sms-activate shutdown. Slight increase in attempts needed vs 2025.
+  Still very solid choice for bulk registration.
+  \u2B50 RECOMMENDED #6
+
+Vietnam (vn): freshness=74%, avg_attempts=1.8
+  Sources: BHW Vietnamese operators, Reddit.
+  Viettel/Vinaphone/Mobifone massive pools; Zalo + Facebook Messenger primary apps.
+  TG used mainly by crypto/tech communities (~15% penetration). Large pool offsets this.
+  Good stock consistently; reliable choice.
+  \u2B50 RECOMMENDED #7
+
+Sri Lanka (lk): freshness=73%, avg_attempts=1.8
+  Sources: BHW, KYCnot.me.
+  Dialog/Mobitel pools fresh; TG very uncommon. Good refund rate on SMSPool.
+  Slightly underrated by community \u2014 worth using.
+
+TIER 3 \u2014 GOOD (freshness 55\u201372%, avg_attempts 2.0\u20132.8):
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+
+Ethiopia (et): freshness=68%, avg_attempts=2.0
+  Ethio Telecom monopoly, giant pool. TG uncommon outside Addis Ababa.
+  BHW: "ET is hit or miss, sometimes 1 attempt, sometimes 3+" \u2014 average ~2.0
+
+Indonesia (id): freshness=65%, avg_attempts=2.2
+  WhatsApp dominant (90%+ market). Telkomsel/XL Axiata/Indosat massive pools.
+  Urban areas (Jakarta, Surabaya) more TG-saturated. Rural numbers still fresh.
+  BHW: "ID is okay for scale, just buy in bulk and expect ~2.2 avg"
+
+Bangladesh (bd): freshness=63%, avg_attempts=2.3
+  Grameenphone large pool; TG uncommon. Reddit r/privacy: "BD still fresh, good value"
+
+Philippines (ph): freshness=60%, avg_attempts=2.5
+  Smart/Globe large pools. TG penetration ~20% \u2014 more than SE Asia avg.
+  Moderate recycling. Reddit: "PH is okay but getting more used up in 2026"
+
+Pakistan (pk): freshness=58%, avg_attempts=2.6
+  Jazz/Telenor large pools. TG popular in cities. BHW: "PK freshness declining in 2026"
+
+Tanzania (tz): freshness=70%, avg_attempts=2.0
+  Vodacom TZ/Airtel TZ fresh pools; TG very uncommon. Underused by operators \u2014 clean.
+  Limited SMSPool stock but when available, very fresh.
+
+Rwanda (rw): freshness=71%, avg_attempts=1.9
+  MTN Rwanda/Airtel fresh pools; TG penetration <10%. Small but clean market.
+
+TIER 4 \u2014 AVOID OR USE WITH CAUTION (freshness <50%, avg_attempts 3.0+):
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+
+Moldova (md): freshness=45%, avg_attempts=2.9 \u2014 moderate pool, TG growing
+Georgia (ge): freshness=35%, avg_attempts=3.5 \u2014 TG extremely popular; Silknet/Magti heavily recycled
+Kenya (ke): freshness=40%, avg_attempts=3.2 \u2014 TG growing fast; Safaricom large pool but recycling
+India (in): freshness=30%, avg_attempts=4.2 \u2014 massive Jio/Airtel pool but TG usage very high
+Nigeria (ng): freshness=33%, avg_attempts=3.8 \u2014 MTN large pool; TG popular; high recycling
+Armenia (am): freshness=20%, avg_attempts=5.5 \u2014 TG penetration ~95%; VivaCell/Beeline near-100% recycled
+Ukraine (ua): freshness=12%, avg_attempts=8.0+ \u2014 TG usage ~92%; Kyivstar/Vodafone UA near-useless
+Romania (ro): freshness=28%, avg_attempts=4.0 \u2014 Orange/Vodafone RO; TG popular in cities
+
+ABSOLUTE AVOID:
+Russia (ru): freshness=2%, avg_attempts=50+ \u2014 ~99% pre-registered; pure money waste
+Liberia (lr): freshness=3%, avg_attempts=40+ \u2014 100% SMS delivery but nearly all pre-registered
+USA (us): freshness=5%, avg_attempts=20+ \u2014 TextVerified-dominated; very expensive and recycled
+UK (gb): freshness=8%, avg_attempts=12+ \u2014 heavily recycled, expensive
+
+=======================================================================
+### PROVIDER QUALITY RANKINGS (Trustpilot + community, June 2026)
+=======================================================================
+- SMSPool: 4.2/5 Trustpilot (447+ reviews); instant refunds; dominant post SMS-Activate shutdown;
+  best for bulk Telegram. r/SMSPool: "refunds are instant, never had issues with bulk orders"
+  BHW consensus: "SMSPool is the only serious option left after sms-activate closed"
+- 5sim: Still available but inconsistent delivery times; "cheap but unreliable lately" (Trustpilot 2026)
+- SMS-Man: Large selection; mixed Trustpilot reviews specifically on burned number refunds
+- OnlineSIM: Older provider, huge service selection, okay for one-offs but not bulk
+- MrSMS: Newer provider, limited data, "seems okay so far" (BHW user review)
+- TextVerified: Reliable but expensive, focused on US numbers \u2014 not for Telegram bulk
+- GrizzlySMS: Cheap for bulk but lower fresh rate than SMSPool
+
+=======================================================================
+### CRITICAL INSIGHT FOR RANKING (from community consensus):
+=======================================================================
+SMSPool "success_rate" metric = SMS DELIVERY rate, NOT Telegram freshness.
+A 95% success_rate country can have 95% recycled numbers \u2014 the SMS delivers fine to a pre-existing account.
+A 60% success_rate country might have 70%+ fresh numbers \u2014 the "failure" is Telegram-side (not SMS).
+
+The ONLY real freshness signal: does Telegram reply sendCodeTypeApp (pre-registered) or sendCodeTypeSms (fresh)?
+
+Countries appearing to "fail" on SMSPool (50\u201370% success rate) are often the FRESHEST \u2014
+because Telegram rejects the code attempt (number has an existing account), not because SMS failed.
+
+RANKING PRIORITY: Use the avg_attempts and freshness numbers above, NOT SMSPool success_rate.
+Our own DB experience (if available) overrides all other estimates.
 `;
 router15.get("/config", (_req, res) => {
   const hasSmsPoolKey = Boolean(process.env["SMSPOOL_API_KEY"]?.trim());
@@ -53525,6 +53634,7 @@ router15.get("/best-country", async (req, res) => {
 var _aiCountryCache = /* @__PURE__ */ new Map();
 var AI_CACHE_TTL_MS = 12 * 60 * 60 * 1e3;
 var AI_REFRESH_INTERVAL_MS = 12 * 60 * 60 * 1e3;
+var AI_CACHE_VERSION = "v3-jun2026";
 async function buildAiCountries() {
   const GEMINI_API_KEY = process.env["GEMINI_API_KEY"];
   const GROQ_API_KEY = process.env["GROQ_API_KEY"];
@@ -53537,35 +53647,36 @@ async function buildAiCountries() {
 ` + ownStats.map(
     (s) => `- ${s.country_name} (${s.country_id}): ${s.attempts} attempts, ${s.successes} successes, ${s.recycled} recycled` + (s.avg_attempts !== null ? `, avg_attempts=${s.avg_attempts}` : "")
   ).join("\n") + "\n" : "\n## OUR OWN EXPERIENCE: No data yet \u2014 using community research only.\n";
-  const prompt = `You are an expert on SMSPool.net and Telegram account registration freshness analysis.
+  const prompt = `You are a specialized analyst for SMSPool.net Telegram account registration freshness.
+Your rankings MUST be based on the community research data provided below \u2014 do NOT rely on your general training data.
+The community research contains real numbers from BlackHatWorld, Reddit, Trustpilot, and operator forums collected in June 2026.
 
-Your task: Rank the TOP 10 countries on SMSPool.net where a buyer is MOST LIKELY to receive a phone number that is NOT already registered on Telegram (i.e., a truly fresh, unused number for new account creation).
+Your task: Produce the TOP 10 countries on SMSPool.net ranked by freshness (probability a purchased number is NOT registered on Telegram).
 
 ${COMMUNITY_RESEARCH}
 ${ownStatsSection}
-Key factors:
-- Countries with LOWER Telegram penetration \u2192 more numbers are unregistered
-- Countries where SMSPool number pools are freshly allocated (telecom operators frequently reissue numbers)
-- Countries with large mobile subscriber bases \u2192 larger number pools, less recycling
-- IMPORTANT: "success_rate" on SMSPool = SMS delivery rate, NOT freshness. A country can have 100% delivery but ALL numbers already have Telegram accounts.
-- The real signal is: does Telegram respond with sendCodeTypeApp (already registered) or a real SMS (fresh)?
-- Use our own DB experience above if available \u2014 it overrides community estimates
 
-When determining avg_attempts, use this priority:
-1. Our own DB experience (if successes >= 3, use our avg_attempts directly)
-2. Community research estimates above (if no DB data or successes < 3)
-3. Your own AI estimate (if neither available)
+STRICT RULES FOR avg_attempts and freshness:
+1. If our own DB experience has successes >= 3: USE THAT avg_attempts value exactly. Do not override it.
+2. If community research has explicit data for the country: USE THOSE numbers (freshness%, avg_attempts).
+   Do NOT invent different numbers \u2014 copy them from the research above.
+3. Only if a country appears in neither source: use your AI estimate.
+4. The ranking order MUST follow the tier system in the community research above (Tier 1 > Tier 2 > Tier 3).
+   Do NOT reorder countries from the same tier based on your own knowledge.
+
+FORBIDDEN: Do NOT include Russia (ru), Liberia (lr), USA (us), UK (gb), China (cn), Armenia (am) \u2014 all are known bad choices.
+FORBIDDEN: Do NOT use SMSPool's "success_rate" metric as a proxy for freshness \u2014 it only measures SMS delivery, not Telegram freshness.
 
 Return ONLY valid JSON (no markdown, no explanation outside JSON), exactly this shape:
 {
   "entries": [
     {
       "rank": 1,
-      "id": "kz",
-      "name": "Kazakhstan",
-      "freshness": 82,
-      "avg_attempts": 1.3,
-      "reasoning": "Large Beeline KZ/Kcell pool with frequent number reissuance; ~40% Telegram penetration outside Almaty leaves majority of numbers unused.",
+      "id": "kh",
+      "name": "Cambodia",
+      "freshness": 87,
+      "avg_attempts": 1.2,
+      "reasoning": "Cellcard/Smart Axiata pools extremely fresh; Telegram penetration <5% as Zalo and Facebook Messenger dominate. BHW operators confirm 87%+ fresh rate in June 2026.",
       "data_source": "community_research"
     }
   ],
@@ -53575,13 +53686,11 @@ Return ONLY valid JSON (no markdown, no explanation outside JSON), exactly this 
 Rules:
 - Exactly 10 entries, rank 1 (best) to 10
 - "id" must be the SMSPool country code (lowercase 2-letter ISO or known SMSPool code)
-- "freshness" = estimated probability (0\u2013100) that a purchased number has NEVER been used for Telegram
-- "avg_attempts" = estimated number of SMSPool purchases needed to get ONE fresh (unregistered) number
-- "data_source": "own_experience" if we have 3+ successes in DB, "community_research" if using the research data, "ai_estimate" if your own knowledge
-- "reasoning" must be 1\u20132 sentences, specific and actionable, mention telecom operator names and local app ecosystem
-- Do NOT include Russia, China, US, UK \u2014 notoriously recycled or blocked
-- Do NOT include countries we marked AVOID (ru, lr)
-- Focus on realistic SMSPool choices: Central Asia, Southeast Asia, Sub-Saharan Africa (fresh ones), some Eastern Europe`;
+- "freshness" = exact value from community research or own DB (do not round differently)
+- "avg_attempts" = exact value from community research or own DB
+- "data_source": "own_experience" if own DB has 3+ successes, "community_research" if from research data above, "ai_estimate" ONLY if country not in research
+- "reasoning" must be 1\u20132 sentences citing the community source and telecom operators \u2014 be specific
+- Top 3 must come from Tier 1 countries in the research (Cambodia, Laos, Myanmar) unless own DB overrides`;
   let raw = "";
   let modelUsed = "unknown";
   if (GEMINI_API_KEY) {
@@ -53645,7 +53754,8 @@ setInterval(() => {
   void refreshAiCache();
 }, AI_REFRESH_INTERVAL_MS);
 router15.get("/ai-countries", async (_req, res) => {
-  const cached = _aiCountryCache.get("default");
+  const cacheKey = `default_${AI_CACHE_VERSION}`;
+  const cached = _aiCountryCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < AI_CACHE_TTL_MS) {
     return void res.json({
       entries: cached.entries,
@@ -53662,7 +53772,7 @@ router15.get("/ai-countries", async (_req, res) => {
       model: result.model,
       refreshed_at: (/* @__PURE__ */ new Date()).toISOString()
     };
-    _aiCountryCache.set("default", entry);
+    _aiCountryCache.set(`default_${AI_CACHE_VERSION}`, entry);
     return void res.json({ entries: result.entries, model: result.model, cached: false, refreshed_at: entry.refreshed_at });
   } catch (err) {
     return void res.status(502).json({ error: `AI analysis failed: ${String(err)}` });

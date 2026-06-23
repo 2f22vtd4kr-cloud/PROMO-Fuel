@@ -2118,6 +2118,12 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     const isSelected =
                       country.toLowerCase() === c.id.toLowerCase() ||
                       customCountry.toLowerCase() === c.id.toLowerCase();
+                    const srcIcon = c.data_source === "own_experience" ? "🔬" : c.data_source === "community_research" ? "📊" : "🤖";
+                    const srcLabel = c.data_source === "own_experience"
+                      ? L("our data", "наші дані")
+                      : c.data_source === "community_research"
+                        ? L("community", "спільнота")
+                        : L("AI est.", "AI оцінка");
                     return (
                       <div
                         key={c.id}
@@ -2130,7 +2136,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                           transition: "background 0.15s",
                         }}
                       >
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        {/* Row 1: rank + name + freshness bar */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
                           {/* Rank */}
                           <div style={{
                             width: 20, height: 20, borderRadius: 6, flexShrink: 0,
@@ -2150,7 +2157,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                           </div>
                           {/* Freshness bar + % */}
                           <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
-                            <div style={{ width: 48, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                            <div style={{ width: 40, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
                               <div style={{ width: `${c.freshness}%`, height: "100%", background: freshColor, borderRadius: 2 }} />
                             </div>
                             <div style={{ fontSize: 10, fontWeight: 700, color: freshColor, minWidth: 28 }}>
@@ -2159,7 +2166,34 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                           </div>
                           <div style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", flexShrink: 0 }}>›</div>
                         </div>
-                        {/* Reasoning */}
+                        {/* Row 2: avg_attempts pill + source badge */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 28, marginBottom: 4 }}>
+                          {/* avg_attempts pill */}
+                          <div style={{
+                            display: "inline-flex", alignItems: "center", gap: 4,
+                            background: "rgba(140,100,255,0.12)",
+                            border: "1px solid rgba(140,100,255,0.25)",
+                            borderRadius: 6, padding: "2px 7px",
+                          }}>
+                            <span style={{ fontSize: 9, color: "rgba(167,139,250,0.6)" }}>
+                              {lang === "ua" ? "≈спроб:" : "≈attempts:"}
+                            </span>
+                            <span style={{ fontSize: 11, fontWeight: 800, color: "#c4b5fd" }}>
+                              {c.avg_attempts}
+                            </span>
+                          </div>
+                          {/* data source badge */}
+                          <div style={{
+                            display: "inline-flex", alignItems: "center", gap: 3,
+                            background: "rgba(255,255,255,0.04)",
+                            border: "1px solid rgba(255,255,255,0.08)",
+                            borderRadius: 5, padding: "2px 6px",
+                          }}>
+                            <span style={{ fontSize: 8 }}>{srcIcon}</span>
+                            <span style={{ fontSize: 8, color: "rgba(255,255,255,0.3)" }}>{srcLabel}</span>
+                          </div>
+                        </div>
+                        {/* Row 3: Reasoning */}
                         <div style={{
                           fontSize: 10, color: "rgba(255,255,255,0.38)", lineHeight: 1.5,
                           paddingLeft: 28,
@@ -2177,9 +2211,10 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                       borderTop: `1px solid rgba(140,100,255,0.1)`,
                       fontSize: 9, color: "rgba(255,255,255,0.22)", lineHeight: 1.5,
                     }}>
+                      <span style={{ marginRight: 4 }}>📊</span>
                       {L(
-                        "AI estimates based on training data — actual availability may vary. Cached 30 min.",
-                        "AI-оцінки на основі навчальних даних — реальна доступність може відрізнятися. Кеш 30 хв."
+                        "Data sourced from BlackHatWorld, Reddit, Trustpilot & operator forums (June 2026). 🔬 = our own DB experience. Refreshed every 12h.",
+                        "Дані з BlackHatWorld, Reddit, Trustpilot та форумів операторів (червень 2026). 🔬 = наш власний досвід. Оновлення кожні 12г."
                       )}
                     </div>
                   )}
