@@ -460,8 +460,26 @@ async def _registration_stream(
 
         # Log the code type Telegram chose (SMS vs app-based)
         code_type_name = type(sent.type).__name__ if sent.type else "Unknown"
-        yield _sse("step", {"step": 3, "status": "done",
-                            "message": f"💬 Code requested — delivery type: {code_type_name}"})
+        phone_code_hash = sent.phone_code_hash
+
+        # If Telegram routed to app-based delivery, immediately force-switch to SMS.
+        # next_type for SentCodeTypeApp is always SentCodeTypeSms — resend triggers it.
+        if "App" in code_type_name or "Flash" in code_type_name or "Firebase" in code_type_name:
+            next_name = type(sent.next_type).__name__ if sent.next_type else "None"
+            yield _sse("step", {"step": 3, "status": "running",
+                                "message": f"📲 App delivery detected — forcing SMS switch (next: {next_name})..."})
+            try:
+                forced = await client.resend_code(phone, phone_code_hash)
+                phone_code_hash = forced.phone_code_hash
+                code_type_name = type(forced.type).__name__ if forced.type else code_type_name
+                yield _sse("step", {"step": 3, "status": "done",
+                                    "message": f"💬 Switched to {code_type_name} — waiting for SMS..."})
+            except Exception as e:
+                yield _sse("step", {"step": 3, "status": "done",
+                                    "message": f"⚠️ SMS switch failed ({e}) — polling anyway..."})
+        else:
+            yield _sse("step", {"step": 3, "status": "done",
+                                "message": f"💬 Code requested via {code_type_name} — waiting for SMS..."})
 
         # ─── Step 4 — Poll for SMS code ──────────────────────────────────
         yield _sse("step", {"step": 4, "status": "running",
