@@ -486,10 +486,10 @@ async def _registration_stream(
 
         # ─── Step 4 — Poll for SMS code ──────────────────────────────────
         yield _sse("step", {"step": 4, "status": "running",
-                            "message": "💬 Waiting for Telegram SMS verification code (Timeout in 120s)..."})
+                            "message": "💬 Waiting for Telegram SMS verification code (Timeout in 180s)..."})
 
         code: str | None = None
-        deadline    = time.time() + 120
+        deadline    = time.time() + 180
         resent_code = False  # whether we've already tried Telegram resend
 
         def _extract_code(raw: str) -> str | None:
@@ -500,17 +500,19 @@ async def _registration_stream(
             m = re.search(r"\b(\d{4,8})\b", s)
             return m.group(1) if m else None
 
-        # Use /request/active for polling — recommended by SMSPool for all polling.
-        # It returns the live order list with "code" field ("0" while waiting,
-        # digits when the SMS arrives) and "full_code" (full message text).
+        # Primary: /sms/check — works for ALL statuses (1=pending, 3=complete, 6=refunded).
+        # Critical: when code arrives, order status becomes 3 (complete) and it LEAVES the
+        # /request/active list. Using /sms/check directly prevents missing the code.
+        # Fallback: /request/active — catches cases where order_code is wrong/missing.
+        SMSPOOL_CHECK  = "https://api.smspool.net/sms/check"
         SMSPOOL_ACTIVE = "https://api.smspool.net/request/active"
 
         async with aiohttp.ClientSession() as http:
             while time.time() < deadline:
                 remaining = int(deadline - time.time())
 
-                # After 60 s with no code, resend the Telegram code request once
-                if not resent_code and remaining <= 60:
+                # After 90 s with no code, resend the Telegram code request once
+                if not resent_code and remaining <= 90:
                     resent_code = True
                     try:
                         resent = await client(ResendCodeRequest(phone_number=phone, phone_code_hash=phone_code_hash))
@@ -526,9 +528,46 @@ async def _registration_stream(
                     "remaining": remaining,
                     "message": f"💬 Polling SMS... ({remaining}s remaining)",
                 })
-                await asyncio.sleep(5)
+                await asyncio.sleep(4)
 
                 try:
+                    # Primary: poll /sms/check directly by order_id.
+                    # This catches status 3 (complete) even after the order leaves the active list.
+                    if order_code:
+                        async with http.post(
+                            SMSPOOL_CHECK,
+                            data={"key": smspool_api_key, "orderid": order_code},
+                            timeout=aiohttp.ClientTimeout(total=10),
+                        ) as resp:
+                            chk = await resp.json(content_type=None)
+
+                        if isinstance(chk, dict):
+                            status_id = chk.get("status", 1)
+                            if status_id == 3:
+                                # Code received
+                                raw_code = str(chk.get("sms", ""))
+                                full_msg  = str(chk.get("full_sms", ""))
+                                code = _extract_code(raw_code) or _extract_code(full_msg)
+                                if code:
+                                    break
+                            elif status_id == 6:
+                                # Refunded — no point waiting further
+                                yield _sse("poll", {
+                                    "remaining": remaining,
+                                    "message": f"💬 Order refunded by SMSPool ({remaining}s remaining) — retrying...",
+                                })
+                            else:
+                                # status 1 = pending
+                                yield _sse("poll", {
+                                    "remaining": remaining,
+                                    "message": (
+                                        f"💬 Polling SMS... ({remaining}s remaining) "
+                                        f"[order={order_code}, status=pending]"
+                                    ),
+                                })
+                            continue  # skip fallback if check succeeded
+
+                    # Fallback: /request/active (covers missing order_code case)
                     async with http.post(
                         SMSPOOL_ACTIVE,
                         data={"key": smspool_api_key},
@@ -539,7 +578,6 @@ async def _registration_stream(
                     if not isinstance(orders, list):
                         continue
 
-                    # Find our order by order_code or by phone number suffix
                     for order in orders:
                         if not isinstance(order, dict):
                             continue
@@ -547,24 +585,21 @@ async def _registration_stream(
                                 or str(order.get("phonenumber", "")).endswith(raw_num)):
                             raw_code = str(order.get("code", "0"))
                             full_msg  = str(order.get("full_code", ""))
-                            status_id = order.get("status_id", 1)
-
                             code = _extract_code(raw_code) or _extract_code(full_msg)
                             if code:
                                 break
-
-                            # Show live status for debugging
-                            status_label = order.get("status", str(status_id))
+                            status_label = order.get("status", "pending")
                             yield _sse("poll", {
                                 "remaining": remaining,
                                 "message": (
-                                    f"💬 Polling SMS... ({remaining}s remaining) "
+                                    f"💬 Polling SMS (active)... ({remaining}s remaining) "
                                     f"[order={order_code}, status={status_label}]"
                                 ),
                             })
-                            break  # found our order, no code yet
+                            break
                     if code:
                         break
+
                 except Exception as exc:
                     yield _sse("poll", {
                         "remaining": remaining,
