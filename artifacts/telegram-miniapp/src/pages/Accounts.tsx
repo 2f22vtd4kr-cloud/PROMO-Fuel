@@ -587,7 +587,6 @@ function AccountCard({ acc, onRefresh, pingResult }: { acc: SenderAccount; onRef
           </div>
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: TG.text }}>{acc.label || `${t.nav.accounts} ${acc.id}`}</div>
-            <div style={{ fontSize: 10, color: TG.muted }}>{acc.phone}</div>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -1020,7 +1019,6 @@ function BulkImportPanel({ onDone }: { onDone: () => void }) {
                 return (
                   <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 4px" }}>
                     <span style={{ fontSize: 13, color: col, minWidth: 16, textAlign: "center" }}>{icon}</span>
-                    <span style={{ fontSize: 12, color: TG.text, minWidth: 80, fontFamily: "monospace" }}>{r.phone}</span>
                     <span style={{ fontSize: 11, color: col, fontWeight: 600 }}>{r.display_name ?? r.status}</span>
                     {r.error && !ok && (
                       <span style={{ fontSize: 9, color: TG.muted, marginLeft: "auto", maxWidth: 120, textAlign: "right", lineHeight: 1.3 }}>{r.error}</span>
@@ -1217,7 +1215,6 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
                     return (
                       <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderRadius: 10, background: `${col}08`, border: `1px solid ${col}22` }}>
                         <span style={{ fontSize: 14, color: col }}>{ok ? "✓" : banned ? "⛔" : "✗"}</span>
-                        <span style={{ fontSize: 12, fontFamily: "monospace", color: TG.text, minWidth: 90 }}>{r.phone}</span>
                         <span style={{ fontSize: 11, color: col, fontWeight: 600 }}>{r.display_name ?? r.status}</span>
                         {r.error && !ok && <span style={{ fontSize: 9, color: TG.muted, marginLeft: "auto", maxWidth: 100, textAlign: "right", lineHeight: 1.3 }}>{r.error}</span>}
                       </div>
