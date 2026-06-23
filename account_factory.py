@@ -57,15 +57,30 @@ TELEGRAM_SERVICE_ID = "907"
 _country_cache: dict[str, tuple[float, list]] = {}
 COUNTRY_CACHE_TTL = 60.0  # seconds
 
-DEVICE_MODELS = [
-    "Samsung Galaxy S23", "Samsung Galaxy S22 Ultra", "iPhone 14 Pro",
-    "iPhone 13", "Xiaomi 13 Pro", "OnePlus 11", "Google Pixel 7 Pro",
-    "Motorola Edge 40 Pro", "Realme GT 5", "OPPO Find X6", "Nokia X30 5G",
+# Device profiles: each entry is (device_model, system_version, app_version).
+# Consistent pairing is important — Telegram flags mismatched iOS version on Android device.
+DEVICE_PROFILES = [
+    ("Samsung Galaxy S23",     "Android 13",   "9.6.3"),
+    ("Samsung Galaxy S22 Ultra","Android 12",  "9.5.9"),
+    ("Xiaomi 13 Pro",          "Android 13",   "9.7.1"),
+    ("Google Pixel 7 Pro",     "Android 14",   "9.6.3"),
+    ("OnePlus 11",             "Android 13",   "9.4.4"),
+    ("Motorola Edge 40 Pro",   "Android 13",   "9.3.3"),
+    ("Realme GT 5",            "Android 14",   "9.7.1"),
+    ("OPPO Find X6",           "Android 13",   "9.5.9"),
+    ("Samsung Galaxy A54 5G",  "Android 13",   "9.6.3"),
+    ("Xiaomi Redmi Note 12",   "Android 12",   "9.4.4"),
 ]
-SYSTEM_VERSIONS = [
-    "Android 13", "Android 12", "Android 14", "Android 12.1",
-    "Android 13.0.1", "iOS 16.6", "iOS 17.0.2", "iOS 15.7.8",
+
+# Official Telegram Desktop credentials (public, from Telegram Desktop GitHub).
+# Using these makes our client look like official Telegram Desktop to Telegram's
+# anti-spam system, which returns SentCodeTypeSms instead of SentCodeTypeApp.
+# Tried in order when the user's custom api_id gets SentCodeTypeApp.
+_OFFICIAL_CLIENT_CREDS = [
+    (2040, "b18441a1ff607e10a989891a5462e627"),   # Telegram Desktop
+    (2496, "8da85b0d5bfe62527e5b244c209159c3"),   # Telegram iOS
 ]
+
 APP_VERSIONS = ["9.6.3", "9.5.9", "9.4.4", "9.3.3", "9.2.1", "9.7.1", "9.1.8"]
 
 FIRST_NAMES = [
