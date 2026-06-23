@@ -27,6 +27,7 @@ from telethon import TelegramClient
 from telethon.errors import (
     PhoneNumberBannedError,
     PhoneNumberUnoccupiedError,
+    SendCodeUnavailableError,
     SessionPasswordNeededError,
 )
 from telethon.tl.functions.auth import (
@@ -556,6 +557,12 @@ async def _registration_stream(
                             break  # switched to SMS
                         yield _sse("step", {"step": 3, "status": "running",
                                             "message": f"🔄 Still {code_type_name}, resend {_rs+1}/3..."})
+                    except SendCodeUnavailableError:
+                        # Definitive: Telegram says this number cannot receive SMS.
+                        # No point trying remaining resends — skip straight to official creds.
+                        yield _sse("step", {"step": 3, "status": "running",
+                                            "message": "⚠️ SendCodeUnavailable — number can't receive SMS, trying official creds…"})
+                        break
                     except Exception as e_rs:
                         yield _sse("step", {"step": 3, "status": "running",
                                             "message": f"⚠️ Resend {_rs+1}/3: {type(e_rs).__name__}"})
