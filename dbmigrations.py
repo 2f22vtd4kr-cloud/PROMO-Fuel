@@ -697,6 +697,27 @@ def run_migrations(db_path: str = DB_PATH) -> None:  # noqa: C901 — long but l
     conn.commit()
     logger.info("[migrations] Step 10 — account warmup tracking OK")
 
+    # ── Step 11: Proxy Store ─────────────────────────────────────────────────
+    #
+    # Persists saved Decodo / SOCKS5 proxies per country for autofill in
+    # Account Factory. Tracks last_session_num so batches auto-continue from
+    # the last used session number (no reuse / no gaps).
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS saved_proxies (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            country_code     TEXT    NOT NULL,
+            label            TEXT    NOT NULL DEFAULT '',
+            proxy_string     TEXT    NOT NULL,
+            last_session_num INTEGER NOT NULL DEFAULT 0,
+            created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at       TEXT    NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    _create_index(conn, "idx_saved_proxies_country", "saved_proxies(country_code)")
+    conn.commit()
+    logger.info("[migrations] Step 11 — saved_proxies (proxy store) OK")
+
     # ── Done ─────────────────────────────────────────────────────────────────
 
     conn.close()

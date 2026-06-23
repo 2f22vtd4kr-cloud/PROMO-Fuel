@@ -614,13 +614,51 @@ function Slide13({ lang }: SL) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SLIDE 14 — Proxy Store & Session Tracking
+// ═══════════════════════════════════════════════════════════════
+function Slide14({ lang }: SL) {
+  return (
+    <Shell>
+      <STitle icon="📦" text={L(lang, "Proxy Store & Session Tracking", "Сховище проксі та сесії")} color={PURPLE} />
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.6)", lineHeight:1.7, marginBottom:16 }}>
+        {L(lang,
+          "The Proxy Store saves your SOCKS5 proxy strings per country with automatic session-number tracking — each new batch picks up exactly where the last one ended, preventing reuse bans.",
+          "Сховище проксі зберігає ваші SOCKS5 проксі по країнах з автоматичним відстеженням номерів сесій — кожен новий пакет починається там, де закінчився попередній, запобігаючи банам через повторне використання."
+        )}
+      </div>
+      <Row icon="💾" color={ACCENT} label={L(lang, "Save a proxy per country", "Збережіть проксі для країни")}
+        desc={L(lang, "Enter a proxy URL, pick a country, then tap 💾 Save. It's stored in the Proxy Store under that country code for instant autofill next time.", "Введіть URL проксі, оберіть країну, потім натисніть 💾 Зберегти. Він зберігається у Сховищі проксі для автозаповнення наступного разу.")} />
+      <Row icon="⚡" color={BLUE} label={L(lang, "Autofill chips on country select", "Чіпи автозаповнення при виборі країни")}
+        desc={L(lang, "Saved proxies for the selected country appear as tappable chips above the proxy field. Tapping one fills the proxy AND sets the Session Start # to last_session_num + 1 automatically.", "Збережені проксі для вибраної країни з'являються як чіпи над полем проксі. Натискання заповнює проксі І встановлює Початковий № сесії на last_session_num + 1 автоматично.")} />
+      <Row icon="🔢" color={GREEN} label={L(lang, "Auto-increment after each batch", "Автоінкремент після кожного пакету")}
+        desc={L(lang, "After a successful batch finishes, last_session_num is updated silently. Next time you select the same proxy the start number is already correct — zero duplicates, zero gaps.", "Після успішного завершення пакету last_session_num оновлюється автоматично. Наступного разу початковий номер вже правильний — нуль дублікатів, нуль прогалин.")} />
+      <Row icon="🗂" color={TEAL} label={L(lang, "Manage all proxies from Proxy Store panel", "Керуйте всіма проксі з панелі Сховища")}
+        desc={L(lang, "Tap 📦 Proxy Store in the proxy field header to open the full manager — see all saved entries grouped by country, with their last session number and a delete button.", "Натисніть 📦 Proxy Store в заголовку поля проксі, щоб відкрити повний менеджер — всі збережені записи по країнах, з останнім номером сесії та кнопкою видалення.")} />
+      <Row icon="🗑️" color={RED} label={L(lang, "Delete when proxy source changes", "Видаліть при зміні джерела проксі")}
+        desc={L(lang, "When you buy a new Decodo plan or the proxy URL changes, delete the old entry from the store. This prevents stale URLs from autofilling and breaking registrations.", "Якщо ви купили новий план Decodo або URL проксі змінився — видаліть старий запис зі сховища. Це запобігає автозаповненню застарілих URL та зламаним реєстраціям.")} />
+      <div style={{ ...card(PURPLE), marginTop:8 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:PURPLE, marginBottom:6 }}>
+          {L(lang, "Continue-From Example", "Приклад продовження")}
+        </div>
+        <div style={{ fontFamily:"monospace", fontSize:11, color:"rgba(200,200,255,0.75)", lineHeight:1.8 }}>
+          {L(lang,
+            "Batch 1: prefix=ua, start=1 → ua-1, ua-2, ua-3\nafter batch: last_session_num=3\nBatch 2 (autofill): start=4 → ua-4, ua-5, ua-6",
+            "Пакет 1: prefix=ua, start=1 → ua-1, ua-2, ua-3\nпісля пакету: last_session_num=3\nПакет 2 (автозаповнення): start=4 → ua-4, ua-5, ua-6"
+          ).split("\n").map((line, i) => <div key={i}>{line}</div>)}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // SLIDE REGISTRY + MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-const SLIDES = [Slide1, Slide2, Slide3, Slide4, Slide5, Slide6, Slide7, Slide8, Slide9, Slide10, Slide11, Slide12, Slide13];
-const TITLES_EN = ["Cover","What is it?","Prerequisites","SMSPool API","Decodo Proxy","API Credentials","7-Step Pipeline","Country Selection","Batch Mode","Sessions & Files","Error Handling","Warmup Modes","Best Practices"];
-const TITLES_UA = ["Обкладинка","Що це?","Передумови","SMSPool API","Decodo Проксі","API Credentials","7-кроковий конвеєр","Вибір країни","Пакетний режим","Сесії та файли","Обробка помилок","Режими прогріву","Найкращі практики"];
-const KEYWORDS_EN = ["","automated registration telethon smspool proxy","prerequisites smspool decodo credentials","smspool api key purchase number service","decodo smartproxy socks5 residential mobile","telegram api id hash my.telegram.org","pipeline steps 7 telethon sign","country ukraine kazakhstan estonia poland india","batch mode quantity multiple accounts","session json metadata file storage","error ban timeout proxy network","warmup mode none all ask per account popup 48h","best practices warmup validate proxy rotate"];
-const KEYWORDS_UA = ["","автоматична реєстрація телетон смспул проксі","передумови смспул декодо credentials","смспул апі ключ купівля номер сервіс","декодо смартпроксі socks5 residential mobile","телеграм апі id hash my.telegram.org","конвеєр кроки 7 телетон вхід","країна україна казахстан естонія польща індія","пакетний режим кількість кілька акаунтів","сесія json метадані файл зберігання","помилка бан таймаут проксі мережа","режим прогріву без прогріву всі питати попап 48год","найкращі практики прогрів перевірка ротація"];
+const SLIDES = [Slide1, Slide2, Slide3, Slide4, Slide5, Slide6, Slide7, Slide8, Slide9, Slide10, Slide11, Slide12, Slide13, Slide14];
+const TITLES_EN = ["Cover","What is it?","Prerequisites","SMSPool API","Decodo Proxy","API Credentials","7-Step Pipeline","Country Selection","Batch Mode","Sessions & Files","Error Handling","Warmup Modes","Best Practices","Proxy Store & Sessions"];
+const TITLES_UA = ["Обкладинка","Що це?","Передумови","SMSPool API","Decodo Проксі","API Credentials","7-кроковий конвеєр","Вибір країни","Пакетний режим","Сесії та файли","Обробка помилок","Режими прогріву","Найкращі практики","Сховище проксі та сесії"];
+const KEYWORDS_EN = ["","automated registration telethon smspool proxy","prerequisites smspool decodo credentials","smspool api key purchase number service","decodo smartproxy socks5 residential mobile","telegram api id hash my.telegram.org","pipeline steps 7 telethon sign","country ukraine kazakhstan estonia poland india","batch mode quantity multiple accounts","session json metadata file storage","error ban timeout proxy network","warmup mode none all ask per account popup 48h","best practices warmup validate proxy rotate","proxy store save autofill session number increment continue last_session_num delete country"];
+const KEYWORDS_UA = ["","автоматична реєстрація телетон смспул проксі","передумови смспул декодо credentials","смспул апі ключ купівля номер сервіс","декодо смартпроксі socks5 residential mobile","телеграм апі id hash my.telegram.org","конвеєр кроки 7 телетон вхід","країна україна казахстан естонія польща індія","пакетний режим кількість кілька акаунтів","сесія json метадані файл зберігання","помилка бан таймаут проксі мережа","режим прогріву без прогріву всі питати попап 48год","найкращі практики прогрів перевірка ротація","сховище проксі зберегти автозаповнення номер сесії інкремент продовжити last_session_num видалити країна"];
 
 export function ManualFactoryPage({ onClose }: Props) {
   const { lang } = useI18n();

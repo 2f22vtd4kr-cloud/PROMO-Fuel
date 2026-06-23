@@ -576,6 +576,54 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
       .catch(() => setServerHasKey(false));
   }, []);
 
+  // ── Proxy Store ────────────────────────────────────────────────────────────
+  type SavedProxy = { id: number; country_code: string; label: string; proxy_string: string; last_session_num: number };
+  const [savedProxies,         setSavedProxies]         = useState<SavedProxy[]>([]);
+  const [selectedProxyStoreId, setSelectedProxyStoreId] = useState<number | null>(null);
+  const [showProxyStore,       setShowProxyStore]        = useState(false);
+  const [showSaveProxy,        setShowSaveProxy]         = useState(false);
+  const [saveProxyLabel,       setSaveProxyLabel]        = useState("");
+  const [savingProxy,          setSavingProxy]           = useState(false);
+  const [allSavedProxies,      setAllSavedProxies]       = useState<SavedProxy[]>([]);
+
+  // Fetch saved proxies for the active country whenever country changes
+  useEffect(() => {
+    const cid = country === "custom" ? customCountry.trim() : country;
+    if (!cid) { setSavedProxies([]); return; }
+    fetch(`/api/proxy-store?country=${encodeURIComponent(cid)}`, { headers: authHeaders() })
+      .then(r => r.json())
+      .then((d: SavedProxy[]) => setSavedProxies(Array.isArray(d) ? d : []))
+      .catch(() => setSavedProxies([]));
+  }, [country, customCountry]);
+
+  // Fetch ALL proxies for the store manager overlay
+  const openProxyStore = () => {
+    fetch("/api/proxy-store", { headers: authHeaders() })
+      .then(r => r.json())
+      .then((d: SavedProxy[]) => { setAllSavedProxies(Array.isArray(d) ? d : []); setShowProxyStore(true); })
+      .catch(() => { setAllSavedProxies([]); setShowProxyStore(true); });
+  };
+
+  const saveCurrentProxy = () => {
+    const cid = country === "custom" ? customCountry.trim() : country;
+    if (!cid || !proxy.trim()) return;
+    setSavingProxy(true);
+    fetch("/api/proxy-store", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ country_code: cid, proxy_string: proxy.trim(), label: saveProxyLabel.trim() }),
+    })
+      .then(r => r.json())
+      .then((saved: SavedProxy) => {
+        setSavedProxies(prev => [saved, ...prev]);
+        setShowSaveProxy(false);
+        setSaveProxyLabel("");
+        setSelectedProxyStoreId(saved.id);
+      })
+      .catch(() => {})
+      .finally(() => setSavingProxy(false));
+  };
+
   // Profile Setup state
   // Warmup mode selector
   const [warmupMode,    setWarmupMode]    = useState<"none" | "all" | "ask">("all");
@@ -919,12 +967,29 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           } else if (event === "batch_delay") {
             setBatchDelayMsg(p.message as string);
           } else if (event === "batch_done") {
+            const doneSucceeded = (p.succeeded as number) ?? 0;
             setBatchTotal(p.total as number);
-            setBatchSucceeded(p.succeeded as number);
+            setBatchSucceeded(doneSucceeded);
             setBatchFailed(p.failed as number);
             setBatchDone(true);
             setRunState("done");
             setBatchDelayMsg(null);
+            // Auto-update proxy store session number so next batch continues from the right number
+            if (selectedProxyStoreId && sessionPrefix && doneSucceeded > 0) {
+              const lastUsed = sessionStartNum + doneSucceeded - 1;
+              fetch(`/api/proxy-store/${selectedProxyStoreId}/session-num`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", ...authHeaders() },
+                body: JSON.stringify({ last_session_num: lastUsed }),
+              })
+                .then(r => r.json())
+                .then((updated: { id: number; last_session_num: number }) => {
+                  setSavedProxies(prev => prev.map(sp =>
+                    sp.id === updated.id ? { ...sp, last_session_num: updated.last_session_num } : sp
+                  ));
+                })
+                .catch(() => {});
+            }
           } else if (event === "step") {
             const stepIdx = (p.step as number) - 1;
             updateStep(stepIdx, {
@@ -1165,6 +1230,111 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           </div>
         );
       })()}
+
+      {/* ── Proxy Store Manager Overlay ──────────────────────────────────── */}
+      {showProxyStore && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 998,
+            background: "rgba(0,0,0,0.72)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
+            display: "flex", flexDirection: "column", justifyContent: "flex-end",
+          }}
+          onClick={() => setShowProxyStore(false)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: "rgba(9,12,24,0.99)", backdropFilter: "blur(40px)", WebkitBackdropFilter: "blur(40px)",
+              borderRadius: "24px 24px 0 0", border: "1px solid rgba(168,85,247,0.22)",
+              padding: "20px 18px calc(env(safe-area-inset-bottom,0px) + 28px)",
+              maxHeight: "75vh", display: "flex", flexDirection: "column",
+            }}
+          >
+            {/* Handle */}
+            <div style={{ width: 40, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.2)", margin: "0 auto 16px" }} />
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>
+                📦 {L("Proxy Store", "Сховище проксі")}
+              </div>
+              <button
+                onClick={() => setShowProxyStore(false)}
+                style={{
+                  background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.14)",
+                  borderRadius: 10, width: 32, height: 32, fontSize: 16, color: "rgba(255,255,255,0.7)",
+                  cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+              >×</button>
+            </div>
+            {/* List */}
+            <div style={{ overflowY: "auto", flex: 1 }}>
+              {allSavedProxies.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "32px 0", color: "rgba(255,255,255,0.35)", fontSize: 13 }}>
+                  {L("No saved proxies yet. Enter a proxy and tap 💾 Save.", "Ще немає збережених проксі. Введіть проксі та натисніть 💾 Зберегти.")}
+                </div>
+              ) : (
+                (() => {
+                  const grouped = allSavedProxies.reduce<Record<string, typeof allSavedProxies>>((acc, sp) => {
+                    (acc[sp.country_code] ??= []).push(sp);
+                    return acc;
+                  }, {});
+                  return Object.entries(grouped).map(([code, proxies]) => (
+                    <div key={code} style={{ marginBottom: 16 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.38)",
+                        letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
+                        {code.toUpperCase()}
+                      </div>
+                      {proxies.map(sp => (
+                        <div key={sp.id} style={{
+                          display: "flex", alignItems: "center", gap: 10,
+                          background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)",
+                          borderRadius: 12, padding: "10px 12px", marginBottom: 6,
+                        }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            {sp.label && (
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#c084fc", marginBottom: 2 }}>
+                                {sp.label}
+                              </div>
+                            )}
+                            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)",
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {sp.proxy_string.replace(/socks5:\/\/[^@]+@/, "⋯@")}
+                            </div>
+                          </div>
+                          <div style={{
+                            background: "rgba(168,85,247,0.18)", border: "1px solid rgba(168,85,247,0.35)",
+                            borderRadius: 8, padding: "3px 8px", fontSize: 11, fontWeight: 700, color: "#c084fc",
+                            whiteSpace: "nowrap",
+                          }}>
+                            #{sp.last_session_num}
+                          </div>
+                          <button
+                            onClick={() => {
+                              fetch(`/api/proxy-store/${sp.id}`, { method: "DELETE", headers: authHeaders() })
+                                .then(() => {
+                                  setAllSavedProxies(prev => prev.filter(x => x.id !== sp.id));
+                                  setSavedProxies(prev => prev.filter(x => x.id !== sp.id));
+                                  if (selectedProxyStoreId === sp.id) setSelectedProxyStoreId(null);
+                                })
+                                .catch(() => {});
+                            }}
+                            style={{
+                              background: "rgba(255,100,100,0.12)", border: "1px solid rgba(255,100,100,0.28)",
+                              borderRadius: 8, width: 28, height: 28, fontSize: 14, color: "rgba(255,120,120,0.9)",
+                              cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center",
+                              flexShrink: 0,
+                            }}
+                          >🗑</button>
+                        </div>
+                      ))}
+                    </div>
+                  ));
+                })()
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Warmup Prompt Popup (ask mode) ─────────────────────────────── */}
       {warmupPrompt && (
@@ -2067,16 +2237,26 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               </div>
             )}
 
-            {/* Proxy field + Decodo builder toggle */}
+            {/* Proxy field + Decodo builder toggle + Proxy Store */}
             <div style={{ marginBottom: 4 }}>
-              <div style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                marginBottom: 6,
-              }}>
+              {/* Header row */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.45)",
-                  letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                  letterSpacing: "0.06em", textTransform: "uppercase", flex: 1 }}>
                   {L("Decodo SOCKS5 Proxy", "Проксі Decodo SOCKS5")}
                 </div>
+                <button
+                  onClick={openProxyStore}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 3,
+                    background: GLASS2, border: `1px solid ${BORDER2}`,
+                    borderRadius: 8, padding: "3px 8px",
+                    fontSize: 10, fontWeight: 700, color: "rgba(168,85,247,0.9)",
+                    fontFamily: "inherit", cursor: "pointer", transition: "all 0.2s",
+                  }}
+                >
+                  📦 {L("Store", "Сховище")}
+                </button>
                 <button
                   onClick={() => setShowProxyGen(v => !v)}
                   style={{
@@ -2089,25 +2269,116 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     fontFamily: "inherit", cursor: "pointer", transition: "all 0.2s",
                   }}
                 >
-                  🔧 {L("Decodo Builder", "Decodo Будівник")}
+                  🔧 {L("Builder", "Будівник")}
                 </button>
               </div>
+
+              {/* Autofill chips — only when saved proxies exist for current country */}
+              {savedProxies.length > 0 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                  {savedProxies.map(sp => (
+                    <button
+                      key={sp.id}
+                      onClick={() => {
+                        setProxy(sp.proxy_string);
+                        setSessionStartNum(sp.last_session_num + 1);
+                        setSelectedProxyStoreId(sp.id);
+                      }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 5,
+                        background: selectedProxyStoreId === sp.id
+                          ? "rgba(168,85,247,0.22)" : "rgba(168,85,247,0.09)",
+                        border: `1px solid ${selectedProxyStoreId === sp.id
+                          ? "rgba(168,85,247,0.6)" : "rgba(168,85,247,0.28)"}`,
+                        borderRadius: 20, padding: "4px 10px",
+                        fontSize: 11, fontWeight: 600,
+                        color: selectedProxyStoreId === sp.id ? "#c084fc" : "rgba(168,85,247,0.8)",
+                        fontFamily: "inherit", cursor: "pointer", transition: "all 0.2s",
+                      }}
+                    >
+                      <span>{sp.label || sp.proxy_string.replace(/socks5:\/\/[^@]+@/, "").slice(0, 18)}</span>
+                      <span style={{
+                        background: "rgba(168,85,247,0.2)", borderRadius: 10,
+                        padding: "1px 6px", fontSize: 10, color: "#c084fc",
+                      }}>#{sp.last_session_num + 1}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Proxy input */}
               <input
                 type="text"
                 value={proxy}
-                onChange={e => setProxy(e.target.value)}
+                onChange={e => { setProxy(e.target.value); setSelectedProxyStoreId(null); }}
                 placeholder="socks5://user:pass@ip:port"
                 style={{
                   width: "100%", boxSizing: "border-box",
-                  background: GLASS2, border: `1px solid ${BORDER}`,
+                  background: GLASS2,
+                  border: `1px solid ${selectedProxyStoreId ? "rgba(168,85,247,0.4)" : BORDER}`,
                   borderRadius: 11, padding: "10px 14px",
                   fontSize: 12, color: "rgba(226,232,255,0.85)",
                   fontFamily: "inherit", outline: "none",
                 }}
               />
-              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.28)", marginTop: 4 }}>
-                {L("Residential proxy for anti-ban protection", "Residential проксі для захисту від банів")}
+
+              {/* Hint + Save to Store button row */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.28)" }}>
+                  {selectedProxyStoreId
+                    ? L("✓ Linked — session # auto-updates after batch", "✓ Прив'язано — № сесії оновиться після пакету")
+                    : L("Residential proxy for anti-ban protection", "Residential проксі для захисту від банів")}
+                </div>
+                {proxy.trim() && !selectedProxyStoreId && (
+                  <button
+                    onClick={() => setShowSaveProxy(v => !v)}
+                    style={{
+                      background: showSaveProxy ? "rgba(168,85,247,0.22)" : GLASS2,
+                      border: `1px solid ${showSaveProxy ? "rgba(168,85,247,0.5)" : BORDER2}`,
+                      borderRadius: 8, padding: "3px 9px",
+                      fontSize: 10, fontWeight: 700, color: "rgba(168,85,247,0.9)",
+                      fontFamily: "inherit", cursor: "pointer",
+                    }}
+                  >
+                    💾 {L("Save", "Зберегти")}
+                  </button>
+                )}
               </div>
+
+              {/* Save proxy expand panel */}
+              {showSaveProxy && (
+                <div style={{
+                  background: "rgba(168,85,247,0.07)", border: "1px solid rgba(168,85,247,0.25)",
+                  borderRadius: 10, padding: "10px 12px", marginTop: 6,
+                  display: "flex", gap: 8, alignItems: "center",
+                }}>
+                  <input
+                    type="text"
+                    value={saveProxyLabel}
+                    onChange={e => setSaveProxyLabel(e.target.value)}
+                    placeholder={L("Label (optional)", "Назва (необов'язково)")}
+                    style={{
+                      flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)",
+                      borderRadius: 8, padding: "6px 10px", fontSize: 11,
+                      color: "rgba(255,255,255,0.85)", fontFamily: "inherit", outline: "none",
+                    }}
+                    onKeyDown={e => { if (e.key === "Enter") saveCurrentProxy(); }}
+                  />
+                  <button
+                    onClick={saveCurrentProxy}
+                    disabled={savingProxy}
+                    style={{
+                      background: "rgba(168,85,247,0.25)", border: "1px solid rgba(168,85,247,0.5)",
+                      borderRadius: 8, padding: "6px 14px", fontSize: 11, fontWeight: 700,
+                      color: "#c084fc", fontFamily: "inherit", cursor: savingProxy ? "not-allowed" : "pointer",
+                      opacity: savingProxy ? 0.6 : 1,
+                    }}
+                  >
+                    {savingProxy ? "…" : L("Save", "Зберегти")}
+                  </button>
+                </div>
+              )}
+
               {showProxyGen && (
                 <ProxyGenHelper
                   lang={lang}

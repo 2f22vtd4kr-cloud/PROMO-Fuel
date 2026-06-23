@@ -534,6 +534,7 @@ Safe limits: 15-60s delay between sends; 50-100 msg/day per account (warm-up: st
 - **Error guards**: PhoneNumberBannedError → auto-cancel SMSPool order (no charge); SMS timeout → auto-cancel; SessionPasswordNeededError → number already registered
 - **SMSPool**: smspool.net — buy with crypto/card; service ID 11 = Telegram; Ukraine/Kazakhstan cheapest
 - **Proxy**: socks5://user:pass@ip:port format; Decodo (smartproxy.com) residential/mobile; match country to phone
+- **Proxy Store**: saved_proxies table stores SOCKS5 proxy strings per country; API: GET /api/proxy-store?country=XX (autofill chips), POST /api/proxy-store (save), PATCH /api/proxy-store/:id/session-num (auto-called after batch to update last session number), DELETE /api/proxy-store/:id. When a saved proxy is selected via autofill chip, sessionStartNum auto-sets to last_session_num+1 so sessions never reuse. After batch_done, last_session_num is patched silently.
 - **On success**: .session file + .json metadata written; CRM row inserted with 2FA pass, session_file, proxy, auth_status='active', is_active=1
 - **Warmup Mode Selector** (first card in the form, before API key):
   - 🚫 **No Warmup** (\`warmup_mode: "none"\`) — skip warmup entirely; account goes straight to active

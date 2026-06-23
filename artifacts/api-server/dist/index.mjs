@@ -20522,27 +20522,27 @@ var require_router = __commonJS({
     var slice = Array.prototype.slice;
     var flatten = Array.prototype.flat;
     var methods = METHODS.map((method) => method.toLowerCase());
-    module.exports = Router15;
+    module.exports = Router16;
     module.exports.Route = Route;
-    function Router15(options) {
-      if (!(this instanceof Router15)) {
-        return new Router15(options);
+    function Router16(options) {
+      if (!(this instanceof Router16)) {
+        return new Router16(options);
       }
       const opts = options || {};
-      function router15(req, res, next) {
-        router15.handle(req, res, next);
+      function router16(req, res, next) {
+        router16.handle(req, res, next);
       }
-      Object.setPrototypeOf(router15, this);
-      router15.caseSensitive = opts.caseSensitive;
-      router15.mergeParams = opts.mergeParams;
-      router15.params = {};
-      router15.strict = opts.strict;
-      router15.stack = [];
-      return router15;
+      Object.setPrototypeOf(router16, this);
+      router16.caseSensitive = opts.caseSensitive;
+      router16.mergeParams = opts.mergeParams;
+      router16.params = {};
+      router16.strict = opts.strict;
+      router16.stack = [];
+      return router16;
     }
-    Router15.prototype = function() {
+    Router16.prototype = function() {
     };
-    Router15.prototype.param = function param(name, fn) {
+    Router16.prototype.param = function param(name, fn) {
       if (!name) {
         throw new TypeError("argument name is required");
       }
@@ -20562,7 +20562,7 @@ var require_router = __commonJS({
       params.push(fn);
       return this;
     };
-    Router15.prototype.handle = function handle(req, res, callback) {
+    Router16.prototype.handle = function handle(req, res, callback) {
       if (!callback) {
         throw new TypeError("argument callback is required");
       }
@@ -20689,7 +20689,7 @@ var require_router = __commonJS({
         }
       }
     };
-    Router15.prototype.use = function use(handler) {
+    Router16.prototype.use = function use(handler) {
       let offset = 0;
       let path2 = "/";
       if (typeof handler !== "function") {
@@ -20722,7 +20722,7 @@ var require_router = __commonJS({
       }
       return this;
     };
-    Router15.prototype.route = function route(path2) {
+    Router16.prototype.route = function route(path2) {
       const route2 = new Route(path2);
       const layer = new Layer(path2, {
         sensitive: this.caseSensitive,
@@ -20737,7 +20737,7 @@ var require_router = __commonJS({
       return route2;
     };
     methods.concat("all").forEach(function(method) {
-      Router15.prototype[method] = function(path2) {
+      Router16.prototype[method] = function(path2) {
         const route = this.route(path2);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
@@ -20920,13 +20920,13 @@ var require_application = __commonJS({
     var compileTrust = require_utils3().compileTrust;
     var resolve = __require("node:path").resolve;
     var once = require_once();
-    var Router15 = require_router();
+    var Router16 = require_router();
     var slice = Array.prototype.slice;
     var flatten = Array.prototype.flat;
     var app2 = exports = module.exports = {};
     var trustProxyDefaultSymbol = "@@symbol:trust_proxy_default";
     app2.init = function init() {
-      var router15 = null;
+      var router16 = null;
       this.cache = /* @__PURE__ */ Object.create(null);
       this.engines = /* @__PURE__ */ Object.create(null);
       this.settings = /* @__PURE__ */ Object.create(null);
@@ -20935,13 +20935,13 @@ var require_application = __commonJS({
         configurable: true,
         enumerable: true,
         get: function getrouter() {
-          if (router15 === null) {
-            router15 = new Router15({
+          if (router16 === null) {
+            router16 = new Router16({
               caseSensitive: this.enabled("case sensitive routing"),
               strict: this.enabled("strict routing")
             });
           }
-          return router15;
+          return router16;
         }
       });
     };
@@ -21012,15 +21012,15 @@ var require_application = __commonJS({
       if (fns.length === 0) {
         throw new TypeError("app.use() requires a middleware function");
       }
-      var router15 = this.router;
+      var router16 = this.router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router15.use(path2, fn2);
+          return router16.use(path2, fn2);
         }
         debug(".use app under %s", path2);
         fn2.mountpath = path2;
         fn2.parent = this;
-        router15.use(path2, function mounted_app(req, res, next) {
+        router16.use(path2, function mounted_app(req, res, next) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             Object.setPrototypeOf(req, orig.request);
@@ -23593,7 +23593,7 @@ var require_express = __commonJS({
     var EventEmitter = __require("node:events").EventEmitter;
     var mixin = require_merge_descriptors();
     var proto = require_application();
-    var Router15 = require_router();
+    var Router16 = require_router();
     var req = require_request();
     var res = require_response();
     exports = module.exports = createApplication;
@@ -23615,8 +23615,8 @@ var require_express = __commonJS({
     exports.application = proto;
     exports.request = req;
     exports.response = res;
-    exports.Route = Router15.Route;
-    exports.Router = Router15;
+    exports.Route = Router16.Route;
+    exports.Router = Router16;
     exports.json = bodyParser.json;
     exports.raw = bodyParser.raw;
     exports.static = require_serve_static();
@@ -45136,7 +45136,7 @@ var require_multer = __commonJS({
 });
 
 // src/app.ts
-var import_express15 = __toESM(require_express2(), 1);
+var import_express16 = __toESM(require_express2(), 1);
 var import_cors = __toESM(require_lib3(), 1);
 var import_pino_http = __toESM(require_logger(), 1);
 import crypto from "crypto";
@@ -45145,7 +45145,7 @@ import { existsSync as existsSync3 } from "fs";
 import { join as join2 } from "path";
 
 // src/routes/index.ts
-var import_express13 = __toESM(require_express2(), 1);
+var import_express14 = __toESM(require_express2(), 1);
 
 // src/routes/health.ts
 var import_express = __toESM(require_express2(), 1);
@@ -52700,6 +52700,7 @@ Safe limits: 15-60s delay between sends; 50-100 msg/day per account (warm-up: st
 - **Error guards**: PhoneNumberBannedError \u2192 auto-cancel SMSPool order (no charge); SMS timeout \u2192 auto-cancel; SessionPasswordNeededError \u2192 number already registered
 - **SMSPool**: smspool.net \u2014 buy with crypto/card; service ID 11 = Telegram; Ukraine/Kazakhstan cheapest
 - **Proxy**: socks5://user:pass@ip:port format; Decodo (smartproxy.com) residential/mobile; match country to phone
+- **Proxy Store**: saved_proxies table stores SOCKS5 proxy strings per country; API: GET /api/proxy-store?country=XX (autofill chips), POST /api/proxy-store (save), PATCH /api/proxy-store/:id/session-num (auto-called after batch to update last session number), DELETE /api/proxy-store/:id. When a saved proxy is selected via autofill chip, sessionStartNum auto-sets to last_session_num+1 so sessions never reuse. After batch_done, last_session_num is patched silently.
 - **On success**: .session file + .json metadata written; CRM row inserted with 2FA pass, session_file, proxy, auth_status='active', is_active=1
 - **Warmup Mode Selector** (first card in the form, before API key):
   - \u{1F6AB} **No Warmup** (\`warmup_mode: "none"\`) \u2014 skip warmup entirely; account goes straight to active
@@ -53098,34 +53099,143 @@ ${seed_text.trim()}`;
 });
 var ai_default = router12;
 
-// src/routes/index.ts
+// src/routes/proxy-store.ts
+var import_express13 = __toESM(require_express2(), 1);
+import Database12 from "better-sqlite3";
 var router13 = (0, import_express13.Router)();
-router13.use(health_default);
-router13.use(campaigns_default);
-router13.use(group_campaigns_default);
-router13.use(users_default);
-router13.use(analytics_default);
-router13.use(sse_default);
-router13.use(accounts_default);
-router13.use(templates_default);
-router13.use(audience_default);
-router13.use(upload_default);
-router13.use(workers_default);
-router13.use(ai_default);
-router13.use("/twa", campaigns_default);
-router13.use("/twa", group_campaigns_default);
-router13.use("/twa", users_default);
-router13.use("/twa", analytics_default);
-router13.use("/twa", accounts_default);
-router13.use("/twa", audience_default);
-router13.use("/twa", upload_default);
-router13.use("/twa", sse_default);
-router13.use("/twa", workers_default);
-var routes_default = router13;
+function getDb9(readonly = true) {
+  return new Database12(DB_PATH, { readonly });
+}
+function ensureTable3() {
+  const db = new Database12(DB_PATH);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS saved_proxies (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      country_code     TEXT    NOT NULL,
+      label            TEXT    NOT NULL DEFAULT '',
+      proxy_string     TEXT    NOT NULL,
+      last_session_num INTEGER NOT NULL DEFAULT 0,
+      created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+      updated_at       TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_saved_proxies_country ON saved_proxies(country_code);
+  `);
+  db.close();
+}
+ensureTable3();
+router13.get("/proxy-store", (req, res) => {
+  const { country } = req.query;
+  const db = getDb9();
+  try {
+    const rows = country ? db.prepare("SELECT * FROM saved_proxies WHERE country_code = ? ORDER BY updated_at DESC").all(country.trim()) : db.prepare("SELECT * FROM saved_proxies ORDER BY country_code ASC, updated_at DESC").all();
+    res.json(rows);
+  } finally {
+    db.close();
+  }
+});
+router13.post("/proxy-store", (req, res) => {
+  const { country_code, proxy_string, label = "" } = req.body;
+  if (!country_code?.trim() || !proxy_string?.trim()) {
+    return void res.status(400).json({ error: "country_code and proxy_string are required" });
+  }
+  const db = new Database12(DB_PATH);
+  try {
+    const result = db.prepare("INSERT INTO saved_proxies (country_code, label, proxy_string) VALUES (?, ?, ?)").run(country_code.trim(), (label ?? "").trim(), proxy_string.trim());
+    const row = db.prepare("SELECT * FROM saved_proxies WHERE id = ?").get(result.lastInsertRowid);
+    res.json(row);
+  } finally {
+    db.close();
+  }
+});
+router13.put("/proxy-store/:id", (req, res) => {
+  const id = Number(req.params["id"]);
+  if (!Number.isInteger(id) || id <= 0) return void res.status(400).json({ error: "Invalid id" });
+  const { proxy_string, label } = req.body;
+  const db = new Database12(DB_PATH);
+  try {
+    const fields = ["updated_at = datetime('now')"];
+    const values = [];
+    if (proxy_string !== void 0) {
+      fields.push("proxy_string = ?");
+      values.push(proxy_string.trim());
+    }
+    if (label !== void 0) {
+      fields.push("label = ?");
+      values.push(label.trim());
+    }
+    if (values.length === 0) return void res.status(400).json({ error: "Nothing to update" });
+    values.push(id);
+    db.prepare(`UPDATE saved_proxies SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+    const row = db.prepare("SELECT * FROM saved_proxies WHERE id = ?").get(id);
+    if (!row) return void res.status(404).json({ error: "Not found" });
+    res.json(row);
+  } finally {
+    db.close();
+  }
+});
+router13.patch("/proxy-store/:id/session-num", (req, res) => {
+  const id = Number(req.params["id"]);
+  const { last_session_num } = req.body;
+  if (!Number.isInteger(id) || id <= 0) return void res.status(400).json({ error: "Invalid id" });
+  if (!Number.isInteger(last_session_num) || last_session_num < 0) {
+    return void res.status(400).json({ error: "last_session_num must be a non-negative integer" });
+  }
+  const db = new Database12(DB_PATH);
+  try {
+    db.prepare(
+      "UPDATE saved_proxies SET last_session_num = ?, updated_at = datetime('now') WHERE id = ?"
+    ).run(last_session_num, id);
+    const row = db.prepare("SELECT * FROM saved_proxies WHERE id = ?").get(id);
+    if (!row) return void res.status(404).json({ error: "Not found" });
+    res.json(row);
+  } finally {
+    db.close();
+  }
+});
+router13.delete("/proxy-store/:id", (req, res) => {
+  const id = Number(req.params["id"]);
+  if (!Number.isInteger(id) || id <= 0) return void res.status(400).json({ error: "Invalid id" });
+  const db = new Database12(DB_PATH);
+  try {
+    const row = db.prepare("SELECT id FROM saved_proxies WHERE id = ?").get(id);
+    if (!row) return void res.status(404).json({ error: "Not found" });
+    db.prepare("DELETE FROM saved_proxies WHERE id = ?").run(id);
+    res.json({ deleted: true, id });
+  } finally {
+    db.close();
+  }
+});
+var proxy_store_default = router13;
+
+// src/routes/index.ts
+var router14 = (0, import_express14.Router)();
+router14.use(health_default);
+router14.use(campaigns_default);
+router14.use(group_campaigns_default);
+router14.use(users_default);
+router14.use(analytics_default);
+router14.use(sse_default);
+router14.use(accounts_default);
+router14.use(templates_default);
+router14.use(audience_default);
+router14.use(upload_default);
+router14.use(workers_default);
+router14.use(ai_default);
+router14.use(proxy_store_default);
+router14.use("/twa", campaigns_default);
+router14.use("/twa", group_campaigns_default);
+router14.use("/twa", users_default);
+router14.use("/twa", analytics_default);
+router14.use("/twa", accounts_default);
+router14.use("/twa", audience_default);
+router14.use("/twa", upload_default);
+router14.use("/twa", sse_default);
+router14.use("/twa", workers_default);
+var routes_default = router14;
 
 // src/routes/factory.ts
-var import_express14 = __toESM(require_express2(), 1);
-var router14 = (0, import_express14.Router)();
+var import_express15 = __toESM(require_express2(), 1);
+var router15 = (0, import_express15.Router)();
 var SMSPOOL_STOCK_URL = "https://api.smspool.net/country/retrieve_all";
 var SMSPOOL_BALANCE_URL = "https://api.smspool.net/request/balance";
 var SMSPOOL_PRICE_URL = "https://api.smspool.net/request/price";
@@ -53134,11 +53244,11 @@ var CACHE_TTL_MS = 6e4;
 var TELEGRAM_SERVICE_ID = "907";
 var _cache = /* @__PURE__ */ new Map();
 var _serviceCache = /* @__PURE__ */ new Map();
-router14.get("/config", (_req, res) => {
+router15.get("/config", (_req, res) => {
   const hasSmsPoolKey = Boolean(process.env["SMSPOOL_API_KEY"]?.trim());
   return void res.json({ has_smspool_key: hasSmsPoolKey });
 });
-router14.get("/balance", async (req, res) => {
+router15.get("/balance", async (req, res) => {
   const apiKey = String(req.query["api_key"] ?? process.env["SMSPOOL_API_KEY"] ?? "").trim();
   if (!apiKey) {
     return void res.status(400).json({ error: "api_key is required" });
@@ -53170,7 +53280,7 @@ router14.get("/balance", async (req, res) => {
     return void res.status(502).json({ error: `SMSPool unreachable: ${String(err)}` });
   }
 });
-router14.get("/countries", async (req, res) => {
+router15.get("/countries", async (req, res) => {
   const apiKey = String(req.query["api_key"] ?? process.env["SMSPOOL_API_KEY"] ?? "").trim();
   const service = String(req.query["service"] ?? TELEGRAM_SERVICE_ID).trim();
   if (!apiKey) {
@@ -53220,7 +53330,7 @@ router14.get("/countries", async (req, res) => {
     return void res.status(502).json({ error: `SMSPool unreachable: ${String(err)}` });
   }
 });
-router14.get("/service-stock", async (req, res) => {
+router15.get("/service-stock", async (req, res) => {
   const apiKey = String(req.query["api_key"] ?? process.env["SMSPOOL_API_KEY"] ?? "").trim();
   const country = String(req.query["country"] ?? "").trim();
   const service = String(req.query["service"] ?? TELEGRAM_SERVICE_ID).trim();
@@ -53268,7 +53378,7 @@ router14.get("/service-stock", async (req, res) => {
   }
 });
 var _bestCountryCache = /* @__PURE__ */ new Map();
-router14.get("/best-country", async (req, res) => {
+router15.get("/best-country", async (req, res) => {
   const apiKey = String(req.query["api_key"] ?? process.env["SMSPOOL_API_KEY"] ?? "").trim();
   const service = String(req.query["service"] ?? TELEGRAM_SERVICE_ID).trim();
   if (!apiKey) {
@@ -53335,7 +53445,7 @@ router14.get("/best-country", async (req, res) => {
 });
 var _aiCountryCache = /* @__PURE__ */ new Map();
 var AI_CACHE_TTL_MS = 30 * 6e4;
-router14.get("/ai-countries", async (_req, res) => {
+router15.get("/ai-countries", async (_req, res) => {
   const cached = _aiCountryCache.get("default");
   if (cached && Date.now() - cached.ts < AI_CACHE_TTL_MS) {
     return void res.json({ entries: cached.entries, model: cached.model, cached: true });
@@ -53422,7 +53532,7 @@ Rules:
     return void res.status(502).json({ error: `AI analysis failed: ${String(err)}` });
   }
 });
-var factory_default = router14;
+var factory_default = router15;
 
 // src/lib/logger.ts
 var import_pino = __toESM(require_pino(), 1);
@@ -53444,7 +53554,7 @@ var logger = (0, import_pino.default)({
 });
 
 // src/lib/watchdog.ts
-import Database12 from "better-sqlite3";
+import Database13 from "better-sqlite3";
 
 // src/lib/notify.ts
 var TELEGRAM_API = "https://api.telegram.org";
@@ -53510,7 +53620,7 @@ function alreadySent(db, eventType, entityId) {
 async function checkCampaigns() {
   let db = null;
   try {
-    db = new Database12(DB_PATH);
+    db = new Database13(DB_PATH);
     ensureNotificationsTable(db);
     const campaigns = db.prepare(
       `SELECT id, name, status, sent_count, failed_count, target_count
@@ -53541,7 +53651,7 @@ async function checkCampaigns() {
 async function checkWorkers() {
   let db = null;
   try {
-    db = new Database12(DB_PATH);
+    db = new Database13(DB_PATH);
     ensureNotificationsTable(db);
     const workers = db.prepare("SELECT worker_id, pid, last_heartbeat, last_error FROM broadcast_workers").all();
     const now = Date.now();
@@ -53653,7 +53763,7 @@ var apiLimiter = createLimiter({
 });
 
 // src/app.ts
-var app = (0, import_express15.default)();
+var app = (0, import_express16.default)();
 app.use(
   (0, import_pino_http.default)({
     logger,
@@ -53668,8 +53778,8 @@ app.use(
   })
 );
 app.use((0, import_cors.default)());
-app.use(import_express15.default.json({ limit: "10mb" }));
-app.use(import_express15.default.urlencoded({ extended: true }));
+app.use(import_express16.default.json({ limit: "10mb" }));
+app.use(import_express16.default.urlencoded({ extended: true }));
 app.use("/api/twa", twaLimiter);
 app.post("/api/auth", authLimiter);
 app.use("/api", apiLimiter);
@@ -53776,7 +53886,7 @@ startWatchdog();
 var WORKSPACE_ROOT = join2(import.meta.dirname, "../../..");
 var FRONTEND_DIST = join2(WORKSPACE_ROOT, "artifacts", "telegram-miniapp", "dist");
 if (existsSync3(FRONTEND_DIST)) {
-  app.use(import_express15.default.static(FRONTEND_DIST, {
+  app.use(import_express16.default.static(FRONTEND_DIST, {
     setHeaders(res, filePath) {
       if (filePath.endsWith(".html")) {
         res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
