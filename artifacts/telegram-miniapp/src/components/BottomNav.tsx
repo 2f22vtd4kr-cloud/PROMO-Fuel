@@ -1,4 +1,4 @@
-import { LayoutGrid, Megaphone, BarChart2, Users2, Radio, Cpu, LayoutDashboard, Key, Sparkles, ShieldCheck } from "lucide-react";
+import { LayoutGrid, Megaphone, BarChart2, Users2, Radio, Cpu, LayoutDashboard, Key, Sparkles, ShieldCheck, Shield } from "lucide-react";
 import type { Tab } from "../App";
 import { TG } from "../lib/theme";
 import { haptic } from "../lib/haptics";
@@ -24,6 +24,7 @@ export function BottomNav({
   const ITEMS: NavItem[] = [
     { id: "dashboard",    kind: "tab",    icon: LayoutDashboard, label: t.nav.dashboard, color: "#22d3ee", glow: "rgba(34,211,238,0.55)"  },
     { id: "home",         kind: "tab",    icon: LayoutGrid,      label: t.nav.home,      color: "#95c4f5", glow: "rgba(107,168,229,0.55)" },
+    { id: "accounts",    kind: "action", icon: Shield,          label: t.nav.accounts,  color: "#ff7eb3", glow: "rgba(255,126,179,0.55)" },
     { id: "campaigns",    kind: "tab",    icon: Megaphone,       label: t.nav.campaigns, color: "#2de897", glow: "rgba(45,232,151,0.55)"  },
     { id: "groups",       kind: "tab",    icon: Radio,           label: t.nav.groups,    color: "#c4aeff", glow: "rgba(196,174,255,0.55)" },
     { id: "analytics",   kind: "tab",    icon: BarChart2,       label: t.nav.analytics, color: "#ffc946", glow: "rgba(255,201,70,0.55)"  },

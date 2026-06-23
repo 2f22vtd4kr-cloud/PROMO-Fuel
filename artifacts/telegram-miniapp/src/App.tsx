@@ -9,6 +9,7 @@ import { GroupBroadcastsPage }      from "./pages/GroupBroadcasts";
 import { GroupBroadcastCreatePage } from "./pages/GroupBroadcastCreate";
 import { WorkersPage }              from "./pages/Workers";
 import { AccountsPage }             from "./pages/Accounts";
+import { AccountFactoryPanel }     from "./pages/AccountFactory";
 import { DashboardPage }            from "./pages/Dashboard";
 import { AccountLoginPage }         from "./pages/AccountLogin";
 import { ManualPage }              from "./pages/Manual";
@@ -62,7 +63,8 @@ function OwnerApp() {
   const [showEditor,       setShowEditor]      = useState(false);
   const [editGroupId,      setEditGroupId]     = useState<number | null>(null);
   const [showGroupEditor,  setShowGroupEditor] = useState(false);
-  const [showAccounts,     setShowAccounts]    = useState(false);
+  const [showAccounts,        setShowAccounts]        = useState(false);
+  const [showAccountFactory,  setShowAccountFactory]  = useState(false);
   const [showAccountLogin, setShowAccountLogin]= useState(false);
   const [showManual,            setShowManual]            = useState(false);
   const [showManualAccounts,    setShowManualAccounts]    = useState(false);
@@ -107,14 +109,15 @@ function OwnerApp() {
   }
 
   function handleNavigate(t: string) {
-    if (t === "accounts")     { setShowAccounts(true);     return; }
-    if (t === "account-login"){ setShowAccountLogin(true); return; }
-    if (t === "manual")         { setShowManual(true);         return; }
-  if (t === "manual-accounts"){ setShowManualAccounts(true); return; }
+    if (t === "accounts")        { setShowAccounts(true);        return; }
+    if (t === "account-factory") { setShowAccountFactory(true);  return; }
+    if (t === "account-login")   { setShowAccountLogin(true);    return; }
+    if (t === "manual")          { setShowManual(true);          return; }
+    if (t === "manual-accounts") { setShowManualAccounts(true);  return; }
     setTab(t as Tab);
   }
 
-  const anyOverlay = showEditor || showGroupEditor || showAccounts || showAccountLogin || showManual || showManualAccounts || showManualChooser || showManualVerification || showManualFactory;
+  const anyOverlay = showEditor || showGroupEditor || showAccounts || showAccountFactory || showAccountLogin || showManual || showManualAccounts || showManualChooser || showManualVerification || showManualFactory;
 
   return (
     <div style={{
@@ -183,6 +186,12 @@ function OwnerApp() {
       {showAccounts && (
         <div style={{ position: "absolute", inset: 0, zIndex: 50, background: "#07090f" }}>
           <AccountsPage onClose={() => setShowAccounts(false)} onManualAccounts={() => setShowManualAccounts(true)} />
+        </div>
+      )}
+
+      {showAccountFactory && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 50, background: "#07090f" }}>
+          <AccountFactoryPanel onDone={() => setShowAccountFactory(false)} />
         </div>
       )}
 

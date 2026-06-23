@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Bell, Megaphone, BarChart2, ArrowUpRight, Gift, Users2, TrendingUp, Shield, Flame, Radio, Cpu, Fuel, X, CheckCircle2, AlertTriangle, Ban, Clock, Zap } from "lucide-react";
+import { Bell, Megaphone, BarChart2, ArrowUpRight, Gift, Users2, TrendingUp, Shield, Flame, Radio, Cpu, Fuel, X, CheckCircle2, AlertTriangle, Ban, Clock, Zap, Building2 } from "lucide-react";
 import { api, Campaign, AnalyticsOverview, WorkersSummary, DailyDigest } from "../lib/api";
 import { TG } from "../lib/theme";
 import { GlassCard } from "../components/GlassCard";
@@ -113,12 +113,12 @@ export function HomePage({ onNewCampaign, onViewCampaigns, onNavigate }: {
   ];
 
   const quickActions = [
-    { label: t.home.quickActions.newCampaign, icon: Megaphone, color: TG.green,              glow: TG.greenGlow,                action: () => { haptic.medium(); onNewCampaign(); } },
-    { label: t.home.quickActions.groups,      icon: Radio,     color: "#ffc946",             glow: "rgba(255,201,70,0.38)",     action: () => { haptic.light(); onNavigate("groups"); } },
-    { label: t.home.quickActions.stats,       icon: BarChart2, color: TG.accent ?? "#6ba8e5", glow: "rgba(107,168,229,0.38)",   action: () => { haptic.light(); onNavigate("analytics"); } },
-    { label: t.home.quickActions.audience,    icon: Users2,    color: "#c4aeff",             glow: "rgba(196,174,255,0.38)",    action: () => { haptic.light(); onNavigate("audience"); } },
-    { label: t.home.quickActions.accounts,    icon: Shield,    color: "#ff7eb3",             glow: "rgba(255,126,179,0.38)",    action: () => { haptic.light(); onNavigate("accounts"); } },
-    { label: t.home.quickActions.workers,     icon: Cpu,       color: "#a78bfa",             glow: "rgba(167,139,250,0.38)",    action: () => { haptic.light(); onNavigate("workers"); } },
+    { label: lang === "ua" ? "Фабрика" : "Factory",  icon: Building2, color: "#f59e0b",             glow: "rgba(245,158,11,0.38)",     action: () => { haptic.medium(); onNavigate("account-factory"); } },
+    { label: t.home.quickActions.newCampaign,          icon: Megaphone, color: TG.green,              glow: TG.greenGlow,                action: () => { haptic.medium(); onNewCampaign(); } },
+    { label: t.home.quickActions.groups,               icon: Radio,     color: "#ffc946",             glow: "rgba(255,201,70,0.38)",     action: () => { haptic.light(); onNavigate("groups"); } },
+    { label: t.home.quickActions.stats,                icon: BarChart2, color: TG.accent ?? "#6ba8e5", glow: "rgba(107,168,229,0.38)",   action: () => { haptic.light(); onNavigate("analytics"); } },
+    { label: t.home.quickActions.audience,             icon: Users2,    color: "#c4aeff",             glow: "rgba(196,174,255,0.38)",    action: () => { haptic.light(); onNavigate("audience"); } },
+    { label: t.home.quickActions.workers,              icon: Cpu,       color: "#a78bfa",             glow: "rgba(167,139,250,0.38)",    action: () => { haptic.light(); onNavigate("workers"); } },
   ];
 
   const sparklineHeights = [4, 8, 6, 12, 8, 10, 16];
