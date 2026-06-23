@@ -29,7 +29,8 @@ from telethon.errors import (
     PhoneNumberUnoccupiedError,
     SessionPasswordNeededError,
 )
-from telethon.tl.functions.auth import ResendCodeRequest
+from telethon.tl.functions.auth import ResendCodeRequest, SendCodeRequest as RawSendCodeRequest
+from telethon.tl import types as tl_types
 from telethon.tl.functions.account import UpdateProfileRequest
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
 
@@ -445,12 +446,31 @@ async def _registration_stream(
         yield _sse("step", {"step": 2, "status": "done",
                             "message": "📡 Proxy tunnel established — Telethon connected"})
 
-        # ─── Step 3 — Request code ───────────────────────────────────────
+        # ─── Step 3 — Request code (SMS-forced) ─────────────────────────
         yield _sse("step", {"step": 3, "status": "running",
                             "message": "💬 Requesting Telegram SMS verification code..."})
+
+        # Force SMS-only from the first request using CodeSettings.
+        # This bypasses the flash-call → ResendCodeRequest → SendCodeUnavailable trap.
+        phone_code_hash: str = ""
+        code_type_name: str = "SentCodeTypeSms"
+        sent = None
+
         try:
-            sent = await client.send_code_request(phone)
-            phone_code_hash = sent.phone_code_hash
+            raw_result = await client(RawSendCodeRequest(
+                phone_number=phone,
+                api_id=api_id,
+                api_hash=api_hash,
+                settings=tl_types.CodeSettings(
+                    allow_flashcall=False,
+                    allow_app=False,
+                    allow_missed_call=False,
+                    allow_firebase=False,
+                ),
+            ))
+            phone_code_hash = raw_result.phone_code_hash
+            code_type_name  = type(raw_result.type).__name__ if raw_result.type else "SentCodeTypeSms"
+            sent = raw_result
         except PhoneNumberBannedError:
             yield _sse("step", {"step": 3, "status": "error",
                                 "message": "🚫 Number pre-banned — cancelling order..."})
@@ -460,29 +480,41 @@ async def _registration_stream(
                            "Order cancelled — no funds wasted. Please try again."
             })
             return
-
-        # Log the code type Telegram chose (SMS vs app-based)
-        code_type_name = type(sent.type).__name__ if sent.type else "Unknown"
-        phone_code_hash = sent.phone_code_hash
-
-        # If Telegram routed to app-based delivery, immediately force-switch to SMS.
-        # next_type for SentCodeTypeApp is always SentCodeTypeSms — resend triggers it.
-        if "App" in code_type_name or "Flash" in code_type_name or "Firebase" in code_type_name:
-            next_name = type(sent.next_type).__name__ if sent.next_type else "None"
+        except Exception as e_sms_force:
+            # SMS-force failed — fall back to standard send_code_request then resend
             yield _sse("step", {"step": 3, "status": "running",
-                                "message": f"📲 App delivery detected — forcing SMS switch (next: {next_name})..."})
+                                "message": f"⚠️ SMS-force failed ({type(e_sms_force).__name__}) — trying standard flow..."})
             try:
-                forced = await client(ResendCodeRequest(phone_number=phone, phone_code_hash=phone_code_hash))
-                phone_code_hash = forced.phone_code_hash
-                code_type_name = type(forced.type).__name__ if forced.type else code_type_name
-                yield _sse("step", {"step": 3, "status": "done",
-                                    "message": f"💬 Switched to {code_type_name} — waiting for SMS..."})
-            except Exception as e:
-                yield _sse("step", {"step": 3, "status": "done",
-                                    "message": f"⚠️ SMS switch failed ({e}) — polling anyway..."})
-        else:
-            yield _sse("step", {"step": 3, "status": "done",
-                                "message": f"💬 Code requested via {code_type_name} — waiting for SMS..."})
+                sent = await client.send_code_request(phone)
+                phone_code_hash = sent.phone_code_hash
+                code_type_name  = type(sent.type).__name__ if sent.type else "Unknown"
+            except PhoneNumberBannedError:
+                yield _sse("step", {"step": 3, "status": "error",
+                                    "message": "🚫 Number pre-banned — cancelling order..."})
+                await cancel_order()
+                yield _sse("error", {
+                    "message": "⛔ This phone number is pre-banned by Telegram. "
+                               "Order cancelled — no funds wasted. Please try again."
+                })
+                return
+            except Exception as e2:
+                yield _sse("step", {"step": 3, "status": "error",
+                                    "message": f"❌ Code request failed: {e2}"})
+                await cancel_order()
+                yield _sse("error", {"message": f"Failed to request code from Telegram: {e2}"})
+                return
+
+            # If still non-SMS, try one ResendCodeRequest
+            if sent and ("App" in code_type_name or "Flash" in code_type_name or "Firebase" in code_type_name):
+                try:
+                    forced = await client(ResendCodeRequest(phone_number=phone, phone_code_hash=phone_code_hash))
+                    phone_code_hash = forced.phone_code_hash
+                    code_type_name  = type(forced.type).__name__ if forced.type else code_type_name
+                except Exception:
+                    pass  # keep polling with original hash
+
+        yield _sse("step", {"step": 3, "status": "done",
+                            "message": f"✅ Code requested via {code_type_name} — waiting for SMS..."})
 
         # ─── Step 4 — Poll for SMS code ──────────────────────────────────
         yield _sse("step", {"step": 4, "status": "running",
