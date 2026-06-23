@@ -783,6 +783,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [preflightStatus, setPreflightStatus] = useState<"idle"|"running"|"done"|"error">("idle");
   const [preflightMsg,    setPreflightMsg]    = useState<string | null>(null);
   const [exitIp,          setExitIp]          = useState<string | null>(null);
+  const [isDcIp,          setIsDcIp]          = useState<boolean>(false);
 
   // Batch tracking
   const [batchTotal,     setBatchTotal]     = useState(0);
@@ -996,6 +997,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             setPreflightStatus(p.status as "running" | "done" | "error");
             setPreflightMsg(p.message as string ?? null);
             if (p.exit_ip) setExitIp(p.exit_ip as string);
+            if (p.is_datacenter !== undefined) setIsDcIp(p.is_datacenter as boolean);
           } else if (event === "batch_reset") {
             setSteps(initSteps());
             setPollMsg(null);
@@ -1003,6 +1005,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             setPreflightStatus("idle");
             setPreflightMsg(null);
             setExitIp(null);
+            setIsDcIp(false);
           } else if (event === "batch_delay") {
             setBatchDelayMsg(p.message as string);
           } else if (event === "batch_done") {
@@ -3022,19 +3025,27 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   }}>
                     {preflightMsg ?? (L("Testing SOCKS5 tunnel to Telegram DC1…", "Тестування SOCKS5 тунелю до Telegram DC1…"))}
                   </div>
-                  {preflightStatus === "done" && exitIp && (
+                  {exitIp && (preflightStatus === "done" || preflightStatus === "error") && (
                     <div style={{
                       marginTop: 6,
                       display: "inline-flex", alignItems: "center", gap: 6,
-                      background: "rgba(0,0,0,0.25)",
-                      border: "1px solid rgba(45,232,151,0.25)",
+                      background: isDcIp ? "rgba(255,60,60,0.12)" : "rgba(0,0,0,0.25)",
+                      border: `1px solid ${isDcIp ? "rgba(255,80,80,0.45)" : "rgba(45,232,151,0.25)"}`,
                       borderRadius: 8, padding: "3px 10px",
                     }}>
-                      <span style={{ fontSize: 10, opacity: 0.55 }}>EXIT IP</span>
+                      <span style={{ fontSize: 10, opacity: 0.6 }}>
+                        {isDcIp ? "⛔ DC IP" : "EXIT IP"}
+                      </span>
                       <span style={{
                         fontFamily: "monospace", fontSize: 13, fontWeight: 700,
-                        color: "#2de897", letterSpacing: "0.04em",
+                        color: isDcIp ? "#ff6b6b" : "#2de897",
+                        letterSpacing: "0.04em",
                       }}>{exitIp}</span>
+                      {isDcIp && (
+                        <span style={{ fontSize: 10, color: "rgba(255,140,140,0.85)", fontWeight: 600 }}>
+                          — PROXY BYPASSED
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>

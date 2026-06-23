@@ -448,17 +448,61 @@ async def _test_proxy_connection(proxy_string: str, timeout: float = 12.0) -> tu
         return False, f"Connection refused or timeout: {short}"
 
 
-async def _get_exit_ip_via_proxy(proxy_string: str, timeout: float = 10.0) -> tuple[str | None, str]:
+# ── Known datacenter/cloud-provider CIDR ranges ──────────────────────────────
+# Used to detect when the proxy is bypassed and traffic exits from a bare
+# server IP (e.g. Replit runs on GCP → 34.x / 35.x range).
+import ipaddress as _ipaddress
+
+_DC_NETWORKS: list[_ipaddress.IPv4Network] = [
+    _ipaddress.ip_network(cidr, strict=False) for cidr in [
+        # Google Cloud Platform (Replit's infrastructure)
+        "34.0.0.0/8", "35.0.0.0/8",
+        "104.154.0.0/15", "104.196.0.0/14",
+        "130.211.0.0/22", "146.148.0.0/17",
+        # Amazon Web Services
+        "3.0.0.0/8", "18.0.0.0/8", "52.0.0.0/8", "54.0.0.0/8",
+        # Microsoft Azure
+        "13.64.0.0/11", "20.0.0.0/8", "40.64.0.0/10",
+        # Hetzner
+        "5.9.0.0/16", "78.46.0.0/15", "88.198.0.0/16",
+        "95.216.0.0/16", "116.202.0.0/15", "135.181.0.0/16",
+        "157.90.0.0/16", "176.9.0.0/16", "188.40.0.0/16",
+        # DigitalOcean
+        "104.131.0.0/16", "138.197.0.0/16", "142.93.0.0/16",
+        "159.65.0.0/16", "159.89.0.0/16", "165.227.0.0/16",
+        "167.99.0.0/16",
+        # Vultr
+        "45.32.0.0/16", "45.63.0.0/16", "45.76.0.0/16",
+        # Linode / Akamai
+        "45.33.0.0/16", "45.56.0.0/16", "45.79.0.0/16", "50.116.0.0/16",
+        # OVH / OVHcloud
+        "5.135.0.0/16", "37.59.0.0/16", "51.75.0.0/16", "51.77.0.0/16",
+        "51.79.0.0/16", "51.89.0.0/16", "91.121.0.0/16", "94.23.0.0/16",
+        "135.125.0.0/16", "213.32.0.0/16",
+    ]
+]
+
+
+def _is_datacenter_ip(ip_str: str) -> bool:
+    """Return True if ip_str falls in any known cloud/datacenter CIDR range."""
+    try:
+        addr = _ipaddress.ip_address(ip_str)
+        return any(addr in net for net in _DC_NETWORKS)
+    except ValueError:
+        return False
+
+
+async def _get_exit_ip_via_proxy(proxy_string: str, timeout: float = 10.0) -> tuple[str | None, str, bool]:
     """
     Make a real HTTP GET through the SOCKS5 proxy to api.ipify.org.
-    Returns (exit_ip_or_None, human_readable_message).
+    Returns (exit_ip_or_None, human_readable_message, is_datacenter_ip).
     Runs blocking requests call in a thread executor.
     If this passes, HTTP traffic is genuinely routed through the proxy.
     """
     try:
         proxy_tuple = _parse_proxy(proxy_string)
         if proxy_tuple is None:
-            return None, "Cannot parse proxy string"
+            return None, "Cannot parse proxy string", False
 
         _stype, host, port, _rdns, user, password = proxy_tuple
 
@@ -478,10 +522,12 @@ async def _get_exit_ip_via_proxy(proxy_string: str, timeout: float = 10.0) -> tu
 
         loop = asyncio.get_event_loop()
         exit_ip = await loop.run_in_executor(None, _sync_get)
-        return exit_ip, f"🌍 Exit IP: {exit_ip}"
+        is_dc = _is_datacenter_ip(exit_ip)
+        msg = f"🌍 Exit IP: {exit_ip}" + (" ⚠️ DATACENTER" if is_dc else "")
+        return exit_ip, msg, is_dc
 
     except Exception as exc:
-        return None, f"IP check failed: {str(exc)[:100]}"
+        return None, f"IP check failed: {str(exc)[:100]}", False
 
 
 async def _registration_stream(
@@ -552,11 +598,29 @@ async def _registration_stream(
             "status": "running",
             "message": "🌍 Verifying exit IP through proxy…",
         })
-        exit_ip, ip_msg = await _get_exit_ip_via_proxy(proxy_string)
+        exit_ip, ip_msg, is_dc = await _get_exit_ip_via_proxy(proxy_string)
+        if is_dc:
+            yield _sse("preflight", {
+                "status": "error",
+                "message": (
+                    f"⛔ Datacenter IP detected: {exit_ip} — proxy is NOT routing traffic. "
+                    "Telethon would connect from the bare server IP → SentCodeTypeApp on every number."
+                ),
+                "exit_ip": exit_ip,
+                "is_datacenter": True,
+            })
+            yield _sse("error", {
+                "message": (
+                    f"⛔ Exit IP {exit_ip} is a datacenter IP — your proxy is not working correctly. "
+                    "Fix your proxy string before proceeding to avoid burning SMSPool balance."
+                )
+            })
+            return
         yield _sse("preflight", {
             "status": "done",
             "message": f"{proxy_msg} · {ip_msg}",
             "exit_ip": exit_ip,
+            "is_datacenter": False,
         })
 
         # ─── python-socks guard ───────────────────────────────────────────
