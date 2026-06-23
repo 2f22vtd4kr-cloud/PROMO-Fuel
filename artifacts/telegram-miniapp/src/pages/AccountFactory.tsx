@@ -372,7 +372,7 @@ function ProxyGenHelper({
 // Inline component used inside the recycled-pool popup. Lets the user swap
 // both country AND proxy in one place before retrying.
 function RecycledPopupBody({
-  lang, L, currentProxy, currentCountry, customCountry, COUNTRIES, onSwitch, onCancel,
+  lang, L, currentProxy, currentCountry, customCountry, COUNTRIES, onSwitch, onCancel, onKeepGoing,
 }: {
   lang: string;
   L: (en: string, ua: string) => string;
@@ -382,6 +382,7 @@ function RecycledPopupBody({
   COUNTRIES: { code: string; label: string }[];
   onSwitch: (country: string, proxy: string) => void;
   onCancel: () => void;
+  onKeepGoing: () => void;
 }) {
   const [newCountry, setNewCountry] = useState(currentCountry);
   const [newCustom,  setNewCustom]  = useState(customCountry);
@@ -506,6 +507,19 @@ function RecycledPopupBody({
           onApply={url => { setNewProxy(url); setAutoUpdated(false); }}
         />
       </div>
+
+      {/* Keep trying same country */}
+      <button
+        onClick={onKeepGoing}
+        style={{
+          width: "100%", padding: "12px 0", borderRadius: 13, marginBottom: 8,
+          background: "linear-gradient(135deg, rgba(45,232,151,0.22), rgba(45,232,151,0.1))",
+          border: "1px solid rgba(45,232,151,0.45)",
+          color: "#2de897", fontSize: 13, fontWeight: 800, cursor: "pointer",
+        }}
+      >
+        🔁 {L("Keep trying — fetch new number from same country", "Продовжити — новий номер з тієї ж країни")}
+      </button>
 
       <div style={{ display: "flex", gap: 10 }}>
         <button
@@ -634,6 +648,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     reason: "timeout" | "recycled";
     message: string;
   } | null>(null);
+  // Countries for which user chose "keep trying" — skip recycled popup next time
+  const suppressRecycledRef = useRef<Set<string>>(new Set());
 
   const [profileMode,        setProfileMode]        = useState<"ai" | "manual">("ai");
   const [profFirstName,      setProfFirstName]      = useState("");
@@ -1018,13 +1034,23 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             // SMS timeout or recycled-number failure
             const msg  = (p.message as string | undefined) ?? "";
             const isRecycled = msg.includes("SentCodeTypeApp") || msg.includes("recycled");
-            setSmsRetryPrompt({
-              reason:  isRecycled ? "recycled" : "timeout",
-              message: msg,
-            });
-            setRunState("idle");
-            setPollMsg(null);
-            setBatchDelayMsg(null);
+            // Determine effective country key for suppression check
+            const effectiveCountryKey = country === "custom" ? customCountry.trim() : country;
+            if (isRecycled && suppressRecycledRef.current.has(effectiveCountryKey)) {
+              // User already chose "keep trying" for this country — auto-retry silently
+              setRunState("idle");
+              setPollMsg(null);
+              setBatchDelayMsg(null);
+              void launch();
+            } else {
+              setSmsRetryPrompt({
+                reason:  isRecycled ? "recycled" : "timeout",
+                message: msg,
+              });
+              setRunState("idle");
+              setPollMsg(null);
+              setBatchDelayMsg(null);
+            }
           } else if (event === "error") {
             setErrorMsg(p.message as string);
             if (quantity === 1) {
@@ -1141,14 +1167,16 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           <div style={{
             position: "fixed", inset: 0, zIndex: 999,
             background: "rgba(0,0,0,0.82)", backdropFilter: "blur(12px)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            padding: "0 24px",
+            display: "flex", alignItems: "flex-start", justifyContent: "center",
+            padding: "24px 24px calc(env(safe-area-inset-bottom,0px) + 24px)",
+            overflowY: "auto", WebkitOverflowScrolling: "touch",
           }}>
             <div style={{
               background: "rgba(12,15,26,0.98)",
               border: `1px solid ${isRecycled ? "rgba(255,200,50,0.45)" : "rgba(255,107,122,0.4)"}`,
               borderRadius: 22, padding: "28px 24px", maxWidth: 360, width: "100%",
               boxShadow: `0 0 56px ${isRecycled ? "rgba(255,200,50,0.15)" : "rgba(255,107,122,0.2)"}`,
+              flexShrink: 0,
             }}>
               <div style={{ fontSize: 44, textAlign: "center", marginBottom: 14 }}>
                 {isRecycled ? "♻️" : "📵"}
@@ -1169,13 +1197,18 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   COUNTRIES={COUNTRIES}
                   onSwitch={(newCountry, newProxy) => {
                     setSmsRetryPrompt(null);
-                    // Apply new proxy
                     if (newProxy.trim()) setProxy(newProxy.trim());
-                    // Apply new country
                     applyCountry(newCountry);
                     setSmsPoolCountryId(newCountry);
                   }}
                   onCancel={() => setSmsRetryPrompt(null)}
+                  onKeepGoing={() => {
+                    // Remember this country so future recycled events auto-retry
+                    const key = country === "custom" ? customCountry.trim() : country;
+                    suppressRecycledRef.current.add(key);
+                    setSmsRetryPrompt(null);
+                    void launch();
+                  }}
                 />
               ) : (
                 <>
