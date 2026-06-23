@@ -756,7 +756,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [aiCountryModel,   setAiCountryModel]   = useState<string>("");
   const [showAiCountries,  setShowAiCountries]  = useState(false);
   const [aiCountryData,    setAiCountryData]    = useState<{
-    rank: number; id: string; name: string; freshness: number; reasoning: string;
+    rank: number; id: string; name: string; freshness: number; avg_attempts: number;
+    reasoning: string; data_source?: "own_experience" | "community_research" | "ai_estimate";
   }[]>([]);
 
   const [runState,        setRunState]        = useState<RunState>("idle");

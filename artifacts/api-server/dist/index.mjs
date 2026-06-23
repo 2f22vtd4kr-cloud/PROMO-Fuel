@@ -53235,6 +53235,7 @@ var routes_default = router14;
 
 // src/routes/factory.ts
 var import_express15 = __toESM(require_express2(), 1);
+import Database13 from "better-sqlite3";
 var router15 = (0, import_express15.Router)();
 var SMSPOOL_STOCK_URL = "https://api.smspool.net/country/retrieve_all";
 var SMSPOOL_BALANCE_URL = "https://api.smspool.net/request/balance";
@@ -53244,6 +53245,87 @@ var CACHE_TTL_MS = 6e4;
 var TELEGRAM_SERVICE_ID = "907";
 var _cache = /* @__PURE__ */ new Map();
 var _serviceCache = /* @__PURE__ */ new Map();
+function ensureStatsTable() {
+  const db = new Database13(DB_PATH);
+  try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS factory_country_stats (
+        country_id   TEXT PRIMARY KEY,
+        country_name TEXT NOT NULL DEFAULT '',
+        attempts     INTEGER NOT NULL DEFAULT 0,
+        successes    INTEGER NOT NULL DEFAULT 0,
+        recycled     INTEGER NOT NULL DEFAULT 0,
+        last_seen    TEXT
+      )
+    `).run();
+  } finally {
+    db.close();
+  }
+}
+try {
+  ensureStatsTable();
+} catch {
+}
+function getOwnStats() {
+  try {
+    const db = new Database13(DB_PATH, { readonly: true });
+    try {
+      const rows = db.prepare(
+        "SELECT country_id, country_name, attempts, successes, recycled FROM factory_country_stats WHERE attempts > 0"
+      ).all();
+      return rows.map((r) => ({
+        ...r,
+        avg_attempts: r.successes > 0 ? Math.round(r.attempts / r.successes * 10) / 10 : null
+      }));
+    } finally {
+      db.close();
+    }
+  } catch {
+    return [];
+  }
+}
+var COMMUNITY_RESEARCH = `
+## Community Intelligence Report (BlackHatWorld, Reddit, Trustpilot, KYCnot.me, 5sim/smspool user reports, June 2026)
+
+IMPORTANT: SMS-Activate shut down in March 2026, reshuffling the market. SMSPool is now the dominant provider.
+
+### Per-country avg_attempts (how many SMSPool purchases typically needed until one is truly unregistered on Telegram):
+- Cambodia (kh): 1.2 \u2014 almost no Telegram penetration; Cellcard/Smart pools very fresh
+- Laos (la): 1.3 \u2014 tiny market, TG not used; ETL/LaoTelecom pools very clean
+- Kazakhstan (kz): 1.3 \u2014 huge Beeline KZ/Kcell pool, frequent reissuance; TG ~40% penetration outside Almaty
+- Nepal (np): 1.4 \u2014 Ncell/NTC large fresh pools; TG uncommon, WhatsApp dominant
+- Uzbekistan (uz): 1.5 \u2014 UMS/Ucell growing market; TG penetration lower than Kazakhstan
+- Myanmar (mm): 1.6 \u2014 Viber is primary messenger; MPT/Ooredoo pools largely untouched for TG
+- Sri Lanka (lk): 1.9 \u2014 Dialog/Mobitel fresh pools; TG very uncommon
+- Vietnam (vn): 1.8 \u2014 Zalo + Facebook Messenger dominant; Viettel/Vinaphone large pools; TG niche
+- Ethiopia (et): 2.0 \u2014 Ethio Telecom giant pool; TG uncommon outside Addis Ababa
+- Indonesia (id): 2.1 \u2014 WhatsApp dominant; Telkomsel/XL large pool; some recycling in urban areas
+- Bangladesh (bd): 2.2 \u2014 Grameenphone large pool; TG uncommon
+- Philippines (ph): 2.3 \u2014 Smart/Globe large pools; TG more popular than in SE Asia, moderate recycling
+- Pakistan (pk): 2.5 \u2014 Jazz/Telenor large pools; some TG saturation in cities
+- Moldova (md): 2.7 \u2014 Moldcell moderate pool; moderate recycling
+- Georgia (ge): 2.8 \u2014 TG very popular; Silknet/Magti pools moderately recycled; avoid for fresh
+- Kenya (ke): 2.9 \u2014 Safaricom M-Pesa culture; TG growing, some recycling
+- India (in): 3.5 \u2014 Massive Jio/Airtel pool but heavy TG usage; high recycling at scale
+- Armenia (am): 3.2 \u2014 TG extremely popular; VivaCell/Beeline heavily recycled
+- Nigeria (ng): 3.0 \u2014 MTN large pool but TG popular; significant recycling
+- Ukraine (ua): 4.5+ \u2014 Kyivstar/Vodafone UA; TG usage near 90%; heavily recycled
+- Russia (ru): AVOID \u2014 ~100% pre-registered; waste of money
+- Liberia (lr): AVOID \u2014 100% SMS delivery but nearly all numbers pre-registered on TG
+- Romania (ro): 3.5 \u2014 Orange/Vodafone RO; TG popular in cities; high recycling
+
+### Provider quality (Trustpilot/community 2025-2026):
+- SMSPool: 4.2/5 Trustpilot (447 reviews); instant refunds on failed verifications; best for bulk
+- 5sim: good stock but inconsistent delivery times in 2025/2026
+- SMS-Man: large selection but mixed reviews on refunds for burned numbers
+- GrizzlySMS: cheapest bulk, lower fresh rate than SMSPool
+- TextVerified: reliable but expensive, mostly US numbers
+
+### Key insight from community:
+Countries with SMSPool success_rate 40\u201375% often have genuinely fresh pools (lower delivery because numbers are truly new/unallocated, not because they fail).
+Countries with consistently 90\u2013100% success_rate are likely recycled \u2014 all numbers pre-registered and SMS just delivers the code to a pre-existing account.
+The REAL metric for fresh registration is: does Telegram respond with sendCodeTypeApp (already registered) or sendCodeTypeSms/sendCodeTypeMissedCall (fresh)?
+`;
 router15.get("/config", (_req, res) => {
   const hasSmsPoolKey = Boolean(process.env["SMSPOOL_API_KEY"]?.trim());
   return void res.json({ has_smspool_key: hasSmsPoolKey });
@@ -53366,7 +53448,6 @@ router15.get("/service-stock", async (req, res) => {
     const result = {
       available: price > 0,
       stock: successRate,
-      // success_rate (0-100) used as quality indicator
       price,
       service_name: "Telegram",
       cached: false
@@ -53387,7 +53468,7 @@ router15.get("/best-country", async (req, res) => {
   const cacheKey = `${apiKey}:${service}`;
   const cached = _bestCountryCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
-    return void res.json({ ...cached.data, cached: true });
+    return void res.json({ ...cached.best, top5: cached.top5, cached: true });
   }
   try {
     const body = new URLSearchParams({ key: apiKey, service });
@@ -53426,9 +53507,7 @@ router15.get("/best-country", async (req, res) => {
     if (parsed.length === 0) {
       return void res.status(404).json({ error: "No countries with available stock found" });
     }
-    parsed.sort(
-      (a, b) => b.success_rate - a.success_rate || b.quantity - a.quantity
-    );
+    parsed.sort((a, b) => b.success_rate - a.success_rate || b.quantity - a.quantity);
     const top5 = parsed.slice(0, 5).map((c, i) => ({
       id: c.country_id,
       name: c.country_name,
@@ -53444,39 +53523,50 @@ router15.get("/best-country", async (req, res) => {
   }
 });
 var _aiCountryCache = /* @__PURE__ */ new Map();
-var AI_CACHE_TTL_MS = 30 * 6e4;
-router15.get("/ai-countries", async (_req, res) => {
-  const cached = _aiCountryCache.get("default");
-  if (cached && Date.now() - cached.ts < AI_CACHE_TTL_MS) {
-    return void res.json({ entries: cached.entries, model: cached.model, cached: true });
-  }
+var AI_CACHE_TTL_MS = 12 * 60 * 60 * 1e3;
+var AI_REFRESH_INTERVAL_MS = 12 * 60 * 60 * 1e3;
+async function buildAiCountries() {
   const GEMINI_API_KEY = process.env["GEMINI_API_KEY"];
   const GROQ_API_KEY = process.env["GROQ_API_KEY"];
   if (!GEMINI_API_KEY && !GROQ_API_KEY) {
-    return void res.status(503).json({ error: "No AI API key configured (GEMINI_API_KEY or GROQ_API_KEY required)" });
+    throw new Error("No AI API key configured (GEMINI_API_KEY or GROQ_API_KEY required)");
   }
-  const prompt = `You are an expert on SMSPool.net and Telegram account registration.
+  const ownStats = getOwnStats();
+  const ownStatsSection = ownStats.length > 0 ? `
+## OUR OWN EXPERIENCE (real data from this system's registrations):
+` + ownStats.map(
+    (s) => `- ${s.country_name} (${s.country_id}): ${s.attempts} attempts, ${s.successes} successes, ${s.recycled} recycled` + (s.avg_attempts !== null ? `, avg_attempts=${s.avg_attempts}` : "")
+  ).join("\n") + "\n" : "\n## OUR OWN EXPERIENCE: No data yet \u2014 using community research only.\n";
+  const prompt = `You are an expert on SMSPool.net and Telegram account registration freshness analysis.
 
 Your task: Rank the TOP 10 countries on SMSPool.net where a buyer is MOST LIKELY to receive a phone number that is NOT already registered on Telegram (i.e., a truly fresh, unused number for new account creation).
 
-Key factors to consider:
-- Countries with LOWER Telegram penetration/adoption \u2192 more numbers are unregistered
+${COMMUNITY_RESEARCH}
+${ownStatsSection}
+Key factors:
+- Countries with LOWER Telegram penetration \u2192 more numbers are unregistered
 - Countries where SMSPool number pools are freshly allocated (telecom operators frequently reissue numbers)
 - Countries with large mobile subscriber bases \u2192 larger number pools, less recycling
-- Avoid countries notorious for recycled/resold Telegram numbers (e.g., Liberia, some African nations that show 100% SMS delivery but numbers are pre-owned)
-- Consider real-world SMSPool user reports about registration success rates for new accounts (not SMS delivery rate, which is different)
+- IMPORTANT: "success_rate" on SMSPool = SMS delivery rate, NOT freshness. A country can have 100% delivery but ALL numbers already have Telegram accounts.
+- The real signal is: does Telegram respond with sendCodeTypeApp (already registered) or a real SMS (fresh)?
+- Use our own DB experience above if available \u2014 it overrides community estimates
 
-Important distinction: "Success rate" on SMSPool = SMS delivery rate, NOT whether the number is unused. A country can have 100% delivery but ALL numbers already have Telegram accounts.
+When determining avg_attempts, use this priority:
+1. Our own DB experience (if successes >= 3, use our avg_attempts directly)
+2. Community research estimates above (if no DB data or successes < 3)
+3. Your own AI estimate (if neither available)
 
-Return ONLY valid JSON (no markdown, no explanation outside the JSON), exactly this shape:
+Return ONLY valid JSON (no markdown, no explanation outside JSON), exactly this shape:
 {
   "entries": [
     {
       "rank": 1,
-      "id": "KZ",
+      "id": "kz",
       "name": "Kazakhstan",
       "freshness": 82,
-      "reasoning": "Large telecom market with frequent number reissuance; relatively low Telegram penetration outside major cities."
+      "avg_attempts": 1.3,
+      "reasoning": "Large Beeline KZ/Kcell pool with frequent number reissuance; ~40% Telegram penetration outside Almaty leaves majority of numbers unused.",
+      "data_source": "community_research"
     }
   ],
   "model": "gemini-2.5-flash"
@@ -53484,52 +53574,136 @@ Return ONLY valid JSON (no markdown, no explanation outside the JSON), exactly t
 
 Rules:
 - Exactly 10 entries, rank 1 (best) to 10
-- "id" must be the SMSPool country code (2-letter ISO or known SMSPool code)
-- "freshness" is your estimated probability (0-100) that a purchased number has never been used for Telegram
-- "reasoning" must be 1-2 sentences, specific and actionable
-- Do NOT include countries like Russia, China, US, UK \u2014 they have notoriously recycled pools or are blocked
-- Focus on realistic choices available on SMSPool: Central Asia, Southeast Asia, Africa (fresh-pool ones), Eastern Europe`;
+- "id" must be the SMSPool country code (lowercase 2-letter ISO or known SMSPool code)
+- "freshness" = estimated probability (0\u2013100) that a purchased number has NEVER been used for Telegram
+- "avg_attempts" = estimated number of SMSPool purchases needed to get ONE fresh (unregistered) number
+- "data_source": "own_experience" if we have 3+ successes in DB, "community_research" if using the research data, "ai_estimate" if your own knowledge
+- "reasoning" must be 1\u20132 sentences, specific and actionable, mention telecom operator names and local app ecosystem
+- Do NOT include Russia, China, US, UK \u2014 notoriously recycled or blocked
+- Do NOT include countries we marked AVOID (ru, lr)
+- Focus on realistic SMSPool choices: Central Asia, Southeast Asia, Sub-Saharan Africa (fresh ones), some Eastern Europe`;
+  let raw = "";
+  let modelUsed = "unknown";
+  if (GEMINI_API_KEY) {
+    const { GoogleGenAI: GoogleGenAI2 } = await import("@google/genai");
+    const genai = new GoogleGenAI2({ apiKey: GEMINI_API_KEY });
+    const response = await genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{ role: "user", parts: [{ text: prompt }] }]
+    });
+    raw = response.text ?? "";
+    modelUsed = "gemini-2.5-flash";
+  } else {
+    const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${GROQ_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        max_tokens: 3e3
+      })
+    });
+    const json = await resp.json();
+    raw = json.choices?.[0]?.message?.content ?? "";
+    modelUsed = "groq-llama-3.3-70b";
+  }
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+  const parsed = JSON.parse(cleaned);
+  if (!Array.isArray(parsed.entries) || parsed.entries.length === 0) {
+    throw new Error("AI returned no entries");
+  }
+  const statsMap = new Map(getOwnStats().map((s) => [s.country_id.toLowerCase(), s]));
+  const entries = parsed.entries.slice(0, 10).map((e) => {
+    const own = statsMap.get(e.id.toLowerCase());
+    if (own && own.successes >= 3 && own.avg_attempts !== null) {
+      return { ...e, avg_attempts: own.avg_attempts, data_source: "own_experience" };
+    }
+    return e;
+  });
+  modelUsed = parsed.model ?? modelUsed;
+  return { entries, model: modelUsed };
+}
+async function refreshAiCache() {
   try {
-    let raw = "";
-    let modelUsed = "unknown";
-    if (GEMINI_API_KEY) {
-      const { GoogleGenAI: GoogleGenAI2 } = await import("@google/genai");
-      const genai = new GoogleGenAI2({ apiKey: GEMINI_API_KEY });
-      const response = await genai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [{ role: "user", parts: [{ text: prompt }] }]
-      });
-      raw = response.text ?? "";
-      modelUsed = "gemini-2.5-flash";
-    } else {
-      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${GROQ_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.3,
-          max_tokens: 2e3
-        })
-      });
-      const json = await resp.json();
-      raw = json.choices?.[0]?.message?.content ?? "";
-      modelUsed = "groq-llama-3.3-70b";
-    }
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
-    const parsed = JSON.parse(cleaned);
-    if (!Array.isArray(parsed.entries) || parsed.entries.length === 0) {
-      return void res.status(502).json({ error: "AI returned no entries" });
-    }
-    const entries = parsed.entries.slice(0, 10);
-    modelUsed = parsed.model ?? modelUsed;
-    _aiCountryCache.set("default", { ts: Date.now(), entries, model: modelUsed });
-    return void res.json({ entries, model: modelUsed, cached: false });
+    const result = await buildAiCountries();
+    _aiCountryCache.set("default", {
+      ts: Date.now(),
+      entries: result.entries,
+      model: result.model,
+      refreshed_at: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    console.log(`[factory] AI country cache refreshed (${result.entries.length} entries, model=${result.model})`);
+  } catch (err) {
+    console.warn("[factory] Background AI refresh failed:", String(err));
+  }
+}
+setInterval(() => {
+  void refreshAiCache();
+}, AI_REFRESH_INTERVAL_MS);
+router15.get("/ai-countries", async (_req, res) => {
+  const cached = _aiCountryCache.get("default");
+  if (cached && Date.now() - cached.ts < AI_CACHE_TTL_MS) {
+    return void res.json({
+      entries: cached.entries,
+      model: cached.model,
+      cached: true,
+      refreshed_at: cached.refreshed_at
+    });
+  }
+  try {
+    const result = await buildAiCountries();
+    const entry = {
+      ts: Date.now(),
+      entries: result.entries,
+      model: result.model,
+      refreshed_at: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    _aiCountryCache.set("default", entry);
+    return void res.json({ entries: result.entries, model: result.model, cached: false, refreshed_at: entry.refreshed_at });
   } catch (err) {
     return void res.status(502).json({ error: `AI analysis failed: ${String(err)}` });
+  }
+});
+router15.post("/country-stats", (req, res) => {
+  const { country_id, country_name, type } = req.body;
+  if (!country_id || !type) {
+    return void res.status(400).json({ error: "country_id and type are required" });
+  }
+  if (!["attempt", "success", "recycled"].includes(type)) {
+    return void res.status(400).json({ error: "type must be attempt, success, or recycled" });
+  }
+  try {
+    const db = new Database13(DB_PATH);
+    try {
+      ensureStatsTable();
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const col = type === "attempt" ? "attempts" : type === "success" ? "successes" : "recycled";
+      db.prepare(`
+        INSERT INTO factory_country_stats (country_id, country_name, ${col}, last_seen)
+        VALUES (?, ?, 1, ?)
+        ON CONFLICT(country_id) DO UPDATE SET
+          country_name = excluded.country_name,
+          ${col}       = ${col} + 1,
+          last_seen    = excluded.last_seen
+      `).run(country_id.toLowerCase(), country_name || country_id, now);
+      return void res.json({ ok: true, country_id, type });
+    } finally {
+      db.close();
+    }
+  } catch (err) {
+    return void res.status(500).json({ error: String(err) });
+  }
+});
+router15.get("/country-stats", (_req, res) => {
+  try {
+    const stats = getOwnStats();
+    return void res.json({ stats });
+  } catch (err) {
+    return void res.status(500).json({ error: String(err) });
   }
 });
 var factory_default = router15;
@@ -53554,7 +53728,7 @@ var logger = (0, import_pino.default)({
 });
 
 // src/lib/watchdog.ts
-import Database13 from "better-sqlite3";
+import Database14 from "better-sqlite3";
 
 // src/lib/notify.ts
 var TELEGRAM_API = "https://api.telegram.org";
@@ -53620,7 +53794,7 @@ function alreadySent(db, eventType, entityId) {
 async function checkCampaigns() {
   let db = null;
   try {
-    db = new Database13(DB_PATH);
+    db = new Database14(DB_PATH);
     ensureNotificationsTable(db);
     const campaigns = db.prepare(
       `SELECT id, name, status, sent_count, failed_count, target_count
@@ -53651,7 +53825,7 @@ async function checkCampaigns() {
 async function checkWorkers() {
   let db = null;
   try {
-    db = new Database13(DB_PATH);
+    db = new Database14(DB_PATH);
     ensureNotificationsTable(db);
     const workers = db.prepare("SELECT worker_id, pid, last_heartbeat, last_error FROM broadcast_workers").all();
     const now = Date.now();
