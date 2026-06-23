@@ -509,6 +509,26 @@ async def _registration_stream(
             return
         yield _sse("preflight", {"status": "done", "message": proxy_msg})
 
+        # ─── python-socks guard ───────────────────────────────────────────
+        # Telethon needs `python-socks[asyncio]` to actually route through a
+        # SOCKS5 proxy.  Without it Telethon silently ignores proxy_tuple and
+        # connects straight from the server's datacenter IP — causing Telegram
+        # to return SentCodeTypeApp on every single number (which looks like
+        # all numbers are recycled, but is really a missing dependency).
+        # Fail immediately here, before spending any SMSPool balance.
+        if proxy_string:
+            try:
+                import python_socks  # noqa: F401
+            except ImportError:
+                yield _sse("error", {
+                    "message": (
+                        "❌ python-socks not installed — Telethon would silently ignore your proxy "
+                        "and connect from the datacenter IP, causing SentCodeTypeApp on every number. "
+                        "Fix: pip install 'python-socks[asyncio]' then restart the bot."
+                    )
+                })
+                return
+
         # ─── Steps 1–4 retry loop ─────────────────────────────────────────
         # If a purchased number fails (SentCodeTypeApp / SMS timeout), automatically
         # cancel it, buy a fresh number and retry — up to MAX_NUM_RETRIES times.
@@ -590,8 +610,14 @@ async def _registration_stream(
             )
             await client.connect()
 
+            # Confirm which proxy host is being used (guards against silent fallback)
+            _proxy_label = ""
+            if proxy_tuple:
+                _ph = proxy_tuple[1]  # host field from _parse_proxy()
+                _pp = proxy_tuple[2]  # port
+                _proxy_label = f" via {_ph}:{_pp}"
             yield _sse("step", {"step": 2, "status": "done",
-                                "message": "📡 Proxy tunnel established — Telethon connected"})
+                                "message": f"📡 Proxy tunnel established — Telethon connected{_proxy_label}"})
 
             # ─── Step 3 — Request code (SMS-forced) ──────────────────────
             yield _sse("step", {"step": 3, "status": "running",

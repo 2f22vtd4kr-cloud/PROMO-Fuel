@@ -264,12 +264,23 @@ function Slide5({ lang }: SL) {
         desc={L(lang, "Telegram immediately flags and restricts accounts connected via datacenter IPs during registration.", "Telegram миттєво помічає та обмежує акаунти, підключені через datacenter-IP під час реєстрації.")} />
       <div style={card(TEAL)}>
         <div style={{ fontSize:12, fontWeight:700, color:TEAL, marginBottom:6 }}>
-          🔌 {L(lang, "Automatic Proxy Pre-check", "Автоматична перевірка проксі")}
+          🔌 {L(lang, "Two-stage Proxy Verification", "Двоетапна перевірка проксі")}
         </div>
         <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", lineHeight:1.6 }}>
           {L(lang,
-            "Before buying any SMSPool number, the factory tests your proxy by opening a real SOCKS5 socket to Telegram DC1 (149.154.167.91:443). If it fails, the pipeline aborts immediately — no SMS balance wasted. Fix your proxy string and try again.",
-            "Перед купівлею будь-якого SMSPool-номера фабрика перевіряє проксі, відкриваючи реальне SOCKS5-з'єднання до Telegram DC1 (149.154.167.91:443). Якщо перевірка не вдається — конвеєр негайно зупиняється без витрати SMSPool балансу. Виправте рядок проксі та повторіть спробу."
+            "Stage 1 — TCP pre-check (before Step 1): factory opens a raw SOCKS5 socket to Telegram DC1 (149.154.167.91:443). Fails immediately if the proxy is down — no SMSPool balance spent.\n\nStage 2 — Telethon confirmation (Step 2): the step 2 completion message now shows the actual proxy host:port it is routing through (e.g. \"via gate.smartproxy.com:7000\"). If you see only \"Telethon connected\" with no \"via …\" — proxy was not applied.",
+            "Етап 1 — TCP перевірка (до кроку 1): відкривається raw SOCKS5-з'єднання до Telegram DC1. Одразу зупиняється якщо проксі недоступний — без витрат SMSPool.\n\nЕтап 2 — Підтвердження Telethon (крок 2): повідомлення про завершення кроку 2 тепер показує фактичний хост:порт проксі (напр. \"via gate.smartproxy.com:7000\"). Якщо бачите лише \"Telethon connected\" без \"via …\" — проксі не застосовано."
+          )}
+        </div>
+      </div>
+      <div style={{ ...card(RED), marginTop:4 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:RED, marginBottom:6 }}>
+          ⚠️ {L(lang, "Critical: python-socks must be installed", "Критично: python-socks має бути встановлено")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,160,160,0.75)", lineHeight:1.6 }}>
+          {L(lang,
+            "Telethon requires the python-socks[asyncio] package to route through a SOCKS5 proxy. Without it, Telethon silently ignores the proxy and connects from the server's bare datacenter IP — causing Telegram to return SentCodeTypeApp on 100% of numbers, burning your entire SMSPool balance.\n\nThe TCP pre-check passes even when python-socks is missing (it uses a raw socket, not Telethon). The factory now aborts before Step 1 if python-socks is not found. Required package: python-socks[asyncio] ≥2.8.2.",
+            "Telethon потребує пакет python-socks[asyncio] для маршрутизації через SOCKS5 проксі. Без нього Telethon мовчки ігнорує проксі та підключається безпосередньо з datacenter IP сервера — через це Telegram повертає SentCodeTypeApp на 100% номерів, спалюючи весь баланс SMSPool.\n\nTCP перевірка проходить навіть без python-socks (вона використовує raw socket, не Telethon). Фабрика тепер зупиняється до кроку 1 якщо python-socks не знайдено. Потрібний пакет: python-socks[asyncio] ≥2.8.2."
           )}
         </div>
       </div>
