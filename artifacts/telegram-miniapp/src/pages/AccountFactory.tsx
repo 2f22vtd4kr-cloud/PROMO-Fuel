@@ -551,7 +551,9 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [twoFa,         setTwoFa]         = useState("");
   const [apiId,         setApiId]         = useState("");
   const [apiHash,       setApiHash]       = useState("");
-  const [quantity,      setQuantity]      = useState(1);
+  const [quantity,        setQuantity]        = useState(1);
+  const [sessionPrefix,   setSessionPrefix]   = useState("session");
+  const [sessionStartNum, setSessionStartNum] = useState(1);
   const [showCountry,     setShowCountry]     = useState(false);
   const [smsPoolCountryId, setSmsPoolCountryId] = useState("");
 
@@ -850,6 +852,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           proxy_string: proxy,
           two_factor_password: twoFa,
           quantity,
+          ...(sessionPrefix ? { session_prefix: sessionPrefix, session_start_num: sessionStartNum } : {}),
           ...(apiId   ? { api_id: parseInt(apiId) }   : {}),
           ...(apiHash ? { api_hash: apiHash }           : {}),
           profile_mode: profileMode,
@@ -2173,6 +2176,109 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   {L(
                     `Registers ${quantity} accounts sequentially with 12s cooldown between each. Stops on error.`,
                     `Реєструє ${quantity} акаунтів послідовно з 12с паузою між кожним. Зупиняється при помилці.`
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Session Name Increment */}
+            <div style={{
+              background: "rgba(99,102,241,0.07)",
+              border: "1px solid rgba(99,102,241,0.25)",
+              borderRadius: 14, padding: "14px 16px",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <div style={{ fontSize: 15 }}>🔢</div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#a5b4fc" }}>
+                    {L("Session Name Increment", "Інкремент імені сесії")}
+                  </div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginTop: 1 }}>
+                    {L("Auto-names sessions to avoid reuse bans", "Автонейминг сесій для захисту від банів")}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+                <div style={{ flex: 2 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.4)",
+                    letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 5 }}>
+                    {L("Prefix", "Префікс")}
+                  </div>
+                  <input
+                    type="text"
+                    value={sessionPrefix}
+                    onChange={e => setSessionPrefix(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
+                    placeholder="session"
+                    style={{
+                      width: "100%", boxSizing: "border-box",
+                      background: "rgba(7,9,20,0.8)",
+                      border: "1px solid rgba(99,102,241,0.35)",
+                      borderRadius: 10, padding: "9px 12px",
+                      fontSize: 13, fontWeight: 600,
+                      color: "#c7d2fe", fontFamily: "monospace",
+                      outline: "none",
+                    }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.4)",
+                    letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 5 }}>
+                    {L("Start #", "Старт №")}
+                  </div>
+                  <input
+                    type="number"
+                    min={1}
+                    max={9999}
+                    value={sessionStartNum}
+                    onChange={e => setSessionStartNum(Math.max(1, parseInt(e.target.value) || 1))}
+                    style={{
+                      width: "100%", boxSizing: "border-box",
+                      background: "rgba(7,9,20,0.8)",
+                      border: "1px solid rgba(99,102,241,0.35)",
+                      borderRadius: 10, padding: "9px 12px",
+                      fontSize: 13, fontWeight: 600,
+                      color: "#c7d2fe", fontFamily: "monospace",
+                      outline: "none",
+                    }}
+                  />
+                </div>
+              </div>
+              {/* Live preview */}
+              {sessionPrefix && (
+                <div style={{
+                  marginTop: 10, padding: "8px 12px",
+                  background: "rgba(7,9,20,0.9)",
+                  border: "1px solid rgba(99,102,241,0.2)",
+                  borderRadius: 8,
+                }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(165,180,252,0.5)",
+                    letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 4 }}>
+                    {L("Preview", "Попередній перегляд")}
+                  </div>
+                  <div style={{ fontSize: 11, fontFamily: "monospace", color: "#a5b4fc", lineHeight: 1.8 }}>
+                    {Array.from({ length: Math.min(quantity, 4) }, (_, i) => (
+                      <span key={i} style={{
+                        display: "inline-block", marginRight: 6, marginBottom: 2,
+                        background: "rgba(99,102,241,0.15)",
+                        border: "1px solid rgba(99,102,241,0.3)",
+                        borderRadius: 5, padding: "1px 7px",
+                      }}>
+                        {sessionPrefix}-{sessionStartNum + i}.session
+                      </span>
+                    ))}
+                    {quantity > 4 && (
+                      <span style={{ color: "rgba(165,180,252,0.4)", fontSize: 10 }}>
+                        …+{quantity - 4} {L("more", "ще")}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+              {!sessionPrefix && (
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 8 }}>
+                  {L(
+                    "Leave empty to use phone digits as session name (default).",
+                    "Залиште порожнім, щоб використовувати цифри телефону (за замовчуванням)."
                   )}
                 </div>
               )}

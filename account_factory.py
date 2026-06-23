@@ -460,6 +460,7 @@ async def _registration_stream(
     bio: str = "",
     avatars: list | None = None,
     warmup_mode: str = "all",
+    session_name: str = "",
 ):
     """Async generator yielding SSE chunks for the full 8-step pipeline."""
     os.makedirs(SESSION_DIR, exist_ok=True)
@@ -561,8 +562,9 @@ async def _registration_stream(
 
             device_model, system_version, app_version = random.choice(DEVICE_PROFILES)
 
-            digits       = raw_num
-            session_path = os.path.join(SESSION_DIR, digits)
+            digits        = raw_num
+            effective_stem = session_name if session_name else digits
+            session_path  = os.path.join(SESSION_DIR, effective_stem)
             proxy_tuple  = _parse_proxy(proxy_string) if proxy_string else None
 
             # Delete stale session files — a leftover .session from a previous failed
@@ -1056,9 +1058,9 @@ async def _registration_stream(
                             "message": "💾 Saving session file and updating CRM database..."})
 
         # Write JSON metadata
-        json_path = os.path.join(SESSION_DIR, f"{digits}.json")
+        json_path = os.path.join(SESSION_DIR, f"{effective_stem}.json")
         metadata = {
-            "session_file_name": f"{digits}.session",
+            "session_file_name": f"{effective_stem}.session",
             "phone": phone,
             "api_id": api_id,
             "api_hash": api_hash,
@@ -1087,7 +1089,7 @@ async def _registration_stream(
                        SET two_factor_pass=?, session_file=?, proxy=?,
                            auth_status='active', is_active=1
                        WHERE phone=?""",
-                    (two_factor_password, f"{digits}.session",
+                    (two_factor_password, f"{effective_stem}.session",
                      proxy_string.strip() if proxy_string else "", phone),
                 )
             else:
@@ -1096,7 +1098,7 @@ async def _registration_stream(
                          (phone, two_factor_pass, session_file, proxy,
                           auth_status, is_active)
                        VALUES (?, ?, ?, ?, 'active', 1)""",
-                    (phone, two_factor_password, f"{digits}.session",
+                    (phone, two_factor_password, f"{effective_stem}.session",
                      proxy_string.strip() if proxy_string else ""),
                 )
             await conn.commit()
@@ -1161,6 +1163,8 @@ async def register_account(request: Request):
     quantity            = min(max(int(body.get("quantity", 1) or 1), 1), 10)
     _wm_raw             = str(body.get("warmup_mode", "all")).strip().lower()
     warmup_mode         = _wm_raw if _wm_raw in ("none", "all", "ask") else "all"
+    session_prefix      = str(body.get("session_prefix", "")).strip()
+    session_start_num   = max(int(body.get("session_start_num", 1) or 1), 1)
 
     # Profile setup params
     profile_mode = str(body.get("profile_mode", "ai")).strip() or "ai"
@@ -1220,11 +1224,16 @@ async def register_account(request: Request):
 
             got_complete      = False
             got_retry_prompt  = False
+            computed_session_name = (
+                f"{session_prefix}-{session_start_num + i}"
+                if session_prefix else ""
+            )
             async for chunk in _registration_stream(
                 smspool_api_key, country_id, proxy_string,
                 two_factor_password, api_id, api_hash,
                 profile_mode, first_name, last_name, bio, avatars,
                 warmup_mode,
+                computed_session_name,
             ):
                 yield chunk
                 # Track outcome for batch summary
