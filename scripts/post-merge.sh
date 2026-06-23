@@ -1,29 +1,21 @@
 #!/bin/bash
 set -e
 
-# Install Python dependencies
-pip install -r requirements.txt --quiet 2>&1 || true
+PY="/home/runner/workspace/.pythonlibs/bin/python3"
+
+# Install Python dependencies into the pythonlibs environment
+echo "[post-merge] Installing Python dependencies..."
+"$PY" -m pip install -r requirements.txt --quiet 2>&1 | grep -v "already satisfied" || true
 
 # Install Node.js dependencies
-pnpm install --frozen-lockfile
-
-# Fix missing .bin symlinks for vite in workspace packages
-# vite lives in the pnpm store, not inside the miniapp's own node_modules
-PNPM_VITE="$(find "$(pwd)/node_modules/.pnpm" -name "vite.js" -path "*/vite/bin/vite.js" 2>/dev/null | head -1)"
-if [ -n "$PNPM_VITE" ]; then
-  mkdir -p "$(pwd)/artifacts/telegram-miniapp/node_modules/.bin"
-  ln -sf "$PNPM_VITE" "$(pwd)/artifacts/telegram-miniapp/node_modules/.bin/vite"
-  chmod +x "$PNPM_VITE"
-  echo "Linked vite for telegram-miniapp: $PNPM_VITE"
-else
-  echo "WARNING: vite not found in pnpm store — run pnpm install first"
-fi
+echo "[post-merge] Installing Node dependencies..."
+pnpm install --no-frozen-lockfile --silent 2>&1 | tail -3 || true
 
 # Rebuild better-sqlite3 native module if needed
 BSQ="$(pwd)/node_modules/.pnpm/better-sqlite3@12.10.1/node_modules/better-sqlite3"
 NODE_FILE="$BSQ/build/Release/better_sqlite3.node"
 if [ ! -f "$NODE_FILE" ] && [ -d "$BSQ" ]; then
-  echo "Rebuilding better-sqlite3 native module..."
+  echo "[post-merge] Rebuilding better-sqlite3 native module..."
   OUT="$BSQ/build/Release"
   mkdir -p "$OUT"
   NODE_EXEC=$(node -e "console.log(process.execPath)")
@@ -44,10 +36,10 @@ if [ ! -f "$NODE_FILE" ] && [ -d "$BSQ" ]; then
       -I"$BSQ/src" \
       "$BSQ/src/better_sqlite3.cpp" \
       "$OUT/sqlite3.o" \
-      -o "$OUT/better_sqlite3.node" && echo "better-sqlite3 rebuilt OK" || echo "better-sqlite3 build FAILED (non-fatal)"
+      -o "$OUT/better_sqlite3.node" && echo "[post-merge] better-sqlite3 rebuilt OK" || echo "[post-merge] better-sqlite3 build FAILED (non-fatal)"
   else
-    echo "Node headers not found at $NODE_INC, skipping rebuild"
+    echo "[post-merge] Node headers not found at $NODE_INC, skipping rebuild"
   fi
 fi
 
-echo "Post-merge setup complete."
+echo "[post-merge] Setup complete."

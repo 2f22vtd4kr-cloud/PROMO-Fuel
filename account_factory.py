@@ -1189,15 +1189,16 @@ async def _registration_stream(
 
 @factory_router.get("/health")
 async def factory_health():
-    """Quick environment check: python-socks installed? saved proxy count? SMSPool key set?"""
+    """Quick environment check: python-socks + PySocks installed? saved proxy count? SMSPool key set?"""
     ps_ok = False
     ps_version: str | None = None
     try:
         import python_socks as _ps  # noqa: F401
+        import socks as _socks  # noqa: F401  — PySocks, required by Telethon proxy
         ps_ok = True
         ps_version = getattr(_ps, "__version__", "ok")
-    except ImportError:
-        pass
+    except ImportError as _e:
+        ps_version = f"missing: {_e}"
 
     proxy_count = 0
     try:
