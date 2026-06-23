@@ -8,14 +8,3 @@ python-telegram-bot>=22.8
 requests>=2.34.2
 telethon>=1.43.2
 uvicorn[standard]>=0.30.0
-aiohttp
-aiosqlite
-fastapi
-filelock
-pydantic
-pysocks
-python-telegram-bot
-requests
-telegram
-telethon
-uvicorn
