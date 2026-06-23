@@ -35,7 +35,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python3 supervisor.py"
+args = "/home/runner/workspace/.pythonlibs/bin/python3 supervisor.py"
 
 [[workflows.workflow]]
 name = "Telegram Mini App"
@@ -69,15 +69,6 @@ externalPort = 3001
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
-
-[[ports]]
-localPort = 8082
-externalPort = 3000
-exposeLocalhost = true
 
 [[ports]]
 localPort = 8083
