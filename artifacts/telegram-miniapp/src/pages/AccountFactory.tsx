@@ -760,6 +760,22 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     reasoning: string; data_source?: "own_experience" | "community_research" | "ai_estimate";
   }[]>([]);
 
+  // Freshness reporting per country row
+  const [reportingCountryId, setReportingCountryId] = useState<string | null>(null);
+  const [reportSent,         setReportSent]         = useState<Record<string, "fresh" | "recycled">>({});
+
+  const reportCountryStat = async (countryId: string, countryName: string, type: "success" | "recycled") => {
+    try {
+      await fetch("/api/factory/country-stats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ country_id: countryId, country_name: countryName, type }),
+      });
+      setReportSent(prev => ({ ...prev, [countryId]: type === "success" ? "fresh" : "recycled" }));
+      setReportingCountryId(null);
+    } catch { /* silent */ }
+  };
+
   const [runState,        setRunState]        = useState<RunState>("idle");
   const [steps,           setSteps]           = useState<StepState[]>(initSteps());
   const [errorMsg,        setErrorMsg]        = useState<string | null>(null);
@@ -2199,6 +2215,76 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                           paddingLeft: 28,
                         }}>
                           {c.reasoning}
+                        </div>
+
+                        {/* Row 4: Report freshness */}
+                        <div
+                          style={{ paddingLeft: 28, marginTop: 7 }}
+                          onClick={e => e.stopPropagation()}
+                        >
+                          {reportSent[c.id] ? (
+                            /* Already reported */
+                            <div style={{
+                              display: "inline-flex", alignItems: "center", gap: 4,
+                              background: reportSent[c.id] === "fresh" ? "rgba(45,232,151,0.10)" : "rgba(255,107,122,0.10)",
+                              border: `1px solid ${reportSent[c.id] === "fresh" ? "rgba(45,232,151,0.25)" : "rgba(255,107,122,0.25)"}`,
+                              borderRadius: 6, padding: "2px 8px",
+                              fontSize: 9, color: reportSent[c.id] === "fresh" ? GREEN : RED,
+                            }}>
+                              {reportSent[c.id] === "fresh" ? "✓ " : "♻ "}
+                              {lang === "ua"
+                                ? (reportSent[c.id] === "fresh" ? "свіжі — надіслано" : "переробл. — надіслано")
+                                : (reportSent[c.id] === "fresh" ? "fresh reported" : "recycled reported")}
+                            </div>
+                          ) : reportingCountryId === c.id ? (
+                            /* Inline picker */
+                            <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                              <span style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>
+                                {L("How were numbers?", "Які номери?")}
+                              </span>
+                              <button
+                                onClick={() => void reportCountryStat(c.id, c.name, "success")}
+                                style={{
+                                  background: "rgba(45,232,151,0.12)", border: "1px solid rgba(45,232,151,0.3)",
+                                  borderRadius: 5, padding: "2px 7px", fontSize: 9, fontWeight: 700,
+                                  color: GREEN, cursor: "pointer", fontFamily: "inherit",
+                                }}
+                              >
+                                ✓ {L("Fresh", "Свіжі")}
+                              </button>
+                              <button
+                                onClick={() => void reportCountryStat(c.id, c.name, "recycled")}
+                                style={{
+                                  background: "rgba(255,107,122,0.12)", border: "1px solid rgba(255,107,122,0.3)",
+                                  borderRadius: 5, padding: "2px 7px", fontSize: 9, fontWeight: 700,
+                                  color: RED, cursor: "pointer", fontFamily: "inherit",
+                                }}
+                              >
+                                ♻ {L("Recycled", "Переробл.")}
+                              </button>
+                              <button
+                                onClick={() => setReportingCountryId(null)}
+                                style={{
+                                  background: "transparent", border: "none",
+                                  fontSize: 10, color: "rgba(255,255,255,0.25)",
+                                  cursor: "pointer", fontFamily: "inherit", padding: "2px 3px",
+                                }}
+                              >✕</button>
+                            </div>
+                          ) : (
+                            /* Trigger button */
+                            <button
+                              onClick={() => setReportingCountryId(c.id)}
+                              style={{
+                                background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)",
+                                borderRadius: 5, padding: "2px 7px", fontSize: 9,
+                                color: "rgba(255,255,255,0.28)", cursor: "pointer",
+                                fontFamily: "inherit",
+                              }}
+                            >
+                              🔬 {L("Report result", "Звіт")}
+                            </button>
+                          )}
                         </div>
                       </div>
                     );

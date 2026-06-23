@@ -361,30 +361,30 @@ function Slide7({ lang }: SL) {
 // ═══════════════════════════════════════════════════════════════
 function Slide8({ lang }: SL) {
   const countries = [
-    { flag:"🇺🇦", code:"ua", en:"Ukraine",     ua:"Україна",     note: L(lang, "Best success rate, low cost", "Найкращий успіх, низька ціна") },
-    { flag:"🇰🇿", code:"kz", en:"Kazakhstan",  ua:"Казахстан",   note: L(lang, "Very high success, cheap", "Дуже високий успіх, дешево") },
-    { flag:"🇪🇪", code:"ee", en:"Estonia",     ua:"Естонія",     note: L(lang, "EU numbers, higher trust", "Номери ЄС, більший рівень довіри") },
-    { flag:"🇱🇹", code:"lt", en:"Lithuania",   ua:"Литва",       note: L(lang, "EU, stable availability", "ЄС, стабільна доступність") },
-    { flag:"🇵🇱", code:"pl", en:"Poland",      ua:"Польща",      note: L(lang, "EU, popular for high quality", "ЄС, популярний для якості") },
-    { flag:"🇮🇳", code:"in", en:"India",       ua:"Індія",       note: L(lang, "Cheapest, lower trust score", "Найдешевші, нижчий рівень довіри") },
+    { flag:"🇰🇭", code:"kh", en:"Cambodia",    ua:"Камбоджа",    fresh:87, avg:1.2, note: L(lang, "🥇 Top pick — 87% fresh, ~1.2 attempts. Cheapest tier.", "🥇 Топ вибір — 87% свіжих, ~1.2 спроб. Найдешевший тир."), color:GREEN },
+    { flag:"🇱🇦", code:"la", en:"Laos",         ua:"Лаос",        fresh:85, avg:1.3, note: L(lang, "🥈 85% fresh, ~1.3 attempts. Very stable pool.", "🥈 85% свіжих, ~1.3 спроб. Дуже стабільний пул."), color:GREEN },
+    { flag:"🇲🇲", code:"mm", en:"Myanmar",      ua:"М'янма",      fresh:83, avg:1.4, note: L(lang, "🥉 83% fresh, ~1.4 attempts. Low cost, growing pool.", "🥉 83% свіжих, ~1.4 спроб. Низька ціна, пул зростає."), color:GREEN },
+    { flag:"🇰🇿", code:"kz", en:"Kazakhstan",  ua:"Казахстан",   fresh:76, avg:1.5, note: L(lang, "#4 — 76% fresh. Pool strained after SMS-Activate shutdown.", "#4 — 76% свіжих. Пул під тиском після закриття SMS-Activate."), color:ACCENT },
+    { flag:"🇺🇦", code:"ua", en:"Ukraine",      ua:"Україна",     fresh:71, avg:1.6, note: L(lang, "#5 — 71% fresh. High availability but more recycled numbers.", "#5 — 71% свіжих. Висока доступність, але більше переробки."), color:ACCENT },
+    { flag:"🇵🇭", code:"ph", en:"Philippines", ua:"Філіппіни",   fresh:68, avg:1.7, note: L(lang, "#6 — 68% fresh. Large pool, moderate freshness.", "#6 — 68% свіжих. Великий пул, помірна свіжість."), color:TEAL },
   ];
   return (
     <Shell>
       <STitle icon="🌍" text={L(lang, "Country Selection", "Вибір країни")} color={TEAL} />
-      <div style={{ fontSize:13, color:"rgba(255,255,255,0.55)", lineHeight:1.6, marginBottom:14 }}>
+      <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", lineHeight:1.6, marginBottom:12 }}>
         {L(lang,
-          "Choose the country based on your target audience and budget. The phone number's country affects Telegram's trust level and FloodWait thresholds.",
-          "Вибирайте країну виходячи з вашої цільової аудиторії та бюджету. Країна номера впливає на рівень довіри Telegram та пороги FloodWait."
+          "Rankings based on real community data (BlackHatWorld, Reddit, Trustpilot, June 2026). Use AI-вибір in the factory for live AI-ranked recommendations.",
+          "Рейтинги на основі реальних даних спільноти (BlackHatWorld, Reddit, Trustpilot, червень 2026). Використовуйте AI-вибір у фабриці для живих рекомендацій."
         )}
       </div>
       <div style={card(TEAL)}>
         <div style={{ fontSize:12, fontWeight:700, color:TEAL, marginBottom:6 }}>
-          📊 {L(lang, "Use Live Stock Checker for best results", "Використовуйте перевірку наявності для найкращого результату")}
+          📊 {L(lang, "Use Live Stock Checker + AI-вибір", "Використовуйте перевірку наявності + AI-вибір")}
         </div>
         <div style={{ fontSize:11, color:"rgba(255,255,255,0.65)", lineHeight:1.6 }}>
           {L(lang,
-            `Tap "📊 Check Stock" next to the Country field to see all countries with Telegram numbers available RIGHT NOW — sorted cheapest first. Stock indicators: 🟢 >50 in stock · 🟡 10–50 · 🔴 <10. Tap any row to select it. Results cached 60s.`,
-            `Натисніть "📊 Наявність" поруч із полем Країна, щоб побачити всі країни з доступними зараз Telegram-номерами — відсортованими від дешевших. Індикатори: 🟢 >50 · 🟡 10–50 · 🔴 <10. Натисніть рядок для вибору. Кеш 60с.`
+            `Tap "📊 Check Stock" next to the Country field for real-time availability. Or tap "+ AI Вибір" (purple button) for a ranked list with freshness % and avg attempts per country.`,
+            `Натисніть "📊 Наявність" для наявності в реальному часі. Або натисніть "+ AI Вибір" (фіолетова кнопка) для рейтингу зі свіжістю % та середньою кількістю спроб.`
           )}
         </div>
       </div>
@@ -394,10 +394,13 @@ function Slide8({ lang }: SL) {
           <span style={{ fontSize:22, flexShrink:0 }}>{c.flag}</span>
           <div style={{ flex:1 }}>
             <div style={{ fontSize:12, fontWeight:700, color:"#fff" }}>{lang === "ua" ? c.ua : c.en}</div>
-            <div style={{ fontSize:10, color:"rgba(255,255,255,0.42)" }}>{c.note}</div>
+            <div style={{ fontSize:10, color:"rgba(255,255,255,0.42)", marginTop:1 }}>{c.note}</div>
           </div>
-          <div style={{ background:`${TEAL}18`, border:`1px solid ${TEAL}44`, borderRadius:6,
-            padding:"2px 8px", fontSize:11, color:TEAL, fontWeight:700, flexShrink:0 }}>{c.code}</div>
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:3, flexShrink:0 }}>
+            <div style={{ background:`${c.color}18`, border:`1px solid ${c.color}44`, borderRadius:6,
+              padding:"2px 7px", fontSize:11, color:c.color, fontWeight:700 }}>{c.fresh}%</div>
+            <div style={{ fontSize:9, color:"rgba(255,255,255,0.28)" }}>≈{c.avg} {L("att.","спроб")}</div>
+          </div>
         </div>
       ))}
       <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:8, lineHeight:1.5 }}>
@@ -652,13 +655,210 @@ function Slide14({ lang }: SL) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SLIDE 15 — AI-вибір (AI Country Picker)
+// ═══════════════════════════════════════════════════════════════
+function Slide15({ lang }: SL) {
+  return (
+    <Shell>
+      <STitle icon="🤖" text={L(lang, "AI Country Picker (AI-вибір)", "AI-вибір країни")} color={PURPLE} />
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.6)", lineHeight:1.7, marginBottom:14 }}>
+        {L(lang,
+          "The \"+ AI Вибір\" button opens a live-ranked panel of countries sorted by freshness and average attempt count — powered by Gemini AI and backed by real community research.",
+          "Кнопка \"+ AI Вибір\" відкриває живий рейтинг країн, відсортованих за свіжістю та середньою кількістю спроб — на основі Gemini AI та реальних даних спільноти."
+        )}
+      </div>
+
+      <div style={card(PURPLE)}>
+        <div style={{ fontSize:12, fontWeight:700, color:PURPLE, marginBottom:8 }}>
+          {L(lang, "How to use", "Як користуватись")}
+        </div>
+        <Step n={1} color={PURPLE}
+          title={L(lang, `Tap "+ AI Вибір"`, `Натисніть "+ AI Вибір"`)}
+          desc={L(lang,
+            "The purple button appears below the Country field. One tap triggers Gemini to rank all countries based on the latest community research.",
+            "Фіолетова кнопка під полем Країна. Один дотик запускає Gemini для ранжування країн на основі останніх даних спільноти."
+          )} />
+        <Step n={2} color={PURPLE}
+          title={L(lang, "Read the ranked list", "Читайте рейтинговий список")}
+          desc={L(lang,
+            "Each row shows: 🥇/🥈/🥉 rank, country name, freshness bar + %, avg attempts pill, data source badge (🔬 our DB / 📊 community / 🤖 AI estimate), and reasoning.",
+            "Кожен рядок: 🥇/🥈/🥉 ранг, назва країни, смуга свіжості + %, пігулка середніх спроб, значок джерела (🔬 наш DB / 📊 спільнота / 🤖 AI оцінка) та обґрунтування."
+          )} />
+        <Step n={3} color={PURPLE}
+          title={L(lang, "Tap a row to select", "Натисніть рядок для вибору")}
+          desc={L(lang,
+            "Tapping any country row instantly sets that country in the form. The selected row highlights purple with a dot indicator.",
+            "Натискання рядка миттєво встановлює цю країну у формі. Вибраний рядок підсвічується фіолетовим з точкою-індикатором."
+          )} />
+      </div>
+
+      <Row icon="📊" color={TEAL} label={L(lang, "Freshness %", "Свіжість %")}
+        desc={L(lang,
+          "How likely the next number from this country's SMSPool is a brand-new SIM that has never had a Telegram account — higher is better.",
+          "Ймовірність того, що наступний номер з пулу SMSPool є абсолютно новою SIM-картою, яка ніколи не мала Telegram-акаунту — чим вище, тим краще."
+        )} />
+      <Row icon="🔢" color={PURPLE} label={L(lang, "≈ Attempts (avg_attempts)", "≈ Спроб (avg_attempts)")}
+        desc={L(lang,
+          "Average number of SMSPool purchases needed before a successful registration for this country. 1.2 = almost always 1 number. 2.0 = often needs 2. Lower is better — fewer wasted purchases.",
+          "Середня кількість покупок SMSPool до успішної реєстрації для цієї країни. 1.2 = майже завжди 1 номер. 2.0 = часто потрібно 2. Нижче краще — менше витрат."
+        )} />
+      <Row icon="🔬" color={GREEN} label={L(lang, "Data sources", "Джерела даних")}
+        desc={L(lang,
+          "🔬 = accumulated from your own DB stats via the Report button · 📊 = BlackHatWorld / Reddit / Trustpilot community research (June 2026) · 🤖 = AI estimate when no other data",
+          "🔬 = накопичено з власного DB через кнопку Звіт · 📊 = дані спільноти BlackHatWorld/Reddit/Trustpilot (червень 2026) · 🤖 = AI оцінка коли немає інших даних"
+        )} />
+
+      <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:6, lineHeight:1.5 }}>
+        💡 {L(lang,
+          "Results are cached for 12 hours. Tap the refresh icon (⟳) inside the panel to force a regeneration with the latest data.",
+          "Результати кешуються на 12 годин. Натисніть іконку оновлення (⟳) всередині панелі для примусового перегенерування з останніми даними."
+        )}
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SLIDE 16 — Session Stats Strip
+// ═══════════════════════════════════════════════════════════════
+function Slide16({ lang }: SL) {
+  return (
+    <Shell>
+      <STitle icon="📈" text={L(lang, "Session Stats Strip", "Стрічка статистики сесії")} color={ACCENT} />
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.6)", lineHeight:1.7, marginBottom:14 }}>
+        {L(lang,
+          "A stats bar appears automatically below the 7-step pipeline once any money is spent or a recycled number is skipped. It shows your running totals for the current factory session.",
+          "Стрічка статистики з'являється автоматично під 7-кроковим конвеєром, щойно витрачаються гроші або пропускається перероблений номер. Вона показує накопичені підсумки поточної сесії фабрики."
+        )}
+      </div>
+
+      <div style={card(ACCENT)}>
+        <div style={{ fontSize:12, fontWeight:700, color:ACCENT, marginBottom:10 }}>
+          💰 {L(lang, "Money Spent Counter", "Лічильник витрачених коштів")}
+        </div>
+        <div style={{ display:"flex", alignItems:"baseline", gap:8, marginBottom:6 }}>
+          <span style={{ fontSize:22, fontWeight:900, color:"#ffc832" }}>$0.47</span>
+          <span style={{ fontSize:11, color:"rgba(255,200,50,0.55)" }}>{L(lang, "spent", "витрачено")}</span>
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", lineHeight:1.55 }}>
+          {L(lang,
+            "Accumulates the SMSPool cost of every number purchased in this session — including failed attempts where the number was banned or timed out. Resets when you close Account Factory.",
+            "Накопичує вартість SMSPool кожного купленого в цій сесії номера — включно з невдалими спробами де номер був заблокований або закінчився таймаут. Скидається при закритті Фабрики акаунтів."
+          )}
+        </div>
+      </div>
+
+      <div style={card(RED)}>
+        <div style={{ fontSize:12, fontWeight:700, color:RED, marginBottom:10 }}>
+          ♻ {L(lang, "Recycled Number Counter", "Лічильник перероблених номерів")}
+        </div>
+        <div style={{ display:"flex", alignItems:"baseline", gap:8, marginBottom:6 }}>
+          <span style={{ fontSize:22, fontWeight:900, color:"#ff6b7a" }}>3</span>
+          <span style={{ fontSize:11, color:"rgba(255,107,122,0.55)" }}>{L(lang, "recycled", "переробл.")}</span>
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", lineHeight:1.55 }}>
+          {L(lang,
+            "Counts numbers that were already registered (SessionPasswordNeededError) — Telegram numbers re-sold by SMSPool with an existing 2FA account on them. The factory skips these automatically or prompts you to continue.",
+            "Рахує номери, які вже були зареєстровані (SessionPasswordNeededError) — Telegram-номери перепродані SMSPool з вже існуючим 2FA акаунтом. Фабрика автоматично пропускає їх або запитує продовження."
+          )}
+        </div>
+      </div>
+
+      <Row icon="🌍" color={TEAL} label={L(lang, "Per-country breakdown", "Розбивка по країнах")}
+        desc={L(lang,
+          "The recycled counter shows the count for the currently selected country. If you registered with multiple countries in one session, a separate \"total recycled\" figure appears next to it.",
+          "Лічильник перероблених показує кількість для поточно вибраної країни. Якщо в одній сесії реєстрували з кількох країн — поруч з'являється окрема цифра \"всього переробл.\""
+        )} />
+      <Row icon="🔄" color={GREEN} label={L(lang, "Resets on new session", "Скидається при новій сесії")}
+        desc={L(lang,
+          "The strip only tracks the current open factory session. Closing and reopening Account Factory starts fresh counters from zero.",
+          "Стрічка відстежує лише поточну відкриту сесію фабрики. Закриття та повторне відкриття Фабрики акаунтів починає лічильники з нуля."
+        )} />
+
+      <div style={{ ...card(PURPLE), marginTop:6 }}>
+        <div style={{ fontSize:11, color:"rgba(196,174,255,0.75)", lineHeight:1.55 }}>
+          💡 {L(lang,
+            "Use the recycled counter as a real-time freshness signal: if you see many recycled numbers on a country, switch to AI-вибір to pick a fresher source.",
+            "Використовуйте лічильник перероблених як сигнал свіжості в реальному часі: якщо бачите багато переробки для країни — перейдіть до AI-вибір, щоб знайти свіжіше джерело."
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SLIDE 17 — AI Feedback Loop (Report Freshness)
+// ═══════════════════════════════════════════════════════════════
+function Slide17({ lang }: SL) {
+  return (
+    <Shell>
+      <STitle icon="🔬" text={L(lang, "AI Feedback Loop", "Зворотній зв'язок AI")} color={GREEN} />
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.6)", lineHeight:1.7, marginBottom:14 }}>
+        {L(lang,
+          "Every time you use AI-вибір and register accounts, you can report your real experience back to the system — so future AI rankings are based on your own data, not just community estimates.",
+          "Щоразу коли ви використовуєте AI-вибір та реєструєте акаунти, ви можете повідомити системі про реальний досвід — щоб майбутні рейтинги AI базувались на ваших власних даних, а не лише оцінках спільноти."
+        )}
+      </div>
+
+      <div style={card(GREEN)}>
+        <div style={{ fontSize:12, fontWeight:700, color:GREEN, marginBottom:8 }}>
+          {L(lang, "How the Report button works", "Як працює кнопка Звіт")}
+        </div>
+        <Step n={1} color={GREEN}
+          title={L(lang, "Open AI-вибір panel", "Відкрийте панель AI-вибір")}
+          desc={L(lang,
+            "Tap \"+ AI Вибір\" to see the ranked country list. Each country row has a small grey \"🔬 Report result\" button at the bottom.",
+            "Натисніть \"+ AI Вибір\" щоб побачити рейтинг. Кожен рядок країни має маленьку сіру кнопку \"🔬 Звіт\" внизу."
+          )} />
+        <Step n={2} color={GREEN}
+          title={L(lang, "Tap \"🔬 Звіт\"", "Натисніть \"🔬 Звіт\"")}
+          desc={L(lang,
+            "Two inline buttons appear: \"✓ Fresh\" (green) and \"♻ Recycled\" (red). The row click-to-select action is paused while the report UI is open.",
+            "З'являються дві вбудовані кнопки: \"✓ Свіжі\" (зелена) та \"♻ Переробл.\" (червона). Дія вибору рядка призупиняється поки відкритий UI звіту."
+          )} />
+        <Step n={3} color={GREEN}
+          title={L(lang, "Tap Fresh or Recycled", "Натисніть Свіжі або Переробл.")}
+          desc={L(lang,
+            "One tap sends a stat to the database: type=success for fresh or type=recycled for recycled numbers. The button immediately shows a confirmation badge.",
+            "Один дотик відправляє статистику в базу даних: type=success для свіжих або type=recycled для перероблених. Кнопка одразу показує значок підтвердження."
+          )} />
+      </div>
+
+      <Row icon="📊" color={TEAL} label={L(lang, "What gets recorded", "Що записується")}
+        desc={L(lang,
+          "Each report increments either the successes or recycled column in factory_country_stats table. The AI reads these counters on the next 12h cache refresh — your data source badge changes from 📊 to 🔬.",
+          "Кожен звіт збільшує стовпчик successes або recycled у таблиці factory_country_stats. AI зчитує ці лічильники при наступному оновленні кешу (12г) — значок джерела змінюється з 📊 на 🔬."
+        )} />
+      <Row icon="🔄" color={PURPLE} label={L(lang, "Feedback loop timeline", "Часова шкала зворотного зв'язку")}
+        desc={L(lang,
+          "After enough reports accumulate for a country, its ranking source badge flips from 📊 community to 🔬 our data. The AI ranking will now prioritize your real-world experience.",
+          "Після накопичення достатньої кількості звітів для країни, значок джерела рейтингу змінюється з 📊 спільнота на 🔬 наші дані. AI буде пріоритизувати ваш реальний досвід."
+        )} />
+
+      <div style={{ ...card(ACCENT), marginTop:6 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:ACCENT, marginBottom:6 }}>
+          💡 {L(lang, "Pro tip — report after every batch", "Порада — звітуйте після кожного пакету")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", lineHeight:1.55 }}>
+          {L(lang,
+            "After each batch finishes, open AI-вибір, find the country you used, and tap Report. Over a week of reporting you'll have your own freshness data that consistently outperforms generic community estimates.",
+            "Після кожного пакету відкрийте AI-вибір, знайдіть країну яку використовували, та натисніть Звіт. За тиждень звітності ви матимете власні дані свіжості, які стабільно перевершують загальні оцінки спільноти."
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // SLIDE REGISTRY + MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-const SLIDES = [Slide1, Slide2, Slide3, Slide4, Slide5, Slide6, Slide7, Slide8, Slide9, Slide10, Slide11, Slide12, Slide13, Slide14];
-const TITLES_EN = ["Cover","What is it?","Prerequisites","SMSPool API","Decodo Proxy","API Credentials","7-Step Pipeline","Country Selection","Batch Mode","Sessions & Files","Error Handling","Warmup Modes","Best Practices","Proxy Store & Sessions"];
-const TITLES_UA = ["Обкладинка","Що це?","Передумови","SMSPool API","Decodo Проксі","API Credentials","7-кроковий конвеєр","Вибір країни","Пакетний режим","Сесії та файли","Обробка помилок","Режими прогріву","Найкращі практики","Сховище проксі та сесії"];
-const KEYWORDS_EN = ["","automated registration telethon smspool proxy","prerequisites smspool decodo credentials","smspool api key purchase number service","decodo smartproxy socks5 residential mobile","telegram api id hash my.telegram.org","pipeline steps 7 telethon sign","country ukraine kazakhstan estonia poland india","batch mode quantity multiple accounts","session json metadata file storage","error ban timeout proxy network","warmup mode none all ask per account popup 48h","best practices warmup validate proxy rotate","proxy store save autofill session number increment continue last_session_num delete country"];
-const KEYWORDS_UA = ["","автоматична реєстрація телетон смспул проксі","передумови смспул декодо credentials","смспул апі ключ купівля номер сервіс","декодо смартпроксі socks5 residential mobile","телеграм апі id hash my.telegram.org","конвеєр кроки 7 телетон вхід","країна україна казахстан естонія польща індія","пакетний режим кількість кілька акаунтів","сесія json метадані файл зберігання","помилка бан таймаут проксі мережа","режим прогріву без прогріву всі питати попап 48год","найкращі практики прогрів перевірка ротація","сховище проксі зберегти автозаповнення номер сесії інкремент продовжити last_session_num видалити країна"];
+const SLIDES = [Slide1, Slide2, Slide3, Slide4, Slide5, Slide6, Slide7, Slide8, Slide9, Slide10, Slide11, Slide12, Slide13, Slide14, Slide15, Slide16, Slide17];
+const TITLES_EN = ["Cover","What is it?","Prerequisites","SMSPool API","Decodo Proxy","API Credentials","7-Step Pipeline","Country Selection","Batch Mode","Sessions & Files","Error Handling","Warmup Modes","Best Practices","Proxy Store & Sessions","AI Country Picker","Session Stats Strip","AI Feedback Loop"];
+const TITLES_UA = ["Обкладинка","Що це?","Передумови","SMSPool API","Decodo Проксі","API Credentials","7-кроковий конвеєр","Вибір країни","Пакетний режим","Сесії та файли","Обробка помилок","Режими прогріву","Найкращі практики","Сховище проксі та сесії","AI-вибір країни","Стрічка статистики","AI зворотній зв'язок"];
+const KEYWORDS_EN = ["","automated registration telethon smspool proxy","prerequisites smspool decodo credentials","smspool api key purchase number service","decodo smartproxy socks5 residential mobile","telegram api id hash my.telegram.org","pipeline steps 7 telethon sign","country cambodia laos myanmar kazakhstan ukraine freshness ranking","batch mode quantity multiple accounts","session json metadata file storage","error ban timeout proxy network","warmup mode none all ask per account popup 48h","best practices warmup validate proxy rotate","proxy store save autofill session number increment continue last_session_num delete country","ai picker country freshness avg attempts ranking gemini data source badge community own estimate","session stats money spent counter dollar recycled skips current country total","ai feedback loop report freshness recycled fresh button badge factory_country_stats own data community 🔬 📊"];
+const KEYWORDS_UA = ["","автоматична реєстрація телетон смспул проксі","передумови смспул декодо credentials","смспул апі ключ купівля номер сервіс","декодо смартпроксі socks5 residential mobile","телеграм апі id hash my.telegram.org","конвеєр кроки 7 телетон вхід","країна камбоджа лаос м'янма казахстан україна свіжість рейтинг","пакетний режим кількість кілька акаунтів","сесія json метадані файл зберігання","помилка бан таймаут проксі мережа","режим прогріву без прогріву всі питати попап 48год","найкращі практики прогрів перевірка ротація","сховище проксі зберегти автозаповнення номер сесії інкремент продовжити last_session_num видалити країна","ai вибір країна свіжість середні спроби рейтинг gemini джерело даних спільнота наші оцінка","стрічка статистики гроші витрачено лічильник долар переробл. поточна країна всього","ai зворотній звязок звіт свіжість переробл. свіжі кнопка значок factory_country_stats наші дані спільнота 🔬 📊"];
 
 export function ManualFactoryPage({ onClose }: Props) {
   const { lang } = useI18n();
