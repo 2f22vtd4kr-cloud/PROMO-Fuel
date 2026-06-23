@@ -80,13 +80,21 @@ DEVICE_PROFILES = [
     ("Xiaomi Redmi Note 12",   "Android 12",   "9.4.4"),
 ]
 
-# Official Telegram Desktop credentials (public, from Telegram Desktop GitHub).
-# Using these makes our client look like official Telegram Desktop to Telegram's
-# anti-spam system, which returns SentCodeTypeSms instead of SentCodeTypeApp.
-# Tried in order when the user's custom api_id gets SentCodeTypeApp.
+# Official Telegram credentials with CORRECT platform device profiles.
+# CRITICAL: api_id and device_model/system_version MUST match the platform.
+# Using Desktop api_id (2040) with Android device strings = immediate bot flag
+# by Telegram's server → SentCodeTypeApp even on fresh numbers. Always use the
+# exact fingerprint that the real Telegram app for that platform would send.
+# Tuple: (api_id, api_hash, device_model, system_version, app_version)
 _OFFICIAL_CLIENT_CREDS = [
-    (2040, "b18441a1ff607e10a989891a5462e627"),   # Telegram Desktop
-    (2496, "8da85b0d5bfe62527e5b244c209159c3"),   # Telegram iOS
+    (
+        2040, "b18441a1ff607e10a989891a5462e627",
+        "PC 64bit", "Windows 11", "5.9.3",         # Telegram Desktop (Windows)
+    ),
+    (
+        2496, "8da85b0d5bfe62527e5b244c209159c3",
+        "iPhone 16 Pro Max", "18.3.2", "11.4.0",   # Telegram iOS
+    ),
 ]
 
 APP_VERSIONS = ["9.6.3", "9.5.9", "9.4.4", "9.3.3", "9.2.1", "9.7.1", "9.1.8"]
@@ -492,6 +500,64 @@ def _is_datacenter_ip(ip_str: str) -> bool:
         return False
 
 
+async def _get_asyncio_exit_ip(proxy_string: str, timeout: float = 12.0) -> tuple[str | None, str, bool]:
+    """
+    Verify proxy using python_socks.async_.asyncio — the EXACT same code path
+    Telethon uses internally (confirmed from Telethon 1.44 source).
+    If this returns a DC IP while _get_exit_ip_via_proxy returned residential,
+    python_socks asyncio is broken and Telethon is bypassing the proxy silently.
+    Returns (ip_or_None, message, is_datacenter).
+    """
+    try:
+        proxy_tuple = _parse_proxy(proxy_string)
+        if proxy_tuple is None:
+            return None, "Cannot parse proxy string", False
+
+        _stype, host, port, rdns, user, password = proxy_tuple
+
+        try:
+            from python_socks.async_.asyncio import Proxy as _AsyncProxy  # noqa: PLC0415
+            from python_socks import ProxyType as _PT                      # noqa: PLC0415
+        except ImportError as _ie:
+            return None, f"python_socks.async_.asyncio unavailable: {_ie}", False
+
+        proxy = _AsyncProxy.create(
+            proxy_type=_PT.SOCKS5,
+            host=host,
+            port=port,
+            rdns=rdns,
+            username=user,
+            password=password,
+        )
+
+        sock = await asyncio.wait_for(
+            proxy.connect(dest_host="api.ipify.org", dest_port=80),
+            timeout=timeout,
+        )
+
+        reader, writer = await asyncio.open_connection(sock=sock)
+        writer.write(b"GET / HTTP/1.0\r\nHost: api.ipify.org\r\nConnection: close\r\n\r\n")
+        await writer.drain()
+        data = await asyncio.wait_for(reader.read(4096), timeout=timeout)
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+        body = data.decode("ascii", errors="ignore").split("\r\n\r\n")[-1].strip()
+        ip_match = re.search(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", body)
+        if not ip_match:
+            return None, f"Unexpected asyncio response: {body[:80]}", False
+
+        ip = ip_match.group(0)
+        is_dc = _is_datacenter_ip(ip)
+        return ip, f"🔗 Telethon-path IP: {ip}", is_dc
+
+    except Exception as exc:
+        return None, f"Asyncio proxy check failed: {str(exc)[:120]}", False
+
+
 async def _get_exit_ip_via_proxy(proxy_string: str, timeout: float = 10.0) -> tuple[str | None, str, bool]:
     """
     Make a real HTTP GET through the SOCKS5 proxy to api.ipify.org.
@@ -623,6 +689,52 @@ async def _registration_stream(
             "is_datacenter": False,
         })
 
+        # ─── Gate 3: asyncio path check (Telethon's actual code path) ─────
+        # The requests-based exit-IP check above uses PySocks (sync). Telethon
+        # uses python_socks.async_.asyncio internally. These are different code
+        # paths — a working sync path does NOT guarantee the asyncio path works.
+        # This check proves the exact proxy path Telethon will use is live,
+        # and that its exit IP is residential (not Replit's datacenter IP).
+        yield _sse("preflight", {
+            "status": "running",
+            "message": "🔗 Verifying Telethon asyncio proxy path…",
+        })
+        async_ip, async_msg, async_is_dc = await _get_asyncio_exit_ip(proxy_string)
+        if async_is_dc:
+            yield _sse("preflight", {
+                "status": "error",
+                "message": (
+                    f"⛔ Telethon asyncio path exits from DATACENTER IP {async_ip}! "
+                    "python_socks[asyncio] is NOT routing Telethon through your proxy. "
+                    "Reinstall: pip install 'python-socks[asyncio]' then restart."
+                ),
+                "exit_ip": async_ip,
+                "is_datacenter": True,
+            })
+            yield _sse("error", {
+                "message": (
+                    f"⛔ Telethon proxy BROKEN — asyncio path exits from {async_ip} (datacenter). "
+                    "Telethon would register from Replit's IP → SentCodeTypeApp on every number."
+                )
+            })
+            return
+        if async_ip is None:
+            # asyncio check failed (timeout, connection error, etc.) — warn but don't block
+            yield _sse("preflight", {
+                "status": "done",
+                "message": f"{proxy_msg} · {ip_msg} · ⚠️ Asyncio path: {async_msg}",
+                "exit_ip": exit_ip,
+                "is_datacenter": False,
+            })
+        else:
+            yield _sse("preflight", {
+                "status": "done",
+                "message": f"{proxy_msg} · {ip_msg} · {async_msg}",
+                "exit_ip": exit_ip,
+                "is_datacenter": False,
+                "async_exit_ip": async_ip,
+            })
+
         # ─── python-socks guard ───────────────────────────────────────────
         # Telethon needs `python-socks[asyncio]` to actually route through a
         # SOCKS5 proxy.  Without it Telethon silently ignores proxy_tuple and
@@ -707,7 +819,7 @@ async def _registration_stream(
 
             # Delete stale session files — a leftover .session from a previous failed
             # attempt on the same number makes Telegram return SentCodeTypeApp.
-            for _ext in (".session", ".session-journal"):
+            for _ext in (".session", ".session-journal", ".session-wal", ".session-shm"):
                 try:
                     os.remove(session_path + _ext)
                 except FileNotFoundError:
@@ -797,9 +909,10 @@ async def _registration_stream(
                 yield _sse("step", {"step": 3, "status": "running",
                                     "message": f"📲 {code_type_name} — skipping to official Telegram Desktop creds…"})
                 _switched_to_official = False
-                for _off_api_id, _off_api_hash in _OFFICIAL_CLIENT_CREDS:
+                for _off_api_id, _off_api_hash, _off_dev, _off_sys, _off_app in _OFFICIAL_CLIENT_CREDS:
                     await safe_disconnect()
-                    for _ext in (".session", ".session-journal"):
+                    # Wipe ALL session artefacts (including WAL/SHM) before new client
+                    for _ext in (".session", ".session-journal", ".session-wal", ".session-shm"):
                         try:
                             os.remove(session_path + _ext)
                         except FileNotFoundError:
@@ -807,9 +920,9 @@ async def _registration_stream(
                     _off_client = TelegramClient(
                         session_path, _off_api_id, _off_api_hash,
                         proxy=proxy_tuple,
-                        device_model=device_model,
-                        system_version=system_version,
-                        app_version=app_version,
+                        device_model=_off_dev,      # ← platform-correct profile
+                        system_version=_off_sys,    # ← must match api_id's platform
+                        app_version=_off_app,       # ← actual app version, not Android
                         lang_code="en",
                         system_lang_code="en-US",
                     )
