@@ -784,149 +784,114 @@ async def _registration_stream(
                 await safe_disconnect()
                 continue  # auto-retry with new number
 
-            # If Telegram chose app/flash delivery, attempt up to 3 ResendCodeRequests
-            # to force a switch to SMS. If still non-SMS after all resends → cancel and
-            # buy a fresh number (recycled numbers with existing Telegram accounts do this).
+            # ── Non-SMS delivery gate ─────────────────────────────────────────
+            # SentCodeTypeApp/Flash/Firebase means Telegram wants to deliver via app.
+            # For recycled numbers (existing account) this NEVER switches to SMS no
+            # matter how many ResendCode calls we make. Skip the useless resend loop
+            # entirely and go straight to official Telegram Desktop creds (api_id=2040).
+            # Official creds only help when SentCodeTypeApp is Telegram's anti-spam
+            # response to an unknown api_id — for recycled numbers they also return
+            # SentCodeTypeApp, which lets us confirm recycling in one fast round-trip.
             _non_sms = ("App", "Flash", "Firebase", "MissedCall")
             if any(t in code_type_name for t in _non_sms):
                 yield _sse("step", {"step": 3, "status": "running",
-                                    "message": f"📲 Got {code_type_name} — trying to force SMS..."})
-                for _rs in range(3):
-                    await asyncio.sleep(2)
-                    try:
-                        forced = await client(ResendCodeRequest(
-                            phone_number=phone, phone_code_hash=phone_code_hash,
-                        ))
-                        phone_code_hash = forced.phone_code_hash
-                        code_type_name  = type(forced.type).__name__ if forced.type else code_type_name
-                        if not any(t in code_type_name for t in _non_sms):
-                            break  # switched to SMS
-                        yield _sse("step", {"step": 3, "status": "running",
-                                            "message": f"🔄 Still {code_type_name}, resend {_rs+1}/3..."})
-                    except SendCodeUnavailableError:
-                        # Definitive: Telegram says this number cannot receive SMS.
-                        # No point trying remaining resends — skip straight to official creds.
-                        yield _sse("step", {"step": 3, "status": "running",
-                                            "message": "⚠️ SendCodeUnavailable — number can't receive SMS, trying official creds…"})
-                        break
-                    except Exception as e_rs:
-                        yield _sse("step", {"step": 3, "status": "running",
-                                            "message": f"⚠️ Resend {_rs+1}/3: {type(e_rs).__name__}"})
-
-                # Still non-SMS after all resends — try official Telegram Desktop creds before
-                # giving up on this number.  Official api_id=2040 (Telegram Desktop) bypasses
-                # the SentCodeTypeApp routing that Telegram applies to unknown app credentials.
-                if any(t in code_type_name for t in _non_sms):
-                    yield _sse("step", {"step": 3, "status": "running",
-                                        "message": "🔑 Trying official Telegram Desktop creds to force SMS…"})
-                    _switched_to_official = False
-                    for _off_api_id, _off_api_hash in _OFFICIAL_CLIENT_CREDS:
-                        await safe_disconnect()
-                        # Wipe any session leftovers before opening a new client on the same path
-                        for _ext in (".session", ".session-journal"):
-                            try:
-                                os.remove(session_path + _ext)
-                            except FileNotFoundError:
-                                pass
-                        _off_client = TelegramClient(
-                            session_path, _off_api_id, _off_api_hash,
-                            proxy=proxy_tuple,
-                            device_model=device_model,
-                            system_version=system_version,
-                            app_version=app_version,
-                            lang_code="en",
-                            system_lang_code="en-US",
-                        )
-                        client = _off_client
-                        _off_result = None
-                        for _off_try in range(2):  # retry once on network errors
-                            try:
-                                if not client.is_connected():
-                                    await client.connect()
-                                _off_result = await client(RawSendCodeRequest(
-                                    phone_number=phone,
-                                    api_id=_off_api_id,
-                                    api_hash=_off_api_hash,
-                                    settings=tl_types.CodeSettings(
-                                        allow_flashcall=False,
-                                        allow_missed_call=False,
-                                        allow_firebase=False,
-                                        current_number=False,
-                                    ),
-                                ))
-                                break  # success
-                            except PhoneNumberBannedError:
-                                _banned = True
-                                break
-                            except Exception as _e_off:
-                                if _off_try == 0:
-                                    # Network hiccup (IncompleteReadError, ConnectionError, etc.)
-                                    # — disconnect cleanly, wait 2s, retry once
-                                    yield _sse("step", {"step": 3, "status": "running",
-                                                        "message": f"⚠️ Official creds ({type(_e_off).__name__}) — retrying in 2s…"})
-                                    try:
-                                        await client.disconnect()
-                                    except Exception:
-                                        pass
-                                    await asyncio.sleep(2)
-                                else:
-                                    yield _sse("step", {"step": 3, "status": "running",
-                                                        "message": f"⚠️ Official creds (api_id={_off_api_id}): {type(_e_off).__name__}"})
-                        if _banned:
+                                    "message": f"📲 {code_type_name} — skipping to official Telegram Desktop creds…"})
+                _switched_to_official = False
+                for _off_api_id, _off_api_hash in _OFFICIAL_CLIENT_CREDS:
+                    await safe_disconnect()
+                    for _ext in (".session", ".session-journal"):
+                        try:
+                            os.remove(session_path + _ext)
+                        except FileNotFoundError:
+                            pass
+                    _off_client = TelegramClient(
+                        session_path, _off_api_id, _off_api_hash,
+                        proxy=proxy_tuple,
+                        device_model=device_model,
+                        system_version=system_version,
+                        app_version=app_version,
+                        lang_code="en",
+                        system_lang_code="en-US",
+                    )
+                    client = _off_client
+                    _off_result = None
+                    for _off_try in range(2):  # retry once on transient network errors
+                        try:
+                            if not client.is_connected():
+                                await client.connect()
+                            _off_result = await client(RawSendCodeRequest(
+                                phone_number=phone,
+                                api_id=_off_api_id,
+                                api_hash=_off_api_hash,
+                                settings=tl_types.CodeSettings(
+                                    allow_flashcall=False,
+                                    allow_missed_call=False,
+                                    allow_firebase=False,
+                                    current_number=False,
+                                ),
+                            ))
                             break
-                        if _off_result is not None:
-                            phone_code_hash = _off_result.phone_code_hash
-                            code_type_name  = type(_off_result.type).__name__ if _off_result.type else code_type_name
-                            if not any(t in code_type_name for t in _non_sms):
+                        except PhoneNumberBannedError:
+                            _banned = True
+                            break
+                        except Exception as _e_off:
+                            if _off_try == 0:
                                 yield _sse("step", {"step": 3, "status": "running",
-                                                    "message": f"✅ Official creds (api_id={_off_api_id}) → {code_type_name} — polling SMS…"})
-                                _switched_to_official = True
-                                break
+                                                    "message": f"⚠️ Official creds ({type(_e_off).__name__}) — retrying in 2s…"})
+                                try:
+                                    await client.disconnect()
+                                except Exception:
+                                    pass
+                                await asyncio.sleep(2)
                             else:
                                 yield _sse("step", {"step": 3, "status": "running",
-                                                    "message": f"🔄 Official creds (api_id={_off_api_id}) also got {code_type_name}…"})
+                                                    "message": f"⚠️ Official creds (api_id={_off_api_id}): {type(_e_off).__name__}"})
+                    if _banned:
+                        break
+                    if _off_result is not None:
+                        phone_code_hash = _off_result.phone_code_hash
+                        code_type_name  = type(_off_result.type).__name__ if _off_result.type else code_type_name
+                        if not any(t in code_type_name for t in _non_sms):
+                            yield _sse("step", {"step": 3, "status": "running",
+                                                "message": f"✅ Official creds (api_id={_off_api_id}) → {code_type_name} — polling SMS…"})
+                            _switched_to_official = True
+                            break
+                        else:
+                            yield _sse("step", {"step": 3, "status": "running",
+                                                "message": f"🔴 Official creds (api_id={_off_api_id}) also got {code_type_name} — number is recycled"})
 
-                    # Official creds switched to SMS — continue to step 4
-                    if _switched_to_official:
-                        pass  # fall through to the polling block below
-                    elif _banned:
-                        yield _sse("step", {"step": 3, "status": "running",
-                                            "message": "🚫 Number banned — cancelling, buying new number…"})
-                        await cancel_order()
-                        await safe_disconnect()
-                        continue
-                    else:
-                        # All credential strategies exhausted for this number
-                        _app_stuck_count += 1
-                        _nums_left = MAX_NUM_RETRIES - _num_attempt - 1
-                        # After 2 consecutive app-stuck failures the whole country
-                        # pool is recycled — stop wasting balance, fail fast.
-                        if _app_stuck_count >= 2:
-                            yield _sse("step", {"step": 3, "status": "error",
-                                                "message": (
-                                                    f"🚫 {_app_stuck_count} numbers in a row from this country are recycled "
-                                                    "(existing Telegram accounts). Stopping — switch to a different country."
-                                                )})
-                            await cancel_order()
-                            await safe_disconnect()
-                            yield _sse("sms_retry_prompt", {
-                                "country_id": country_id,
-                                "message": (
-                                    f"🚫 {_app_stuck_count} numbers in a row from this country returned SentCodeTypeApp — "
-                                    "the number pool is recycled (existing Telegram accounts). "
-                                    "Switch to a different country: Kazakhstan (KZ), Ukraine (UA), "
-                                    "Philippines (PH), Georgia (GE), or Bangladesh (BD) have fresher pools."
-                                ),
-                            })
-                            return
-                        yield _sse("step", {"step": 3, "status": "running",
-                                            "message": (
-                                                f"🔄 {code_type_name} stuck — number has existing Telegram account. "
-                                                f"Cancelling, buying new number… ({_nums_left} left)"
-                                            )})
-                        await cancel_order()
-                        await safe_disconnect()
-                        continue  # try next number, same country
+                if _switched_to_official:
+                    pass  # fall through to step 4
+                elif _banned:
+                    yield _sse("step", {"step": 3, "status": "running",
+                                        "message": "🚫 Number banned — cancelling, buying new number…"})
+                    await cancel_order()
+                    await safe_disconnect()
+                    continue
+                else:
+                    # All credential strategies exhausted — number is confirmed recycled.
+                    # Official Telegram Desktop also returning SentCodeTypeApp is definitive
+                    # proof the number has an existing account. Stop immediately: further
+                    # purchases from the same country will waste balance on the same result.
+                    _app_stuck_count += 1
+                    yield _sse("step", {"step": 3, "status": "error",
+                                        "message": (
+                                            f"🚫 Recycled number confirmed — all credentials (including official "
+                                            f"Telegram Desktop) returned {code_type_name}. "
+                                            "This country's pool has existing accounts. Switch country."
+                                        )})
+                    await cancel_order()
+                    await safe_disconnect()
+                    yield _sse("sms_retry_prompt", {
+                        "country_id": country_id,
+                        "message": (
+                            f"🚫 Number pool is recycled — SMSPool's {country_id} numbers already have "
+                            "Telegram accounts. Even official Telegram Desktop creds got SentCodeTypeApp. "
+                            "Switch to a different country: Kazakhstan (KZ), Ukraine (UA), "
+                            "Philippines (PH), Georgia (GE), or Bangladesh (BD) have fresher pools."
+                        ),
+                    })
+                    return
 
             yield _sse("step", {"step": 3, "status": "done",
                                 "message": f"✅ Code sent via {code_type_name} — polling SMSPool..."})
