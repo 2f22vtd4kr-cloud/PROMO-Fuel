@@ -53319,16 +53319,16 @@ router14.get("/best-country", async (req, res) => {
     parsed.sort(
       (a, b) => b.success_rate - a.success_rate || b.quantity - a.quantity
     );
-    const best = parsed[0];
-    const result = {
-      id: best.country_id,
-      name: best.country_name,
-      success_rate: best.success_rate,
-      quantity: best.quantity,
-      cached: false
-    };
-    _bestCountryCache.set(cacheKey, { ts: Date.now(), data: result });
-    return void res.json(result);
+    const top5 = parsed.slice(0, 5).map((c, i) => ({
+      id: c.country_id,
+      name: c.country_name,
+      success_rate: c.success_rate,
+      quantity: c.quantity,
+      rank: i + 1
+    }));
+    const best = top5[0];
+    _bestCountryCache.set(cacheKey, { ts: Date.now(), best, top5 });
+    return void res.json({ ...best, top5, cached: false });
   } catch (err) {
     return void res.status(502).json({ error: `SMSPool unreachable: ${String(err)}` });
   }

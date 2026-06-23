@@ -280,6 +280,9 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   // Auto-country: best success-rate country from SMSPool
   const [autoCountryLoading, setAutoCountryLoading] = useState(false);
   const [autoCountryMsg,     setAutoCountryMsg]     = useState<string | null>(null);
+  const [autoCountryTop5,    setAutoCountryTop5]    = useState<{
+    id: string; name: string; success_rate: number; quantity: number; rank: number;
+  }[]>([]);
 
   const [runState,        setRunState]        = useState<RunState>("idle");
   const [steps,           setSteps]           = useState<StepState[]>(initSteps());
@@ -331,6 +334,17 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     }
   }
 
+  function applyCountry(id: string) {
+    const known = COUNTRIES.find(c => c.code.toLowerCase() === id.toLowerCase());
+    if (known) {
+      setCountry(known.code);
+      setSmsPoolCountryId("");
+    } else {
+      setCountry("custom");
+      setCustomCountry(id);
+    }
+  }
+
   async function fetchBestCountry() {
     if (!serverHasKey && !smsKey.trim()) {
       setAutoCountryMsg(L("Enter your SMSPool API key first.", "Спочатку введіть API ключ SMSPool."));
@@ -338,23 +352,21 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     }
     setAutoCountryLoading(true);
     setAutoCountryMsg(null);
+    setAutoCountryTop5([]);
     try {
       const qs = serverHasKey ? "" : `?api_key=${encodeURIComponent(smsKey.trim())}`;
       const resp = await fetch(`/api/factory/best-country${qs}`, { headers: authHeaders() });
-      const json = await resp.json() as { id?: string; name?: string; success_rate?: number; error?: string };
+      const json = await resp.json() as {
+        id?: string; name?: string; success_rate?: number; quantity?: number;
+        top5?: typeof autoCountryTop5;
+        error?: string;
+      };
       if (!resp.ok || json.error) {
         setAutoCountryMsg(json.error ?? `HTTP ${resp.status}`);
       } else if (json.id) {
-        const known = COUNTRIES.find(c => c.code.toLowerCase() === json.id!.toLowerCase());
-        if (known) {
-          setCountry(known.code);
-          setSmsPoolCountryId("");
-        } else {
-          setCountry("custom");
-          setCustomCountry(json.id);
-        }
-        const sr = json.success_rate != null ? ` (${json.success_rate}% success)` : "";
-        setAutoCountryMsg(`✅ ${json.name ?? json.id}${sr}`);
+        applyCountry(json.id);
+        setAutoCountryTop5(json.top5 ?? []);
+        setAutoCountryMsg(`✅ ${json.name ?? json.id}`);
       }
     } catch (e) {
       setAutoCountryMsg(String(e));
@@ -1192,21 +1204,129 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                 </div>
               )}
 
-              {/* ── Auto-pick result feedback ── */}
-              {autoCountryMsg && (
+              {/* ── Auto-pick result: top-5 ranked list ── */}
+              {(autoCountryMsg || autoCountryTop5.length > 0) && (
                 <div style={{
                   marginTop: 8,
-                  padding: "9px 13px",
-                  borderRadius: 10,
-                  background: autoCountryMsg.startsWith("✅")
-                    ? "rgba(45,232,151,0.08)"
-                    : "rgba(255,107,122,0.08)",
-                  border: `1px solid ${autoCountryMsg.startsWith("✅") ? "rgba(45,232,151,0.28)" : "rgba(255,107,122,0.28)"}`,
-                  fontSize: 11,
-                  color: autoCountryMsg.startsWith("✅") ? GREEN : RED,
-                  lineHeight: 1.5,
+                  background: "rgba(7,9,20,0.97)",
+                  border: `1px solid ${autoCountryMsg?.startsWith("✅") ? "rgba(45,232,151,0.28)" : "rgba(255,107,122,0.28)"}`,
+                  borderRadius: 14, overflow: "hidden",
                 }}>
-                  {autoCountryMsg}
+                  {/* Header */}
+                  <div style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "9px 13px",
+                    borderBottom: autoCountryTop5.length > 0 ? `1px solid ${BORDER}` : "none",
+                    background: "rgba(255,255,255,0.025)",
+                  }}>
+                    <div style={{
+                      fontSize: 11, fontWeight: 700,
+                      color: autoCountryMsg?.startsWith("✅") ? GREEN : RED,
+                    }}>
+                      {autoCountryTop5.length > 0
+                        ? (lang === "ua" ? "⚡ Топ-5 країн за успіхом Telegram" : "⚡ Top 5 Countries by Telegram Success")
+                        : autoCountryMsg}
+                    </div>
+                    <button
+                      onClick={() => { setAutoCountryMsg(null); setAutoCountryTop5([]); }}
+                      style={{ background: "none", border: "none", cursor: "pointer",
+                        color: "rgba(255,255,255,0.35)", fontSize: 15, lineHeight: 1, padding: 0 }}>
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Ranked rows */}
+                  {autoCountryTop5.map((c, idx) => {
+                    const isSelected =
+                      country === c.id ||
+                      customCountry === c.id ||
+                      COUNTRIES.find(k => k.code.toLowerCase() === c.id.toLowerCase()) !== undefined &&
+                      country === COUNTRIES.find(k => k.code.toLowerCase() === c.id.toLowerCase())!.code;
+                    const rankColors = ["#ffd700", "#c0c0c0", "#cd7f32", "rgba(255,255,255,0.45)", "rgba(255,255,255,0.35)"];
+                    const rankColor  = rankColors[idx] ?? "rgba(255,255,255,0.35)";
+                    const srColor    = c.success_rate >= 70 ? GREEN : c.success_rate >= 40 ? ACCENT : RED;
+                    const srBar      = Math.round(c.success_rate);
+                    return (
+                      <div
+                        key={c.id}
+                        onClick={() => { applyCountry(c.id); setSmsPoolCountryId(c.id); setAutoCountryMsg(`✅ ${c.name}`); }}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 10,
+                          padding: "10px 13px",
+                          borderBottom: idx < autoCountryTop5.length - 1 ? `1px solid ${BORDER}` : "none",
+                          cursor: "pointer",
+                          background: isSelected ? `${GREEN}0c` : "transparent",
+                          transition: "background 0.15s",
+                        }}
+                      >
+                        {/* Rank badge */}
+                        <div style={{
+                          width: 22, height: 22, borderRadius: 7, flexShrink: 0,
+                          background: `${rankColor}18`,
+                          border: `1.5px solid ${rankColor}55`,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 10, fontWeight: 800, color: rankColor,
+                        }}>
+                          {c.rank}
+                        </div>
+
+                        {/* Country name + stock */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            fontSize: 12, fontWeight: isSelected ? 700 : 600,
+                            color: isSelected ? GREEN : "rgba(226,232,255,0.88)",
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          }}>
+                            {c.name}
+                            {isSelected && (
+                              <span style={{ marginLeft: 6, fontSize: 10, color: GREEN, fontWeight: 700 }}>
+                                {L("● selected", "● обрано")}
+                              </span>
+                            )}
+                          </div>
+                          {/* Success rate bar */}
+                          <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                            <div style={{
+                              flex: 1, height: 3, borderRadius: 2,
+                              background: "rgba(255,255,255,0.08)",
+                              overflow: "hidden",
+                            }}>
+                              <div style={{
+                                width: `${srBar}%`, height: "100%",
+                                background: srColor,
+                                borderRadius: 2,
+                                transition: "width 0.4s ease",
+                              }} />
+                            </div>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: srColor, flexShrink: 0 }}>
+                              {c.success_rate}%
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Stock pill */}
+                        <div style={{
+                          flexShrink: 0, fontSize: 10, fontWeight: 600,
+                          color: "rgba(255,255,255,0.35)",
+                          background: GLASS,
+                          border: `1px solid ${BORDER}`,
+                          borderRadius: 6, padding: "2px 7px",
+                        }}>
+                          {c.quantity > 999 ? "999+" : c.quantity} {L("avail", "шт")}
+                        </div>
+
+                        {/* Tap arrow */}
+                        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", flexShrink: 0 }}>›</div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Error state (no top5) */}
+                  {autoCountryTop5.length === 0 && autoCountryMsg && !autoCountryMsg.startsWith("✅") && (
+                    <div style={{ padding: "10px 13px", fontSize: 11, color: RED, lineHeight: 1.5 }}>
+                      {autoCountryMsg}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

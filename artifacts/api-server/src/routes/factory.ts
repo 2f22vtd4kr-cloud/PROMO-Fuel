@@ -261,7 +261,15 @@ interface SuccessRateItem {
   quantity:     number;
 }
 
-const _bestCountryCache = new Map<string, { ts: number; data: { id: string; name: string; success_rate: number } }>();
+interface BestCountryResult {
+  id:           string;
+  name:         string;
+  success_rate: number;
+  quantity:     number;
+  rank:         number;
+}
+
+const _bestCountryCache = new Map<string, { ts: number; best: BestCountryResult; top5: BestCountryResult[] }>();
 
 router.get("/best-country", async (req: Request, res: Response) => {
   const apiKey  = String(req.query["api_key"] ?? process.env["SMSPOOL_API_KEY"] ?? "").trim();
@@ -334,22 +342,22 @@ router.get("/best-country", async (req: Request, res: Response) => {
       return void res.status(404).json({ error: "No countries with available stock found" });
     }
 
-    // Pick the country with the highest success_rate; break ties by quantity
+    // Sort by success_rate desc, break ties by quantity
     parsed.sort((a, b) =>
       b.success_rate - a.success_rate || b.quantity - a.quantity
     );
 
-    const best = parsed[0]!;
-    const result = {
-      id:           best.country_id,
-      name:         best.country_name,
-      success_rate: best.success_rate,
-      quantity:     best.quantity,
-      cached:       false,
-    };
+    const top5: BestCountryResult[] = parsed.slice(0, 5).map((c, i) => ({
+      id:           c.country_id,
+      name:         c.country_name,
+      success_rate: c.success_rate,
+      quantity:     c.quantity,
+      rank:         i + 1,
+    }));
 
-    _bestCountryCache.set(cacheKey, { ts: Date.now(), data: result });
-    return void res.json(result);
+    const best = top5[0]!;
+    _bestCountryCache.set(cacheKey, { ts: Date.now(), best, top5 });
+    return void res.json({ ...best, top5, cached: false });
   } catch (err: unknown) {
     return void res.status(502).json({ error: `SMSPool unreachable: ${String(err)}` });
   }
