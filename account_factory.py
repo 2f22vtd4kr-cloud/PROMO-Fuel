@@ -458,9 +458,7 @@ async def _registration_stream(
             yield _sse("step", {"step": 2, "status": "running",
                                 "message": "📡 Routing Telethon connection via Residential Proxy..."})
 
-            device_model   = random.choice(DEVICE_MODELS)
-            system_version = random.choice(SYSTEM_VERSIONS)
-            app_version    = random.choice(APP_VERSIONS)
+            device_model, system_version, app_version = random.choice(DEVICE_PROFILES)
 
             digits       = raw_num
             session_path = os.path.join(SESSION_DIR, digits)
