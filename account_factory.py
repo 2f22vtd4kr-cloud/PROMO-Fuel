@@ -340,17 +340,17 @@ async def _registration_stream(
     """Async generator yielding SSE chunks for the full 8-step pipeline."""
     os.makedirs(SESSION_DIR, exist_ok=True)
 
-    order_id: str | None = None
-    phone:    str | None = None
-    client:   TelegramClient | None = None
+    order_code: str | None = None   # alphanumeric e.g. "ECKU5XM9" — used for check/cancel
+    phone:      str | None = None
+    client:     TelegramClient | None = None
 
     async def cancel_order():
-        if order_id:
+        if order_code:
             try:
                 async with aiohttp.ClientSession() as h:
                     await h.post(
                         SMSPOOL_CANCEL,
-                        data={"key": smspool_api_key, "orderid": order_id},
+                        data={"key": smspool_api_key, "orderid": order_code},
                         timeout=aiohttp.ClientTimeout(total=10),
                     )
             except Exception:
@@ -408,10 +408,11 @@ async def _registration_stream(
             })
             return
 
-        # SMSPool returns order_id (or orderid) — check both forms
-        order_id = str(result.get("order_id") or result.get("orderid") or result.get("id") or "")
-        raw_num  = str(result.get("number", "")).replace("+", "").strip()
-        phone    = f"+{raw_num}"
+        # SMSPool purchase returns alphanumeric order_code (e.g. "ECKU5XM9")
+        # This is what sms/check and sms/cancel expect as "orderid"
+        order_code = str(result.get("order_code") or result.get("order_id") or result.get("id") or "")
+        raw_num    = str(result.get("number", "")).replace("+", "").strip()
+        phone      = f"+{raw_num}"
 
         yield _sse("step", {"step": 1, "status": "done",
                             "message": f"📱 Number Acquired: {phone}"})
@@ -489,22 +490,26 @@ async def _registration_stream(
 
         code: str | None = None
         deadline    = time.time() + 120
-        resent_code = False  # whether we've already tried resending
+        resent_code = False  # whether we've already tried Telegram resend
 
-        def _extract_code(raw_sms: str) -> str | None:
-            """Extract a 5-digit (or 4-8 digit) code from a raw SMS string."""
-            s = str(raw_sms or "").strip()
-            if s and s.isdigit() and 4 <= len(s) <= 8:
+        def _extract_code(raw: str) -> str | None:
+            """Extract a 4–8 digit code from a raw string or full SMS message."""
+            s = str(raw or "").strip()
+            if s and s != "0" and s.isdigit() and 4 <= len(s) <= 8:
                 return s
-            # Try parsing from full SMS text (e.g. "Your code is 12345")
             m = re.search(r"\b(\d{4,8})\b", s)
             return m.group(1) if m else None
+
+        # Use /request/active for polling — recommended by SMSPool for all polling.
+        # It returns the live order list with "code" field ("0" while waiting,
+        # digits when the SMS arrives) and "full_code" (full message text).
+        SMSPOOL_ACTIVE = "https://api.smspool.net/request/active"
 
         async with aiohttp.ClientSession() as http:
             while time.time() < deadline:
                 remaining = int(deadline - time.time())
 
-                # After 60 s with no code, resend the code request once
+                # After 60 s with no code, resend the Telegram code request once
                 if not resent_code and remaining <= 60:
                     resent_code = True
                     try:
@@ -512,49 +517,58 @@ async def _registration_stream(
                         phone_code_hash = resent.phone_code_hash
                         yield _sse("poll", {
                             "remaining": remaining,
-                            "message": f"🔄 Resending code request to Telegram... ({remaining}s remaining)",
+                            "message": f"🔄 Resending Telegram code request... ({remaining}s remaining)",
                         })
                     except Exception:
-                        pass  # resend failed silently — keep polling
+                        pass  # resend failed — keep polling
 
                 yield _sse("poll", {
                     "remaining": remaining,
                     "message": f"💬 Polling SMS... ({remaining}s remaining)",
                 })
                 await asyncio.sleep(5)
+
                 try:
-                    # sms/check is POST (not GET) per SMSPool API spec
-                    # parameter is "orderid" (no underscore)
                     async with http.post(
-                        SMSPOOL_CHECK,
-                        data={"key": smspool_api_key, "orderid": order_id},
+                        SMSPOOL_ACTIVE,
+                        data={"key": smspool_api_key},
                         timeout=aiohttp.ClientTimeout(total=10),
                     ) as resp:
-                        data = await resp.json(content_type=None)
+                        orders = await resp.json(content_type=None)
 
-                    # Primary: structured `sms` field
-                    # Fallback: regex extract from `full_sms` (full message text)
-                    code = (
-                        _extract_code(data.get("sms"))
-                        or _extract_code(data.get("full_sms"))
-                        or _extract_code(data.get("code"))
-                    )
+                    if not isinstance(orders, list):
+                        continue
+
+                    # Find our order by order_code or by phone number suffix
+                    for order in orders:
+                        if not isinstance(order, dict):
+                            continue
+                        if (str(order.get("order_code", "")) == order_code
+                                or str(order.get("phonenumber", "")).endswith(raw_num)):
+                            raw_code = str(order.get("code", "0"))
+                            full_msg  = str(order.get("full_code", ""))
+                            status_id = order.get("status_id", 1)
+
+                            code = _extract_code(raw_code) or _extract_code(full_msg)
+                            if code:
+                                break
+
+                            # Show live status for debugging
+                            status_label = order.get("status", str(status_id))
+                            yield _sse("poll", {
+                                "remaining": remaining,
+                                "message": (
+                                    f"💬 Polling SMS... ({remaining}s remaining) "
+                                    f"[order={order_code}, status={status_label}]"
+                                ),
+                            })
+                            break  # found our order, no code yet
                     if code:
                         break
-
-                    # Stream the raw SMSPool status for UI debugging
-                    status = str(data.get("status", "")).lower()
-                    yield _sse("poll", {
-                        "remaining": remaining,
-                        "message": (
-                            f"💬 Polling SMS... ({remaining}s remaining) "
-                            f"[SMSPool: status={status or '?'}]"
-                        ),
-                    })
                 except Exception as exc:
                     yield _sse("poll", {
                         "remaining": remaining,
-                        "message": f"💬 Polling SMS... ({remaining}s remaining) [check error: {exc}]",
+                        "message": f"💬 Polling SMS... ({remaining}s remaining) [poll error: {exc}]",
                     })
 
         if not code:
