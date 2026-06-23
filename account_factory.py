@@ -29,7 +29,9 @@ from telethon.errors import (
     PhoneNumberUnoccupiedError,
     SessionPasswordNeededError,
 )
-from telethon.tl.functions.auth import ResendCodeRequest, SendCodeRequest as RawSendCodeRequest
+from telethon.tl.functions.auth import (
+    ResendCodeRequest, SendCodeRequest as RawSendCodeRequest, CancelCodeRequest,
+)
 from telethon.tl import types as tl_types
 from telethon.tl.functions.account import UpdateProfileRequest
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
@@ -384,265 +386,277 @@ async def _registration_stream(
             return
         yield _sse("preflight", {"status": "done", "message": proxy_msg})
 
-        # ─── Step 1 — Purchase number ────────────────────────────────────
-        yield _sse("step", {"step": 1, "status": "running",
-                            "message": "⏳ Requesting an optimized number from SMSPool..."})
-
-        async with aiohttp.ClientSession() as http:
-            async with http.post(
-                SMSPOOL_BUY,
-                data={"key": smspool_api_key, "service": TELEGRAM_SERVICE_ID,
-                      "country": country_id, "pricing_option": "1"},
-                timeout=aiohttp.ClientTimeout(total=30),
-            ) as resp:
-                raw = await resp.text()
-
-        try:
-            result = json.loads(raw)
-        except Exception:
-            yield _sse("error", {"message": f"SMSPool returned non-JSON: {raw[:300]}"})
-            return
-
-        if not result.get("success") and "number" not in result:
-            yield _sse("error", {
-                "message": f"SMSPool purchase failed: {result.get('message') or result}"
-            })
-            return
-
-        # SMSPool purchase returns alphanumeric order_code (e.g. "ECKU5XM9")
-        # This is what sms/check and sms/cancel expect as "orderid"
-        order_code = str(result.get("order_code") or result.get("order_id") or result.get("id") or "")
-        raw_num    = str(result.get("number", "")).replace("+", "").strip()
-        phone      = f"+{raw_num}"
-
-        yield _sse("step", {"step": 1, "status": "done",
-                            "message": f"📱 Number Acquired: {phone}"})
-
-        # ─── Step 2 — Init Telethon client ───────────────────────────────
-        yield _sse("step", {"step": 2, "status": "running",
-                            "message": "📡 Routing Telethon connection via Residential Proxy..."})
-
-        device_model   = random.choice(DEVICE_MODELS)
-        system_version = random.choice(SYSTEM_VERSIONS)
-        app_version    = random.choice(APP_VERSIONS)
-        lang_code      = "en"
-        system_lang    = "en-US"
-
-        digits       = raw_num
-        session_path = os.path.join(SESSION_DIR, digits)
-        proxy_tuple  = _parse_proxy(proxy_string) if proxy_string else None
-
-        client = TelegramClient(
-            session_path, api_id, api_hash,
-            proxy=proxy_tuple,
-            device_model=device_model,
-            system_version=system_version,
-            app_version=app_version,
-            lang_code=lang_code,
-            system_lang_code=system_lang,
-        )
-        await client.connect()
-
-        yield _sse("step", {"step": 2, "status": "done",
-                            "message": "📡 Proxy tunnel established — Telethon connected"})
-
-        # ─── Step 3 — Request code (SMS-forced) ─────────────────────────
-        yield _sse("step", {"step": 3, "status": "running",
-                            "message": "💬 Requesting Telegram SMS verification code..."})
-
-        # Force SMS-only from the first request using CodeSettings.
-        # This bypasses the flash-call → ResendCodeRequest → SendCodeUnavailable trap.
-        phone_code_hash: str = ""
-        code_type_name: str = "SentCodeTypeSms"
-        sent = None
-
-        try:
-            raw_result = await client(RawSendCodeRequest(
-                phone_number=phone,
-                api_id=api_id,
-                api_hash=api_hash,
-                settings=tl_types.CodeSettings(
-                    allow_flashcall=False,
-                    allow_app=False,
-                    allow_missed_call=False,
-                    allow_firebase=False,
-                ),
-            ))
-            phone_code_hash = raw_result.phone_code_hash
-            code_type_name  = type(raw_result.type).__name__ if raw_result.type else "SentCodeTypeSms"
-            sent = raw_result
-        except PhoneNumberBannedError:
-            yield _sse("step", {"step": 3, "status": "error",
-                                "message": "🚫 Number pre-banned — cancelling order..."})
-            await cancel_order()
-            yield _sse("error", {
-                "message": "⛔ This phone number is pre-banned by Telegram. "
-                           "Order cancelled — no funds wasted. Please try again."
-            })
-            return
-        except Exception as e_sms_force:
-            # SMS-force failed — fall back to standard send_code_request then resend
-            yield _sse("step", {"step": 3, "status": "running",
-                                "message": f"⚠️ SMS-force failed ({type(e_sms_force).__name__}) — trying standard flow..."})
-            try:
-                sent = await client.send_code_request(phone)
-                phone_code_hash = sent.phone_code_hash
-                code_type_name  = type(sent.type).__name__ if sent.type else "Unknown"
-            except PhoneNumberBannedError:
-                yield _sse("step", {"step": 3, "status": "error",
-                                    "message": "🚫 Number pre-banned — cancelling order..."})
-                await cancel_order()
-                yield _sse("error", {
-                    "message": "⛔ This phone number is pre-banned by Telegram. "
-                               "Order cancelled — no funds wasted. Please try again."
-                })
-                return
-            except Exception as e2:
-                yield _sse("step", {"step": 3, "status": "error",
-                                    "message": f"❌ Code request failed: {e2}"})
-                await cancel_order()
-                yield _sse("error", {"message": f"Failed to request code from Telegram: {e2}"})
-                return
-
-            # If still non-SMS, try one ResendCodeRequest
-            if sent and ("App" in code_type_name or "Flash" in code_type_name or "Firebase" in code_type_name):
-                try:
-                    forced = await client(ResendCodeRequest(phone_number=phone, phone_code_hash=phone_code_hash))
-                    phone_code_hash = forced.phone_code_hash
-                    code_type_name  = type(forced.type).__name__ if forced.type else code_type_name
-                except Exception:
-                    pass  # keep polling with original hash
-
-        yield _sse("step", {"step": 3, "status": "done",
-                            "message": f"✅ Code requested via {code_type_name} — waiting for SMS..."})
-
-        # ─── Step 4 — Poll for SMS code ──────────────────────────────────
-        yield _sse("step", {"step": 4, "status": "running",
-                            "message": "💬 Waiting for Telegram SMS verification code (Timeout in 180s)..."})
-
+        # ─── Steps 1–4 retry loop ─────────────────────────────────────────
+        # If a purchased number fails (SentCodeTypeApp / SMS timeout), automatically
+        # cancel it, buy a fresh number and retry — up to MAX_NUM_RETRIES times.
+        MAX_NUM_RETRIES = 3
         code: str | None = None
-        deadline    = time.time() + 180
-        resent_code = False  # whether we've already tried Telegram resend
+        raw_num: str = ""
 
-        def _extract_code(raw: str) -> str | None:
-            """Extract a 4–8 digit code from a raw string or full SMS message."""
-            s = str(raw or "").strip()
-            if s and s != "0" and s.isdigit() and 4 <= len(s) <= 8:
-                return s
-            m = re.search(r"\b(\d{4,8})\b", s)
-            return m.group(1) if m else None
+        for _num_attempt in range(MAX_NUM_RETRIES):
 
-        # Primary: /sms/check — works for ALL statuses (1=pending, 3=complete, 6=refunded).
-        # Critical: when code arrives, order status becomes 3 (complete) and it LEAVES the
-        # /request/active list. Using /sms/check directly prevents missing the code.
-        # Fallback: /request/active — catches cases where order_code is wrong/missing.
-        SMSPOOL_CHECK  = "https://api.smspool.net/sms/check"
-        SMSPOOL_ACTIVE = "https://api.smspool.net/request/active"
+            # ─── Step 1 — Purchase number ─────────────────────────────────
+            _retry_label = f" (retry {_num_attempt}/{MAX_NUM_RETRIES-1})" if _num_attempt else ""
+            yield _sse("step", {"step": 1, "status": "running",
+                                "message": f"⏳ Requesting number from SMSPool{_retry_label}..."})
 
-        async with aiohttp.ClientSession() as http:
-            while time.time() < deadline:
-                remaining = int(deadline - time.time())
-
-                # After 90 s with no code, resend the Telegram code request once
-                if not resent_code and remaining <= 90:
-                    resent_code = True
-                    try:
-                        resent = await client(ResendCodeRequest(phone_number=phone, phone_code_hash=phone_code_hash))
-                        phone_code_hash = resent.phone_code_hash
-                        yield _sse("poll", {
-                            "remaining": remaining,
-                            "message": f"🔄 Resending Telegram code request... ({remaining}s remaining)",
-                        })
-                    except Exception:
-                        pass  # resend failed — keep polling
-
-                yield _sse("poll", {
-                    "remaining": remaining,
-                    "message": f"💬 Polling SMS... ({remaining}s remaining)",
-                })
-                await asyncio.sleep(4)
-
-                try:
-                    # Primary: poll /sms/check directly by order_id.
-                    # This catches status 3 (complete) even after the order leaves the active list.
-                    if order_code:
-                        async with http.post(
-                            SMSPOOL_CHECK,
-                            data={"key": smspool_api_key, "orderid": order_code},
-                            timeout=aiohttp.ClientTimeout(total=10),
-                        ) as resp:
-                            chk = await resp.json(content_type=None)
-
-                        if isinstance(chk, dict):
-                            status_id = chk.get("status", 1)
-                            if status_id == 3:
-                                # Code received
-                                raw_code = str(chk.get("sms", ""))
-                                full_msg  = str(chk.get("full_sms", ""))
-                                code = _extract_code(raw_code) or _extract_code(full_msg)
-                                if code:
-                                    break
-                            elif status_id == 6:
-                                # Refunded — no point waiting further
-                                yield _sse("poll", {
-                                    "remaining": remaining,
-                                    "message": f"💬 Order refunded by SMSPool ({remaining}s remaining) — retrying...",
-                                })
-                            else:
-                                # status 1 = pending
-                                yield _sse("poll", {
-                                    "remaining": remaining,
-                                    "message": (
-                                        f"💬 Polling SMS... ({remaining}s remaining) "
-                                        f"[order={order_code}, status=pending]"
-                                    ),
-                                })
-                            continue  # skip fallback if check succeeded
-
-                    # Fallback: /request/active (covers missing order_code case)
+            try:
+                async with aiohttp.ClientSession() as http:
                     async with http.post(
-                        SMSPOOL_ACTIVE,
-                        data={"key": smspool_api_key},
-                        timeout=aiohttp.ClientTimeout(total=10),
+                        SMSPOOL_BUY,
+                        data={"key": smspool_api_key, "service": TELEGRAM_SERVICE_ID,
+                              "country": country_id, "pricing_option": "1"},
+                        timeout=aiohttp.ClientTimeout(total=30),
                     ) as resp:
-                        orders = await resp.json(content_type=None)
+                        raw = await resp.text()
+            except Exception as e_buy:
+                yield _sse("error", {"message": f"SMSPool unreachable: {e_buy}"})
+                return
 
-                    if not isinstance(orders, list):
-                        continue
+            try:
+                result = json.loads(raw)
+            except Exception:
+                yield _sse("error", {"message": f"SMSPool returned non-JSON: {raw[:300]}"})
+                return
 
-                    for order in orders:
-                        if not isinstance(order, dict):
-                            continue
-                        if (str(order.get("order_code", "")) == order_code
-                                or str(order.get("phonenumber", "")).endswith(raw_num)):
-                            raw_code = str(order.get("code", "0"))
-                            full_msg  = str(order.get("full_code", ""))
-                            code = _extract_code(raw_code) or _extract_code(full_msg)
+            if not result.get("success") and "number" not in result:
+                yield _sse("error", {
+                    "message": f"SMSPool purchase failed: {result.get('message') or result}"
+                })
+                return
+
+            # SMSPool purchase returns order_id (e.g. "ECKU5XM9")
+            order_code = str(result.get("order_code") or result.get("order_id") or result.get("id") or "")
+            raw_num    = str(result.get("number", "")).replace("+", "").strip()
+            phone      = f"+{raw_num}"
+
+            yield _sse("step", {"step": 1, "status": "done",
+                                "message": f"📱 Number Acquired: {phone}"})
+
+            # ─── Step 2 — Init Telethon client ───────────────────────────
+            yield _sse("step", {"step": 2, "status": "running",
+                                "message": "📡 Routing Telethon connection via Residential Proxy..."})
+
+            device_model   = random.choice(DEVICE_MODELS)
+            system_version = random.choice(SYSTEM_VERSIONS)
+            app_version    = random.choice(APP_VERSIONS)
+
+            digits       = raw_num
+            session_path = os.path.join(SESSION_DIR, digits)
+            proxy_tuple  = _parse_proxy(proxy_string) if proxy_string else None
+
+            # Delete stale session files — a leftover .session from a previous failed
+            # attempt on the same number makes Telegram return SentCodeTypeApp.
+            for _ext in (".session", ".session-journal"):
+                try:
+                    os.remove(session_path + _ext)
+                except FileNotFoundError:
+                    pass
+
+            client = TelegramClient(
+                session_path, api_id, api_hash,
+                proxy=proxy_tuple,
+                device_model=device_model,
+                system_version=system_version,
+                app_version=app_version,
+                lang_code="en",
+                system_lang_code="en-US",
+            )
+            await client.connect()
+
+            yield _sse("step", {"step": 2, "status": "done",
+                                "message": "📡 Proxy tunnel established — Telethon connected"})
+
+            # ─── Step 3 — Request code (SMS-forced) ──────────────────────
+            yield _sse("step", {"step": 3, "status": "running",
+                                "message": "💬 Requesting Telegram SMS verification code..."})
+
+            phone_code_hash: str = ""
+            code_type_name: str = "SentCodeTypeSms"
+
+            # Use RawSendCodeRequest with CodeSettings to discourage non-SMS delivery.
+            # Valid fields: allow_flashcall, current_number, allow_app_hash,
+            # allow_missed_call, allow_firebase.  There is NO allow_app field.
+            # current_number=False discourages SentCodeTypeApp routing.
+            _banned = False
+            try:
+                raw_result = await client(RawSendCodeRequest(
+                    phone_number=phone,
+                    api_id=api_id,
+                    api_hash=api_hash,
+                    settings=tl_types.CodeSettings(
+                        allow_flashcall=False,
+                        allow_missed_call=False,
+                        allow_firebase=False,
+                        current_number=False,
+                    ),
+                ))
+                phone_code_hash = raw_result.phone_code_hash
+                code_type_name  = type(raw_result.type).__name__ if raw_result.type else "SentCodeTypeSms"
+            except PhoneNumberBannedError:
+                _banned = True
+            except Exception:
+                # Raw request failed — fall back to standard helper
+                try:
+                    fb = await client.send_code_request(phone)
+                    phone_code_hash = fb.phone_code_hash
+                    code_type_name  = type(fb.type).__name__ if fb.type else "Unknown"
+                except PhoneNumberBannedError:
+                    _banned = True
+                except Exception as e2:
+                    yield _sse("step", {"step": 3, "status": "error",
+                                        "message": f"❌ Code request failed: {e2}"})
+                    await cancel_order()
+                    await safe_disconnect()
+                    yield _sse("error", {"message": f"Failed to request code from Telegram: {e2}"})
+                    return
+
+            if _banned:
+                yield _sse("step", {"step": 3, "status": "running",
+                                    "message": "🚫 Number pre-banned — cancelling and trying new number..."})
+                await cancel_order()
+                await safe_disconnect()
+                continue  # auto-retry with new number
+
+            # If Telegram chose app/flash, force-switch to SMS via ResendCodeRequest (up to 3×).
+            _non_sms = ("App", "Flash", "Firebase", "MissedCall")
+            if any(t in code_type_name for t in _non_sms):
+                yield _sse("step", {"step": 3, "status": "running",
+                                    "message": f"📲 Got {code_type_name} — forcing SMS switch..."})
+                for _rs in range(3):
+                    await asyncio.sleep(2)
+                    try:
+                        forced = await client(ResendCodeRequest(
+                            phone_number=phone, phone_code_hash=phone_code_hash,
+                        ))
+                        phone_code_hash = forced.phone_code_hash
+                        code_type_name  = type(forced.type).__name__ if forced.type else code_type_name
+                        if not any(t in code_type_name for t in _non_sms):
+                            break
+                        yield _sse("step", {"step": 3, "status": "running",
+                                            "message": f"🔄 Still {code_type_name}, resend {_rs+1}/3..."})
+                    except Exception as e_rs:
+                        yield _sse("step", {"step": 3, "status": "running",
+                                            "message": f"⚠️ Resend {_rs+1}/3: {type(e_rs).__name__} — polling anyway..."})
+                        break  # SMS may have been triggered as fallback; proceed to poll
+
+            yield _sse("step", {"step": 3, "status": "done",
+                                "message": f"✅ Code sent via {code_type_name} — polling SMSPool..."})
+
+            # ─── Step 4 — Poll for SMS code ──────────────────────────────
+            yield _sse("step", {"step": 4, "status": "running",
+                                "message": "💬 Waiting for Telegram SMS verification code (Timeout in 180s)..."})
+
+            _deadline    = time.time() + 180
+            _resent_code = False
+
+            def _extract_code(raw: str) -> str | None:
+                s = str(raw or "").strip()
+                if s and s != "0" and s.isdigit() and 4 <= len(s) <= 8:
+                    return s
+                m = re.search(r"\b(\d{4,8})\b", s)
+                return m.group(1) if m else None
+
+            _SMSPOOL_CHECK  = "https://api.smspool.net/sms/check"
+            _SMSPOOL_ACTIVE = "https://api.smspool.net/request/active"
+
+            async with aiohttp.ClientSession() as _http:
+                while time.time() < _deadline:
+                    _remaining = int(_deadline - time.time())
+
+                    # Mid-poll resend at 90 s remaining
+                    if not _resent_code and _remaining <= 90:
+                        _resent_code = True
+                        try:
+                            _resent = await client(ResendCodeRequest(
+                                phone_number=phone, phone_code_hash=phone_code_hash,
+                            ))
+                            phone_code_hash = _resent.phone_code_hash
+                            yield _sse("poll", {"remaining": _remaining,
+                                                "message": f"🔄 Resending Telegram code... ({_remaining}s left)"})
+                        except Exception:
+                            pass
+
+                    yield _sse("poll", {"remaining": _remaining,
+                                        "message": f"💬 Polling SMS... ({_remaining}s remaining)"})
+                    await asyncio.sleep(4)
+
+                    try:
+                        # Primary: /sms/check — catches status 3 (complete) even after
+                        # the order leaves the /request/active list.
+                        if order_code:
+                            async with _http.post(
+                                _SMSPOOL_CHECK,
+                                data={"key": smspool_api_key, "orderid": order_code},
+                                timeout=aiohttp.ClientTimeout(total=10),
+                            ) as _resp:
+                                _chk = await _resp.json(content_type=None)
+
+                            if isinstance(_chk, dict):
+                                _sid = _chk.get("status", 1)
+                                if _sid == 3:
+                                    code = _extract_code(str(_chk.get("sms", ""))) \
+                                        or _extract_code(str(_chk.get("full_sms", "")))
+                                    if code:
+                                        break
+                                elif _sid == 6:
+                                    yield _sse("poll", {"remaining": _remaining,
+                                                        "message": "💬 Order refunded — will retry..."})
+                                    break  # no point waiting; auto-retry outer loop
+                                else:
+                                    yield _sse("poll", {"remaining": _remaining,
+                                                        "message": f"💬 Polling... ({_remaining}s) [pending]"})
+                                continue  # skip fallback
+
+                        # Fallback: /request/active
+                        async with _http.post(
+                            _SMSPOOL_ACTIVE,
+                            data={"key": smspool_api_key},
+                            timeout=aiohttp.ClientTimeout(total=10),
+                        ) as _resp:
+                            _orders = await _resp.json(content_type=None)
+
+                        if isinstance(_orders, list):
+                            for _o in _orders:
+                                if not isinstance(_o, dict):
+                                    continue
+                                if (str(_o.get("order_code", "")) == order_code
+                                        or str(_o.get("phonenumber", "")).endswith(raw_num)):
+                                    code = (_extract_code(str(_o.get("code", "0")))
+                                            or _extract_code(str(_o.get("full_code", ""))))
+                                    if not code:
+                                        yield _sse("poll", {
+                                            "remaining": _remaining,
+                                            "message": f"💬 Polling (active)... ({_remaining}s) [{_o.get('status','pending')}]"
+                                        })
+                                    break
                             if code:
                                 break
-                            status_label = order.get("status", "pending")
-                            yield _sse("poll", {
-                                "remaining": remaining,
-                                "message": (
-                                    f"💬 Polling SMS (active)... ({remaining}s remaining) "
-                                    f"[order={order_code}, status={status_label}]"
-                                ),
-                            })
-                            break
-                    if code:
-                        break
 
-                except Exception as exc:
-                    yield _sse("poll", {
-                        "remaining": remaining,
-                        "message": f"💬 Polling SMS... ({remaining}s remaining) [poll error: {exc}]",
-                    })
+                    except Exception as _exc:
+                        yield _sse("poll", {"remaining": _remaining,
+                                            "message": f"💬 Polling... ({_remaining}s) [err: {_exc}]"})
 
-        if not code:
+            # End of polling window
+            if code:
+                break  # exit the number-retry loop — we have a code!
+
+            # No code — cancel order and auto-retry with a new number
             await cancel_order()
+            await safe_disconnect()
+            _nums_left = MAX_NUM_RETRIES - _num_attempt - 1
+            if _nums_left > 0:
+                yield _sse("poll", {
+                    "remaining": 0,
+                    "message": f"⏱️ SMS timeout — auto-buying new number ({_nums_left} attempt(s) left)...",
+                })
+            # continue outer loop
+
+        # ── After retry loop ──────────────────────────────────────────────
+        if not code:
             yield _sse("sms_retry_prompt", {
                 "country_id": country_id,
-                "message": "⏱️ SMS code not received within 2 minutes. Order cancelled automatically.",
+                "message": "⏱️ SMS code not received after 3 number attempts. Please try again.",
             })
             return
 
