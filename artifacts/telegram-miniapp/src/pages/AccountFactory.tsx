@@ -146,6 +146,228 @@ function StepRow({ def, state, lang }: {
 
 const initSteps = (): StepState[] => STEP_DEFS.map(() => ({ status: "waiting" as StepStatus }));
 
+// ── Decodo proxy utilities ────────────────────────────────────────────────────
+
+interface DecodoParsed {
+  baseUser:    string;   // everything before "-country-XX"
+  countryCode: string;   // lowercase 2-letter code
+  password:    string;
+  host:        string;
+  port:        string;
+}
+
+/** Extract a socks5(h):// URL from a raw string (curl command, plain URL, etc.) */
+function extractProxyUrl(raw: string): string {
+  // strip surrounding whitespace/newlines
+  const s = raw.trim();
+  // match first socks5h?:// URL (possibly inside quotes)
+  const m = s.match(/socks5h?:\/\/[^\s"']+/i);
+  return m ? m[0]! : s;
+}
+
+/** Parse a Decodo-style proxy URL into its components. Returns null if not parseable. */
+function parseDecodoProxy(raw: string): DecodoParsed | null {
+  try {
+    const url = extractProxyUrl(raw)
+      .replace(/^socks5h:\/\//i, "socks5://"); // normalise socks5h → socks5
+    // Must start with socks5://
+    if (!/^socks5:\/\//i.test(url)) return null;
+
+    // socks5://user:pass@host:port
+    const rest = url.slice("socks5://".length);
+    const atIdx = rest.lastIndexOf("@");
+    if (atIdx === -1) return null;
+
+    const userinfo = rest.slice(0, atIdx);
+    const hostPort = rest.slice(atIdx + 1);
+
+    // password may contain special chars; split on first ":"
+    const colonIdx = userinfo.indexOf(":");
+    if (colonIdx === -1) return null;
+    const user     = userinfo.slice(0, colonIdx);
+    const password = userinfo.slice(colonIdx + 1);
+
+    // host:port
+    const lastColon = hostPort.lastIndexOf(":");
+    const host = lastColon >= 0 ? hostPort.slice(0, lastColon) : hostPort;
+    const port = lastColon >= 0 ? hostPort.slice(lastColon + 1) : "7000";
+
+    // Extract -country-XX from username
+    const countryMatch = user.match(/-country-([a-z]{2})$/i);
+    if (!countryMatch) return null;
+
+    const countryCode = countryMatch[1]!.toLowerCase();
+    const baseUser    = user.slice(0, user.length - `-country-${countryCode}`.length);
+
+    return { baseUser, countryCode, password, host, port };
+  } catch {
+    return null;
+  }
+}
+
+/** Rebuild a Decodo proxy URL for a different country code. */
+function buildDecodoProxy(p: DecodoParsed, newCountryCode: string): string {
+  const cc = newCountryCode.toLowerCase();
+  return `socks5://${p.baseUser}-country-${cc}:${p.password}@${p.host}:${p.port}`;
+}
+
+// ── ProxyGenHelper ────────────────────────────────────────────────────────────
+// Self-contained helper widget: paste a Decodo curl / proxy URL + pick a
+// country code → get the ready-to-use socks5:// URL for that country.
+function ProxyGenHelper({
+  lang,
+  L,
+  initialValue,
+  onApply,
+}: {
+  lang: string;
+  L: (en: string, ua: string) => string;
+  initialValue: string;
+  onApply: (url: string) => void;
+}) {
+  const [rawInput,   setRawInput]   = React.useState(initialValue);
+  const [countryCode, setCountryCode] = React.useState("");
+  const [copied,     setCopied]     = React.useState(false);
+
+  const parsed = React.useMemo(() => parseDecodoProxy(rawInput), [rawInput]);
+  const generated = React.useMemo(() => {
+    if (!parsed || !countryCode.trim()) return "";
+    return buildDecodoProxy(parsed, countryCode.trim());
+  }, [parsed, countryCode]);
+
+  function copyToClipboard(text: string) {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  }
+
+  return (
+    <div style={{
+      marginTop: 8,
+      background: "rgba(7,9,20,0.98)",
+      border: "1px solid rgba(255,200,50,0.3)",
+      borderRadius: 14, padding: "14px 14px 12px",
+    }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,200,50,0.6)",
+        letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>
+        🔧 {L("Decodo Proxy Builder", "Генератор проксі Decodo")}
+      </div>
+
+      {/* Step 1: paste curl or URL */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginBottom: 4 }}>
+          {L("1. Paste curl command or socks5h:// URL from Decodo", "1. Вставте curl-команду або socks5h:// URL з Decodo")}
+        </div>
+        <textarea
+          rows={3}
+          value={rawInput}
+          onChange={e => setRawInput(e.target.value)}
+          placeholder={'curl -x "socks5h://user-xxx-country-lr:pass@gate.decodo.com:7000" "https://ip.decodo.com/json"'}
+          style={{
+            width: "100%", boxSizing: "border-box",
+            background: "rgba(3,4,12,0.9)",
+            border: `1px solid ${parsed ? "rgba(45,232,151,0.3)" : rawInput.trim() ? "rgba(255,107,122,0.3)" : "rgba(255,255,255,0.1)"}`,
+            borderRadius: 9, padding: "8px 11px",
+            fontSize: 10, color: "rgba(226,232,255,0.8)",
+            fontFamily: "monospace", outline: "none", resize: "none", lineHeight: 1.5,
+          }}
+        />
+        {parsed && (
+          <div style={{
+            marginTop: 5, padding: "7px 11px",
+            background: "rgba(45,232,151,0.06)", border: "1px solid rgba(45,232,151,0.2)",
+            borderRadius: 8, fontSize: 10, color: "rgba(45,232,151,0.8)", lineHeight: 1.6,
+          }}>
+            ✅ {L("Parsed", "Розпізнано")} · {parsed.host}:{parsed.port} · {L("current country", "поточна країна")}: <b>{parsed.countryCode.toUpperCase()}</b>
+          </div>
+        )}
+        {!parsed && rawInput.trim() && (
+          <div style={{ marginTop: 4, fontSize: 10, color: "rgba(255,107,122,0.7)" }}>
+            {L("Could not parse — paste the full curl command or socks5h:// URL", "Не вдалося розпізнати — вставте повну curl-команду або socks5h:// URL")}
+          </div>
+        )}
+      </div>
+
+      {/* Step 2: target country code */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginBottom: 4 }}>
+          {L("2. Enter target country code (2 letters, e.g. kz, ua, ph)", "2. Введіть код нової країни (2 букви, напр. kz, ua, ph)")}
+        </div>
+        <input
+          type="text"
+          maxLength={2}
+          value={countryCode}
+          onChange={e => setCountryCode(e.target.value.toLowerCase().replace(/[^a-z]/g, ""))}
+          placeholder="kz"
+          style={{
+            width: 64, boxSizing: "border-box",
+            background: "rgba(3,4,12,0.9)",
+            border: `1px solid ${countryCode.length === 2 ? "rgba(255,200,50,0.4)" : "rgba(255,255,255,0.1)"}`,
+            borderRadius: 8, padding: "8px 12px",
+            fontSize: 14, fontWeight: 700, color: "#ffc832",
+            fontFamily: "monospace", outline: "none", textTransform: "uppercase",
+            textAlign: "center",
+          }}
+        />
+      </div>
+
+      {/* Step 3: result */}
+      {generated && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginBottom: 4 }}>
+            {L("3. Generated proxy URL", "3. Згенерований URL проксі")}
+          </div>
+          <div style={{
+            background: "rgba(255,200,50,0.06)", border: "1px solid rgba(255,200,50,0.25)",
+            borderRadius: 9, padding: "9px 11px",
+            fontSize: 10, color: "#ffc832", fontFamily: "monospace",
+            wordBreak: "break-all", lineHeight: 1.6, cursor: "pointer",
+          }}
+            onClick={() => copyToClipboard(generated)}
+          >
+            {generated}
+          </div>
+          <div style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", marginTop: 3 }}>
+            {L("Tap URL to copy", "Натисніть URL, щоб скопіювати")}
+          </div>
+        </div>
+      )}
+
+      {/* Buttons */}
+      <div style={{ display: "flex", gap: 8 }}>
+        {generated && (
+          <button
+            onClick={() => copyToClipboard(generated)}
+            style={{
+              flex: 1, padding: "9px 0", borderRadius: 10,
+              background: copied ? "rgba(45,232,151,0.15)" : "rgba(255,255,255,0.07)",
+              border: `1px solid ${copied ? "rgba(45,232,151,0.35)" : "rgba(255,255,255,0.15)"}`,
+              color: copied ? "rgba(45,232,151,0.9)" : "rgba(255,255,255,0.5)",
+              fontSize: 12, fontWeight: 700, cursor: "pointer", transition: "all 0.2s",
+            }}
+          >
+            {copied ? "✅ " + L("Copied!", "Скопійовано!") : "📋 " + L("Copy", "Копіювати")}
+          </button>
+        )}
+        {generated && (
+          <button
+            onClick={() => onApply(generated)}
+            style={{
+              flex: 2, padding: "9px 0", borderRadius: 10,
+              background: "linear-gradient(135deg, rgba(255,200,50,0.3), rgba(255,200,50,0.15))",
+              border: "1px solid rgba(255,200,50,0.5)",
+              color: "#ffc832", fontSize: 12, fontWeight: 800, cursor: "pointer",
+            }}
+          >
+            ✓ {L("Apply to Proxy Field", "Застосувати до поля проксі")}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── RecycledPopupBody ─────────────────────────────────────────────────────────
 // Inline component used inside the recycled-pool popup. Lets the user swap
 // both country AND proxy in one place before retrying.
@@ -164,16 +386,23 @@ function RecycledPopupBody({
   const [newCountry, setNewCountry] = React.useState(currentCountry);
   const [newCustom,  setNewCustom]  = React.useState(customCountry);
   const [newProxy,   setNewProxy]   = React.useState(currentProxy);
+  const [autoUpdated, setAutoUpdated] = React.useState(false);
 
   const effectiveId = newCountry === "custom" ? newCustom.trim() : newCountry;
   const canSwitch   = Boolean(effectiveId) && Boolean(newProxy.trim());
 
-  // Extract country code hint from Decodo-style proxy URL
-  // e.g. socks5://user-sp8eeeap0s-session-1-country-lr:... → "lr"
-  const proxyCountryHint = React.useMemo(() => {
-    const m = newProxy.match(/country-([a-z]{2})/i);
-    return m ? m[1]!.toUpperCase() : null;
-  }, [newProxy]);
+  // When country changes, if proxy is a Decodo URL, auto-rebuild it for the new country
+  React.useEffect(() => {
+    const p = parseDecodoProxy(newProxy);
+    if (!p || !effectiveId || effectiveId.length !== 2) return;
+    if (p.countryCode === effectiveId.toLowerCase()) return; // already correct
+    const updated = buildDecodoProxy(p, effectiveId);
+    setNewProxy(updated);
+    setAutoUpdated(true);
+    const t = setTimeout(() => setAutoUpdated(false), 2500);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newCountry, newCustom]);
 
   return (
     <>
@@ -184,9 +413,9 @@ function RecycledPopupBody({
       }}>
         {L(
           "Numbers from this country are recycled — they already have Telegram accounts. " +
-          "Switch country AND update your proxy URL for the new country, then retry.",
+          "Switch country and the proxy URL will update automatically if it's a Decodo URL.",
           "Номери цієї країни переробленні — вони вже мають акаунти Telegram. " +
-          "Змініть країну та проксі-URL для нової країни, потім спробуйте ще раз."
+          "Змініть країну — проксі-URL оновиться автоматично, якщо це Decodo URL."
         )}
       </div>
 
@@ -198,7 +427,7 @@ function RecycledPopupBody({
         </div>
         <select
           value={newCountry}
-          onChange={e => setNewCountry(e.target.value)}
+          onChange={e => { setNewCountry(e.target.value); setAutoUpdated(false); }}
           style={{
             width: "100%", boxSizing: "border-box",
             background: "rgba(7,9,20,0.9)",
@@ -231,40 +460,51 @@ function RecycledPopupBody({
         )}
       </div>
 
-      {/* Proxy input */}
+      {/* Proxy field with auto-update indicator */}
       <div style={{ marginBottom: 18 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)",
-          letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 5 }}>
-          {L("Proxy for new country", "Проксі для нової країни")}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)",
+            letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            {L("Proxy", "Проксі")}
+          </div>
+          {autoUpdated && (
+            <div style={{ fontSize: 10, color: "rgba(45,232,151,0.8)", fontWeight: 600 }}>
+              🔧 {L("Auto-updated", "Оновлено автоматично")}
+            </div>
+          )}
         </div>
         <textarea
           rows={2}
           value={newProxy}
-          onChange={e => setNewProxy(e.target.value)}
+          onChange={e => { setNewProxy(e.target.value); setAutoUpdated(false); }}
           placeholder="socks5://user:pass@host:port"
           style={{
             width: "100%", boxSizing: "border-box",
             background: "rgba(7,9,20,0.9)",
-            border: `1px solid ${newProxy.trim() ? "rgba(255,200,50,0.3)" : "rgba(255,107,122,0.35)"}`,
+            border: `1px solid ${
+              autoUpdated ? "rgba(45,232,151,0.4)"
+              : newProxy.trim() ? "rgba(255,200,50,0.3)"
+              : "rgba(255,107,122,0.35)"
+            }`,
             borderRadius: 10, padding: "9px 12px",
-            fontSize: 11, color: "rgba(226,232,255,0.85)",
+            fontSize: 10, color: "rgba(226,232,255,0.85)",
             fontFamily: "monospace", outline: "none", resize: "none",
-            lineHeight: 1.5,
+            lineHeight: 1.5, transition: "border-color 0.3s",
           }}
         />
-        {proxyCountryHint && proxyCountryHint !== effectiveId.toUpperCase() && effectiveId && (
-          <div style={{ fontSize: 10, color: "rgba(255,200,50,0.7)", marginTop: 4, lineHeight: 1.4 }}>
-            ⚠️ {L(
-              `Proxy URL contains country-${proxyCountryHint.toLowerCase()} but selected country is ${effectiveId.toUpperCase()}. Make sure they match.`,
-              `Проксі URL містить country-${proxyCountryHint.toLowerCase()}, але вибрана країна — ${effectiveId.toUpperCase()}. Переконайтесь, що вони збігаються.`
-            )}
-          </div>
-        )}
         {!newProxy.trim() && (
           <div style={{ fontSize: 10, color: "rgba(255,107,122,0.7)", marginTop: 4 }}>
-            {L("Proxy required — get a country-specific URL from your proxy provider", "Потрібен проксі — отримайте URL для конкретної країни у вашого провайдера")}
+            {L("Proxy required — paste your Decodo URL below", "Потрібен проксі — вставте Decodo URL нижче")}
           </div>
         )}
+
+        {/* Inline ProxyGenHelper — always shown so user can paste curl */}
+        <ProxyGenHelper
+          lang={lang}
+          L={L}
+          initialValue=""
+          onApply={url => { setNewProxy(url); setAutoUpdated(false); }}
+        />
       </div>
 
       <div style={{ display: "flex", gap: 10 }}>
@@ -307,6 +547,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [country,       setCountry]       = useState("ua");
   const [customCountry, setCustomCountry] = useState("");
   const [proxy,         setProxy]         = useState("");
+  const [showProxyGen,  setShowProxyGen]  = useState(false);
   const [twoFa,         setTwoFa]         = useState("");
   const [apiId,         setApiId]         = useState("");
   const [apiHash,       setApiHash]       = useState("");
@@ -1823,13 +2064,56 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               </div>
             )}
 
-            <LabelledInput
-              label={L("Decodo SOCKS5 Proxy", "Проксі Decodo SOCKS5")}
-              value={proxy}
-              onChange={setProxy}
-              placeholder="socks5://user:pass@ip:port"
-              hint={L("Residential proxy for anti-ban protection", "Residential проксі для захисту від банів")}
-            />
+            {/* Proxy field + Decodo builder toggle */}
+            <div style={{ marginBottom: 4 }}>
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                marginBottom: 6,
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.45)",
+                  letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                  {L("Decodo SOCKS5 Proxy", "Проксі Decodo SOCKS5")}
+                </div>
+                <button
+                  onClick={() => setShowProxyGen(v => !v)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 4,
+                    background: showProxyGen ? "rgba(255,200,50,0.18)" : GLASS2,
+                    border: `1px solid ${showProxyGen ? "rgba(255,200,50,0.45)" : BORDER2}`,
+                    borderRadius: 8, padding: "3px 9px",
+                    fontSize: 10, fontWeight: 700,
+                    color: showProxyGen ? "#ffc832" : "rgba(255,255,255,0.45)",
+                    fontFamily: "inherit", cursor: "pointer", transition: "all 0.2s",
+                  }}
+                >
+                  🔧 {L("Decodo Builder", "Decodo Будівник")}
+                </button>
+              </div>
+              <input
+                type="text"
+                value={proxy}
+                onChange={e => setProxy(e.target.value)}
+                placeholder="socks5://user:pass@ip:port"
+                style={{
+                  width: "100%", boxSizing: "border-box",
+                  background: GLASS2, border: `1px solid ${BORDER}`,
+                  borderRadius: 11, padding: "10px 14px",
+                  fontSize: 12, color: "rgba(226,232,255,0.85)",
+                  fontFamily: "inherit", outline: "none",
+                }}
+              />
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.28)", marginTop: 4 }}>
+                {L("Residential proxy for anti-ban protection", "Residential проксі для захисту від банів")}
+              </div>
+              {showProxyGen && (
+                <ProxyGenHelper
+                  lang={lang}
+                  L={L}
+                  initialValue={proxy}
+                  onApply={url => { setProxy(url); setShowProxyGen(false); }}
+                />
+              )}
+            </div>
 
             <LabelledInput
               label={L("2FA Password", "Пароль 2FA")}
