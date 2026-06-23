@@ -553,9 +553,12 @@ async def _registration_stream(
             order_code = str(result.get("order_code") or result.get("order_id") or result.get("id") or "")
             raw_num    = str(result.get("number", "")).replace("+", "").strip()
             phone      = f"+{raw_num}"
+            # SMSPool purchase response may include the cost paid for this number
+            num_cost   = float(result.get("cost") or result.get("price") or 0)
 
             yield _sse("step", {"step": 1, "status": "done",
-                                "message": f"📱 Number Acquired: {phone}"})
+                                "message": f"📱 Number Acquired: {phone}",
+                                "cost": num_cost})
 
             # ─── Step 2 — Init Telethon client ───────────────────────────
             yield _sse("step", {"step": 2, "status": "running",

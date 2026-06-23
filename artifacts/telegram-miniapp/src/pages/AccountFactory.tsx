@@ -650,6 +650,9 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   } | null>(null);
   // Countries for which user chose "keep trying" — skip recycled popup next time
   const suppressRecycledRef = useRef<Set<string>>(new Set());
+  // Session-level spend tracking
+  const [totalSpent,      setTotalSpent]      = useState(0);
+  const [recycledSkips,   setRecycledSkips]   = useState<Record<string, number>>({});
 
   const [profileMode,        setProfileMode]        = useState<"ai" | "manual">("ai");
   const [profFirstName,      setProfFirstName]      = useState("");
@@ -1013,6 +1016,10 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               message: (p.message as string) || undefined,
             });
             if (p.status === "running") { setPollMsg(null); setBatchDelayMsg(null); }
+            // Accumulate SMSPool cost when a number is purchased
+            if (p.step === 1 && p.status === "done" && typeof p.cost === "number" && p.cost > 0) {
+              setTotalSpent(prev => prev + (p.cost as number));
+            }
           } else if (event === "poll") {
             setPollMsg(p.message as string);
           } else if (event === "complete") {
@@ -1038,6 +1045,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             const effectiveCountryKey = country === "custom" ? customCountry.trim() : country;
             if (isRecycled && suppressRecycledRef.current.has(effectiveCountryKey)) {
               // User already chose "keep trying" for this country — auto-retry silently
+              setRecycledSkips(prev => ({ ...prev, [effectiveCountryKey]: (prev[effectiveCountryKey] ?? 0) + 1 }));
               setRunState("idle");
               setPollMsg(null);
               setBatchDelayMsg(null);
@@ -1203,9 +1211,11 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   }}
                   onCancel={() => setSmsRetryPrompt(null)}
                   onKeepGoing={() => {
-                    // Remember this country so future recycled events auto-retry
                     const key = country === "custom" ? customCountry.trim() : country;
+                    // Remember this country so future recycled events auto-retry
                     suppressRecycledRef.current.add(key);
+                    // Count this first manual "keep going" as skip #1
+                    setRecycledSkips(prev => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }));
                     setSmsRetryPrompt(null);
                     void launch();
                   }}
@@ -3018,6 +3028,67 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                 </div>
               )}
             </div>
+
+            {/* ── Session Stats Strip ──────────────────────────────────────── */}
+            {(totalSpent > 0 || Object.keys(recycledSkips).length > 0) && (() => {
+              const effectiveKey = country === "custom" ? customCountry.trim() : country;
+              const skipCount = recycledSkips[effectiveKey] ?? 0;
+              const totalSkips = Object.values(recycledSkips).reduce((a, b) => a + b, 0);
+              return (
+                <div style={{
+                  background: "rgba(255,255,255,0.035)",
+                  border: "1px solid rgba(255,255,255,0.09)",
+                  borderRadius: 14, padding: "10px 14px",
+                  display: "flex", alignItems: "center", gap: 0,
+                }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)",
+                    letterSpacing: "0.06em", textTransform: "uppercase", marginRight: 12, flexShrink: 0 }}>
+                    {L("Session", "Сесія")}
+                  </div>
+
+                  {/* Money spent */}
+                  {totalSpent > 0 && (
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginRight: 14 }}>
+                      <span style={{ fontSize: 15, fontWeight: 800, color: "#ffc832" }}>
+                        ${totalSpent.toFixed(2)}
+                      </span>
+                      <span style={{ fontSize: 10, color: "rgba(255,200,50,0.5)" }}>
+                        {L("spent", "витрачено")}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Divider */}
+                  {totalSpent > 0 && totalSkips > 0 && (
+                    <div style={{ width: 1, height: 22, background: "rgba(255,255,255,0.1)", marginRight: 14 }} />
+                  )}
+
+                  {/* Recycled skips for current country */}
+                  {skipCount > 0 && (
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginRight: 14 }}>
+                      <span style={{ fontSize: 15, fontWeight: 800, color: "#ff6b7a" }}>
+                        {skipCount}
+                      </span>
+                      <span style={{ fontSize: 10, color: "rgba(255,107,122,0.55)" }}>
+                        {L("recycled", "переробл.")}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Total skips across all countries (if more than one country involved) */}
+                  {totalSkips > 0 && totalSkips !== skipCount && (
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,107,122,0.5)" }}>
+                        {totalSkips}
+                      </span>
+                      <span style={{ fontSize: 9, color: "rgba(255,107,122,0.35)" }}>
+                        {L("total recycled", "всього переробл.")}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Action buttons */}
             <div style={{ display: "flex", gap: 10 }}>
