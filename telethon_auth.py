@@ -23,6 +23,8 @@ from telethon.errors import (
     PhoneNumberInvalidError, PhoneCodeInvalidError,
     PhoneCodeExpiredError,
 )
+from telethon.tl.functions.account import UpdatePrivacyRequest
+from telethon.tl.types import InputPrivacyKeyPhoneNumber, PrivacyValueDisallowAll
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +127,10 @@ async def handle_confirm_auth(request: web.Request) -> web.Response:
     client: TelegramClient = pending["client"]
     try:
         await client.sign_in(phone, code, phone_code_hash=phone_code_hash)
+        try:
+            await client(UpdatePrivacyRequest(key=InputPrivacyKeyPhoneNumber(), rules=[PrivacyValueDisallowAll()]))
+        except Exception as _pe:
+            logger.warning("Could not hide phone privacy for %s: %s", phone, _pe)
         sess = _session_path(phone)
         display_name = await _me_display(client, phone)
         await client.disconnect()
@@ -166,6 +172,10 @@ async def handle_confirm_2fa(request: web.Request) -> web.Response:
     client: TelegramClient = pending["client"]
     try:
         await client.sign_in(password=password)
+        try:
+            await client(UpdatePrivacyRequest(key=InputPrivacyKeyPhoneNumber(), rules=[PrivacyValueDisallowAll()]))
+        except Exception as _pe:
+            logger.warning("Could not hide phone privacy for %s (2FA): %s", phone, _pe)
         sess = _session_path(phone)
         display_name = await _me_display(client, phone)
         await client.disconnect()

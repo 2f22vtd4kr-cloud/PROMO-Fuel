@@ -34,7 +34,8 @@ from telethon.tl.functions.auth import (
     ResendCodeRequest, SendCodeRequest as RawSendCodeRequest, CancelCodeRequest,
 )
 from telethon.tl import types as tl_types
-from telethon.tl.functions.account import UpdateProfileRequest
+from telethon.tl.functions.account import UpdateProfileRequest, UpdatePrivacyRequest
+from telethon.tl.types import InputPrivacyKeyPhoneNumber, PrivacyValueDisallowAll
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
 
 logger = logging.getLogger("account_factory")
@@ -968,6 +969,16 @@ async def _registration_stream(
 
         yield _sse("step", {"step": 5, "status": "done",
                             "message": "✅ Telegram account handshake complete"})
+
+        # Hide phone number from public Telegram profile
+        try:
+            await client(UpdatePrivacyRequest(
+                key=InputPrivacyKeyPhoneNumber(),
+                rules=[PrivacyValueDisallowAll()],
+            ))
+            logger.info("[factory] Phone number hidden from public profile")
+        except Exception as _pe:
+            logger.warning("[factory] Could not hide phone privacy: %s", _pe)
 
         # ─── Step 6 — Set 2FA ────────────────────────────────────────────
         yield _sse("step", {"step": 6, "status": "running",

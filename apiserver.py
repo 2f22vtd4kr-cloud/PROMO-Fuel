@@ -57,6 +57,8 @@ from telethon.errors import (
     PhoneNumberInvalidError,
     SessionPasswordNeededError,
 )
+from telethon.tl.functions.account import UpdatePrivacyRequest
+from telethon.tl.types import InputPrivacyKeyPhoneNumber, PrivacyValueDisallowAll
 
 from dbmigrations import run_migrations
 from task_queue import TaskQueue, _conn as _sq_conn, _ensure_tables
@@ -521,6 +523,12 @@ async def sign_in(req: SignInRequest) -> SignInResponse:
         raise HTTPException(400, detail=str(exc)) from exc
 
     # ── Success path ───────────────────────────────────────────────────────────
+    try:
+        await client(UpdatePrivacyRequest(key=InputPrivacyKeyPhoneNumber(), rules=[PrivacyValueDisallowAll()]))
+        logger.info("[auth] Phone number hidden from public profile for %s", phone)
+    except Exception as _priv_err:
+        logger.warning("[auth] Could not hide phone privacy for %s: %s", phone, _priv_err)
+
     display_name = await _me_display(client, phone)
     session_file = f"{_session_path(phone)}.session"
 
@@ -568,6 +576,12 @@ async def sign_in_2fa(req: SignIn2FARequest) -> SignIn2FAResponse:
     except Exception as exc:
         logger.error("[auth] 2FA error for %s: %s", phone, exc)
         raise HTTPException(400, detail=str(exc)) from exc
+
+    try:
+        await client(UpdatePrivacyRequest(key=InputPrivacyKeyPhoneNumber(), rules=[PrivacyValueDisallowAll()]))
+        logger.info("[auth] Phone number hidden from public profile for %s (2FA)", phone)
+    except Exception as _priv_err:
+        logger.warning("[auth] Could not hide phone privacy for %s (2FA): %s", phone, _priv_err)
 
     display_name = await _me_display(client, phone)
     session_file = f"{_session_path(phone)}.session"
