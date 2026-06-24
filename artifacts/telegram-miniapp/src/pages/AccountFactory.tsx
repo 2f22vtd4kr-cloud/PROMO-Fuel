@@ -997,48 +997,84 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
         ));
       }
 
-      // ── 2. Best country ─────────────────────────────────────────────────
-      let bestCountryId: string | null = null;
+      // ── 2 + 3. Country + Proxy — AI Вибір takes priority ───────────────
+      // If AI country rankings are loaded, walk them in rank order and pick
+      // the first country that has a saved proxy. This way we never block on
+      // a country that has no proxy in storage.
+      let bestCountryId:   string | null = null;
       let bestCountryName: string | null = null;
-
-      if (autoCountryTop5.length > 0) {
-        bestCountryId   = autoCountryTop5[0].id;
-        bestCountryName = autoCountryTop5[0].name ?? autoCountryTop5[0].id;
-      } else if (serverHasKey || smsKey.trim()) {
-        try {
-          const qs = serverHasKey ? "" : `?api_key=${encodeURIComponent(smsKey.trim())}`;
-          const r = await fetch(`/api/factory/best-country${qs}`, { headers: authHeaders() });
-          const j = await r.json() as { id?: string; name?: string; error?: string };
-          if (!j.error && j.id) { bestCountryId = j.id; bestCountryName = j.name ?? j.id; }
-        } catch { /* silent */ }
-      }
-
-      if (!bestCountryId) {
-        issues.push(L(
-          "📡 Cannot determine best country — check SMSPool connection",
-          "📡 Не вдається визначити найкращу країну — перевірте підключення SMSPool"
-        ));
-      }
-
-      // ── 3. Proxy for that country ───────────────────────────────────────
       let foundProxy: SavedProxy | null = null;
-      if (bestCountryId) {
-        try {
-          const r = await fetch(
-            `/api/proxy-store?country=${encodeURIComponent(bestCountryId)}`,
-            { headers: authHeaders() }
-          );
-          const list: SavedProxy[] = await r.json();
-          if (Array.isArray(list) && list.length > 0) {
-            foundProxy = list[0];
-          } else {
-            issues.push(L(
-              `🔌 No proxy stored for "${bestCountryName ?? bestCountryId}" — save one in the Proxy Storage section`,
-              `🔌 Немає збереженого проксі для "${bestCountryName ?? bestCountryId}" — додайте його у розділі Сховища проксі`
-            ));
+
+      if (aiCountryData.length > 0) {
+        // Sort by rank ascending (should already be sorted, but be safe)
+        const ranked = [...aiCountryData].sort((a, b) => a.rank - b.rank);
+        const noProxyNames: string[] = [];
+
+        for (const entry of ranked) {
+          try {
+            const r = await fetch(
+              `/api/proxy-store?country=${encodeURIComponent(entry.id)}`,
+              { headers: authHeaders() }
+            );
+            const list: SavedProxy[] = await r.json();
+            if (Array.isArray(list) && list.length > 0) {
+              bestCountryId   = entry.id;
+              bestCountryName = entry.name;
+              foundProxy      = list[0];
+              break;
+            } else {
+              noProxyNames.push(entry.name);
+            }
+          } catch { /* treat as no proxy, try next */ }
+        }
+
+        if (!foundProxy) {
+          const names = noProxyNames.slice(0, 5).join(", ");
+          issues.push(L(
+            `🔌 No proxy stored for any AI Вибір country (${names}) — add proxies in the Proxy Storage section`,
+            `🔌 Немає збереженого проксі для жодної країни AI Вибір (${names}) — додайте проксі у розділі Сховища проксі`
+          ));
+        }
+      } else {
+        // ── Fallback: SMSPool success-rate stats or API ──────────────────
+        if (autoCountryTop5.length > 0) {
+          bestCountryId   = autoCountryTop5[0].id;
+          bestCountryName = autoCountryTop5[0].name ?? autoCountryTop5[0].id;
+        } else if (serverHasKey || smsKey.trim()) {
+          try {
+            const qs = serverHasKey ? "" : `?api_key=${encodeURIComponent(smsKey.trim())}`;
+            const r = await fetch(`/api/factory/best-country${qs}`, { headers: authHeaders() });
+            const j = await r.json() as { id?: string; name?: string; error?: string };
+            if (!j.error && j.id) { bestCountryId = j.id; bestCountryName = j.name ?? j.id; }
+          } catch { /* silent */ }
+        }
+
+        if (!bestCountryId) {
+          issues.push(L(
+            "📡 Cannot determine best country — open AI Вибір tab first or check SMSPool connection",
+            "📡 Не вдається визначити найкращу країну — відкрийте вкладку AI Вибір або перевірте підключення SMSPool"
+          ));
+        }
+
+        // Proxy for the fallback country
+        if (bestCountryId) {
+          try {
+            const r = await fetch(
+              `/api/proxy-store?country=${encodeURIComponent(bestCountryId)}`,
+              { headers: authHeaders() }
+            );
+            const list: SavedProxy[] = await r.json();
+            if (Array.isArray(list) && list.length > 0) {
+              foundProxy = list[0];
+            } else {
+              issues.push(L(
+                `🔌 No proxy stored for "${bestCountryName ?? bestCountryId}" — save one in the Proxy Storage section`,
+                `🔌 Немає збереженого проксі для "${bestCountryName ?? bestCountryId}" — додайте його у розділі Сховища проксі`
+              ));
+            }
+          } catch {
+            issues.push(L("🔌 Failed to load proxy storage", "🔌 Не вдалося завантажити сховище проксі"));
           }
-        } catch {
-          issues.push(L("🔌 Failed to load proxy storage", "🔌 Не вдалося завантажити сховище проксі"));
         }
       }
 
