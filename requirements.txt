@@ -21,3 +21,14 @@ requests
 telegram
 telethon
 uvicorn[standard]
+aiohttp
+aiosqlite
+fastapi
+filelock
+pydantic
+PySocks
+python-socks[asyncio]
+python-telegram-bot
+requests
+telethon
+uvicorn[standard]
