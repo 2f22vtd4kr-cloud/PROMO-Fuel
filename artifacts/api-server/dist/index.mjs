@@ -59937,7 +59937,24 @@ function makePythonProxy(prefix, maxRetries = 3) {
           res.setHeader("Cache-Control", "no-cache");
           res.setHeader("Connection", "keep-alive");
           res.flushHeaders();
-          if (res.socket) res.socket.setNoDelay(true);
+          const sock = res.socket;
+          if (sock) {
+            sock.setNoDelay(true);
+            sock.setTimeout(0);
+          }
+          proxyRes.on("data", (chunk) => {
+            res.write(chunk);
+            const s = res.socket;
+            if (s?.writable) s.uncork?.();
+          });
+          proxyRes.on("end", () => {
+            if (!res.writableEnded) res.end();
+          });
+          proxyRes.on("error", (err) => {
+            logger.error({ err }, `${prefix} SSE upstream error`);
+            if (!res.writableEnded) res.end();
+          });
+          return;
         }
         proxyRes.pipe(res, { end: true });
       });

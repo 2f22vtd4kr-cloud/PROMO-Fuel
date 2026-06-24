@@ -6,51 +6,68 @@ _Rewritten each session. Contains only current state — no history._
 
 ## What was done this session
 
-### Avatar Pool Upload — Root cause fixed (counter stays at 0)
+### Account Factory "all steps waiting" — Root cause found and fixed
 
-**Root cause:** `python-multipart` package was never installed in the Nix-managed `.pythonlibs` environment. FastAPI silently returns 500 for any `request.form()` call without it, so every avatar upload failed and the counter stayed at 0.
+The factory SSE stream died silently before yielding a single event. Four compounding bugs:
 
-**Fix:** Replaced multipart form upload with JSON+base64 throughout the whole chain:
+**Bug 1 — Python `UnboundLocalError` (primary root cause)**
+Inside `generate()` (the async generator passed to `StreamingResponse`), the line
+`force_country = False` appeared at the bottom of the while-loop body. Python's compile-time
+scoping treats ANY variable that is assigned anywhere in a function as local throughout that
+function. So the earlier `force_country=force_country` keyword-argument read (passed to
+`_registration_stream`) raised `UnboundLocalError` before a single SSE event was yielded.
+FastAPI had already sent `200 OK + Content-Type: text/event-stream`, so the client received
+an HTTP 200 with an empty body. Frontend stayed frozen in "running" state with all 8 steps
+at "waiting" because `runState` was set before the fetch and never cleared.
 
-- **Python `account_factory.py`** (`/upload-avatars` endpoint): now reads `await request.json()` — a dict with `{gender, files: [{name, data}]}` where `data` is raw base64. Decodes and writes each file. Returns `{saved, gender, counts}`.
-- **Node.js `factory.ts`** (`POST /upload-avatars` proxy): reads pre-parsed `req.body` (Express already parsed JSON) and forwards it as `application/json` to Python. No more raw-stream chunking.
-- **Frontend `AccountFactory.tsx`** (`uploadAvatarsToGender`): reads each File with `FileReader.readAsDataURL`, strips the data-URL prefix, and POSTs `{gender, files: [{name, data}]}` as JSON. Counter updates from `data.counts` in response.
-- **`artifacts/api-server/src/app.ts`**: increased `express.json` limit `10mb → 50mb` to handle batch photo uploads.
-- **`requirements.txt`**: deduplicated (was 4× repeated) and added `python-multipart>=0.0.9` for documentation (it's not installed yet but avoids confusion for next fresh install).
+Fix: split `generate()` into two nested generators: a thin `generate()` that yields a
+keepalive and wraps the real work in try/except, and `_generate_inner()` that contains
+the actual batch loop. Inside `_generate_inner()`, renamed to `_force_country = force_country`
+at the top (local copy, safe to re-assign) and use `_force_country` everywhere, removing
+the scoping conflict entirely.
 
-**End-to-end tested:** POST to port 8083 (Python direct) → 200 `{saved:1, counts:{male:1, female:0}}`. POST via port 8080 (Node proxy) → 200 `{saved:1, counts:{male:1, female:1}}`. Files land in `assets/pending_avatars/<gender>/`.
+**Bug 2 — Silent exception swallowing in the async generator**
+Any exception escaping the generator after headers were sent produced an empty body.
+Fix: `generate()` now wraps `_generate_inner()` in `try/except Exception` and yields an
+`error` SSE event with the exception message so the user sees what went wrong.
 
-### Previous session work (still in place)
+**Bug 3 — No immediate keepalive chunk**
+Fix: `generate()` yields `": keepalive\n\n"` as its very first chunk (before doing any
+network work) to force Replit's CDN to transmit the response headers + first byte immediately.
 
-- Gender symbol alignment: ♂/♀ rendered inline in label strings with `textAlign:center` on button
-- Avatar folder management: 📂 browser, thumbnail grid, ✕ delete per photo (all endpoints live)
-- New Python endpoints: `GET /avatar-list`, `DELETE /avatar/{gender}/{filename}`, `GET /avatar-image/{gender}/{filename}`
+**Bug 4 — Node.js proxy using `pipe()` for SSE**
+`proxyRes.pipe(res)` relied on OS-level TCP coalescing. In Replit production CDN, small
+chunks could sit in the kernel buffer. Fix: replaced with a manual `data` event handler
+that calls `res.write(chunk)` then `res.socket?.uncork()` after each chunk, and sets
+`sock.setTimeout(0)` to prevent idle-timeout on long registrations.
+
+**Bug 5 — Frontend "frozen running" state**
+If the stream ended with no terminal event, `runState` was stuck at "running" forever.
+Fix: added `receivedTerminal` bool. After the reader loop exits, if still false, shows
+`"⚠️ Поток закрито без відповіді від сервера"` and sets `runState("error")`.
 
 ---
 
 ## Current system state
 
 - **Telegram Bot**: RUNNING (supervisor + workers + FastAPI on 8083)
-- **API Server**: RUNNING (Express on 8080)
-- **Telegram Mini App**: RUNNING on port 5000 (Vite)
+- **API Server**: RUNNING (Express on 8080, dist rebuilt)
+- **Telegram Mini App**: RUNNING on port 5000 (dist rebuilt)
 - **DB**: campaigns.db current
 
 ---
 
 ## Key file locations
 
-- `account_factory.py` — upload endpoint ~line 2585; avatar-list/delete/image ~line 2632+
-- `artifacts/api-server/src/routes/factory.ts` — upload proxy ~line 961; avatar proxies ~line 982+
-- `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`
-  - `uploadAvatarsToGender` (base64 JSON upload) — ~line 831
-  - `fetchAvatarList` / `handleDeleteAvatar` — ~line 868
-  - Avatar pool UI with 📂 browser + thumbnail grid — ~line 3562
+- `account_factory.py` — `generate()` + `_generate_inner()` at ~line 2419; `_force_country` fix at ~line 2451; keepalive + try/except wrapper at ~line 2419
+- `artifacts/api-server/src/app.ts` — SSE proxy manual write+uncork at ~line 149
+- `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx` — `receivedTerminal` guard at ~line 1378; fallback at ~line 1536
 
 ---
 
 ## Pending / watch items
 
-- `python-multipart` still not actually installed in `.pythonlibs` (Nix blocks pip). Upload now works without it via JSON+base64. If ever needed for other endpoints, use `pip install --target .pythonlibs/lib/python3.12/site-packages python-multipart`.
-- `DEVICE_PROFILES` Android pool still unused in registration — needs official Android api_id.
-- `[pg-guard] FAILED to create saved_proxies — duplicate key` in API Server logs is harmless.
-- `assets/pending_avatars/` folders are empty on fresh import — user must upload photos before factory AI mode can assign avatars.
+- Factory not end-to-end tested in this session (requires real SMSPOOL_API_KEY + proxy + 2FA password in prod)
+- `python-multipart` still not installed in `.pythonlibs` — upload works via JSON+base64 without it
+- `assets/pending_avatars/` empty on fresh import — user must upload photos before AI mode can assign avatars
+- `[pg-guard] FAILED to create saved_proxies — duplicate key` in API Server logs is harmless

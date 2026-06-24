@@ -2414,6 +2414,20 @@ async def register_account(request: Request):
     MAX_AUTO_SWITCHES = 3
 
     async def generate():
+        # Immediate keepalive comment — forces the very first chunk through any
+        # proxy/CDN buffer so the client knows the stream is live before we do
+        # any network work.  SSE comment lines (": ...") are ignored by parsers.
+        yield ": keepalive\n\n"
+
+        try:
+            async for _chunk in _generate_inner():
+                yield _chunk
+        except Exception as _gen_exc:
+            yield _sse("error", {
+                "message": f"⛔ Internal error in registration stream: {str(_gen_exc)[:300]}"
+            })
+
+    async def _generate_inner():
         if quantity > 1:
             yield _sse("batch_start", {"total": quantity})
 
@@ -2426,6 +2440,12 @@ async def register_account(request: Request):
         _tried_countries: set[str] = set()
         cur_country_id   = country_id
         cur_proxy_string = proxy_string
+
+        # Local copy so assigning False later does NOT create an UnboundLocalError.
+        # (Python treats any variable that is ever assigned in a function as local
+        # throughout the whole function — reading it before the assignment would
+        # raise UnboundLocalError if we used the bare outer `force_country` name.)
+        _force_country = force_country
 
         for i in range(quantity):
             if quantity > 1:
@@ -2462,7 +2482,7 @@ async def register_account(request: Request):
                     warmup_mode,
                     computed_session_name,
                     gender=gender,
-                    force_country=force_country,
+                    force_country=_force_country,
                 ):
                     yield chunk
                     if '"complete"' in chunk:
@@ -2471,7 +2491,7 @@ async def register_account(request: Request):
                         got_retry_prompt = True
                 # force_country only applies to the user's first explicit retry;
                 # auto-switch attempts on different countries should obey the pool.
-                force_country = False
+                _force_country = False
 
                 if got_complete:
                     succeeded += 1

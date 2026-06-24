@@ -137,7 +137,26 @@ function makePythonProxy(prefix: string, maxRetries = 3) {
           res.setHeader("Cache-Control", "no-cache");
           res.setHeader("Connection", "keep-alive");
           res.flushHeaders();
-          if (res.socket) res.socket.setNoDelay(true);
+          const sock = res.socket;
+          if (sock) {
+            sock.setNoDelay(true);
+            sock.setTimeout(0); // disable idle timeout for long-lived SSE streams
+          }
+
+          // Manual write loop instead of pipe() — after each chunk we explicitly
+          // uncork / flush the socket so Replit's CDN layer sees data immediately
+          // rather than waiting for the TCP buffer to fill.
+          proxyRes.on("data", (chunk: Buffer) => {
+            res.write(chunk);
+            const s = res.socket;
+            if (s?.writable) (s as unknown as { uncork?: () => void }).uncork?.();
+          });
+          proxyRes.on("end", () => { if (!res.writableEnded) res.end(); });
+          proxyRes.on("error", (err) => {
+            logger.error({ err }, `${prefix} SSE upstream error`);
+            if (!res.writableEnded) res.end();
+          });
+          return; // don't fall through to pipe() below
         }
 
         proxyRes.pipe(res, { end: true });

@@ -1372,6 +1372,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
       const reader  = resp.body.getReader();
       const decoder = new TextDecoder();
       let   buffer  = "";
+      let   receivedTerminal = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -1422,6 +1423,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           } else if (event === "batch_delay") {
             setBatchDelayMsg(p.message as string);
           } else if (event === "batch_done") {
+            receivedTerminal = true;
             const doneSucceeded = (p.succeeded as number) ?? 0;
             setBatchTotal(p.total as number);
             setBatchSucceeded(doneSucceeded);
@@ -1459,6 +1461,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           } else if (event === "poll") {
             setPollMsg(p.message as string);
           } else if (event === "complete") {
+            receivedTerminal = true;
             setDonePhones(prev => [...prev, p.phone as string]);
             if (quantity === 1) {
               setRunState("done");
@@ -1481,6 +1484,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               phone:     p.phone     as string,
             });
           } else if (event === "sms_retry_prompt") {
+            receivedTerminal = true;
             // SMS timeout, recycled-number failure, or pre-buy low success rate
             const msg  = (p.message as string | undefined) ?? "";
             // Low success rate: backend sends p.success_rate (number).
@@ -1516,6 +1520,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               setBatchDelayMsg(null);
             }
           } else if (event === "error") {
+            receivedTerminal = true;
             setErrorMsg(p.message as string);
             if (quantity === 1) {
               setRunState("error");
@@ -1523,6 +1528,14 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             }
           }
         }
+      }
+
+      // Stream closed without a terminal event — surface a clear error instead
+      // of leaving the UI frozen in "running" state indefinitely.
+      if (!receivedTerminal) {
+        setErrorMsg("⚠️ Поток закрито без відповіді від сервера. Перевірте Debug Log.");
+        setRunState("error");
+        setPollMsg(null);
       }
     } catch (e: unknown) {
       if ((e as Error)?.name !== "AbortError") {
