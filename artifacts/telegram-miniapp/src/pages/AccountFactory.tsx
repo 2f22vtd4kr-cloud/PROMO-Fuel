@@ -4116,6 +4116,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             {/* Debug panel */}
             <FactoryDebugPanel
               logs={debugLog}
+              runState={runState}
               onClear={() => setDebugLog([])}
               authHeaders={authHeaders}
             />

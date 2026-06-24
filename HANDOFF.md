@@ -8,64 +8,48 @@
 > 1. Read this file completely before touching code.
 > 2. Rewrite this file after EVERY response turn that does real work.
 > 3. Replace "This session" entirely — do NOT accumulate past sessions here.
-> 4. Check secrets on fresh import (see section below) before doing anything else.
-> HANDOFF.md must stay under ~150 lines. Previous session details live in git history.
+> HANDOFF.md must stay under ~150 lines.
 
 ---
 
 ## This session
 
-**Task:** Build a foldable AI debug panel in AccountFactory that captures live SSE events and lets Gemini/Groq analyze the registration session.
+**Task:** Debug panel in AccountFactory with session history + .md download.
 
-**What was built:**
+### What was built
 
-1. **`artifacts/telegram-miniapp/src/components/FactoryDebugPanel.tsx`** (new file)
-   - Foldable glass panel with indigo/purple glass morphism design
-   - Monospace event log (max 220px, scrollable, auto-scrolls to bottom)
-   - Each event: `HH:mm:ss.ms` timestamp + color-coded event-type badge + smart label
-   - Color scheme: step/done=green, step/running=amber, step/error=red, poll=blue, preflight=purple, error=red, complete=bright green, sms_retry=orange, batch_*=cyan, warmup_*=purple
-   - Smart label extraction: extracts `SentCodeType*` from step messages, shows exit IP + DC warning for preflight
-   - Header badges: red "DC IP!" or orange "recycled" alert badges appear when relevant
-   - Copy-log and Clear buttons in header
-   - AI analysis section: optional question input + "Аналіз AI" button (Sparkles icon)
-   - Shows loading spinner, then: SeverityChip (✅/⚠️/❌) + engine badge (GEMINI/GROQ) + summary + issues list (red ▸) + suggestions (green ✓) + collapsible detailed analysis
-   - Inline `DetailedAnalysis` sub-component (expand/collapse)
+**`artifacts/telegram-miniapp/src/components/FactoryDebugPanel.tsx`**
+- Foldable glass panel (indigo/purple) above action buttons in AccountFactory
+- Live event log: monospace, auto-scroll, 220px, color-coded event badges
+- Header alert badges: "DC IP!" (red) or "recycled" (orange) + "N saved" pill
+- Header toolbar: Copy raw | **Download .md** | Clear
+- **AI analysis section** — optional question input + "Аналіз AI" button → `POST /api/v3/ai/factory-debug` (Gemini 2.5 Flash primary, Groq fallback) → SeverityChip + engine badge + summary + issues▸ + suggestions✓ + collapsible detailed analysis
+- **Session history** — auto-saves to `localStorage["pf_factory_debug_sessions"]` (max 10) when `runState` transitions `running → done/error`
+- History UI: collapsible "SESSION HISTORY" section, per-session: label + event count + DC/recycled flags + **View** / **Download ↓** / **Delete** buttons
+- "View" loads a past session into the log view with an orange banner; "✕" returns to live log
+- **Download .md** (current or any saved session): generates LLM-friendly markdown with session summary, step-by-step breakdown, architecture reference, full event table, and raw JSON — filename `factory_debug_YYYYMMDD_HHMM.md`
 
-2. **`artifacts/api-server/src/routes/ai.ts`** — added `POST /api/v3/ai/factory-debug`
-   - Takes `{ events: DebugLogEntry[], question?: string }`
-   - Formats event timeline as readable log (max 120 events)
-   - System prompt encodes full factory architecture: 8-step pipeline, CodeSettings rule, SMS delivery types, proxy requirements, pre-flight events, healthy signature, common failure patterns
-   - Gemini 2.5 Flash primary (JSON mode), Groq llama-3.3-70b fallback
-   - Returns `{ severity, summary, issues[], suggestions[], analysis, engine }`
+**`artifacts/api-server/src/routes/ai.ts`** — `POST /api/v3/ai/factory-debug`
+- Already documented in previous turn — unchanged this turn
 
-3. **`artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`** — wired up:
-   - Import `FactoryDebugPanel` + `DebugLogEntry` type
-   - Added `debugLog` / `setDebugLog` state (capped at 500 entries)
-   - SSE loop: every parsed event pushed to `debugLog` before the if/else dispatch
-   - `reset()` function: clears `debugLog` (called on "Register More")
-   - `<FactoryDebugPanel>` rendered before the action buttons (always visible when panel active)
+**`artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`**
+- Added `runState` prop to `<FactoryDebugPanel>` so auto-save fires on completion
 
-**Also fixed this session:** `better-sqlite3` native binary mismatch after cold start — ran `npm rebuild better-sqlite3 --build-from-source`, API server now running.
-
-**Current state:**
-- ✅ Telegram Bot workflow running
-- ✅ Telegram Mini App workflow running (Vite, port 5000), build: 1711 modules, 0 errors
-- ✅ API server workflow running (port 8080), new endpoint deployed
+**Status:** build clean (1711 modules, 0 errors), both workflows running, HMR applied
 
 ---
 
-## Required secrets (check on fresh import)
+## Required secrets
 
-| Secret | Where to get it |
+| Secret | Where |
 |---|---|
 | `TELEGRAM_TOKEN` | @BotFather |
-| `TELETHON_API_ID` | https://my.telegram.org/apps |
-| `TELETHON_API_HASH` | https://my.telegram.org/apps |
+| `TELETHON_API_ID` / `TELETHON_API_HASH` | my.telegram.org/apps |
 | `ADMIN_TELEGRAM_ID` | @userinfobot |
-| `GEMINI_API_KEY` | https://aistudio.google.com/apikey |
-| `GROQ_API_KEY` | https://console.groq.com/keys |
-| `SMSPOOL_API_KEY` | https://smspool.net/profile |
-| `API_SECRET` | Any strong random string |
+| `GEMINI_API_KEY` | aistudio.google.com/apikey |
+| `GROQ_API_KEY` | console.groq.com/keys |
+| `SMSPOOL_API_KEY` | smspool.net/profile |
+| `API_SECRET` | any strong random string |
 
 Non-sensitive: `PORT=8080`.
 
@@ -76,16 +60,16 @@ Non-sensitive: `PORT=8080`.
 ### Ports
 | Service | Port |
 |---|---|
-| Vite Mini App dev | 5000 (exposed as 80) |
+| Vite Mini App dev | 5000 (exposed 80) |
 | Python FastAPI | 8083 |
 | Node.js Express | 8080 |
 
-### Vite proxy: ALL `/api/*` → port 8080 (Node.js Express)
+Vite proxy: ALL `/api/*` → port 8080 (Node.js)
 
-### Account Factory
-- **CodeSettings rule:** ALL `RawSendCodeRequest` calls MUST have `allow_app_hash=False, unknown_number=True`
-- SSE events captured: preflight, step, poll, error, complete, sms_retry_prompt, warmup_*, batch_*
-- Debug panel renders once `runState !== "idle"` (after first launch)
+### Account Factory rules
+- **CodeSettings:** ALL `RawSendCodeRequest` MUST have `allow_app_hash=False, unknown_number=True`
+- SSE events collected: preflight, step, poll, error, complete, sms_retry_prompt, warmup_*, batch_*
+- `pf_factory_debug_sessions` localStorage key — max 10 sessions
 
-### cold-start note
-`better-sqlite3` native binary is NOT committed. On cold start: `npm rebuild better-sqlite3 --build-from-source` or `scripts/post-merge.sh`.
+### Cold-start
+`better-sqlite3` binary not committed → `npm rebuild better-sqlite3 --build-from-source` on cold start.
