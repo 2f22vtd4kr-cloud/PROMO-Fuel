@@ -1715,7 +1715,7 @@ async def _registration_stream(
                                 "message": "💬 Waiting for Telegram SMS verification code (Timeout in 120s)..."})
 
             _deadline    = time.time() + 120
-            _resent_code = False
+
 
             def _extract_code(raw: str) -> str | None:
                 s = str(raw or "").strip()
@@ -1728,18 +1728,12 @@ async def _registration_stream(
                 while time.time() < _deadline:
                     _remaining = int(_deadline - time.time())
 
-                    # Mid-poll resend at 60 s remaining (halfway through 120s window)
-                    if not _resent_code and _remaining <= 60:
-                        _resent_code = True
-                        try:
-                            _resent = await client(ResendCodeRequest(
-                                phone_number=phone, phone_code_hash=phone_code_hash,
-                            ))
-                            phone_code_hash = _resent.phone_code_hash
-                            yield _sse("poll", {"remaining": _remaining,
-                                                "message": f"🔄 Resending Telegram code... ({_remaining}s left)"})
-                        except Exception:
-                            pass
+                    # NOTE: Mid-poll ResendCodeRequest intentionally removed.
+                    # Sending ResendCodeRequest during an active SMS wait can trigger
+                    # Telegram's internal anti-automation flag for fresh-number flows,
+                    # causing the code to silently drop on subsequent retries.
+                    # If the SMS hasn't arrived within the 120s window, the outer loop
+                    # cancels the order and buys a fresh number instead.
 
                     yield _sse("poll", {"remaining": _remaining,
                                         "message": f"💬 Polling SMS... ({_remaining}s remaining)"})

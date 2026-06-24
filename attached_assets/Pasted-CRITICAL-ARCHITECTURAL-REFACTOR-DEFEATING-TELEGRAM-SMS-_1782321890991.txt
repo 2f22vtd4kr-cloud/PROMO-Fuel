@@ -1,0 +1,79 @@
+CRITICAL ARCHITECTURAL REFACTOR: DEFEATING TELEGRAM SMS SILENT BLOCK (MTPROTO AUDIT)
+STATUS: EMERGENCY OVERHAUL · 70+ CONSECUTIVE ACCOUNT CREATION TIMEOUTS
+We have audited our account factory initialization code and isolated severe architectural vulnerabilities causing Telegram's anti-fraud system to silently drop our registration SMS requests.
+Look at our current client initialization block:
+client = TelegramClient(session_path, api_id, api_hash, proxy=proxy)
+result = await client.send_code_request(phone)
+Because we leave the default arguments blank, Telethon automatically defaults our digital footprint to device_model="PC", system_version="Windows", and app_version="1.0.0". Requesting a registration verification code for a mobile phone number using a generic desktop library footprint triggers an instant automation block on Telegram's MTProto servers. They accept the initial layer-4 socket connection but silently drop the SMS dispatch.
+You must immediately refactor 'account_factory.py' and its registration utility wrappers to implement a robust, defensive mobile emulation layer based strictly on Telethon 1.44.0 and SMSPool specifications.
+Implement the following 5 core modules immediately:
+ 1. MOBILE DEVICE FINGERPRINT ENGINE
+   Implement a randomized mobile fingerprint generator. Every single registration session must be assigned a tightly coupled mobile device hardware matrix. Do not use static constants.
+ * device_model: Emulate distinct, active mobile models (e.g., "SM-G998B", "Pixel 7 Pro", "Xiaomi 13 Pro", "iPhone 14,2").
+ * system_version: Match the plausible OS version for the device (e.g., "Android 13", "Android 14", "iOS 16.5").
+ * app_version: Use recent, official Telegram mobile production builds (e.g., "10.5.3").
+ * lang_code & system_lang_code: Synchronize these values to perfectly match the target country prefix of the purchased phone number.
+ 2. EXPLICIT MTPROTO SENT_CODE RESPONSE INTERCEPTION
+   Stop flying blind. You must intercept and validate the explicit type class returned by Telegram's send_code_request.
+ * Explicitly import SentCodeTypeApp and SentCodeTypeSms from telethon.tl.types.
+ * Immediately after result = await client.send_code_request(phone), check the result.type.
+ * If isinstance(result.type, SentCodeTypeApp), Telegram has flagged our automation footprint or the number is recycled, routing the code into a ghost active session instead of an SMS text message. You must immediately abort the registration, trigger an automatic cancellation/refund via the SMSPool API, rotate the proxy, and failover gracefully.
+ * Only enter the SMSPool polling loop if isinstance(result.type, SentCodeTypeSms) evaluates to True.
+ 3. SOCKS5 TUNNEL & REMOTE DNS BINDING
+   Verify that our proxy configuration prevents DNS leaks. If the Replit server attempts to resolve Telegram's Datacenter (DC) domain names locally before routing the raw traffic through the SOCKS5 proxy, the geolocation leak instantly terminates SMS dispatch. Force the transport layer to execute remote DNS resolution through our gateway string (socks5h:// configuration semantics).
+ 4. REMOVE MID-POLL RESEND LOGIC
+   Completely REMOVE any mid-poll 90-second 'ResendCodeRequest' or secondary code invocation logic. It triggers immediate internal Telegram shadow bans. Implement strict timeout-based cancellation: if the SMS code does not arrive within the expected order window, explicitly drop the flow, invoke the SMSPool 'sms/cancel' endpoint, and gracefully failover. Never reuse or loop on the same phone number.
+ 5. OPTIMIZED SMSPOOL POLLING ENDPOINT
+   Stop looping high-frequency single requests to /sms/check which trip HTTP 429 rate limit guards. Re-engineer the asynchronous polling sequence to query /request/active as the primary batch tracker every 5 seconds. Ensure all reference variables to old service IDs are completely eliminated and locked onto service=907 (Telegram).
+USE THIS SPECIFIC TECHNICAL REFERENCE PATTERN TO REWRITE THE WORKSPACE PIPELINE:
+```python
+from telethon.tl.types import SentCodeTypeApp, SentCodeTypeSms
+import random
+import logging
+
+# 1. Generate unique mobile hardware signatures per attempt
+android_pool = [
+    {"model": "SM-G998B", "sys": "Android 13"},
+    {"model": "Pixel 7 Pro", "sys": "Android 14"},
+    {"model": "Xiaomi 13 Pro", "sys": "Android 13"},
+    {"model": "OnePlus 11", "sys": "Android 14"}
+]
+hardware = random.choice(android_pool)
+logging.info(f"🤖 Spoofing device footprint: {hardware['model']} running {hardware['sys']}")
+
+# 2. Initialize Telethon Client overriding library defaults
+client = TelegramClient(
+    session_path, 
+    api_id, 
+    api_hash, 
+    proxy=proxy,  # Ensure remote DNS resolution (socks5h://) is enforced here
+    device_model=hardware["model"],
+    system_version=hardware["sys"],
+    app_version="10.5.3",
+    lang_code="en",
+    system_lang_code="en-US"
+)
+
+await client.connect()
+
+logging.info(f"📲 Executing code request handshake for: {phone}")
+try:
+    result = await client.send_code_request(phone)
+    
+    # 3. Intercept Telegram's anti-fraud response types
+    if isinstance(result.type, SentCodeTypeApp):
+        logging.error("❌ ANTI-FRAUD FILTER TRIGGERED: Code routed to existing app session. Footprint leaked or recycling detected. Aborting session.")
+        # Trigger immediate SMSPool /sms/cancel endpoint sequence here
+        return {"status": "error", "reason": "silent_app_redirect_ban"}
+        
+    if isinstance(result.type, SentCodeTypeSms):
+        logging.info("✅ Telegram handshake success. Physical text message routed to carrier infrastructure.")
+        phone_code_hash = result.phone_code_hash
+        # Safely execute optimized /request/active SMSPool polling engine here...
+
+except Exception as e:
+    logging.error(f"💥 Critical MTProto error during registration request: {str(e)}")
+    return {"status": "error", "reason": str(e)}
+
+```
+Execute this refactor across the workspace files immediately, push clean JSON debug data to our dashboard telemetry window, and confirm once live execution is restored.
