@@ -563,6 +563,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [proxy,         setProxy]         = useState("");
   const [showProxyGen,  setShowProxyGen]  = useState(false);
   const [twoFa,         setTwoFa]         = useState("");
+  const twoFaRef = useRef(""); // tracks twoFa for use inside async fns / effects
+  useEffect(() => { twoFaRef.current = twoFa; }, [twoFa]);
   const [apiId,         setApiId]         = useState("");
   const [apiHash,       setApiHash]       = useState("");
   const [quantity,        setQuantity]        = useState(1);
@@ -615,15 +617,50 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [savingProxy,          setSavingProxy]           = useState(false);
   const [allSavedProxies,      setAllSavedProxies]       = useState<SavedProxy[]>([]);
 
-  // Fetch saved proxies for the active country whenever country changes
+  // Auto-launch state
+  const [autoLaunching,    setAutoLaunching]    = useState(false);
+  const [autoLaunchIssues, setAutoLaunchIssues] = useState<string[]>([]);
+  const pendingAutoLaunchRef = useRef(false);
+
+  // Fetch saved proxies for the active country whenever country changes.
+  // Also auto-fills proxy field + generates 2FA password (if empty).
   useEffect(() => {
     const cid = country === "custom" ? customCountry.trim() : country;
     if (!cid) { setSavedProxies([]); return; }
     fetch(`/api/proxy-store?country=${encodeURIComponent(cid)}`, { headers: authHeaders() })
       .then(r => r.json())
-      .then((d: SavedProxy[]) => setSavedProxies(Array.isArray(d) ? d : []))
+      .then((d: SavedProxy[]) => {
+        const proxies = Array.isArray(d) ? d : [];
+        setSavedProxies(proxies);
+        // Auto-fill the proxy field from the best (most-recent) stored proxy
+        if (proxies.length > 0) {
+          const sp = proxies[0];
+          setProxy(sp.proxy_string);
+          setSessionStartNum(sp.last_session_num + 1);
+          setSelectedProxyStoreId(sp.id);
+        }
+        // Auto-generate 2FA password if field is empty
+        if (!twoFaRef.current.trim()) {
+          const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%&*";
+          const arr = new Uint8Array(16);
+          crypto.getRandomValues(arr);
+          setTwoFa(Array.from(arr, b => chars[b % chars.length]).join(""));
+        }
+      })
       .catch(() => setSavedProxies([]));
   }, [country, customCountry]);
+
+  // Fire launch() once all required fields are populated (used by auto-launch flow)
+  useEffect(() => {
+    if (!pendingAutoLaunchRef.current) return;
+    const cid = country === "custom" ? customCountry.trim() : country;
+    if (cid && proxy && twoFa) {
+      pendingAutoLaunchRef.current = false;
+      setAutoLaunching(false);
+      void launch();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [country, customCountry, proxy, twoFa]);
 
   // Fetch ALL proxies for the store manager overlay
   const openProxyStore = () => {
@@ -922,6 +959,121 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     } else {
       setCountry("custom");
       setCustomCountry(id);
+    }
+  }
+
+  /** Full preflight check → fill all fields → trigger launch automatically. */
+  async function handleAutoLaunch() {
+    setAutoLaunching(true);
+    setAutoLaunchIssues([]);
+
+    try {
+      const issues: string[] = [];
+
+      // ── 1. SMSPool API key ──────────────────────────────────────────────
+      if (!serverHasKey && !smsKey.trim()) {
+        issues.push(L(
+          "⚠️ SMSPool API key not set — enter it in the configuration section above",
+          "⚠️ API ключ SMSPool не налаштований — введіть його у секції конфігурації вище"
+        ));
+      }
+
+      // ── 2. Best country ─────────────────────────────────────────────────
+      let bestCountryId: string | null = null;
+      let bestCountryName: string | null = null;
+
+      if (autoCountryTop5.length > 0) {
+        bestCountryId   = autoCountryTop5[0].id;
+        bestCountryName = autoCountryTop5[0].name ?? autoCountryTop5[0].id;
+      } else if (serverHasKey || smsKey.trim()) {
+        try {
+          const qs = serverHasKey ? "" : `?api_key=${encodeURIComponent(smsKey.trim())}`;
+          const r = await fetch(`/api/factory/best-country${qs}`, { headers: authHeaders() });
+          const j = await r.json() as { id?: string; name?: string; error?: string };
+          if (!j.error && j.id) { bestCountryId = j.id; bestCountryName = j.name ?? j.id; }
+        } catch { /* silent */ }
+      }
+
+      if (!bestCountryId) {
+        issues.push(L(
+          "📡 Cannot determine best country — check SMSPool connection",
+          "📡 Не вдається визначити найкращу країну — перевірте підключення SMSPool"
+        ));
+      }
+
+      // ── 3. Proxy for that country ───────────────────────────────────────
+      let foundProxy: SavedProxy | null = null;
+      if (bestCountryId) {
+        try {
+          const r = await fetch(
+            `/api/proxy-store?country=${encodeURIComponent(bestCountryId)}`,
+            { headers: authHeaders() }
+          );
+          const list: SavedProxy[] = await r.json();
+          if (Array.isArray(list) && list.length > 0) {
+            foundProxy = list[0];
+          } else {
+            issues.push(L(
+              `🔌 No proxy stored for "${bestCountryName ?? bestCountryId}" — save one in the Proxy Storage section`,
+              `🔌 Немає збереженого проксі для "${bestCountryName ?? bestCountryId}" — додайте його у розділі Сховища проксі`
+            ));
+          }
+        } catch {
+          issues.push(L("🔌 Failed to load proxy storage", "🔌 Не вдалося завантажити сховище проксі"));
+        }
+      }
+
+      // ── 4. Avatars (AI profile mode only) ──────────────────────────────
+      if (profileMode === "ai") {
+        try {
+          const r = await fetch("/api/factory/avatar-counts", { headers: authHeaders() });
+          const c = await r.json() as { male: number; female: number };
+          const total = (c.male ?? 0) + (c.female ?? 0);
+          if (total === 0) {
+            issues.push(L(
+              "📷 No avatars available — upload photos in the Profile Setup section below",
+              "📷 Немає фотографій — завантажте їх у секції Налаштування профілю нижче"
+            ));
+          }
+        } catch { /* non-blocking */ }
+      }
+
+      // ── Blockers found → show and abort ────────────────────────────────
+      if (issues.length > 0) {
+        setAutoLaunchIssues(issues);
+        return;
+      }
+
+      // ── All clear → apply country + proxy + 2FA, then trigger launch ──
+      const known = bestCountryId
+        ? COUNTRIES.find(c => c.code.toLowerCase() === bestCountryId!.toLowerCase())
+        : null;
+      if (bestCountryId) {
+        if (known) { setCountry(known.code); setSmsPoolCountryId(""); }
+        else        { setCountry("custom"); setCustomCountry(bestCountryId); }
+        setSmsPoolCountryId(bestCountryId);
+      }
+
+      if (foundProxy) {
+        setProxy(foundProxy.proxy_string);
+        setSessionStartNum(foundProxy.last_session_num + 1);
+        setSelectedProxyStoreId(foundProxy.id);
+      }
+
+      // Generate 2FA if still empty
+      if (!twoFaRef.current.trim()) {
+        const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%&*";
+        const arr = new Uint8Array(16);
+        crypto.getRandomValues(arr);
+        setTwoFa(Array.from(arr, b => chars[b % chars.length]).join(""));
+      }
+
+      // Signal the pending-launch effect — it will call launch() once state settles
+      pendingAutoLaunchRef.current = true;
+
+    } catch (e) {
+      setAutoLaunchIssues([String(e)]);
+      setAutoLaunching(false);
     }
   }
 
@@ -3566,6 +3718,88 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               </div>
             )}
 
+            {/* ── Rainbow Auto-Launch button ────────────────────────── */}
+            <div>
+              <button
+                onClick={() => { setAutoLaunchIssues([]); void handleAutoLaunch(); }}
+                disabled={autoLaunching}
+                style={{
+                  width: "100%",
+                  background: "linear-gradient(135deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #a855f7, #ff6b6b)",
+                  backgroundSize: "300% 300%",
+                  animation: autoLaunching
+                    ? "rainbow-flow 2s ease infinite"
+                    : "rainbow-flow 5s ease infinite",
+                  border: "none",
+                  borderRadius: 16, padding: "17px",
+                  fontSize: 15, fontWeight: 900, color: "#fff",
+                  cursor: autoLaunching ? "wait" : "pointer",
+                  fontFamily: "inherit",
+                  letterSpacing: "0.03em",
+                  textShadow: "0 1px 6px rgba(0,0,0,0.5)",
+                  boxShadow: autoLaunching
+                    ? "0 0 40px rgba(168,85,247,0.6)"
+                    : "0 0 28px rgba(255,107,107,0.5)",
+                  transition: "opacity 0.2s, transform 0.15s",
+                  transform: autoLaunching ? "scale(0.98)" : "scale(1)",
+                  opacity: autoLaunching ? 0.85 : 1,
+                  position: "relative", overflow: "hidden",
+                }}
+              >
+                {autoLaunching
+                  ? `⟳ ${L("Checking & Launching…", "Перевірка та запуск…")}`
+                  : `✦ ${L("Full Auto Launch", "Авто-запуск")}`
+                }
+              </button>
+
+              {/* Issues panel */}
+              {autoLaunchIssues.length > 0 && (
+                <div style={{
+                  marginTop: 10,
+                  background: "rgba(255,193,7,0.06)",
+                  border: "1px solid rgba(255,193,7,0.3)",
+                  borderRadius: 14, padding: "14px 16px",
+                  display: "flex", flexDirection: "column", gap: 8,
+                }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "rgba(255,215,100,0.9)", marginBottom: 2 }}>
+                    {L("Cannot auto-launch — resolve these first:", "Не можна запустити — виправте наступне:")}
+                  </div>
+                  {autoLaunchIssues.map((msg, i) => (
+                    <div key={i} style={{
+                      fontSize: 12, color: "rgba(255,230,150,0.85)",
+                      lineHeight: 1.5,
+                      borderLeft: "2px solid rgba(255,193,7,0.4)",
+                      paddingLeft: 8,
+                    }}>
+                      {msg}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{
+                textAlign: "center", marginTop: 8,
+                fontSize: 10, color: "rgba(255,255,255,0.22)",
+                letterSpacing: "0.04em",
+              }}>
+                {L(
+                  "Picks best country · fills proxy & 2FA · starts immediately",
+                  "Вибирає країну · заповнює проксі та 2FA · запускає автоматично"
+                )}
+              </div>
+            </div>
+
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8, margin: "2px 0",
+            }}>
+              <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.08)" }} />
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.22)", flexShrink: 0 }}>
+                {L("or launch manually", "або запустити вручну")}
+              </div>
+              <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.08)" }} />
+            </div>
+
+            {/* ── Regular manual launch button ─────────────────────── */}
             <button
               onClick={() => void launch()}
               style={{

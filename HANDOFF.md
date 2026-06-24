@@ -15,43 +15,36 @@
 
 ## This session
 
-**Task:** Three-part improvement to Account Factory country selection UX.
+**Task:** Auto-fill proxy + 2FA on country change, plus rainbow "Full Auto Launch" button.
 
-**1. Fixed `_pick_auto_switch_proxy` smart selection logic (`account_factory.py`)**
-- Removed the alphabetical fallback that previously picked any proxy country available in storage even when we had zero performance data for it
-- Now: only switches to a country IF we have real `factory_country_stats` data showing it's good AND a proxy for it exists in storage
-- If stats say a country is best but no proxy stored for it → emits "suggest" SSE (upload proxy prompt)
-- If no matching data at all → "none" (no blind switches)
+**1. Auto-fill proxy + 2FA on country selection (`AccountFactory.tsx`)**
+- Extended the proxy-fetch `useEffect` (watches `country`/`customCountry`) to also auto-fill the proxy field from the first (most-recent) stored proxy for that country — sets `proxy`, `sessionStartNum` (last_session_num + 1), `selectedProxyStoreId`.
+- If `twoFa` is currently empty, auto-generates a 16-char password (upper+lower+digits+symbols via `crypto.getRandomValues`). Does NOT overwrite an existing password.
+- `twoFaRef = useRef("")` kept in sync with `twoFa` state so async functions read live value without stale-closure bugs.
+- Fires on every country change (initial load, Наявність tab click, AI Вибір, own-stats panel, any `applyCountry()` call).
 
-**2. Removed "Авто-перемикання проксі" toggle UI (`AccountFactory.tsx`)**
-- Removed the entire toggle button JSX (lines ~1659–1698 original)
-- Removed `autoSwitch` state + `setAutoSwitch`
-- Removed `auto_switch: autoSwitch` from `launch()` POST body
-- Removed `auto_switching` SSE event handler
-- Backend `auto_switch` defaults to `false` without the toggle (feature dormant)
+**2. `pendingAutoLaunchRef` trigger system (`AccountFactory.tsx`)**
+- A `useRef` flag. When set `true`, a `useEffect` watching `[country, customCountry, proxy, twoFa]` fires `launch()` once all three are non-empty — avoids stale-closure issues since `launch()` reads React state.
+- Used exclusively by `handleAutoLaunch()` after it sets all state.
 
-**3. Beautified "Наявність" and "AI Вибір" buttons**
-- Both buttons enlarged with distinct icon blocks (40×40px rounded squares)
-- **Наявність**: 📡 icon, teal/cyan gradient theme, live pulse dot, "SMSPool live" subtitle
-- **AI Вибір**: 🧠 icon, purple/violet gradient theme, ✦ sparkle accent, "Топ-10 аналіз" subtitle
-- Active/inactive state glow + inset highlight on both
+**3. Rainbow "Full Auto Launch" button (`AccountFactory.tsx`, `index.css`)**
+- CSS: `@keyframes rainbow-flow` — animates `background-position` 0%→100%→0% on a 300%-wide multi-stop gradient (slow 5s idle, fast 2s while checking). `@keyframes rainbow-pulse` for glow cycling (available).
+- Button: `linear-gradient(135deg, #ff6b6b → #ffd93d → #6bcb77 → #4d96ff → #a855f7 → #ff6b6b)` at `backgroundSize: 300% 300%`, animated continuously. Scales down + accelerates while running.
+- `handleAutoLaunch()` runs 4 preflight checks: (1) SMSPool key set, (2) best country from cache or `/api/factory/best-country`, (3) proxy in store for that country via `/api/proxy-store?country=X`, (4) avatar count via `/api/factory/avatar-counts` (AI profile mode only).
+- If blockers → yellow issues card lists each problem. If all clear → applies state + fires launch.
+- A "або запустити вручну" divider separates it from the original 🚀 manual button (unchanged).
 
-**4. Added per-country AI analysis panel for Наявність tab (`AccountFactory.tsx`)**
-- `countryAiEntry` state was populated but never rendered — now displays a full panel
-- Triggers automatically when user clicks any country in the Наявність list (existing `fetchCountryAiAnalysis` call)
-- Panel: conic-gradient freshness score circle, bar, avg_attempts + source badge pills, reasoning block with AI label
-- "Вибрати цю країну →" button applies country + closes panel
-- Loading skeleton (3 animated bars + text) and error state included
-- Panel dismissable via ✕; appears between AI Top-10 panel and the SMSPool stock badge
+**4. Previous session (already merged):** smart proxy selection fix, авто toggle removal, button beautification, per-country AI analysis card.
 
 ---
 
 ## Current state
 
-- ✅ Telegram Bot workflow running (supervisor + 2 workers + FastAPI port 8083)
+- ✅ Telegram Bot workflow running (supervisor + FastAPI port 8083)
 - ✅ Telegram Mini App workflow running (Vite dev port 5000)
-- ✅ All 8 secrets set
-- ✅ Account Factory: smart proxy selection, no авто toggle, beautiful buttons, per-country AI card
+- ✅ Build clean: `vite build` zero errors, 1099 kB bundle
+- ✅ Auto-fill fires on any country change
+- ✅ Rainbow auto-launch button renders + animates in idle and checking states
 
 ---
 
@@ -85,7 +78,7 @@ Non-sensitive env var: `PORT=8080`.
 - Python: `account_factory.py` → `_registration_stream()` + `_pick_auto_switch_proxy()`
 - Node API: `artifacts/api-server/src/routes/factory.ts`
 - UI: `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`
-- `_pick_auto_switch_proxy()`: only returns "found" if stats + proxy both exist; returns "suggest" if best country has no proxy stored; returns "none" if no data
+- `_pick_auto_switch_proxy()`: only returns "found" if stats + proxy both exist; "suggest" if best has no proxy; "none" if no data
 - No авто toggle — `auto_switch` always `false` from frontend
 
 ### Auth model
@@ -100,5 +93,5 @@ Non-sensitive env var: `PORT=8080`.
 | `artifacts/api-server/src/routes/proxy-store.ts` | Proxy vault CRUD |
 | `artifacts/api-server/src/routes/factory.ts` | Factory API + country stats |
 | `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx` | Factory UI |
+| `artifacts/telegram-miniapp/src/index.css` | Global CSS incl. rainbow-flow keyframes |
 | `campaigns.db` | SQLite — all tables incl. `factory_country_stats`, `saved_proxies` |
-| `HANDOFF.md` | This file |
