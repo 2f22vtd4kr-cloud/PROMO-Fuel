@@ -99,13 +99,17 @@ _OFFICIAL_CLIENT_CREDS = [
 
 APP_VERSIONS = ["9.6.3", "9.5.9", "9.4.4", "9.3.3", "9.2.1", "9.7.1", "9.1.8"]
 
-FIRST_NAMES = [
-    "Alex", "Maria", "Ivan", "Anna", "Pavlo", "Olga", "Dmytro", "Elena",
-    "Sergii", "Natalia", "Andrii", "Tatiana", "Maksym", "Julia", "Viktor",
-    "Daryna", "Roman", "Iryna", "Bohdan", "Kateryna",
+MALE_FIRST_NAMES = [
+    "Алексей", "Дмитрий", "Иван", "Михаил", "Андрей", "Сергей", "Николай",
+    "Виктор", "Роман", "Максим", "Павел", "Артём", "Кирилл", "Влад", "Антон",
 ]
+FEMALE_FIRST_NAMES = [
+    "Анна", "Мария", "Ольга", "Екатерина", "Виктория", "Наталья", "Светлана",
+    "Елена", "Ирина", "Юлия", "Татьяна", "Ксения", "Дарья", "Алина", "Соня",
+]
+FIRST_NAMES = MALE_FIRST_NAMES + FEMALE_FIRST_NAMES  # legacy fallback
 LAST_NAMES = [
-    "Kovalenko", "Shevchenko", "Bondarenko", "Tkachenko", "Kravchenko",
+    "Кovalenko", "Shevchenko", "Bondarenko", "Tkachenko", "Kravchenko",
     "Melnyk", "Petrenko", "Savchenko", "Moroz", "Lytvyn", "Rudenko",
     "Ponomarenko", "Hrytsenko", "Boyko", "Marchenko",
 ]
@@ -118,70 +122,124 @@ GEMINI_API_URL      = "https://generativelanguage.googleapis.com/v1beta/models/g
 _AVATAR_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
 
-def _pick_pending_avatar() -> str | None:
-    """Grab one image from pending_avatars/, move it to used_avatars/, return dest path or None."""
-    os.makedirs(PENDING_AVATARS_DIR, exist_ok=True)
-    os.makedirs(USED_AVATARS_DIR, exist_ok=True)
-    try:
-        candidates = [
-            f for f in os.listdir(PENDING_AVATARS_DIR)
-            if os.path.splitext(f)[1].lower() in _AVATAR_EXTS
-        ]
-    except OSError:
-        return None
-    if not candidates:
-        return None
-    chosen = random.choice(candidates)
-    src = os.path.join(PENDING_AVATARS_DIR, chosen)
-    dst = os.path.join(USED_AVATARS_DIR, chosen)
-    try:
-        shutil.move(src, dst)
-    except Exception:
-        return None
-    return dst
+def _pick_pending_avatar(gender: str = "random") -> str | None:
+    """Pick one image from the gender-appropriate subfolder, move it to used/, return dest path.
+
+    Priority: gender subfolder (male/ or female/) → root pending_avatars/ as fallback.
+    """
+    resolved = gender if gender in ("male", "female") else random.choice(("male", "female"))
+
+    search_paths = [
+        (os.path.join(PENDING_AVATARS_DIR, resolved), os.path.join(USED_AVATARS_DIR, resolved)),
+        (PENDING_AVATARS_DIR, USED_AVATARS_DIR),  # root fallback
+    ]
+
+    for pending_dir, used_dir in search_paths:
+        os.makedirs(pending_dir, exist_ok=True)
+        os.makedirs(used_dir, exist_ok=True)
+        try:
+            candidates = [
+                f for f in os.listdir(pending_dir)
+                if os.path.splitext(f)[1].lower() in _AVATAR_EXTS
+            ]
+        except OSError:
+            continue
+        if not candidates:
+            continue
+        chosen = random.choice(candidates)
+        src = os.path.join(pending_dir, chosen)
+        dst = os.path.join(used_dir, chosen)
+        try:
+            shutil.move(src, dst)
+            return dst
+        except Exception:
+            continue
+    return None
 
 
-async def _generate_ai_profile(http_session: aiohttp.ClientSession) -> dict[str, str]:
-    """Call Gemini to generate a Russian-audience Telegram profile.
+async def _generate_ai_profile(
+    http_session: aiohttp.ClientSession,
+    gender: str = "random",
+) -> dict[str, str]:
+    """Call Gemini to generate a gender-aware Russian-audience Telegram profile.
 
-    Returns {"first_name": ..., "last_name": ..., "bio": ...}.
+    Args:
+        gender: "male", "female", or "random" (resolved 50/50 internally).
+    Returns dict with keys: first_name, last_name, bio, gender (resolved).
     Falls back to static name lists on any error or missing API key.
     """
+    resolved_gender = gender if gender in ("male", "female") else random.choice(("male", "female"))
+    fb_names = MALE_FIRST_NAMES if resolved_gender == "male" else FEMALE_FIRST_NAMES
+
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
         return {
-            "first_name": random.choice(FIRST_NAMES),
+            "first_name": random.choice(fb_names),
             "last_name":  random.choice(LAST_NAMES),
             "bio":        "",
+            "gender":     resolved_gender,
         }
 
-    # Four name styles with weighted random selection
-    _styles = [
-        ("classic",    40,
-         "a traditional Russian Cyrillic first + last name (e.g. Алексей Громов, Ольга Захарова). "
-         "first_name MUST be Cyrillic."),
-        ("latin",      25,
-         "a Latinized/transliterated Russian name (e.g. Oliya, Kirill Morozov, Sonya). "
-         "Mix Latin letters naturally. last_name is optional."),
-        ("nickname",   25,
-         "a modern informal Russian Telegram nickname (e.g. x_vlad_x, toxic_masha, real_nikitos). "
-         "last_name should be empty string."),
-        ("subculture", 10,
-         "a Russian patriotic or subculture name with Z, V or Cyrillic patriotic markers "
-         "(e.g. Z_Алексей, Витя🔱, Zа_Победу). last_name can be short or empty."),
-    ]
+    if resolved_gender == "female":
+        _styles = [
+            ("classic_female", 40,
+             "a traditional Russian Cyrillic FEMALE first + last name "
+             "(e.g. Анна Козлова, Мария Иванова, Ольга Смирнова, Екатерина Новикова). "
+             "first_name MUST be Cyrillic and unambiguously feminine."),
+            ("latinized_female", 25,
+             "a Latinized Russian FEMALE name (e.g. Sonya, Katya Morozova, Anya, Alina Volkov). "
+             "last_name is optional."),
+            ("nickname_female", 30,
+             "a modern informal FEMALE Telegram nickname "
+             "(e.g. _kseniya_, masha_ok, its_sonya, nastya.life, life_with_anya). "
+             "last_name must be empty string."),
+            ("emoji_female", 5,
+             "a short feminine Russian name with a lifestyle emoji "
+             "(e.g. Лена ✨, Sasha 🌸, Ксюша 💎). last_name must be empty string."),
+        ]
+        bio_themes = (
+            "lifestyle, beauty, travel, family, or positivity. "
+            "Use emoji naturally. "
+            "Examples: 'живу, чтобы жить 🌸', 'путешествия и кофе ☕', 'мама, жена, подруга 💕'"
+        )
+        gender_instr = "The profile is for a WOMAN. Use feminine Russian name and warm personal style."
+    else:
+        _styles = [
+            ("classic_male", 35,
+             "a traditional Russian Cyrillic MALE first + last name "
+             "(e.g. Алексей Громов, Дмитрий Козлов, Иван Петров, Михаил Соколов). "
+             "first_name MUST be Cyrillic and unambiguously masculine."),
+            ("latinized_male", 25,
+             "a Latinized Russian MALE name (e.g. Vlad, Kirill Morozov, Alexey, Dima Solov). "
+             "last_name is optional."),
+            ("nickname_male", 25,
+             "a modern informal MALE Telegram nickname "
+             "(e.g. x_vlad_x, real_nikitos, boss_artem, toxic_misha). "
+             "last_name must be empty string."),
+            ("patriotic_male", 15,
+             "a Russian patriotic or subculture MALE name "
+             "(e.g. Z_Алексей, Витя🔱, Zа_Победу, Voin2024). last_name can be short or empty."),
+        ]
+        bio_themes = (
+            "business, sports, tech, cars, or patriotism. "
+            "Keep it minimal and direct. "
+            "Examples: 'бизнес | авто | жизнь', 'работаю на мечту 💪', 'z за победу 🇷🇺'"
+        )
+        gender_instr = "The profile is for a MAN. Use masculine Russian name and confident direct style."
+
     _, _, style_desc = random.choices(_styles, weights=[s[1] for s in _styles], k=1)[0]
 
     include_bio = random.random() < 0.35
     bio_instr = (
-        "Also generate a short Russian/English bio phrase (max 70 chars) matching the style."
+        f"Also generate a short bio phrase (max 70 chars) on theme: {bio_themes}"
         if include_bio else
         "Set bio to empty string."
     )
 
     prompt = (
         f"Generate a realistic Russian Telegram user profile.\n"
-        f"Style: {style_desc}\n"
+        f"{gender_instr}\n"
+        f"Name style: {style_desc}\n"
         f"{bio_instr}\n"
         f"Return ONLY valid JSON with no markdown:\n"
         f'{{\"first_name\": \"...\", \"last_name\": \"...\", \"bio\": \"...\"}}'
@@ -205,13 +263,15 @@ async def _generate_ai_profile(http_session: aiohttp.ClientSession) -> dict[str,
                 "first_name": str(parsed.get("first_name") or ""),
                 "last_name":  str(parsed.get("last_name")  or ""),
                 "bio":        str(parsed.get("bio")        or ""),
+                "gender":     resolved_gender,
             }
     except Exception as exc:
         logger.warning(f"AI profile generation failed ({exc}) — using static fallback")
         return {
-            "first_name": random.choice(FIRST_NAMES),
+            "first_name": random.choice(fb_names),
             "last_name":  random.choice(LAST_NAMES),
             "bio":        "",
+            "gender":     resolved_gender,
         }
 
 
@@ -610,6 +670,7 @@ async def _registration_stream(
     avatars: list | None = None,
     warmup_mode: str = "all",
     session_name: str = "",
+    gender: str = "random",
 ):
     """Async generator yielding SSE chunks for the full 8-step pipeline."""
     os.makedirs(SESSION_DIR, exist_ok=True)
