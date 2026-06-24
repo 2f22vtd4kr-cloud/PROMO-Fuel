@@ -50,13 +50,22 @@ factory_router = APIRouter(prefix="/api/factory", tags=["factory"])
 DB_PATH      = os.environ.get("DB_PATH", "campaigns.db")
 SESSION_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sessions")
 
-SMSPOOL_BUY    = "https://api.smspool.net/purchase/sms"
-SMSPOOL_CHECK  = "https://api.smspool.net/sms/check"
-SMSPOOL_CANCEL = "https://api.smspool.net/sms/cancel"
-SMSPOOL_STOCK  = "https://api.smspool.net/country/retrieve_all"
-SMSPOOL_PRICE  = "https://api.smspool.net/request/price"
-SMSPOOL_SVC           = "https://api.smspool.net/service/retrieve_all"
-SMSPOOL_SUCCESS_RATE  = "https://api.smspool.net/request/success_rate"
+SMSPOOL_BUY          = "https://api.smspool.net/purchase/sms"
+SMSPOOL_CHECK        = "https://api.smspool.net/sms/check"
+SMSPOOL_CANCEL       = "https://api.smspool.net/sms/cancel"
+SMSPOOL_ACTIVE       = "https://api.smspool.net/request/active"
+SMSPOOL_STOCK        = "https://api.smspool.net/country/retrieve_all"
+SMSPOOL_PRICE        = "https://api.smspool.net/request/price"
+SMSPOOL_SVC          = "https://api.smspool.net/service/retrieve_all"
+SMSPOOL_SUCCESS_RATE = "https://api.smspool.net/request/success_rate"
+
+# ── Process-level SendCodeUnavailable country blacklist ──────────────────────
+# Countries that returned SendCodeUnavailable in this process lifetime.
+# SendCodeUnavailable = Telegram definitively confirms the entire pool for that
+# country is recycled (existing accounts).  Buying more numbers from the same
+# country in the same process will always produce the same result.
+# Cleared only on process restart, not between individual registration attempts.
+_RECYCLED_COUNTRY_POOL: set[str] = set()
 
 # Telegram service ID on SMSPool (verified: service 907 = Telegram)
 TELEGRAM_SERVICE_ID = "907"
@@ -114,6 +123,7 @@ DEVICE_PROFILES = [
 # A real mobile user in UA with lang_code="en" is an obvious bot fingerprint.
 # Map country IDs (SMSPool format) to the locale a real device in that country sends.
 _COUNTRY_LANG_MAP: dict[str, tuple[str, str]] = {
+    # CIS / Eastern Europe
     "ua":  ("uk", "uk-UA"),   # Ukraine
     "ru":  ("ru", "ru-RU"),   # Russia
     "kz":  ("ru", "ru-KZ"),   # Kazakhstan
@@ -124,28 +134,76 @@ _COUNTRY_LANG_MAP: dict[str, tuple[str, str]] = {
     "ge":  ("ka", "ka-GE"),   # Georgia
     "am":  ("hy", "hy-AM"),   # Armenia
     "md":  ("ro", "ro-MD"),   # Moldova
+    "tj":  ("tg", "tg-TJ"),   # Tajikistan
+    "tm":  ("tk", "tk-TM"),   # Turkmenistan
+    # South / Southeast Asia
     "ph":  ("en", "en-PH"),   # Philippines
     "bd":  ("bn", "bn-BD"),   # Bangladesh
     "in":  ("hi", "hi-IN"),   # India
     "pk":  ("ur", "ur-PK"),   # Pakistan
-    "ng":  ("en", "en-NG"),   # Nigeria
     "vn":  ("vi", "vi-VN"),   # Vietnam
     "id":  ("id", "id-ID"),   # Indonesia
     "th":  ("th", "th-TH"),   # Thailand
-    "ro":  ("ro", "ro-RO"),   # Romania
-    "pl":  ("pl", "pl-PL"),   # Poland
-    "de":  ("de", "de-DE"),   # Germany
-    "br":  ("pt", "pt-BR"),   # Brazil
-    "mx":  ("es", "es-MX"),   # Mexico
-    "co":  ("es", "es-CO"),   # Colombia
-    "es":  ("es", "es-ES"),   # Spain
-    "fr":  ("fr", "fr-FR"),   # France
-    "it":  ("it", "it-IT"),   # Italy
-    "tr":  ("tr", "tr-TR"),   # Turkey
-    "il":  ("he", "he-IL"),   # Israel
+    "kh":  ("km", "km-KH"),   # Cambodia — Khmer; default en-US is a bot fingerprint
+    "mm":  ("my", "my-MM"),   # Myanmar / Burma — Burmese
+    "la":  ("lo", "lo-LA"),   # Laos — Lao
+    "lk":  ("si", "si-LK"),   # Sri Lanka — Sinhala
+    "np":  ("ne", "ne-NP"),   # Nepal — Nepali
+    "my":  ("ms", "ms-MY"),   # Malaysia — Malay
+    "sg":  ("en", "en-SG"),   # Singapore — English
+    "mn":  ("mn", "mn-MN"),   # Mongolia — Mongolian
+    # East Asia
+    "cn":  ("zh", "zh-CN"),   # China
+    "tw":  ("zh", "zh-TW"),   # Taiwan
+    "hk":  ("zh", "zh-HK"),   # Hong Kong
+    "jp":  ("ja", "ja-JP"),   # Japan
+    "kr":  ("ko", "ko-KR"),   # South Korea
+    # Middle East / North Africa
     "ae":  ("ar", "ar-AE"),   # UAE
     "sa":  ("ar", "ar-SA"),   # Saudi Arabia
     "eg":  ("ar", "ar-EG"),   # Egypt
+    "il":  ("he", "he-IL"),   # Israel
+    "ir":  ("fa", "fa-IR"),   # Iran — Farsi
+    "iq":  ("ar", "ar-IQ"),   # Iraq
+    "ma":  ("ar", "ar-MA"),   # Morocco
+    "dz":  ("ar", "ar-DZ"),   # Algeria
+    "tn":  ("ar", "ar-TN"),   # Tunisia
+    # Sub-Saharan Africa
+    "ng":  ("en", "en-NG"),   # Nigeria
+    "gh":  ("en", "en-GH"),   # Ghana
+    "ke":  ("sw", "sw-KE"),   # Kenya — Swahili
+    "tz":  ("sw", "sw-TZ"),   # Tanzania — Swahili
+    "et":  ("am", "am-ET"),   # Ethiopia — Amharic
+    "cm":  ("fr", "fr-CM"),   # Cameroon — French
+    "sn":  ("fr", "fr-SN"),   # Senegal — French
+    "ci":  ("fr", "fr-CI"),   # Côte d'Ivoire — French
+    "mg":  ("fr", "fr-MG"),   # Madagascar — French
+    # Europe
+    "ro":  ("ro", "ro-RO"),   # Romania
+    "pl":  ("pl", "pl-PL"),   # Poland
+    "de":  ("de", "de-DE"),   # Germany
+    "fr":  ("fr", "fr-FR"),   # France
+    "it":  ("it", "it-IT"),   # Italy
+    "es":  ("es", "es-ES"),   # Spain
+    "pt":  ("pt", "pt-PT"),   # Portugal
+    "nl":  ("nl", "nl-NL"),   # Netherlands
+    "be":  ("nl", "nl-BE"),   # Belgium
+    "cz":  ("cs", "cs-CZ"),   # Czech Republic
+    "sk":  ("sk", "sk-SK"),   # Slovakia
+    "hu":  ("hu", "hu-HU"),   # Hungary
+    "bg":  ("bg", "bg-BG"),   # Bulgaria
+    "hr":  ("hr", "hr-HR"),   # Croatia
+    "rs":  ("sr", "sr-RS"),   # Serbia
+    "gr":  ("el", "el-GR"),   # Greece
+    "tr":  ("tr", "tr-TR"),   # Turkey
+    # Americas
+    "br":  ("pt", "pt-BR"),   # Brazil
+    "mx":  ("es", "es-MX"),   # Mexico
+    "co":  ("es", "es-CO"),   # Colombia
+    "ar":  ("es", "es-AR"),   # Argentina
+    "pe":  ("es", "es-PE"),   # Peru
+    "cl":  ("es", "es-CL"),   # Chile
+    "ve":  ("es", "es-VE"),   # Venezuela
 }
 
 # ── Registration-grade credential pool ───────────────────────────────────────
@@ -161,17 +219,42 @@ _COUNTRY_LANG_MAP: dict[str, tuple[str, str]] = {
 # platform triggers immediate SentCodeTypeApp on fresh numbers.
 _REGISTRATION_CREDS: list[tuple] = [
     # Telegram Desktop Windows — api_id 2040
+    # device_model / system_version must match Telegram Desktop strings exactly
     (2040, "b18441a1ff607e10a989891a5462e627",
-     "PC 64bit", "Windows 11", "5.9.5", "desktop"),
+     "PC 64bit", "Windows 11",   "5.9.5", "desktop"),
     (2040, "b18441a1ff607e10a989891a5462e627",
-     "PC 64bit", "Windows 10", "5.8.4", "desktop"),
+     "PC 64bit", "Windows 10",   "5.8.4", "desktop"),
+    (2040, "b18441a1ff607e10a989891a5462e627",
+     "PC 64bit", "Windows 11",   "5.8.1", "desktop"),
+    # Telegram macOS — api_id 2040 (same api_id, different device strings)
+    (2040, "b18441a1ff607e10a989891a5462e627",
+     "Mac",      "macOS 15.3.1", "11.5",  "desktop"),
+    (2040, "b18441a1ff607e10a989891a5462e627",
+     "Mac",      "macOS 14.6.1", "10.9",  "desktop"),
     # Telegram iOS — api_id 2496
+    # system_version = iOS build (e.g. "18.3.2"), app_version = Telegram app version
     (2496, "8da85b0d5bfe62527e5b244c209159c3",
-     "iPhone 16 Pro Max", "18.3.2", "11.4.0", "ios"),
+     "iPhone 17 Pro Max",  "18.5",   "11.6.2", "ios"),
     (2496, "8da85b0d5bfe62527e5b244c209159c3",
-     "iPhone 15 Pro",     "17.6.1", "10.9.1", "ios"),
+     "iPhone 17 Pro",      "18.5",   "11.6.2", "ios"),
     (2496, "8da85b0d5bfe62527e5b244c209159c3",
-     "iPhone 14 Pro Max", "17.5.1", "10.8.0", "ios"),
+     "iPhone 16 Pro Max",  "18.3.2", "11.4.0", "ios"),
+    (2496, "8da85b0d5bfe62527e5b244c209159c3",
+     "iPhone 16 Pro",      "18.3.2", "11.4.0", "ios"),
+    (2496, "8da85b0d5bfe62527e5b244c209159c3",
+     "iPhone 16",          "18.2.1", "11.3.0", "ios"),
+    (2496, "8da85b0d5bfe62527e5b244c209159c3",
+     "iPhone 15 Pro Max",  "17.6.1", "10.9.1", "ios"),
+    (2496, "8da85b0d5bfe62527e5b244c209159c3",
+     "iPhone 15 Pro",      "17.6.1", "10.9.1", "ios"),
+    (2496, "8da85b0d5bfe62527e5b244c209159c3",
+     "iPhone 15",          "17.5.1", "10.8.0", "ios"),
+    (2496, "8da85b0d5bfe62527e5b244c209159c3",
+     "iPhone 14 Pro Max",  "17.5.1", "10.8.0", "ios"),
+    (2496, "8da85b0d5bfe62527e5b244c209159c3",
+     "iPhone 14 Pro",      "17.4.1", "10.7.4", "ios"),
+    (2496, "8da85b0d5bfe62527e5b244c209159c3",
+     "iPhone SE (3rd gen)","17.4.1", "10.7.4", "ios"),
 ]
 
 # Keep _OFFICIAL_CLIENT_CREDS as the recycled-number detection fallback
@@ -888,6 +971,22 @@ async def _registration_stream(
     """Async generator yielding SSE chunks for the full 8-step pipeline."""
     os.makedirs(SESSION_DIR, exist_ok=True)
 
+    # ── Process-level recycled country check ──────────────────────────────────
+    # If a previous attempt in this Python process already hit SendCodeUnavailable
+    # for this country, the entire SMSPool pool is recycled.  No amount of retries
+    # will change Telegram's response.  Abort immediately so the UI can prompt the
+    # user to pick a different country instead of burning balance.
+    if country_id.lower() in _RECYCLED_COUNTRY_POOL:
+        yield _sse("sms_retry_prompt", {
+            "country_id": country_id,
+            "message": (
+                f"🚫 {country_id.upper()} pool flagged as recycled this session — "
+                "a previous SendCodeUnavailable confirmed these numbers already have accounts. "
+                + _suggest_alt_countries(country_id)
+            ),
+        })
+        return
+
     order_code:              str | None = None   # alphanumeric e.g. "ECKU5XM9" — used for check/cancel
     phone:                   str | None = None
     client:                  TelegramClient | None = None
@@ -1458,7 +1557,10 @@ async def _registration_stream(
                     # meaning the code was already delivered to the EXISTING account's
                     # Telegram app.  No SMS fallback is possible.  Buying more numbers
                     # from the same country will produce the same result — stop now.
+                    # Register at process level so future attempts to the same country
+                    # are blocked immediately without wasting balance.
                     _app_stuck_count += 1
+                    _RECYCLED_COUNTRY_POOL.add(country_id.lower())
                     yield _sse("step", {"step": 3, "status": "error",
                                         "message": "🚫 SendCodeUnavailable — code delivered to existing account's app; number confirmed recycled"})
                     await cancel_order()
@@ -1622,9 +1724,6 @@ async def _registration_stream(
                 m = re.search(r"\b(\d{4,8})\b", s)
                 return m.group(1) if m else None
 
-            _SMSPOOL_CHECK  = "https://api.smspool.net/sms/check"
-            _SMSPOOL_ACTIVE = "https://api.smspool.net/request/active"
-
             async with aiohttp.ClientSession() as _http:
                 while time.time() < _deadline:
                     _remaining = int(_deadline - time.time())
@@ -1658,65 +1757,25 @@ async def _registration_stream(
 
                     await asyncio.sleep(4)
 
+                    _elapsed = int(120 - _remaining)
                     try:
-                        # Primary: /sms/check — catches status 3 (complete) even after
-                        # the order leaves the /request/active list.
-                        _elapsed = int(120 - _remaining)
-                        if order_code:
-                            _chk_http_status = 0
-                            async with _http.post(
-                                _SMSPOOL_CHECK,
-                                data={"key": smspool_api_key, "orderid": order_code},
-                                timeout=aiohttp.ClientTimeout(total=10),
-                            ) as _resp:
-                                _chk_http_status = _resp.status
-                                _chk = await _resp.json(content_type=None)
-
-                            # ── TELEMETRY 3a: SMSPool /sms/check per-iteration dump ──
-                            yield _sse("debug", {"message": json.dumps({
-                                "🌐 SMSPOOL_CHECK": {
-                                    "url": _SMSPOOL_CHECK,
-                                    "params": {"orderid": order_code},
-                                    "elapsed_s": _elapsed,
-                                    "http_status": _chk_http_status,
-                                    "raw_response": _chk,
-                                }
-                            }, ensure_ascii=False, indent=2)})
-
-                            if isinstance(_chk, dict):
-                                _sid = _chk.get("status", 1)
-                                # Try every field that may carry the code
-                                _raw_sms  = str(_chk.get("sms",      "") or "")
-                                _full_sms = str(_chk.get("full_sms", "") or "")
-                                _code_f   = str(_chk.get("code",     "") or "")
-                                yield _sse("poll", {"remaining": _remaining,
-                                                    "message": f"💬 SMSPool check: status={_sid} sms={repr(_raw_sms)} code={repr(_code_f)} ({_remaining}s)"})
-                                if _sid == 3 or _raw_sms or _code_f:
-                                    code = (_extract_code(_raw_sms)
-                                            or _extract_code(_full_sms)
-                                            or _extract_code(_code_f))
-                                    if code:
-                                        break
-                                if _sid == 6:
-                                    yield _sse("poll", {"remaining": _remaining,
-                                                        "message": "💬 Order refunded — will retry..."})
-                                    break  # no point waiting; auto-retry outer loop
-                                continue  # skip fallback
-
-                        # Fallback: /request/active
+                        # ── Primary: /request/active ──────────────────────────────
+                        # SMSPool docs recommend this as the primary endpoint: it lists
+                        # all active orders in one batch call — rate-limit friendly (no
+                        # per-order request needed while the order is still pending).
                         _active_http_status = 0
                         async with _http.post(
-                            _SMSPOOL_ACTIVE,
+                            SMSPOOL_ACTIVE,
                             data={"key": smspool_api_key},
                             timeout=aiohttp.ClientTimeout(total=10),
                         ) as _resp:
                             _active_http_status = _resp.status
                             _orders = await _resp.json(content_type=None)
 
-                        # ── TELEMETRY 3b: SMSPool /request/active fallback dump ───
+                        # ── TELEMETRY 3a: SMSPool /request/active per-iteration dump ─
                         yield _sse("debug", {"message": json.dumps({
                             "🌐 SMSPOOL_ACTIVE": {
-                                "url": _SMSPOOL_ACTIVE,
+                                "url": SMSPOOL_ACTIVE,
                                 "elapsed_s": _elapsed,
                                 "http_status": _active_http_status,
                                 "raw_response": _orders if isinstance(_orders, list) and len(_orders) <= 5
@@ -1730,16 +1789,63 @@ async def _registration_stream(
                                     continue
                                 if (str(_o.get("order_code", "")) == order_code
                                         or str(_o.get("phonenumber", "")).endswith(raw_num)):
-                                    code = (_extract_code(str(_o.get("code", "0")))
-                                            or _extract_code(str(_o.get("full_code", ""))))
-                                    if not code:
-                                        yield _sse("poll", {
-                                            "remaining": _remaining,
-                                            "message": f"💬 Polling (active)... ({_remaining}s) [{_o.get('status','pending')}]"
-                                        })
+                                    _active_code_raw  = str(_o.get("code",      "0") or "0")
+                                    _active_full_raw  = str(_o.get("full_code", "")  or "")
+                                    code = (_extract_code(_active_code_raw)
+                                            or _extract_code(_active_full_raw))
+                                    if code:
+                                        break
+                                    yield _sse("poll", {
+                                        "remaining": _remaining,
+                                        "message": f"💬 Polling (active)... ({_remaining}s) [{_o.get('status','pending')}]"
+                                    })
                                     break
                             if code:
                                 break
+
+                        # ── Secondary: /sms/check ─────────────────────────────────
+                        # Catches status=3 (complete) and status=6 (refunded) — both
+                        # cases where the order has LEFT the /request/active list.
+                        # Always run this regardless of whether the active check found
+                        # the order, so refunded orders are detected promptly.
+                        if order_code:
+                            _chk_http_status = 0
+                            async with _http.post(
+                                SMSPOOL_CHECK,
+                                data={"key": smspool_api_key, "orderid": order_code},
+                                timeout=aiohttp.ClientTimeout(total=10),
+                            ) as _resp:
+                                _chk_http_status = _resp.status
+                                _chk = await _resp.json(content_type=None)
+
+                            # ── TELEMETRY 3b: SMSPool /sms/check per-iteration dump ─
+                            yield _sse("debug", {"message": json.dumps({
+                                "🌐 SMSPOOL_CHECK": {
+                                    "url": SMSPOOL_CHECK,
+                                    "params": {"orderid": order_code},
+                                    "elapsed_s": _elapsed,
+                                    "http_status": _chk_http_status,
+                                    "raw_response": _chk,
+                                }
+                            }, ensure_ascii=False, indent=2)})
+
+                            if isinstance(_chk, dict):
+                                _sid = _chk.get("status", 1)
+                                _raw_sms  = str(_chk.get("sms",      "") or "")
+                                _full_sms = str(_chk.get("full_sms", "") or "")
+                                _code_f   = str(_chk.get("code",     "") or "")
+                                yield _sse("poll", {"remaining": _remaining,
+                                                    "message": f"💬 /sms/check: status={_sid} sms={repr(_raw_sms)} ({_remaining}s)"})
+                                if _sid == 3 or _raw_sms or _code_f:
+                                    code = (_extract_code(_raw_sms)
+                                            or _extract_code(_full_sms)
+                                            or _extract_code(_code_f))
+                                    if code:
+                                        break
+                                if _sid == 6:
+                                    yield _sse("poll", {"remaining": _remaining,
+                                                        "message": "💬 Order refunded — will retry..."})
+                                    break  # no point waiting; auto-retry outer loop
 
                     except Exception as _exc:
                         yield _sse("poll", {"remaining": _remaining,

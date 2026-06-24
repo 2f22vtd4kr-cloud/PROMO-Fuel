@@ -1,0 +1,29 @@
+CRITICAL HARDWARE/PROTOCOL DIRECTIVE: CODE REFACTOR BASED ON ATTACHED DOCS
+STATUS: SEVERE BLOCKER · TIME-SENSITIVE · 70+ PIPELINE TIMEOUTS
+
+You have been provided with 4 mission-critical reference documents:
+1. `pdf.pdf` — The comprehensive, official Telethon 1.44.0 Client Reference & Protocol Guide.
+2. `SMSPool API.pdf` & `SMSPool API- Order, View and Cancel...` — Official SMSPool Postman collection and endpoint schemas.
+3. `Adobe Express...pdf` — Additional SMSPool API instructions regarding active tracking.
+
+We have experienced over 70 consecutive registration failures across 10+ countries. The app gets permanently stuck at the SMS phase. This is an absolute protocol/footprint mismatch on OUR side. 
+
+You (Gemini + Anthropic) are ordered to lock into an aggressive, non-stop engineering session. Do not ask questions. Do not give generic summaries. Go through the attached documentation files page-by-page, cross-examine our exact backend code, and deploy a structural fix immediately based on these 4 vectors:
+
+1. TELETHON 1.44.0 CLIENT INITIALIZATION (Ref: `pdf.pdf`)
+Analyze the `TelegramClient` constructor reference in `pdf.pdf`. Our current digital footprint is leaking automation flags. You must rewrite the client initialization to dynamically generate and inject highly realistic, completely randomized mobile device telemetry for EVERY single session attempt. Ensure these parameters strictly align with Telethon 1.44.0 standards:
+- `device_model` (e.g., modern real Android/iOS devices)
+- `system_version` (matching real OS builds)
+- `app_version` (official, active Telegram production versions)
+- `lang_code` & `system_lang` (Must strictly match the country/proxy geography we are registering)
+
+2. INTERCEPTING THE MTPROTO `send_code_request` CLASS TYPE (Ref: `pdf.pdf`)
+Go to the Client Reference section for authorization handshakes in `pdf.pdf`. We are running blind during the code dispatch. Force Telethon's logger to `DEBUG` and intercept the raw `SentCode` object returned by `client.send_code_request(phone)`. Log its EXACT attributes to our UI debugging window. We must immediately see the `type` property. If Telegram is returning `SentCodeTypeApp` instead of `SentCodeTypeSms`, it means Telegram is silently dropping the text message and sending the code to an active session because it detected our script. We must catch and handle this object explicitly.
+
+3. SOCKS5 REMOTE DNS RESOLUTION & PROXY BINDING
+If our Replit server resolves Telegram's Datacenter (DC) domain names locally before routing the raw socket traffic through the Decodo proxy, Telegram flags the geolocation leak instantly and refuses to dispatch the SMS. Ensure that our asyncio proxy connector configuration strictly routes ALL network traffic AND all DNS queries through the proxy (`socks5h://` logic or equivalent library forcing remote DNS resolution). 
+
+4. SMSPOOL API VALIDATION (Ref: SMSPool PDFs)
+Open `SMSPool API.pdf` and check the `/purchase/sms` and polling endpoints (`/request/active` or `/sms/check`). Review page 2 of the Adobe Express guide which notes: "Standard accounts are limited to 32 requests per second... recommend using https://api.smspool.net/request/active instead of sms/check". Ensure our asynchronous polling loop is using the optimal endpoint, parsing the exact response keys without failing, and that ALL hardcoded service IDs are absolutely set to `service=907` (Telegram), removing any legacy or broken tracking fields.
+
+Do not stop, do not pause, do not interrupt the workspace flow. Reconstruct these backend layers using the attached document specifications, print the raw debug telemetry to the logs, and notify me ONLY when the code is fully overhauled and ready for live execution. Go.
