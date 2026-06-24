@@ -1109,6 +1109,26 @@ async def _registration_stream(
                         code_type_name = _rc_type
                         yield _sse("step", {"step": 3, "status": "running",
                                             "message": f"📲 ResendCode still {_rc_type} — checking with official Telegram creds…"})
+                except SendCodeUnavailableError:
+                    # Hard recycled signal: Telegram says all delivery methods exhausted,
+                    # meaning the code was already delivered to the EXISTING account's
+                    # Telegram app.  No SMS fallback is possible.  Buying more numbers
+                    # from the same country will produce the same result — stop now.
+                    _app_stuck_count += 1
+                    yield _sse("step", {"step": 3, "status": "error",
+                                        "message": "🚫 SendCodeUnavailable — code delivered to existing account's app; number confirmed recycled"})
+                    await cancel_order()
+                    await safe_disconnect()
+                    yield _sse("sms_retry_prompt", {
+                        "country_id": country_id,
+                        "message": (
+                            f"🚫 {country_id.upper()} pool is recycled — Telegram's SendCodeUnavailable "
+                            "confirms these numbers already have accounts. "
+                            "Switch to: Kazakhstan (KZ), Ukraine (UA), Philippines (PH), "
+                            "Georgia (GE), or Bangladesh (BD)."
+                        ),
+                    })
+                    return
                 except Exception as _rc_ex:
                     # ResendCode failed (proxy hiccup, etc.) — proceed to official creds
                     yield _sse("step", {"step": 3, "status": "running",

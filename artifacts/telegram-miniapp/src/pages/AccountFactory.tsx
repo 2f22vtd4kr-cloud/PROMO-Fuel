@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { X, ChevronDown, Loader, Minus, Plus } from "lucide-react";
+import { X, ChevronDown, Loader, Minus, Plus, RefreshCw } from "lucide-react";
 import { useI18n } from "../lib/i18n";
 import { getStoredSecret } from "./LockScreen";
 
@@ -2611,14 +2611,48 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               )}
             </div>
 
-            <LabelledInput
-              label={L("2FA Password", "Пароль 2FA")}
-              value={twoFa}
-              onChange={setTwoFa}
-              placeholder={L("Strong password…", "Надійний пароль…")}
-              type="password"
-              hint={L("Applied immediately after account creation", "Встановлюється одразу після реєстрації")}
-            />
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.45)",
+                letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>
+                {L("2FA Password", "Пароль 2FA")}
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  type="password"
+                  value={twoFa}
+                  onChange={e => setTwoFa(e.target.value)}
+                  placeholder={L("Strong password…", "Надійний пароль…")}
+                  style={{
+                    flex: 1, boxSizing: "border-box",
+                    background: GLASS2, border: `1px solid ${BORDER2}`,
+                    borderRadius: 12, padding: "11px 14px",
+                    fontSize: 13, color: "rgba(226,232,255,0.9)",
+                    fontFamily: "inherit", outline: "none",
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%&*";
+                    const arr = new Uint8Array(16);
+                    crypto.getRandomValues(arr);
+                    setTwoFa(Array.from(arr, b => chars[b % chars.length]).join(""));
+                  }}
+                  title={L("Generate random password", "Згенерувати пароль")}
+                  style={{
+                    flexShrink: 0, width: 42, height: 42,
+                    background: "rgba(99,179,237,0.12)", border: "1px solid rgba(99,179,237,0.3)",
+                    borderRadius: 12, cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: "rgba(99,179,237,0.85)",
+                  }}
+                >
+                  <RefreshCw size={15} />
+                </button>
+              </div>
+              <div style={{ fontSize: 10, color: "rgba(160,180,230,0.4)", marginTop: 4, lineHeight: 1.4 }}>
+                {L("Applied immediately after account creation", "Встановлюється одразу після реєстрації")}
+              </div>
+            </div>
 
             {/* Quantity stepper */}
             <div>

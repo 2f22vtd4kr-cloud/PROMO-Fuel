@@ -157,8 +157,8 @@ app.use("/api/factory",       makePythonProxy("/api/factory"));
 if (API_SECRET) {
   app.use("/api", (req: Request, res: Response, next: NextFunction) => {
     const p = req.path;
-    // Skip: login endpoint, TWA routes (validated above), health check
-    if (p === "/auth" || p.startsWith("/twa") || p === "/health") return next();
+    // Skip: login endpoint, TWA routes (validated above), health check, proxy store
+    if (p === "/auth" || p.startsWith("/twa") || p === "/health" || p.startsWith("/proxy-store")) return next();
     const auth = (req.headers.authorization ?? "") as string;
     if (auth !== `Bearer ${API_SECRET}`) {
       return void res.status(401).json({ error: "Unauthorized" });
