@@ -449,6 +449,9 @@ interface BestCountryResult {
   success_rate: number;
   quantity:     number;
   rank:         number;
+  own_attempts?:  number;
+  own_successes?: number;
+  own_recycled?:  number;
 }
 
 const _bestCountryCache = new Map<string, { ts: number; best: BestCountryResult; top5: BestCountryResult[] }>();
@@ -520,13 +523,21 @@ router.get("/best-country", async (req: Request, res: Response) => {
 
     parsed.sort((a, b) => b.success_rate - a.success_rate || b.quantity - a.quantity);
 
-    const top5: BestCountryResult[] = parsed.slice(0, 5).map((c, i) => ({
-      id:           c.country_id,
-      name:         c.country_name,
-      success_rate: c.success_rate,
-      quantity:     c.quantity,
-      rank:         i + 1,
-    }));
+    const ownStatsMap = new Map(getOwnStats().map(s => [s.country_id.toLowerCase(), s]));
+
+    const top5: BestCountryResult[] = parsed.slice(0, 5).map((c, i) => {
+      const own = ownStatsMap.get(c.country_id.toLowerCase());
+      return {
+        id:             c.country_id,
+        name:           c.country_name,
+        success_rate:   c.success_rate,
+        quantity:       c.quantity,
+        rank:           i + 1,
+        own_attempts:   own?.attempts,
+        own_successes:  own?.successes,
+        own_recycled:   own?.recycled,
+      };
+    });
 
     const best = top5[0]!;
     _bestCountryCache.set(cacheKey, { ts: Date.now(), best, top5 });

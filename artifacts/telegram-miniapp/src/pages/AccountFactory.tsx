@@ -798,7 +798,33 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [autoCountryMsg,     setAutoCountryMsg]     = useState<string | null>(null);
   const [autoCountryTop5,    setAutoCountryTop5]    = useState<{
     id: string; name: string; success_rate: number; quantity: number; rank: number;
+    own_attempts?: number; own_successes?: number; own_recycled?: number;
   }[]>([]);
+
+  // Full own-history stats panel
+  const [showOwnStats,    setShowOwnStats]    = useState(false);
+  const [ownStatsLoading, setOwnStatsLoading] = useState(false);
+  const [ownStatsData,    setOwnStatsData]    = useState<{
+    country_id: string; country_name: string;
+    attempts: number; successes: number; recycled: number;
+  }[]>([]);
+
+  const fetchOwnStats = async () => {
+    setOwnStatsLoading(true);
+    try {
+      const resp = await fetch("/api/factory/country-stats", { headers: authHeaders() });
+      const json = await resp.json() as { stats?: typeof ownStatsData };
+      const rows = (json.stats ?? []).sort((a, b) => b.attempts - a.attempts);
+      setOwnStatsData(rows);
+    } catch { /* silent */ } finally {
+      setOwnStatsLoading(false);
+    }
+  };
+
+  const handleToggleOwnStats = () => {
+    if (!showOwnStats && ownStatsData.length === 0) void fetchOwnStats();
+    setShowOwnStats(v => !v);
+  };
 
   // AI-powered country freshness analysis
   const [aiCountryLoading, setAiCountryLoading] = useState(false);
@@ -2050,7 +2076,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                           {c.rank}
                         </div>
 
-                        {/* Country name + stock */}
+                        {/* Country name + stock + own stats */}
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{
                             fontSize: 12, fontWeight: isSelected ? 700 : 600,
@@ -2064,7 +2090,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                               </span>
                             )}
                           </div>
-                          {/* Success rate bar */}
+                          {/* SMSPool success rate bar */}
                           <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
                             <div style={{
                               flex: 1, height: 3, borderRadius: 2,
@@ -2082,6 +2108,35 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                               {c.success_rate}%
                             </div>
                           </div>
+                          {/* Our own historical stats */}
+                          {c.own_attempts != null && c.own_attempts > 0 && (() => {
+                            const freshRate = c.own_successes != null && c.own_attempts > 0
+                              ? Math.round((c.own_successes / c.own_attempts) * 100) : 0;
+                            const ownColor = freshRate >= 60 ? GREEN : freshRate >= 30 ? ACCENT : RED;
+                            return (
+                              <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                                <span style={{ fontSize: 9, color: "rgba(255,255,255,0.28)", letterSpacing: "0.03em" }}>
+                                  {L("our data:", "наші дані:")}
+                                </span>
+                                <span style={{ fontSize: 9, color: "rgba(255,255,255,0.45)", fontWeight: 600 }}>
+                                  {c.own_attempts} {L("tries", "спроб")}
+                                </span>
+                                <span style={{ fontSize: 9, color: GREEN, fontWeight: 700 }}>
+                                  ✓{c.own_successes ?? 0} {L("fresh", "свіжих")}
+                                </span>
+                                <span style={{ fontSize: 9, color: RED, fontWeight: 700 }}>
+                                  ✗{c.own_recycled ?? 0} {L("recycled", "перероб")}
+                                </span>
+                                <span style={{
+                                  fontSize: 9, fontWeight: 800, color: ownColor,
+                                  background: `${ownColor}15`, borderRadius: 4, padding: "1px 5px",
+                                  border: `1px solid ${ownColor}30`,
+                                }}>
+                                  {freshRate}% {L("fresh", "свіжих")}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         {/* Stock pill */}
@@ -2106,6 +2161,145 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     <div style={{ padding: "10px 13px", fontSize: 11, color: RED, lineHeight: 1.5 }}>
                       {autoCountryMsg}
                     </div>
+                  )}
+
+                  {/* "Our full history" toggle button */}
+                  {autoCountryTop5.length > 0 && (
+                    <div style={{ borderTop: `1px solid ${BORDER}`, padding: "6px 13px" }}>
+                      <button
+                        onClick={handleToggleOwnStats}
+                        style={{
+                          width: "100%", background: showOwnStats ? "rgba(255,255,255,0.06)" : "none",
+                          border: "none", cursor: "pointer", fontFamily: "inherit",
+                          display: "flex", alignItems: "center", gap: 6,
+                          padding: "4px 0",
+                          fontSize: 10, fontWeight: 600,
+                          color: showOwnStats ? ACCENT : "rgba(255,255,255,0.35)",
+                          transition: "color 0.15s",
+                        }}
+                      >
+                        <span>📊</span>
+                        <span>{L("Our full registration history by country", "Наша повна статистика реєстрацій по країнам")}</span>
+                        <span style={{ marginLeft: "auto", fontSize: 11 }}>{showOwnStats ? "▲" : "▼"}</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Our full registration history panel ── */}
+              {showOwnStats && (
+                <div style={{
+                  marginTop: 6,
+                  background: "rgba(7,9,20,0.97)",
+                  border: `1px solid rgba(245,158,11,0.25)`,
+                  borderRadius: 14, overflow: "hidden",
+                }}>
+                  <div style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "9px 13px", borderBottom: `1px solid ${BORDER}`,
+                    background: "rgba(245,158,11,0.06)",
+                  }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: ACCENT }}>
+                      📊 {L("Our Registration History by Country", "Наша статистика реєстрацій по країнах")}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <button
+                        onClick={() => void fetchOwnStats()}
+                        style={{ background: "none", border: "none", cursor: "pointer",
+                          color: "rgba(255,255,255,0.35)", fontSize: 13, lineHeight: 1, padding: 0 }}>
+                        ↻
+                      </button>
+                      <button
+                        onClick={() => setShowOwnStats(false)}
+                        style={{ background: "none", border: "none", cursor: "pointer",
+                          color: "rgba(255,255,255,0.35)", fontSize: 15, lineHeight: 1, padding: 0 }}>
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+
+                  {ownStatsLoading && (
+                    <div style={{ padding: "16px", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+                      {L("Loading…", "Завантаження…")}
+                    </div>
+                  )}
+
+                  {!ownStatsLoading && ownStatsData.length === 0 && (
+                    <div style={{ padding: "14px 16px", fontSize: 11, color: "rgba(255,255,255,0.3)", textAlign: "center" }}>
+                      {L("No history yet — data is recorded after each registration attempt.", "Поки немає даних — записуються після кожної спроби реєстрації.")}
+                    </div>
+                  )}
+
+                  {!ownStatsLoading && ownStatsData.length > 0 && (
+                    <>
+                      {/* Column headers */}
+                      <div style={{
+                        display: "grid", gridTemplateColumns: "1fr 52px 52px 52px 60px",
+                        padding: "5px 13px", gap: 4,
+                        borderBottom: `1px solid ${BORDER}`,
+                        fontSize: 9, fontWeight: 700, letterSpacing: "0.05em",
+                        color: "rgba(255,255,255,0.28)", textTransform: "uppercase",
+                      }}>
+                        <div>{L("Country", "Країна")}</div>
+                        <div style={{ textAlign: "center" }}>{L("Tries", "Спроб")}</div>
+                        <div style={{ textAlign: "center", color: GREEN }}>✓ {L("Fresh", "Свіж")}</div>
+                        <div style={{ textAlign: "center", color: RED }}>✗ {L("Recycl", "Переробл")}</div>
+                        <div style={{ textAlign: "center", color: ACCENT }}>{L("Fresh%", "Свіжих%")}</div>
+                      </div>
+                      <div style={{ maxHeight: 260, overflowY: "auto" }}>
+                        {ownStatsData.map((s, idx) => {
+                          const freshRate = s.attempts > 0 ? Math.round((s.successes / s.attempts) * 100) : 0;
+                          const freshColor = freshRate >= 60 ? GREEN : freshRate >= 30 ? ACCENT : RED;
+                          return (
+                            <div
+                              key={s.country_id}
+                              onClick={() => { applyCountry(s.country_id); setShowOwnStats(false); }}
+                              style={{
+                                display: "grid", gridTemplateColumns: "1fr 52px 52px 52px 60px",
+                                padding: "8px 13px", gap: 4, cursor: "pointer",
+                                borderBottom: idx < ownStatsData.length - 1 ? `1px solid ${BORDER}` : "none",
+                                background: "transparent",
+                                transition: "background 0.12s",
+                                alignItems: "center",
+                              }}
+                            >
+                              <div style={{ fontSize: 11, fontWeight: 600, color: "rgba(226,232,255,0.85)",
+                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {s.country_name || s.country_id.toUpperCase()}
+                                <span style={{ marginLeft: 5, fontSize: 9, color: "rgba(255,255,255,0.25)" }}>
+                                  {s.country_id}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.6)", textAlign: "center" }}>
+                                {s.attempts}
+                              </div>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: GREEN, textAlign: "center" }}>
+                                {s.successes}
+                              </div>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: RED, textAlign: "center" }}>
+                                {s.recycled}
+                              </div>
+                              <div style={{ textAlign: "center" }}>
+                                <span style={{
+                                  fontSize: 10, fontWeight: 800, color: freshColor,
+                                  background: `${freshColor}15`, borderRadius: 5,
+                                  padding: "2px 6px", border: `1px solid ${freshColor}30`,
+                                }}>
+                                  {freshRate}%
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div style={{
+                        padding: "6px 13px", borderTop: `1px solid ${BORDER}`,
+                        fontSize: 9, color: "rgba(255,255,255,0.22)", textAlign: "center",
+                      }}>
+                        {L("Tap a country to select it", "Торкніться країни, щоб вибрати її")}
+                      </div>
+                    </>
                   )}
                 </div>
               )}
