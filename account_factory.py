@@ -533,6 +533,54 @@ async def get_best_country(api_key: str = "", service: str = TELEGRAM_SERVICE_ID
     return best
 
 
+@factory_router.get("/smspool-rates")
+async def get_smspool_rates(api_key: str = "", ids: str = ""):
+    """
+    Returns SMSPool success rates for a comma-separated list of country IDs.
+    Used by the AI Вибір panel to overlay real-time SMSPool data onto AI rankings.
+    """
+    resolved_key = (api_key.strip() or os.environ.get("SMSPOOL_API_KEY", "").strip())
+    if not resolved_key:
+        return JSONResponse({"error": "api_key is required"}, status_code=400)
+
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.post(
+                SMSPOOL_SUCCESS_RATE,
+                data={"key": resolved_key, "service": TELEGRAM_SERVICE_ID},
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                raw = await resp.json(content_type=None)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=502)
+
+    filter_ids: set[str] = {x.strip().lower() for x in ids.split(",") if x.strip()} if ids.strip() else set()
+
+    results: list[dict] = []
+    if isinstance(raw, dict):
+        for code, data in raw.items():
+            if not isinstance(data, dict):
+                continue
+            cid = code.lower()
+            if filter_ids and cid not in filter_ids:
+                continue
+            sr = int(data.get("success_rate", data.get("average_success_rate", 0)) or 0)
+            results.append({"id": cid, "success_rate": sr})
+    elif isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            cid = str(item.get("short_name", item.get("id", ""))).lower()
+            if not cid:
+                continue
+            if filter_ids and cid not in filter_ids:
+                continue
+            sr = int(item.get("success_rate", item.get("average_success_rate", 0)) or 0)
+            results.append({"id": cid, "success_rate": sr})
+
+    return {"rates": results}
+
+
 @factory_router.get("/top-countries")
 async def get_top_countries(api_key: str = "", service: str = TELEGRAM_SERVICE_ID, limit: int = 5):
     """
@@ -908,13 +956,9 @@ async def _registration_stream(
                 })
                 return
 
-        # ─── Pre-buy success rate gate ────────────────────────────────────
-        # Call SMSPool's /request/success_rate BEFORE spending any money.
-        # If the chosen country has < PRE_BUY_MIN_SR% success rate we stop
-        # immediately — buying would almost certainly yield recycled numbers.
-        # Fail-open: if the API is unreachable we warn but proceed.
-        PRE_BUY_MIN_SR = 60  # %, below this we refuse to buy
-
+        # ─── Pre-buy success rate info (informational only — never blocks) ──
+        # Fetches the SMSPool success rate and shows it as a preflight status.
+        # No gating — the user decides which country to try.
         yield _sse("preflight", {
             "status": "running",
             "message": f"📊 Checking {country_id.upper()} SMS success rate on SMSPool…",
@@ -946,29 +990,18 @@ async def _registration_stream(
         except Exception as _sr_ex:
             yield _sse("preflight", {
                 "status": "done",
-                "message": f"⚠️ Success rate check failed ({str(_sr_ex)[:60]}) — proceeding",
+                "message": f"⚠️ Success rate check skipped ({str(_sr_ex)[:60]}) — proceeding",
             })
             _pre_sr = None  # fail-open
 
         if _pre_sr is not None:
-            _sr_icon = "✅" if _pre_sr >= 70 else "⚠️" if _pre_sr >= PRE_BUY_MIN_SR else "🚫"
+            _sr_icon = "✅" if _pre_sr >= 70 else "⚠️" if _pre_sr >= 40 else "🟡"
             yield _sse("preflight", {
-                "status": "done" if _pre_sr >= PRE_BUY_MIN_SR else "error",
-                "message": f"{_sr_icon} {country_id.upper()} success rate: {_pre_sr}%",
+                "status": "done",
+                "message": f"{_sr_icon} {country_id.upper()} SMS success rate: {_pre_sr}% — proceeding",
                 "success_rate": _pre_sr,
                 "country_id": country_id,
             })
-            if _pre_sr < PRE_BUY_MIN_SR:
-                yield _sse("sms_retry_prompt", {
-                    "country_id": country_id,
-                    "message": (
-                        f"🚫 {country_id.upper()} has only {_pre_sr}% SMS success rate right now "
-                        f"(minimum {PRE_BUY_MIN_SR}%). Buying would waste your balance on recycled "
-                        "numbers. Switch to: Kazakhstan (KZ), Ukraine (UA), Philippines (PH), "
-                        "Georgia (GE), or Bangladesh (BD)."
-                    ),
-                })
-                return
         else:
             yield _sse("preflight", {
                 "status": "done",

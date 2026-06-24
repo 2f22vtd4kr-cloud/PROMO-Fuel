@@ -881,14 +881,29 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   };
 
   // AI-powered country freshness analysis
-  const [aiCountryLoading, setAiCountryLoading] = useState(false);
-  const [aiCountryError,   setAiCountryError]   = useState<string | null>(null);
-  const [aiCountryModel,   setAiCountryModel]   = useState<string>("");
-  const [showAiCountries,  setShowAiCountries]  = useState(false);
-  const [aiCountryData,    setAiCountryData]    = useState<{
+  const [aiCountryLoading,     setAiCountryLoading]     = useState(false);
+  const [aiCountryError,       setAiCountryError]       = useState<string | null>(null);
+  const [aiCountryModel,       setAiCountryModel]       = useState<string>("");
+  const [showAiCountries,      setShowAiCountries]      = useState(false);
+  const [aiCountryData,        setAiCountryData]        = useState<{
     rank: number; id: string; name: string; freshness: number; avg_attempts: number;
     reasoning: string; data_source?: "own_experience" | "community_research" | "ai_estimate";
   }[]>([]);
+  // Real-time SMSPool success rates for AI Вибір countries (id → success_rate %)
+  const [aiSmsRates,           setAiSmsRates]           = useState<Record<string, number>>({});
+  const [aiSmsRatesLoading,    setAiSmsRatesLoading]    = useState(false);
+
+  // AI countries sorted by SMSPool rate (primary) then AI freshness (secondary)
+  const sortedAiCountryData = useMemo(() => {
+    const hasRates = Object.keys(aiSmsRates).length > 0;
+    if (!hasRates) return aiCountryData;
+    return [...aiCountryData].sort((a, b) => {
+      const srA = aiSmsRates[a.id.toLowerCase()] ?? -1;
+      const srB = aiSmsRates[b.id.toLowerCase()] ?? -1;
+      if (srA !== srB) return srB - srA;
+      return b.freshness - a.freshness;
+    });
+  }, [aiCountryData, aiSmsRates]);
 
   type AiCountryEntry = {
     rank: number; id: string; name: string; freshness: number; avg_attempts: number;
@@ -1005,9 +1020,9 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
       let bestCountryName: string | null = null;
       let foundProxy: SavedProxy | null = null;
 
-      if (aiCountryData.length > 0) {
-        // Sort by rank ascending (should already be sorted, but be safe)
-        const ranked = [...aiCountryData].sort((a, b) => a.rank - b.rank);
+      if (sortedAiCountryData.length > 0) {
+        // sortedAiCountryData is already ordered: SMSPool rate desc → AI freshness desc
+        const ranked = sortedAiCountryData;
         const noProxyNames: string[] = [];
 
         for (const entry of ranked) {
@@ -1177,8 +1192,26 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
       if (!resp.ok || json.error) {
         setAiCountryError(json.error ?? `HTTP ${resp.status}`);
       } else {
-        setAiCountryData(json.entries ?? []);
+        const entries = json.entries ?? [];
+        setAiCountryData(entries);
         setAiCountryModel(json.model ?? "");
+
+        // Fetch real-time SMSPool rates for these countries in parallel
+        const ids = entries.map(e => e.id).join(",");
+        if (ids && (serverHasKey || smsKey.trim())) {
+          setAiSmsRatesLoading(true);
+          try {
+            const qs = new URLSearchParams({ ids });
+            if (!serverHasKey && smsKey.trim()) qs.set("api_key", smsKey.trim());
+            const rr = await fetch(`/api/factory/smspool-rates?${qs}`, { headers: authHeaders() });
+            const rj = await rr.json() as { rates?: { id: string; success_rate: number }[] };
+            const map: Record<string, number> = {};
+            for (const r of (rj.rates ?? [])) map[r.id.toLowerCase()] = r.success_rate;
+            setAiSmsRates(map);
+          } catch { /* silent — rates are additive, not required */ } finally {
+            setAiSmsRatesLoading(false);
+          }
+        }
       }
     } catch (e) {
       setAiCountryError(String(e));
@@ -1268,11 +1301,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             avatars:    profAvatars,
           } : {}),
           auto_switch: true,
-          ...(aiCountryData.length > 0 ? {
-            ai_country_ids: aiCountryData
-              .slice()
-              .sort((a, b) => a.rank - b.rank)
-              .map(e => e.id),
+          ...(sortedAiCountryData.length > 0 ? {
+            ai_country_ids: sortedAiCountryData.map(e => e.id),
           } : {}),
         }),
         signal: ctrl.signal,
@@ -2481,14 +2511,26 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                         {aiCountryLoading
                           ? (lang === "ua" ? "✦ AI аналізує…" : "✦ AI analysing…")
                           : (lang === "ua"
-                              ? "✦ AI: Топ-10 країн з «свіжими» номерами"
-                              : "✦ AI: Top 10 countries for fresh numbers")}
+                              ? "✦ SMSPool live · AI: Топ-10 країн"
+                              : "✦ SMSPool live · AI: Top 10 countries")}
                       </div>
-                      {aiCountryModel && !aiCountryLoading && (
-                        <div style={{ fontSize: 9, color: "rgba(167,139,250,0.5)" }}>
-                          {aiCountryModel}
-                        </div>
-                      )}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+                        {aiCountryModel && !aiCountryLoading && (
+                          <div style={{ fontSize: 9, color: "rgba(167,139,250,0.5)" }}>
+                            {aiCountryModel}
+                          </div>
+                        )}
+                        {aiSmsRatesLoading && (
+                          <div style={{ fontSize: 9, color: "rgba(45,232,151,0.5)" }}>
+                            {lang === "ua" ? "↻ SMSPool…" : "↻ SMSPool…"}
+                          </div>
+                        )}
+                        {!aiSmsRatesLoading && Object.keys(aiSmsRates).length > 0 && (
+                          <div style={{ fontSize: 9, color: "rgba(45,232,151,0.45)" }}>
+                            {lang === "ua" ? `✓ SMSPool live (${Object.keys(aiSmsRates).length})` : `✓ SMSPool live (${Object.keys(aiSmsRates).length})`}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       {!aiCountryLoading && aiCountryData.length > 0 && (
@@ -2535,8 +2577,11 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   )}
 
                   {/* AI country rows */}
-                  {!aiCountryLoading && aiCountryData.map((c, idx) => {
+                  {!aiCountryLoading && sortedAiCountryData.map((c, idx) => {
                     const freshColor = c.freshness >= 70 ? GREEN : c.freshness >= 45 ? ACCENT : RED;
+                    const liveRate   = aiSmsRates[c.id.toLowerCase()];
+                    const liveColor  = liveRate === undefined ? "rgba(255,255,255,0.3)"
+                                     : liveRate >= 70 ? GREEN : liveRate >= 40 ? ACCENT : RED;
                     const rankColors = ["#ffd700","#c0c0c0","#cd7f32"];
                     const rankColor  = rankColors[idx] ?? "rgba(167,139,250,0.45)";
                     const isSelected =
@@ -2554,13 +2599,13 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                         onClick={() => { applyCountry(c.id); setSmsPoolCountryId(c.id); }}
                         style={{
                           padding: "10px 13px",
-                          borderBottom: idx < aiCountryData.length - 1 ? `1px solid rgba(140,100,255,0.1)` : "none",
+                          borderBottom: idx < sortedAiCountryData.length - 1 ? `1px solid rgba(140,100,255,0.1)` : "none",
                           cursor: "pointer",
                           background: isSelected ? "rgba(140,100,255,0.1)" : "transparent",
                           transition: "background 0.15s",
                         }}
                       >
-                        {/* Row 1: rank + name + freshness bar */}
+                        {/* Row 1: rank + name + dual stats */}
                         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
                           {/* Rank */}
                           <div style={{
@@ -2569,7 +2614,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                             border: `1.5px solid ${rankColor}55`,
                             display: "flex", alignItems: "center", justifyContent: "center",
                             fontSize: 9, fontWeight: 800, color: rankColor,
-                          }}>{c.rank}</div>
+                          }}>{idx + 1}</div>
                           {/* Name */}
                           <div style={{
                             flex: 1, fontSize: 12, fontWeight: isSelected ? 700 : 600,
@@ -2579,13 +2624,30 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                             {c.name}
                             {isSelected && <span style={{ marginLeft: 6, fontSize: 10, color: "#a78bfa" }}>● {L("selected","обрано")}</span>}
                           </div>
-                          {/* Freshness bar + % */}
-                          <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
-                            <div style={{ width: 40, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-                              <div style={{ width: `${c.freshness}%`, height: "100%", background: freshColor, borderRadius: 2 }} />
-                            </div>
-                            <div style={{ fontSize: 10, fontWeight: 700, color: freshColor, minWidth: 28 }}>
-                              {c.freshness}%
+                          {/* Dual stats: SMSPool live rate + AI freshness */}
+                          <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                            {/* SMSPool live rate pill */}
+                            {liveRate !== undefined ? (
+                              <div style={{
+                                display: "inline-flex", alignItems: "center", gap: 2,
+                                background: liveRate >= 70 ? "rgba(45,232,151,0.12)" : liveRate >= 40 ? "rgba(255,190,50,0.12)" : "rgba(255,107,122,0.10)",
+                                border: `1px solid ${liveRate >= 70 ? "rgba(45,232,151,0.35)" : liveRate >= 40 ? "rgba(255,190,50,0.35)" : "rgba(255,107,122,0.3)"}`,
+                                borderRadius: 5, padding: "2px 5px",
+                              }}>
+                                <span style={{ fontSize: 7, color: "rgba(255,255,255,0.4)", fontWeight: 600, letterSpacing: "0.02em" }}>SMS</span>
+                                <span style={{ fontSize: 10, fontWeight: 800, color: liveColor }}>{liveRate}%</span>
+                              </div>
+                            ) : aiSmsRatesLoading ? (
+                              <div style={{ width: 34, height: 18, borderRadius: 5, background: "rgba(255,255,255,0.05)", animation: "pulse 1.4s ease-in-out infinite" }} />
+                            ) : null}
+                            {/* AI freshness bar + % */}
+                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <div style={{ width: 32, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                                <div style={{ width: `${c.freshness}%`, height: "100%", background: freshColor, borderRadius: 2 }} />
+                              </div>
+                              <div style={{ fontSize: 9, fontWeight: 700, color: freshColor, minWidth: 24 }}>
+                                {c.freshness}%
+                              </div>
                             </div>
                           </div>
                           <div style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", flexShrink: 0 }}>›</div>
