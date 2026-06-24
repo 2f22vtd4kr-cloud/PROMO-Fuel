@@ -1,3 +1,4 @@
+- [Session handoff protocol](session-handoff.md) — ALWAYS read HANDOFF.md at session start; ALWAYS rewrite it at session end with full updated context; session span=1 (rewrite, don't append).
 - [Telegram stub conflict](telegram-stub.md) — never add `telegram>=0.0.1` to pyproject.toml; it shadows python-telegram-bot.
 - [SQLite DB schema](sqlite-schema.md) — campaigns.db tables: `campaigns`, `users`, `sends`, `sender_accounts`, `message_templates`, `uploads`, `saved_proxies` (Step 11: country_code, proxy_string, label, last_session_num).
 - [better-sqlite3 approval](better-sqlite3.md) — must add to `pnpm.onlyBuiltDependencies` in root package.json for native build to succeed.

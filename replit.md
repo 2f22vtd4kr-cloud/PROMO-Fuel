@@ -48,6 +48,7 @@ PROMO-Fuel lets gas station operators send targeted discount promos to their Tel
 - Apple Liquid Glass dark design system throughout
 - Russian language UI
 - Real data from SQLite via Express API — no mocked data
+- **Session handoff:** agent MUST read `HANDOFF.md` at the start of every session and rewrite it at the end, rolling all prior session context into one document (session span = 1 — rewrite, not append)
 
 ## Gotchas
 
