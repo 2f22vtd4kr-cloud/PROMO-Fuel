@@ -1094,6 +1094,22 @@ async def _registration_stream(
                 receive_timeout=45,
             )
 
+            # ── TELEMETRY 1: Telethon client init dump ────────────────────
+            yield _sse("debug", {"message": json.dumps({
+                "🔧 TELETHON_INIT": {
+                    "api_id": _reg_api_id,
+                    "platform": _reg_plat,
+                    "device_model": device_model,
+                    "system_version": system_version,
+                    "app_version": app_version,
+                    "lang_code": _reg_lang,
+                    "system_lang_code": _reg_sys_lang,
+                    "session_path": session_path,
+                    "proxy": proxy_string or None,
+                }
+            }, ensure_ascii=False, indent=2)})
+            logging.getLogger("telethon").setLevel(logging.DEBUG)
+
             # Wrap connect() — previously bare (no try/except), so any routing error
             # like "Host unreachable" or "Connection refused" from the proxy's exit node
             # would escape the generator and kill the whole SSE stream unrecoverably.
@@ -1181,6 +1197,17 @@ async def _registration_stream(
                 ))
                 phone_code_hash = raw_result.phone_code_hash
                 code_type_name  = type(raw_result.type).__name__ if raw_result.type else "SentCodeTypeSms"
+                # ── TELEMETRY 2: send_code_request raw response ───────────
+                yield _sse("debug", {"message": json.dumps({
+                    "📨 SEND_CODE_RESPONSE": {
+                        "type": code_type_name,
+                        "phone_code_hash": phone_code_hash[:8] + "…",
+                        "timeout": getattr(raw_result, "timeout", None),
+                        "next_type": type(getattr(raw_result, "next_type", None)).__name__
+                            if getattr(raw_result, "next_type", None) else None,
+                        "via": "RawSendCodeRequest",
+                    }
+                }, ensure_ascii=False, indent=2)})
             except PhoneNumberBannedError:
                 _banned = True
             except Exception:
@@ -1191,6 +1218,16 @@ async def _registration_stream(
                     fb = await client.send_code_request(phone)
                     phone_code_hash = fb.phone_code_hash
                     code_type_name  = type(fb.type).__name__ if fb.type else "Unknown"
+                    yield _sse("debug", {"message": json.dumps({
+                        "📨 SEND_CODE_RESPONSE": {
+                            "type": code_type_name,
+                            "phone_code_hash": phone_code_hash[:8] + "…",
+                            "timeout": getattr(fb, "timeout", None),
+                            "next_type": type(getattr(fb, "next_type", None)).__name__
+                                if getattr(fb, "next_type", None) else None,
+                            "via": "send_code_request (fallback)",
+                        }
+                    }, ensure_ascii=False, indent=2)})
                 except PhoneNumberBannedError:
                     _banned = True
                 except Exception as e2:
@@ -1487,13 +1524,27 @@ async def _registration_stream(
                     try:
                         # Primary: /sms/check — catches status 3 (complete) even after
                         # the order leaves the /request/active list.
+                        _elapsed = int(120 - _remaining)
                         if order_code:
+                            _chk_http_status = 0
                             async with _http.post(
                                 _SMSPOOL_CHECK,
                                 data={"key": smspool_api_key, "orderid": order_code},
                                 timeout=aiohttp.ClientTimeout(total=10),
                             ) as _resp:
+                                _chk_http_status = _resp.status
                                 _chk = await _resp.json(content_type=None)
+
+                            # ── TELEMETRY 3a: SMSPool /sms/check per-iteration dump ──
+                            yield _sse("debug", {"message": json.dumps({
+                                "🌐 SMSPOOL_CHECK": {
+                                    "url": _SMSPOOL_CHECK,
+                                    "params": {"orderid": order_code},
+                                    "elapsed_s": _elapsed,
+                                    "http_status": _chk_http_status,
+                                    "raw_response": _chk,
+                                }
+                            }, ensure_ascii=False, indent=2)})
 
                             if isinstance(_chk, dict):
                                 _sid = _chk.get("status", 1)
@@ -1501,7 +1552,6 @@ async def _registration_stream(
                                 _raw_sms  = str(_chk.get("sms",      "") or "")
                                 _full_sms = str(_chk.get("full_sms", "") or "")
                                 _code_f   = str(_chk.get("code",     "") or "")
-                                # Show raw response in debug poll so we can diagnose
                                 yield _sse("poll", {"remaining": _remaining,
                                                     "message": f"💬 SMSPool check: status={_sid} sms={repr(_raw_sms)} code={repr(_code_f)} ({_remaining}s)"})
                                 if _sid == 3 or _raw_sms or _code_f:
@@ -1517,12 +1567,25 @@ async def _registration_stream(
                                 continue  # skip fallback
 
                         # Fallback: /request/active
+                        _active_http_status = 0
                         async with _http.post(
                             _SMSPOOL_ACTIVE,
                             data={"key": smspool_api_key},
                             timeout=aiohttp.ClientTimeout(total=10),
                         ) as _resp:
+                            _active_http_status = _resp.status
                             _orders = await _resp.json(content_type=None)
+
+                        # ── TELEMETRY 3b: SMSPool /request/active fallback dump ───
+                        yield _sse("debug", {"message": json.dumps({
+                            "🌐 SMSPOOL_ACTIVE": {
+                                "url": _SMSPOOL_ACTIVE,
+                                "elapsed_s": _elapsed,
+                                "http_status": _active_http_status,
+                                "raw_response": _orders if isinstance(_orders, list) and len(_orders) <= 5
+                                    else (f"[{len(_orders)} orders]" if isinstance(_orders, list) else _orders),
+                            }
+                        }, ensure_ascii=False, indent=2)})
 
                         if isinstance(_orders, list):
                             for _o in _orders:

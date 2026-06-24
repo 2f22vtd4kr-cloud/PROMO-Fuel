@@ -1056,10 +1056,29 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
   const [showFactory,    setShowFactory]    = useState(false);
   const [pingAllResults, setPingAllResults] = useState<Record<number, ProxyResult>>({});
   const [pingAllRunning, setPingAllRunning] = useState(false);
+  const [syncAt,         setSyncAt]         = useState<Date | null>(null);
+  const [syncSaving,     setSyncSaving]     = useState(false);
 
   const load = useCallback(async () => {
     try { setAccounts(await api.getAccounts()); } catch {} finally { setLoading(false); }
   }, []);
+
+  const loadSyncStatus = useCallback(async () => {
+    try {
+      const r = await fetch("/api/sync/status");
+      const j = await r.json();
+      if (j.ok && j.updated_at) setSyncAt(new Date(j.updated_at));
+    } catch {}
+  }, []);
+
+  const triggerSyncNow = async () => {
+    haptic.medium(); setSyncSaving(true);
+    try {
+      await fetch("/api/sync/now", { method: "POST" });
+      await loadSyncStatus();
+      haptic.success();
+    } catch { haptic.error(); } finally { setSyncSaving(false); }
+  };
 
   const sessionInvalidIds = accounts
     .filter(a => a.status === "session_invalid" && !!(a as any).session_file)
@@ -1146,7 +1165,7 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
     setPingAllRunning(false);
   }
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); loadSyncStatus(); }, [load, loadSyncStatus]);
   useSse(() => { load(); });
 
   const active      = accounts.filter(a => a.is_active && a.status !== "banned").length;
@@ -1346,6 +1365,32 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
             </div>
           </GlassCard>
         </div>
+
+        {/* ── Sync status badge ── */}
+        {syncAt && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderRadius: 10, background: "rgba(45,232,151,0.05)", border: "1px solid rgba(45,232,151,0.15)", padding: "6px 10px" }}>
+            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.45)", display: "flex", alignItems: "center", gap: 5 }}>
+              <span>☁️</span>
+              <span>
+                {lang === "ua" ? "Синхронізовано" : "Synced"}:{" "}
+                {(() => {
+                  const diffMs = Date.now() - syncAt.getTime();
+                  const mins = Math.floor(diffMs / 60000);
+                  if (mins < 1) return lang === "ua" ? "щойно" : "just now";
+                  if (mins < 60) return `${mins} хв тому`;
+                  return `${Math.floor(mins / 60)} год тому`;
+                })()}
+              </span>
+            </span>
+            <button
+              disabled={syncSaving}
+              onClick={triggerSyncNow}
+              style={{ background: "none", border: "none", cursor: syncSaving ? "not-allowed" : "pointer", fontSize: 10, color: syncSaving ? "rgba(45,232,151,0.3)" : "#2de897", fontWeight: 700, padding: "2px 6px", borderRadius: 6, display: "flex", alignItems: "center", gap: 4 }}
+            >
+              {syncSaving ? "⏳" : "💾"} {lang === "ua" ? "Зберегти зараз" : "Save now"}
+            </button>
+          </div>
+        )}
 
         {/* ── Row 2: Primary actions + "···" overflow ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>

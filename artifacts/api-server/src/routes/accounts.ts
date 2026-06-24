@@ -122,11 +122,17 @@ router.put("/accounts/:id", (req, res) => {
   }
 });
 
-router.delete("/accounts/:id", (req, res) => {
+router.delete("/accounts/:id", async (req, res) => {
   try {
     const db = getDb(false);
-    db.prepare("DELETE FROM sender_accounts WHERE id = ?").run(parseInt(req.params.id));
+    const id = parseInt(req.params.id);
+    const row = db.prepare("SELECT session_file FROM sender_accounts WHERE id = ?").get(id) as { session_file?: string } | undefined;
+    db.prepare("DELETE FROM sender_accounts WHERE id = ?").run(id);
     db.close();
+    if (row?.session_file) {
+      const { deleteSessionFileFromPg } = await import("../lib/pg-pool");
+      await deleteSessionFileFromPg(row.session_file);
+    }
     res.status(204).end();
   } catch (err) {
     res.status(500).json({ error: String(err) });

@@ -18,12 +18,24 @@ var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require
   if (typeof require !== "undefined") return require.apply(this, arguments);
   throw Error('Dynamic require of "' + x + '" is not supported');
 });
+var __esm = (fn, res, err) => function __init() {
+  if (err) throw err[0];
+  try {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  } catch (e) {
+    throw err = [e], e;
+  }
+};
 var __commonJS = (cb, mod) => function __require2() {
   try {
     return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
   } catch (e) {
     throw mod = 0, e;
   }
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
@@ -20522,27 +20534,27 @@ var require_router = __commonJS({
     var slice = Array.prototype.slice;
     var flatten = Array.prototype.flat;
     var methods = METHODS.map((method) => method.toLowerCase());
-    module.exports = Router16;
+    module.exports = Router17;
     module.exports.Route = Route;
-    function Router16(options) {
-      if (!(this instanceof Router16)) {
-        return new Router16(options);
+    function Router17(options) {
+      if (!(this instanceof Router17)) {
+        return new Router17(options);
       }
       const opts = options || {};
-      function router16(req, res, next) {
-        router16.handle(req, res, next);
+      function router17(req, res, next) {
+        router17.handle(req, res, next);
       }
-      Object.setPrototypeOf(router16, this);
-      router16.caseSensitive = opts.caseSensitive;
-      router16.mergeParams = opts.mergeParams;
-      router16.params = {};
-      router16.strict = opts.strict;
-      router16.stack = [];
-      return router16;
+      Object.setPrototypeOf(router17, this);
+      router17.caseSensitive = opts.caseSensitive;
+      router17.mergeParams = opts.mergeParams;
+      router17.params = {};
+      router17.strict = opts.strict;
+      router17.stack = [];
+      return router17;
     }
-    Router16.prototype = function() {
+    Router17.prototype = function() {
     };
-    Router16.prototype.param = function param(name, fn) {
+    Router17.prototype.param = function param(name, fn) {
       if (!name) {
         throw new TypeError("argument name is required");
       }
@@ -20562,7 +20574,7 @@ var require_router = __commonJS({
       params.push(fn);
       return this;
     };
-    Router16.prototype.handle = function handle(req, res, callback) {
+    Router17.prototype.handle = function handle(req, res, callback) {
       if (!callback) {
         throw new TypeError("argument callback is required");
       }
@@ -20689,7 +20701,7 @@ var require_router = __commonJS({
         }
       }
     };
-    Router16.prototype.use = function use(handler) {
+    Router17.prototype.use = function use(handler) {
       let offset = 0;
       let path2 = "/";
       if (typeof handler !== "function") {
@@ -20722,7 +20734,7 @@ var require_router = __commonJS({
       }
       return this;
     };
-    Router16.prototype.route = function route(path2) {
+    Router17.prototype.route = function route(path2) {
       const route2 = new Route(path2);
       const layer = new Layer(path2, {
         sensitive: this.caseSensitive,
@@ -20737,7 +20749,7 @@ var require_router = __commonJS({
       return route2;
     };
     methods.concat("all").forEach(function(method) {
-      Router16.prototype[method] = function(path2) {
+      Router17.prototype[method] = function(path2) {
         const route = this.route(path2);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
@@ -20913,20 +20925,20 @@ var require_application = __commonJS({
     var finalhandler = require_finalhandler();
     var debug = require_src()("express:application");
     var View = require_view();
-    var http2 = __require("node:http");
+    var http3 = __require("node:http");
     var methods = require_utils3().methods;
     var compileETag = require_utils3().compileETag;
     var compileQueryParser = require_utils3().compileQueryParser;
     var compileTrust = require_utils3().compileTrust;
     var resolve = __require("node:path").resolve;
     var once = require_once();
-    var Router16 = require_router();
+    var Router17 = require_router();
     var slice = Array.prototype.slice;
     var flatten = Array.prototype.flat;
     var app2 = exports = module.exports = {};
     var trustProxyDefaultSymbol = "@@symbol:trust_proxy_default";
     app2.init = function init() {
-      var router16 = null;
+      var router17 = null;
       this.cache = /* @__PURE__ */ Object.create(null);
       this.engines = /* @__PURE__ */ Object.create(null);
       this.settings = /* @__PURE__ */ Object.create(null);
@@ -20935,13 +20947,13 @@ var require_application = __commonJS({
         configurable: true,
         enumerable: true,
         get: function getrouter() {
-          if (router16 === null) {
-            router16 = new Router16({
+          if (router17 === null) {
+            router17 = new Router17({
               caseSensitive: this.enabled("case sensitive routing"),
               strict: this.enabled("strict routing")
             });
           }
-          return router16;
+          return router17;
         }
       });
     };
@@ -21012,15 +21024,15 @@ var require_application = __commonJS({
       if (fns.length === 0) {
         throw new TypeError("app.use() requires a middleware function");
       }
-      var router16 = this.router;
+      var router17 = this.router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router16.use(path2, fn2);
+          return router17.use(path2, fn2);
         }
         debug(".use app under %s", path2);
         fn2.mountpath = path2;
         fn2.parent = this;
-        router16.use(path2, function mounted_app(req, res, next) {
+        router17.use(path2, function mounted_app(req, res, next) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             Object.setPrototypeOf(req, orig.request);
@@ -21146,7 +21158,7 @@ var require_application = __commonJS({
       tryRender(view, renderOptions, done);
     };
     app2.listen = function listen() {
-      var server = http2.createServer(this);
+      var server = http3.createServer(this);
       var args = slice.call(arguments);
       if (typeof args[args.length - 1] === "function") {
         var done = args[args.length - 1] = once(args[args.length - 1]);
@@ -21921,12 +21933,12 @@ var require_request = __commonJS({
     var accepts = require_accepts();
     var isIP = __require("node:net").isIP;
     var typeis = require_type_is();
-    var http2 = __require("node:http");
+    var http3 = __require("node:http");
     var fresh = require_fresh();
     var parseRange = require_range_parser();
     var parse = require_parseurl();
     var proxyaddr = require_proxy_addr();
-    var req = Object.create(http2.IncomingMessage.prototype);
+    var req = Object.create(http3.IncomingMessage.prototype);
     module.exports = req;
     req.get = req.header = function header(name) {
       if (!name) {
@@ -23020,7 +23032,7 @@ var require_response = __commonJS({
     var deprecate = require_depd()("express");
     var encodeUrl = require_encodeurl();
     var escapeHtml2 = require_escape_html();
-    var http2 = __require("node:http");
+    var http3 = __require("node:http");
     var onFinished = require_on_finished();
     var mime = require_mime_types();
     var path2 = __require("node:path");
@@ -23036,7 +23048,7 @@ var require_response = __commonJS({
     var resolve = path2.resolve;
     var vary = require_vary();
     var { Buffer: Buffer2 } = __require("node:buffer");
-    var res = Object.create(http2.ServerResponse.prototype);
+    var res = Object.create(http3.ServerResponse.prototype);
     module.exports = res;
     res.status = function status(code) {
       if (!Number.isInteger(code)) {
@@ -23593,7 +23605,7 @@ var require_express = __commonJS({
     var EventEmitter = __require("node:events").EventEmitter;
     var mixin = require_merge_descriptors();
     var proto = require_application();
-    var Router16 = require_router();
+    var Router17 = require_router();
     var req = require_request();
     var res = require_response();
     exports = module.exports = createApplication;
@@ -23615,8 +23627,8 @@ var require_express = __commonJS({
     exports.application = proto;
     exports.request = req;
     exports.response = res;
-    exports.Route = Router16.Route;
-    exports.Router = Router16;
+    exports.Route = Router17.Route;
+    exports.Router = Router17;
     exports.json = bodyParser.json;
     exports.raw = bodyParser.raw;
     exports.static = require_serve_static();
@@ -49400,7 +49412,7 @@ var require_pg_pool = __commonJS({
         pool2.emit("error", err, client);
       };
     }
-    var Pool3 = class extends EventEmitter {
+    var Pool4 = class extends EventEmitter {
       constructor(options, Client2) {
         super();
         this.options = Object.assign({}, options);
@@ -49767,7 +49779,7 @@ var require_pg_pool = __commonJS({
         return this._clients.length;
       }
     };
-    module.exports = Pool3;
+    module.exports = Pool4;
   }
 });
 
@@ -50182,12 +50194,12 @@ var require_lib6 = __commonJS({
     var Connection2 = require_connection();
     var Result2 = require_result();
     var utils = require_utils5();
-    var Pool3 = require_pg_pool();
+    var Pool4 = require_pg_pool();
     var TypeOverrides2 = require_type_overrides();
     var { DatabaseError: DatabaseError2 } = require_dist2();
     var { escapeIdentifier: escapeIdentifier2, escapeLiteral: escapeLiteral2 } = require_utils5();
     var poolFactory = (Client3) => {
-      return class BoundPool extends Pool3 {
+      return class BoundPool extends Pool4 {
         constructor(options) {
           super(options, Client3);
         }
@@ -50239,12 +50251,65 @@ var require_lib6 = __commonJS({
   }
 });
 
+// ../../node_modules/.pnpm/pg@8.20.0/node_modules/pg/esm/index.mjs
+var import_lib, Client, Pool, Connection, types, Query, DatabaseError, escapeIdentifier, escapeLiteral, Result, TypeOverrides, defaults, esm_default;
+var init_esm = __esm({
+  "../../node_modules/.pnpm/pg@8.20.0/node_modules/pg/esm/index.mjs"() {
+    import_lib = __toESM(require_lib6(), 1);
+    Client = import_lib.default.Client;
+    Pool = import_lib.default.Pool;
+    Connection = import_lib.default.Connection;
+    types = import_lib.default.types;
+    Query = import_lib.default.Query;
+    DatabaseError = import_lib.default.DatabaseError;
+    escapeIdentifier = import_lib.default.escapeIdentifier;
+    escapeLiteral = import_lib.default.escapeLiteral;
+    Result = import_lib.default.Result;
+    TypeOverrides = import_lib.default.TypeOverrides;
+    defaults = import_lib.default.defaults;
+    esm_default = import_lib.default;
+  }
+});
+
+// src/lib/pg-pool.ts
+var pg_pool_exports = {};
+__export(pg_pool_exports, {
+  deleteSessionFileFromPg: () => deleteSessionFileFromPg,
+  getPgPool: () => getPgPool
+});
+function getPgPool() {
+  if (!_pool) {
+    _pool = new Pool2({ connectionString: process.env["DATABASE_URL"] });
+  }
+  return _pool;
+}
+async function deleteSessionFileFromPg(sessionFile) {
+  if (!sessionFile || !process.env["DATABASE_URL"]) return;
+  const bare = sessionFile.split("/").pop() ?? sessionFile;
+  const filename = bare.endsWith(".session") ? bare : bare + ".session";
+  try {
+    const pool2 = getPgPool();
+    await pool2.query("DELETE FROM pf_session_files WHERE filename = $1", [filename]);
+  } catch (e) {
+    console.warn("[pg-pool] deleteSessionFileFromPg failed:", e);
+  }
+}
+var Pool2, _pool;
+var init_pg_pool = __esm({
+  "src/lib/pg-pool.ts"() {
+    "use strict";
+    init_esm();
+    ({ Pool: Pool2 } = esm_default);
+    _pool = null;
+  }
+});
+
 // src/app.ts
-var import_express16 = __toESM(require_express2(), 1);
+var import_express17 = __toESM(require_express2(), 1);
 var import_cors = __toESM(require_lib3(), 1);
 var import_pino_http = __toESM(require_logger(), 1);
 import crypto from "crypto";
-import http from "http";
+import http2 from "http";
 import { existsSync as existsSync3 } from "fs";
 import { join as join2 } from "path";
 
@@ -55688,11 +55753,17 @@ router6.put("/accounts/:id", (req, res) => {
     res.status(500).json({ error: String(err) });
   }
 });
-router6.delete("/accounts/:id", (req, res) => {
+router6.delete("/accounts/:id", async (req, res) => {
   try {
     const db = getDb4(false);
-    db.prepare("DELETE FROM sender_accounts WHERE id = ?").run(parseInt(req.params.id));
+    const id = parseInt(req.params.id);
+    const row = db.prepare("SELECT session_file FROM sender_accounts WHERE id = ?").get(id);
+    db.prepare("DELETE FROM sender_accounts WHERE id = ?").run(id);
     db.close();
+    if (row?.session_file) {
+      const { deleteSessionFileFromPg: deleteSessionFileFromPg2 } = await Promise.resolve().then(() => (init_pg_pool(), pg_pool_exports));
+      await deleteSessionFileFromPg2(row.session_file);
+    }
     res.status(204).end();
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -57524,7 +57595,15 @@ function execDeleteRestrictedAccounts(args) {
     const ids = args.account_ids;
     if (!ids?.length) return { error: "No account_ids provided" };
     const placeholders = ids.map(() => "?").join(",");
+    const rows = db.prepare(`SELECT session_file FROM sender_accounts WHERE id IN (${placeholders})`).all(...ids);
     const result = db.prepare(`DELETE FROM sender_accounts WHERE id IN (${placeholders})`).run(...ids);
+    Promise.resolve().then(() => (init_pg_pool(), pg_pool_exports)).then(({ deleteSessionFileFromPg: deleteSessionFileFromPg2 }) => {
+      for (const r of rows) {
+        if (r.session_file) deleteSessionFileFromPg2(r.session_file).catch(() => {
+        });
+      }
+    }).catch(() => {
+    });
     return { deleted: result.changes, account_ids: ids };
   } finally {
     db.close();
@@ -58346,25 +58425,9 @@ var ai_default = router12;
 
 // src/routes/proxy-store.ts
 var import_express13 = __toESM(require_express2(), 1);
-
-// ../../node_modules/.pnpm/pg@8.20.0/node_modules/pg/esm/index.mjs
-var import_lib = __toESM(require_lib6(), 1);
-var Client = import_lib.default.Client;
-var Pool = import_lib.default.Pool;
-var Connection = import_lib.default.Connection;
-var types = import_lib.default.types;
-var Query = import_lib.default.Query;
-var DatabaseError = import_lib.default.DatabaseError;
-var escapeIdentifier = import_lib.default.escapeIdentifier;
-var escapeLiteral = import_lib.default.escapeLiteral;
-var Result = import_lib.default.Result;
-var TypeOverrides = import_lib.default.TypeOverrides;
-var defaults = import_lib.default.defaults;
-var esm_default = import_lib.default;
-
-// src/routes/proxy-store.ts
-var { Pool: Pool2 } = esm_default;
-var pool = new Pool2({ connectionString: process.env["DATABASE_URL"] });
+init_esm();
+var { Pool: Pool3 } = esm_default;
+var pool = new Pool3({ connectionString: process.env["DATABASE_URL"] });
 var router13 = (0, import_express13.Router)();
 async function ensureTable3() {
   await pool.query(`
@@ -59270,6 +59333,46 @@ router15.post("/upload-avatars", async (req, res) => {
 });
 var factory_default = router15;
 
+// src/routes/sync.ts
+var import_express16 = __toESM(require_express2(), 1);
+init_pg_pool();
+import http from "http";
+var router16 = (0, import_express16.Router)();
+router16.get("/sync/status", async (_req, res) => {
+  try {
+    const pool2 = getPgPool();
+    const result = await pool2.query(
+      "SELECT updated_at FROM pf_db_snapshot WHERE key = 'main'"
+    );
+    const row = result.rows[0];
+    res.json({ ok: true, updated_at: row?.updated_at ?? null });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
+});
+router16.post("/sync/now", async (_req, res) => {
+  try {
+    const port2 = process.env["PYTHON_API_PORT"] ?? "8083";
+    await new Promise((resolve, reject) => {
+      const req2 = http.request(
+        { hostname: "127.0.0.1", port: parseInt(port2), path: "/internal/sync", method: "POST" },
+        (r) => {
+          r.resume();
+          r.on("end", resolve);
+          r.on("error", reject);
+        }
+      );
+      req2.on("error", reject);
+      req2.setTimeout(12e3, () => req2.destroy(new Error("timeout")));
+      req2.end();
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
+});
+var sync_default = router16;
+
 // src/lib/logger.ts
 var import_pino = __toESM(require_pino(), 1);
 var isProduction = process.env.NODE_ENV === "production";
@@ -59499,7 +59602,7 @@ var apiLimiter = createLimiter({
 });
 
 // src/app.ts
-var app = (0, import_express16.default)();
+var app = (0, import_express17.default)();
 app.use(
   (0, import_pino_http.default)({
     logger,
@@ -59514,8 +59617,8 @@ app.use(
   })
 );
 app.use((0, import_cors.default)());
-app.use(import_express16.default.json({ limit: "10mb" }));
-app.use(import_express16.default.urlencoded({ extended: true }));
+app.use(import_express17.default.json({ limit: "10mb" }));
+app.use(import_express17.default.urlencoded({ extended: true }));
 app.use("/api/twa", twaLimiter);
 app.post("/api/auth", authLimiter);
 app.use("/api", apiLimiter);
@@ -59577,7 +59680,7 @@ function makePythonProxy(prefix) {
       method: req.method,
       headers: forwardHeaders
     };
-    const proxyReq = http.request(options, (proxyRes) => {
+    const proxyReq = http2.request(options, (proxyRes) => {
       const isSSE = (proxyRes.headers["content-type"] ?? "").includes("text/event-stream");
       res.status(proxyRes.statusCode ?? 200);
       for (const [k, v] of Object.entries(proxyRes.headers)) {
@@ -59603,6 +59706,7 @@ function makePythonProxy(prefix) {
     proxyReq.end();
   };
 }
+app.use("/api", sync_default);
 app.use("/api/verifications", makePythonProxy("/api/verifications"));
 app.use("/api/factory", factory_default);
 app.use("/api/factory", makePythonProxy("/api/factory"));
@@ -59622,7 +59726,7 @@ startWatchdog();
 var WORKSPACE_ROOT = join2(import.meta.dirname, "../../..");
 var FRONTEND_DIST = join2(WORKSPACE_ROOT, "artifacts", "telegram-miniapp", "dist");
 if (existsSync3(FRONTEND_DIST)) {
-  app.use(import_express16.default.static(FRONTEND_DIST, {
+  app.use(import_express17.default.static(FRONTEND_DIST, {
     setHeaders(res, filePath) {
       if (filePath.endsWith(".html")) {
         res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");

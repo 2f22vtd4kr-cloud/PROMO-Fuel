@@ -1010,6 +1010,18 @@ async def health() -> dict:
     return {"ok": True, "service": "promo-fuel-apiserver", "port": API_PORT}
 
 
+@app.post("/internal/sync")
+async def internal_sync() -> dict:
+    """Trigger an immediate PostgreSQL snapshot of campaigns.db + session files."""
+    try:
+        import db_sync
+        db_path = os.getenv("DB_PATH", "campaigns.db")
+        db_sync.save_snapshot(db_path)
+        return {"ok": True}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 # ── Verifications router ──────────────────────────────────────────────────────
 
 verif_router = APIRouter(prefix="/api/verifications", tags=["verifications"])

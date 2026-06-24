@@ -238,7 +238,13 @@ function execDeleteRestrictedAccounts(args: { account_ids: number[] }): object {
     const ids = args.account_ids;
     if (!ids?.length) return { error: "No account_ids provided" };
     const placeholders = ids.map(() => "?").join(",");
+    const rows = db.prepare(`SELECT session_file FROM sender_accounts WHERE id IN (${placeholders})`).all(...ids) as { session_file?: string }[];
     const result = db.prepare(`DELETE FROM sender_accounts WHERE id IN (${placeholders})`).run(...ids);
+    import("../lib/pg-pool").then(({ deleteSessionFileFromPg }) => {
+      for (const r of rows) {
+        if (r.session_file) deleteSessionFileFromPg(r.session_file).catch(() => {});
+      }
+    }).catch(() => {});
     return { deleted: result.changes, account_ids: ids };
   } finally {
     db.close();

@@ -7,6 +7,7 @@ import { existsSync } from "fs";
 import { join } from "path";
 import router from "./routes";
 import factoryRouter from "./routes/factory";
+import syncRouter from "./routes/sync";
 import { logger } from "./lib/logger";
 import { startWatchdog } from "./lib/watchdog";
 import { twaLimiter, authLimiter, apiLimiter } from "./lib/rate-limit";
@@ -147,6 +148,7 @@ function makePythonProxy(prefix: string) {
   };
 }
 
+app.use("/api", syncRouter);
 app.use("/api/verifications", makePythonProxy("/api/verifications"));
 // GET /api/factory/countries is handled natively in Node.js (no Python dependency).
 // All other /api/factory/* routes (e.g. POST /register) fall through to the Python proxy.
