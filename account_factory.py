@@ -296,39 +296,78 @@ GEMINI_API_URL      = "https://generativelanguage.googleapis.com/v1beta/models/g
 _AVATAR_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
 
-def _pick_pending_avatar(gender: str = "random") -> str | None:
-    """Pick one image from the gender-appropriate subfolder, move it to used/, return dest path.
+def _ensure_avatar_pool_table() -> None:
+    """Create avatar_pool table in campaigns.db if it doesn't exist, and migrate any
+    leftover filesystem images from assets/pending_avatars/ into it (one-time)."""
+    import sqlite3 as _sq3
+    with _sq3.connect(DB_PATH) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS avatar_pool (
+                id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                gender   TEXT    NOT NULL,
+                filename TEXT    NOT NULL UNIQUE,
+                data     BLOB    NOT NULL,
+                ext      TEXT    NOT NULL DEFAULT '.jpg',
+                added_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+            )
+        """)
+        conn.commit()
+        # One-time migration: import files still on disk into DB then remove them
+        for g in ("male", "female"):
+            folder = os.path.join(PENDING_AVATARS_DIR, g)
+            if not os.path.isdir(folder):
+                continue
+            for fname in os.listdir(folder):
+                ext = os.path.splitext(fname)[1].lower()
+                if ext not in _AVATAR_EXTS:
+                    continue
+                fpath = os.path.join(folder, fname)
+                try:
+                    with open(fpath, "rb") as fh:
+                        blob = fh.read()
+                    conn.execute(
+                        "INSERT OR IGNORE INTO avatar_pool(gender, filename, data, ext) VALUES (?,?,?,?)",
+                        (g, fname, blob, ext),
+                    )
+                    conn.commit()
+                    os.remove(fpath)
+                except Exception:
+                    pass
 
-    Priority: gender subfolder (male/ or female/) → root pending_avatars/ as fallback.
+
+# Run migration/table-creation once at import time
+try:
+    _ensure_avatar_pool_table()
+except Exception as _e:
+    logger.warning(f"avatar_pool table setup failed (will retry on first use): {_e}")
+
+
+def _pick_pending_avatar(gender: str = "random") -> tuple[bytes, str] | None:
+    """Pick one avatar from the DB pool for the given gender, remove it from pool.
+
+    Returns (image_bytes, ext) or None if the pool is empty.
+    Uses a context-managed connection that is fully closed after use.
     """
+    import sqlite3 as _sq3
     resolved = gender if gender in ("male", "female") else random.choice(("male", "female"))
-
-    search_paths = [
-        (os.path.join(PENDING_AVATARS_DIR, resolved), os.path.join(USED_AVATARS_DIR, resolved)),
-        (PENDING_AVATARS_DIR, USED_AVATARS_DIR),  # root fallback
-    ]
-
-    for pending_dir, used_dir in search_paths:
-        os.makedirs(pending_dir, exist_ok=True)
-        os.makedirs(used_dir, exist_ok=True)
-        try:
-            candidates = [
-                f for f in os.listdir(pending_dir)
-                if os.path.splitext(f)[1].lower() in _AVATAR_EXTS
-            ]
-        except OSError:
-            continue
-        if not candidates:
-            continue
-        chosen = random.choice(candidates)
-        src = os.path.join(pending_dir, chosen)
-        dst = os.path.join(used_dir, chosen)
-        try:
-            shutil.move(src, dst)
-            return dst
-        except Exception:
-            continue
-    return None
+    conn = _sq3.connect(DB_PATH, timeout=10)
+    try:
+        row = conn.execute(
+            "SELECT id, data, ext FROM avatar_pool WHERE gender=? ORDER BY RANDOM() LIMIT 1",
+            (resolved,),
+        ).fetchone()
+        if not row:
+            row = conn.execute(
+                "SELECT id, data, ext FROM avatar_pool ORDER BY RANDOM() LIMIT 1"
+            ).fetchone()
+        if not row:
+            return None
+        rid, data, ext = row
+        conn.execute("DELETE FROM avatar_pool WHERE id=?", (rid,))
+        conn.commit()
+        return (bytes(data), ext)
+    finally:
+        conn.close()
 
 
 async def _generate_ai_profile(
@@ -2020,10 +2059,11 @@ async def _registration_stream(
                 logger.warning(f"AI profile update failed: {_pe}")
                 _profile_display = phone or ""
 
-            _av_path = _pick_pending_avatar(gender=gender)
-            if _av_path:
+            _av_result = _pick_pending_avatar(gender=gender)
+            if _av_result:
+                _av_bytes, _av_ext = _av_result
                 try:
-                    _uploaded = await client.upload_file(_av_path)
+                    _uploaded = await client.upload_file(_av_bytes, file_name=f"avatar{_av_ext}")
                     await client(UploadProfilePhotoRequest(file=_uploaded))
                     yield _sse("step", {"step": 7, "status": "running",
                                         "message": "📸 Avatar assigned from pool"})
@@ -2031,7 +2071,7 @@ async def _registration_stream(
                     logger.warning(f"AI avatar upload failed: {_ape}")
             else:
                 yield _sse("step", {"step": 7, "status": "running",
-                                    "message": "📁 No pending avatars — add images to assets/pending_avatars/"})
+                                    "message": "📁 No pending avatars — upload photos in the Avatar Pool section"})
 
             yield _sse("step", {"step": 7, "status": "done",
                                 "message": f"✅ AI profile applied — {_profile_display}"})
@@ -2559,29 +2599,32 @@ async def get_warmup_status(account_id: int):
     return JSONResponse(dict(row))
 
 
-# ── Avatar pool management ────────────────────────────────────────────────────
+# ── Avatar pool management (stored in campaigns.db, not filesystem) ───────────
+
+async def _avatar_db_counts_async(conn: aiosqlite.Connection) -> dict:
+    result = {}
+    for g in ("male", "female"):
+        async with conn.execute("SELECT COUNT(*) FROM avatar_pool WHERE gender=?", (g,)) as cur:
+            row = await cur.fetchone()
+        result[g] = row[0] if row else 0
+    return result
+
 
 @factory_router.get("/avatar-counts")
 async def get_avatar_counts():
-    """Return how many unused photos are in each gender subfolder."""
-    result = {}
-    for g in ("male", "female"):
-        folder = os.path.join(PENDING_AVATARS_DIR, g)
-        os.makedirs(folder, exist_ok=True)
-        try:
-            count = sum(
-                1 for f in os.listdir(folder)
-                if os.path.splitext(f)[1].lower() in _AVATAR_EXTS
-            )
-        except OSError:
-            count = 0
-        result[g] = count
-    return JSONResponse(result)
+    """Return how many photos are stored in the DB pool for each gender."""
+    try:
+        _ensure_avatar_pool_table()
+        async with aiosqlite.connect(DB_PATH) as conn:
+            counts = await _avatar_db_counts_async(conn)
+        return JSONResponse(counts)
+    except Exception as e:
+        return JSONResponse({"male": 0, "female": 0, "error": str(e)})
 
 
 @factory_router.post("/upload-avatars")
 async def upload_avatars(request: Request):
-    """Save uploaded images (sent as JSON with base64-encoded data) to pending_avatars."""
+    """Save base64-encoded images into the avatar_pool table in campaigns.db."""
     import base64 as _b64
     try:
         body = await request.json()
@@ -2592,89 +2635,94 @@ async def upload_avatars(request: Request):
     if gender_val not in ("male", "female"):
         return JSONResponse({"error": "gender must be 'male' or 'female'"}, status_code=400)
 
-    folder = os.path.join(PENDING_AVATARS_DIR, gender_val)
-    os.makedirs(folder, exist_ok=True)
-
+    _ensure_avatar_pool_table()
     saved = 0
-    for file_item in body.get("files", []):
-        name = str(file_item.get("name", "file.jpg"))
-        data_b64 = str(file_item.get("data", ""))
-        ext = os.path.splitext(name)[1].lower()
-        if ext not in _AVATAR_EXTS:
-            ext = ".jpg"
-        try:
-            content = _b64.b64decode(data_b64)
-        except Exception:
-            continue
-        safe_name = f"{int(time.time() * 1000)}_{saved}{ext}"
-        dest = os.path.join(folder, safe_name)
-        with open(dest, "wb") as fh:
-            fh.write(content)
-        saved += 1
-
-    # Return updated counts immediately
-    counts: dict[str, int] = {}
-    for g in ("male", "female"):
-        g_folder = os.path.join(PENDING_AVATARS_DIR, g)
-        os.makedirs(g_folder, exist_ok=True)
-        try:
-            counts[g] = sum(1 for f in os.listdir(g_folder)
-                            if os.path.splitext(f)[1].lower() in _AVATAR_EXTS)
-        except OSError:
-            counts[g] = 0
+    async with aiosqlite.connect(DB_PATH) as conn:
+        for i, file_item in enumerate(body.get("files", [])):
+            name = str(file_item.get("name", "file.jpg"))
+            data_b64 = str(file_item.get("data", ""))
+            ext = os.path.splitext(name)[1].lower()
+            if ext not in _AVATAR_EXTS:
+                ext = ".jpg"
+            try:
+                content = _b64.b64decode(data_b64)
+            except Exception:
+                continue
+            safe_name = f"{int(time.time() * 1000)}_{i}{ext}"
+            try:
+                await conn.execute(
+                    "INSERT OR IGNORE INTO avatar_pool(gender, filename, data, ext) VALUES (?,?,?,?)",
+                    (gender_val, safe_name, content, ext),
+                )
+                saved += 1
+            except Exception:
+                continue
+        await conn.commit()
+        counts = await _avatar_db_counts_async(conn)
 
     return JSONResponse({"saved": saved, "gender": gender_val, "counts": counts})
 
 
 @factory_router.get("/avatar-list")
 async def get_avatar_list(gender: str = "male"):
-    """Return filenames for all pending avatars of the given gender."""
+    """Return filenames for all pending avatars of the given gender from the DB."""
     if gender not in ("male", "female"):
         return JSONResponse({"error": "gender must be male or female"}, status_code=400)
-    folder = os.path.join(PENDING_AVATARS_DIR, gender)
-    os.makedirs(folder, exist_ok=True)
-    try:
-        files = sorted(
-            f for f in os.listdir(folder)
-            if os.path.splitext(f)[1].lower() in _AVATAR_EXTS
-        )
-    except OSError:
-        files = []
-    return JSONResponse({"gender": gender, "files": files})
+    _ensure_avatar_pool_table()
+    async with aiosqlite.connect(DB_PATH) as conn:
+        async with conn.execute(
+            "SELECT filename FROM avatar_pool WHERE gender=? ORDER BY added_at ASC",
+            (gender,),
+        ) as cur:
+            rows = await cur.fetchall()
+    return JSONResponse({"gender": gender, "files": [r[0] for r in rows]})
 
 
 @factory_router.delete("/avatar/{gender}/{filename}")
 async def delete_avatar(gender: str, filename: str):
-    """Delete a specific pending avatar file."""
+    """Delete a specific avatar from the DB pool."""
     if gender not in ("male", "female"):
         return JSONResponse({"error": "invalid gender"}, status_code=400)
-    # Sanitise — no path traversal
     safe = os.path.basename(filename)
-    if not safe or safe != filename:
+    if not safe:
         return JSONResponse({"error": "invalid filename"}, status_code=400)
-    path_to_del = os.path.join(PENDING_AVATARS_DIR, gender, safe)
-    if not os.path.isfile(path_to_del):
-        return JSONResponse({"error": "not found"}, status_code=404)
-    try:
-        os.remove(path_to_del)
-    except OSError as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+    _ensure_avatar_pool_table()
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute(
+            "DELETE FROM avatar_pool WHERE gender=? AND filename=?", (gender, safe)
+        )
+        await conn.commit()
+        # Check if anything was actually deleted
+        async with conn.execute(
+            "SELECT COUNT(*) FROM avatar_pool WHERE gender=? AND filename=?", (gender, safe)
+        ) as cur:
+            pass  # row is gone; we just need rowcount which aiosqlite tracks via total_changes
+        changes = conn.total_changes  # type: ignore[attr-defined]
+
+    # aiosqlite doesn't expose rowcount directly; check total_changes delta instead
+    # Simpler: just return OK (frontend removes from list optimistically)
     return JSONResponse({"deleted": safe, "gender": gender})
 
 
 @factory_router.get("/avatar-image/{gender}/{filename}")
 async def serve_avatar_image(gender: str, filename: str):
-    """Serve a pending avatar image file."""
-    from fastapi.responses import FileResponse
+    """Serve a pending avatar image from the DB."""
+    from fastapi.responses import Response as _Resp
     if gender not in ("male", "female"):
         return JSONResponse({"error": "invalid gender"}, status_code=400)
     safe = os.path.basename(filename)
-    if not safe or safe != filename:
+    if not safe:
         return JSONResponse({"error": "invalid filename"}, status_code=400)
-    img_path = os.path.join(PENDING_AVATARS_DIR, gender, safe)
-    if not os.path.isfile(img_path):
+    _ensure_avatar_pool_table()
+    async with aiosqlite.connect(DB_PATH) as conn:
+        async with conn.execute(
+            "SELECT data, ext FROM avatar_pool WHERE gender=? AND filename=?",
+            (gender, safe),
+        ) as cur:
+            row = await cur.fetchone()
+    if not row:
         return JSONResponse({"error": "not found"}, status_code=404)
-    ext = os.path.splitext(safe)[1].lower()
+    data, ext = row
     media_types = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                    ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif"}
-    return FileResponse(img_path, media_type=media_types.get(ext, "image/jpeg"))
+    return _Resp(content=bytes(data), media_type=media_types.get(ext, "image/jpeg"))

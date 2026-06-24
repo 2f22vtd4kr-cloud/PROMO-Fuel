@@ -3531,8 +3531,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
                       {([
-                        { key: "male",   label: L("♂ Man",    "♂ Чоловік"),  color: "#60a5fa" },
-                        { key: "female", label: L("♀ Woman",  "♀ Жінка"),    color: "#f472b6" },
+                        { key: "male",   label: L("Man",    "Чоловік"),  color: "#60a5fa" },
+                        { key: "female", label: L("Woman",  "Жінка"),    color: "#f472b6" },
                         { key: "random", label: L("🔀 Random", "🔀 Рандом"),  color: "#a78bfa" },
                       ] as const).map(opt => (
                         <button key={opt.key} onClick={() => setAiGender(opt.key)} style={{
@@ -3569,7 +3569,6 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                       const showUpload = g === "male" ? showMaleUpload : showFemaleUpload;
                       const setShowUpload = g === "male" ? setShowMaleUpload : setShowFemaleUpload;
                       const gColor = g === "male" ? "#60a5fa" : "#f472b6";
-                      const gIcon  = g === "male" ? "♂" : "♀";
                       const barColor = count === 0 ? "#374151"
                         : count < 5  ? "#ef4444"
                         : count < 15 ? "#f59e0b"
@@ -3583,9 +3582,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                         <div key={g} style={{ marginBottom: 8 }}>
                           {/* Row: label + bar + count + buttons */}
                           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                            <span style={{ fontSize: 10, color: gColor, fontWeight: 700, minWidth: 60,
-                              display: "flex", alignItems: "center", gap: 3 }}>
-                              <span style={{ fontSize: 12 }}>{gIcon}</span>
+                            <span style={{ fontSize: 10, color: gColor, fontWeight: 700, minWidth: 60 }}>
                               {gLabel}
                             </span>
                             <div style={{ flex: 1, height: 5, borderRadius: 3,
