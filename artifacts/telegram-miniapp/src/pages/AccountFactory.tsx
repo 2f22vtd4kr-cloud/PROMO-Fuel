@@ -48,7 +48,12 @@ const STEP_DEFS = [
 ];
 
 type StepStatus = "waiting" | "running" | "done" | "error";
-interface StepState { status: StepStatus; message?: string }
+interface StepState {
+  status:     StepStatus;
+  message?:   string;
+  startedAt?: number;   // Date.now() when the step went "running"
+  elapsedMs?: number;   // ms from startedAt→done/error (frozen)
+}
 type RunState = "idle" | "running" | "done" | "error";
 
 function LabelledInput({
@@ -85,12 +90,18 @@ function LabelledInput({
   );
 }
 
+function fmtMs(ms: number): string {
+  if (ms < 10000) return `${(ms / 1000).toFixed(1)}s`;
+  if (ms < 60000) return `${Math.round(ms / 1000)}s`;
+  return `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
+}
+
 function StepRow({ def, state, lang }: {
   def: typeof STEP_DEFS[0];
   state: StepState;
   lang: string;
 }) {
-  const label = lang === "ua" ? def.ua : def.en;
+  const label    = lang === "ua" ? def.ua : def.en;
   const isRunning = state.status === "running";
   const isDone    = state.status === "done";
   const isError   = state.status === "error";
@@ -98,6 +109,24 @@ function StepRow({ def, state, lang }: {
   const dotColor  = isRunning ? ACCENT : isDone ? GREEN : isError ? RED : "rgba(255,255,255,0.15)";
   const labelColor = isRunning ? "rgba(255,255,255,0.9)" : isDone ? "rgba(255,255,255,0.7)"
     : isError ? RED : "rgba(255,255,255,0.28)";
+
+  // Live elapsed clock — ticks every 100 ms while this step is running
+  const [liveMs, setLiveMs] = useState(0);
+  useEffect(() => {
+    if (!isRunning || !state.startedAt) { setLiveMs(0); return; }
+    setLiveMs(Date.now() - state.startedAt);
+    const id = setInterval(() => setLiveMs(Date.now() - state.startedAt!), 100);
+    return () => clearInterval(id);
+  }, [isRunning, state.startedAt]);
+
+  // What to show in the time badge
+  const timeStr: string | null = isRunning && state.startedAt
+    ? fmtMs(liveMs)
+    : (isDone || isError) && state.elapsedMs != null
+    ? fmtMs(state.elapsedMs)
+    : null;
+
+  const timeBadgeColor = isRunning ? ACCENT : isDone ? GREEN : RED;
 
   return (
     <div style={{
@@ -129,8 +158,22 @@ function StepRow({ def, state, lang }: {
         )}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: isRunning ? 700 : 600, color: labelColor, transition: "color 0.3s" }}>
-          {label}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: isRunning ? 700 : 600, color: labelColor, transition: "color 0.3s" }}>
+            {label}
+          </div>
+          {timeStr && (
+            <div style={{
+              fontSize: 10, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap",
+              color: `${timeBadgeColor}dd`,
+              background: `${timeBadgeColor}18`,
+              padding: "2px 7px", borderRadius: 6, flexShrink: 0,
+              fontWeight: 700, letterSpacing: "0.03em",
+              border: `1px solid ${timeBadgeColor}22`,
+            }}>
+              {timeStr}
+            </div>
+          )}
         </div>
         {state.message && (
           <div style={{
@@ -1301,7 +1344,18 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   }
 
   const updateStep = useCallback((idx: number, patch: Partial<StepState>) => {
-    setSteps(prev => prev.map((s, i) => i === idx ? { ...s, ...patch } : s));
+    setSteps(prev => prev.map((s, i) => {
+      if (i !== idx) return s;
+      const now = Date.now();
+      const extra: Partial<StepState> = {};
+      if (patch.status === "running" && s.status !== "running") {
+        extra.startedAt = now;
+        extra.elapsedMs = undefined;
+      } else if ((patch.status === "done" || patch.status === "error") && s.startedAt != null) {
+        extra.elapsedMs = now - s.startedAt;
+      }
+      return { ...s, ...patch, ...extra };
+    }));
   }, []);
 
   const selectedCountryLabel = COUNTRIES.find(c => c.code === country)?.label ?? country;

@@ -57,11 +57,15 @@ Fix: added `receivedTerminal` bool. After the reader loop exits, if still false,
 
 ---
 
+### Step Timing Display
+
+Each step row now shows a live elapsed-time badge while running (ticking every 100ms in accent color), then a frozen green/red badge when done/error. Format: `0.0s` / `12s` / `1m 3s`. `StepState` extended with `startedAt`+`elapsedMs`; `updateStep` auto-stamps; `StepRow` has local `useState`+`useEffect` interval.
+
 ## Key file locations
 
-- `account_factory.py` — `generate()` + `_generate_inner()` at ~line 2419; `_force_country` fix at ~line 2451; keepalive + try/except wrapper at ~line 2419
+- `account_factory.py` — `generate()` + `_generate_inner()` at ~line 2419; `_force_country` fix at ~line 2451
 - `artifacts/api-server/src/app.ts` — SSE proxy manual write+uncork at ~line 149
-- `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx` — `receivedTerminal` guard at ~line 1378; fallback at ~line 1536
+- `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx` — `StepRow` with timing at ~line 102; `updateStep` at ~line 1311; `receivedTerminal` guard at ~line 1380
 
 ---
 
