@@ -35,3 +35,9 @@ id = "ELscd_fgtmFSJZrifjLxW"
 uri = "file://HANDOFF.md"
 type = "text"
 title = "Account Factory Debugging Handoff"
+
+[[outputs]]
+id = "vQkC1xLuSCpMPilrdLTbc"
+uri = "file://promo-fuel-source.zip"
+type = "unspecified"
+title = "promo-fuel-source.zip — source code only, 43 MB"
