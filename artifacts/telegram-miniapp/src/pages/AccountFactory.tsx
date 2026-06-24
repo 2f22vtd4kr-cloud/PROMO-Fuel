@@ -656,7 +656,6 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   // Profile Setup state
   // Warmup mode selector
   const [warmupMode,    setWarmupMode]    = useState<"none" | "all" | "ask">("all");
-  const [autoSwitch,    setAutoSwitch]    = useState(false);
   // Popup for "ask" mode — shown when backend emits warmup_prompt
   const [warmupPrompt,  setWarmupPrompt]  = useState<{ accountId: number; phone: string } | null>(null);
   // Popup shown on SMS timeout or recycled-number failure
@@ -1054,7 +1053,6 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           ...(apiHash ? { api_hash: apiHash }           : {}),
           profile_mode: profileMode,
           warmup_mode: warmupMode,
-          auto_switch: autoSwitch,
           ...(profileMode === "ai" ? { gender: aiGender } : {}),
           ...(profileMode === "manual" ? {
             first_name: profFirstName,
@@ -1173,13 +1171,6 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               accountId: p.account_id as number,
               phone:     p.phone     as string,
             });
-          } else if (event === "auto_switching") {
-            // Auto-switch fired — reset steps so the new preflight renders fresh
-            setSteps(initSteps());
-            setPreflightStatus("idle");
-            setPreflightMsg(null);
-            setExitIp(null);
-            setPollMsg(null);
           } else if (event === "sms_retry_prompt") {
             // SMS timeout or recycled-number failure
             const msg  = (p.message as string | undefined) ?? "";
@@ -1656,46 +1647,6 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           </div>
         )}
 
-        {/* ── Auto-switch toggle ── */}
-        {runState === "idle" && (
-          <button
-            onClick={() => setAutoSwitch(v => !v)}
-            style={{
-              display: "flex", alignItems: "center", gap: 12,
-              background: autoSwitch ? "rgba(59,130,246,0.10)" : "rgba(255,255,255,0.03)",
-              border: autoSwitch ? "1.5px solid rgba(59,130,246,0.40)" : "1.5px solid rgba(255,255,255,0.08)",
-              borderRadius: 14, padding: "11px 14px", cursor: "pointer",
-              width: "100%", textAlign: "left", transition: "all .15s",
-            }}
-          >
-            <div style={{
-              width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-              background: autoSwitch ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)",
-              border: autoSwitch ? "1.5px solid rgba(59,130,246,0.35)" : "1px solid rgba(255,255,255,0.08)",
-              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
-            }}>🔄</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 700,
-                color: autoSwitch ? "#3b82f6" : "rgba(255,255,255,0.7)", marginBottom: 2 }}>
-                Авто-перемикання проксі
-              </div>
-              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.38)", lineHeight: 1.4 }}>
-                При невдачі автоматично перейти на інший проксі зі сховища (до 3 разів)
-              </div>
-            </div>
-            <div style={{
-              width: 36, height: 20, borderRadius: 10, flexShrink: 0,
-              background: autoSwitch ? "#3b82f6" : "rgba(255,255,255,0.12)",
-              position: "relative", transition: "background .2s",
-            }}>
-              <div style={{
-                position: "absolute", top: 3, left: autoSwitch ? 18 : 3,
-                width: 14, height: 14, borderRadius: "50%",
-                background: "#fff", transition: "left .2s",
-              }} />
-            </div>
-          </button>
-        )}
 
         {/* ── Config form ── */}
         {runState === "idle" && (
@@ -1823,36 +1774,52 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     style={{
                       flex: 1,
                       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                      gap: 2, position: "relative", overflow: "hidden",
+                      gap: 3, position: "relative", overflow: "hidden",
                       background: showStock
-                        ? "linear-gradient(135deg, rgba(6,182,212,0.22) 0%, rgba(14,116,144,0.15) 100%)"
-                        : "linear-gradient(135deg, rgba(6,182,212,0.09) 0%, rgba(14,116,144,0.06) 100%)",
-                      border: `1px solid ${showStock ? "rgba(6,182,212,0.5)" : "rgba(6,182,212,0.2)"}`,
-                      borderRadius: 13, padding: "10px 8px",
+                        ? "linear-gradient(145deg, rgba(6,182,212,0.28) 0%, rgba(8,145,178,0.18) 60%, rgba(14,116,144,0.12) 100%)"
+                        : "linear-gradient(145deg, rgba(6,182,212,0.10) 0%, rgba(8,145,178,0.07) 100%)",
+                      border: `1.5px solid ${showStock ? "rgba(6,182,212,0.60)" : "rgba(6,182,212,0.22)"}`,
+                      borderRadius: 16, padding: "14px 10px 12px",
                       cursor: stockLoading ? "default" : "pointer",
-                      color: showStock ? "#22d3ee" : "rgba(255,255,255,0.5)",
                       fontFamily: "inherit", fontWeight: 700, transition: "all 0.22s",
-                      boxShadow: showStock ? "0 0 16px rgba(6,182,212,0.15)" : "none",
+                      boxShadow: showStock
+                        ? "0 0 24px rgba(6,182,212,0.22), inset 0 1px 0 rgba(6,182,212,0.18)"
+                        : "inset 0 1px 0 rgba(255,255,255,0.04)",
                     }}
                   >
+                    {/* live pulse dot */}
                     <div style={{
-                      position: "absolute", top: 7, right: 8,
-                      width: 5, height: 5, borderRadius: "50%",
-                      background: showStock ? "#22d3ee" : "rgba(6,182,212,0.35)",
-                      boxShadow: showStock ? "0 0 6px #22d3ee" : "none",
-                      animation: "pulse 2s ease-in-out infinite",
-                    }} />
-                    {stockLoading
-                      ? <div style={{ width: 15, height: 15, borderRadius: "50%",
-                          border: "2px solid rgba(6,182,212,0.25)", borderTopColor: "#22d3ee",
-                          animation: "spin 0.8s linear infinite" }} />
-                      : <span style={{ fontSize: 17, lineHeight: 1 }}>📊</span>
-                    }
-                    <span style={{ fontSize: 11, letterSpacing: "0.02em", marginTop: 2 }}>
-                      {L("Availability", "Наявність")}
+                      position: "absolute", top: 9, right: 10,
+                      display: "flex", alignItems: "center", gap: 3,
+                    }}>
+                      <div style={{
+                        width: 5, height: 5, borderRadius: "50%",
+                        background: showStock ? "#22d3ee" : "rgba(6,182,212,0.4)",
+                        boxShadow: showStock ? "0 0 7px #22d3ee" : "none",
+                        animation: "pulse 1.8s ease-in-out infinite",
+                      }} />
+                    </div>
+                    {/* icon */}
+                    <div style={{
+                      width: 40, height: 40, borderRadius: 12,
+                      background: showStock
+                        ? "linear-gradient(135deg, rgba(6,182,212,0.35) 0%, rgba(14,116,144,0.25) 100%)"
+                        : "rgba(6,182,212,0.10)",
+                      border: `1px solid ${showStock ? "rgba(6,182,212,0.5)" : "rgba(6,182,212,0.15)"}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 20, marginBottom: 1,
+                    }}>
+                      {stockLoading
+                        ? <div style={{ width: 16, height: 16, borderRadius: "50%",
+                            border: "2.5px solid rgba(6,182,212,0.2)", borderTopColor: "#22d3ee",
+                            animation: "spin 0.8s linear infinite" }} />
+                        : "📡"}
+                    </div>
+                    <span style={{ fontSize: 12, letterSpacing: "0.01em", color: showStock ? "#22d3ee" : "rgba(255,255,255,0.65)" }}>
+                      {L("Наявність", "Наявність")}
                     </span>
-                    <span style={{ fontSize: 8, opacity: 0.5, fontWeight: 400 }}>
-                      {L("live", "в реальному часі")}
+                    <span style={{ fontSize: 9, color: showStock ? "rgba(6,182,212,0.7)" : "rgba(255,255,255,0.28)", fontWeight: 500 }}>
+                      SMSPool live
                     </span>
                   </button>
 
@@ -1864,30 +1831,47 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     style={{
                       flex: 1,
                       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                      gap: 2,
+                      gap: 3, position: "relative", overflow: "hidden",
                       background: showAiCountries && aiCountryData.length > 0
-                        ? "linear-gradient(135deg, rgba(139,92,246,0.26) 0%, rgba(109,40,217,0.16) 100%)"
-                        : "linear-gradient(135deg, rgba(139,92,246,0.1) 0%, rgba(109,40,217,0.06) 100%)",
-                      border: `1px solid ${showAiCountries && aiCountryData.length > 0
-                        ? "rgba(139,92,246,0.55)" : "rgba(139,92,246,0.22)"}`,
-                      borderRadius: 13, padding: "10px 8px",
+                        ? "linear-gradient(145deg, rgba(139,92,246,0.32) 0%, rgba(109,40,217,0.22) 60%, rgba(88,28,135,0.14) 100%)"
+                        : "linear-gradient(145deg, rgba(139,92,246,0.11) 0%, rgba(109,40,217,0.07) 100%)",
+                      border: `1.5px solid ${showAiCountries && aiCountryData.length > 0
+                        ? "rgba(139,92,246,0.65)" : "rgba(139,92,246,0.22)"}`,
+                      borderRadius: 16, padding: "14px 10px 12px",
                       cursor: aiCountryLoading ? "default" : "pointer",
-                      color: showAiCountries && aiCountryData.length > 0 ? "#a78bfa" : "rgba(255,255,255,0.5)",
                       fontFamily: "inherit", fontWeight: 700, transition: "all 0.22s",
-                      boxShadow: showAiCountries && aiCountryData.length > 0 ? "0 0 16px rgba(139,92,246,0.18)" : "none",
+                      boxShadow: showAiCountries && aiCountryData.length > 0
+                        ? "0 0 24px rgba(139,92,246,0.25), inset 0 1px 0 rgba(167,139,250,0.2)"
+                        : "inset 0 1px 0 rgba(255,255,255,0.04)",
                     }}
                   >
-                    {aiCountryLoading
-                      ? <div style={{ width: 15, height: 15, borderRadius: "50%",
-                          border: "2px solid rgba(139,92,246,0.25)", borderTopColor: "#a78bfa",
-                          animation: "spin 0.8s linear infinite" }} />
-                      : <span style={{ fontSize: 17, lineHeight: 1 }}>✦</span>
-                    }
-                    <span style={{ fontSize: 11, letterSpacing: "0.02em", marginTop: 2 }}>
-                      {L("AI Choice", "AI Вибір")}
+                    {/* sparkle top-right */}
+                    <div style={{
+                      position: "absolute", top: 8, right: 9,
+                      fontSize: 9,
+                      color: showAiCountries && aiCountryData.length > 0 ? "rgba(167,139,250,0.8)" : "rgba(139,92,246,0.35)",
+                    }}>✦</div>
+                    {/* icon */}
+                    <div style={{
+                      width: 40, height: 40, borderRadius: 12,
+                      background: showAiCountries && aiCountryData.length > 0
+                        ? "linear-gradient(135deg, rgba(139,92,246,0.4) 0%, rgba(109,40,217,0.25) 100%)"
+                        : "rgba(139,92,246,0.10)",
+                      border: `1px solid ${showAiCountries && aiCountryData.length > 0 ? "rgba(139,92,246,0.55)" : "rgba(139,92,246,0.15)"}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 20, marginBottom: 1,
+                    }}>
+                      {aiCountryLoading
+                        ? <div style={{ width: 16, height: 16, borderRadius: "50%",
+                            border: "2.5px solid rgba(139,92,246,0.2)", borderTopColor: "#a78bfa",
+                            animation: "spin 0.8s linear infinite" }} />
+                        : "🧠"}
+                    </div>
+                    <span style={{ fontSize: 12, letterSpacing: "0.01em", color: showAiCountries && aiCountryData.length > 0 ? "#a78bfa" : "rgba(255,255,255,0.65)" }}>
+                      {L("AI Вибір", "AI Вибір")}
                     </span>
-                    <span style={{ fontSize: 8, opacity: 0.5, fontWeight: 400 }}>
-                      {L("Top 10", "Топ-10")}
+                    <span style={{ fontSize: 9, color: showAiCountries && aiCountryData.length > 0 ? "rgba(167,139,250,0.7)" : "rgba(255,255,255,0.28)", fontWeight: 500 }}>
+                      {L("Топ-10 аналіз", "Топ-10 аналіз")}
                     </span>
                   </button>
                 </div>
@@ -2647,6 +2631,184 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                 </div>
               )}
             </div>
+
+            {/* ── Per-country AI analysis panel (triggered from Наявність tab) ── */}
+            {(countryAiLoading || countryAiEntry || countryAiError) && countryAiTarget && (
+              <div style={{
+                background: "linear-gradient(145deg, rgba(7,5,24,0.98) 0%, rgba(15,10,40,0.97) 100%)",
+                border: `1.5px solid ${countryAiError ? "rgba(255,107,122,0.35)" : "rgba(139,92,246,0.45)"}`,
+                borderRadius: 16, overflow: "hidden",
+                boxShadow: countryAiError ? "none" : "0 0 30px rgba(139,92,246,0.12)",
+              }}>
+                {/* Header */}
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "11px 14px",
+                  borderBottom: `1px solid rgba(139,92,246,0.15)`,
+                  background: "linear-gradient(90deg, rgba(139,92,246,0.12) 0%, transparent 100%)",
+                }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: 9, flexShrink: 0,
+                    background: "linear-gradient(135deg, rgba(139,92,246,0.35) 0%, rgba(109,40,217,0.2) 100%)",
+                    border: "1px solid rgba(139,92,246,0.4)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15,
+                  }}>🧠</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#a78bfa" }}>
+                      {countryAiLoading
+                        ? (lang === "ua" ? "AI аналізує…" : "AI analysing…")
+                        : (lang === "ua" ? `AI аналіз · ${countryAiTarget.name}` : `AI Analysis · ${countryAiTarget.name}`)}
+                    </div>
+                    {countryAiModel && !countryAiLoading && (
+                      <div style={{ fontSize: 9, color: "rgba(167,139,250,0.5)", marginTop: 1 }}>
+                        {countryAiModel}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => { setCountryAiEntry(null); setCountryAiError(null); setCountryAiTarget(null); }}
+                    style={{ background: "none", border: "none", cursor: "pointer",
+                      color: "rgba(255,255,255,0.32)", fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0 }}>
+                    ✕
+                  </button>
+                </div>
+
+                {/* Loading skeleton */}
+                {countryAiLoading && (
+                  <div style={{ padding: "14px 14px 10px" }}>
+                    {[90, 70, 55].map((w, i) => (
+                      <div key={i} style={{
+                        height: i === 0 ? 12 : 9, borderRadius: 6, marginBottom: 8,
+                        width: `${w}%`,
+                        background: "rgba(139,92,246,0.10)",
+                        animation: "pulse 1.4s ease-in-out infinite",
+                        animationDelay: `${i * 0.18}s`,
+                      }} />
+                    ))}
+                    <div style={{ fontSize: 10, color: "rgba(167,139,250,0.45)", textAlign: "center", marginTop: 6 }}>
+                      {lang === "ua"
+                        ? `Аналіз ринку номерів ${countryAiTarget.name}…`
+                        : `Analysing ${countryAiTarget.name} number pool…`}
+                    </div>
+                  </div>
+                )}
+
+                {/* Error */}
+                {countryAiError && !countryAiLoading && (
+                  <div style={{ padding: "12px 14px", fontSize: 11, color: "rgba(255,107,122,0.85)", lineHeight: 1.5 }}>
+                    ⚠️ {countryAiError}
+                  </div>
+                )}
+
+                {/* AI result card */}
+                {countryAiEntry && !countryAiLoading && (() => {
+                  const entry = countryAiEntry;
+                  const freshColor = entry.freshness >= 70 ? GREEN : entry.freshness >= 45 ? ACCENT : RED;
+                  const srcIcon  = entry.data_source === "own_experience" ? "🔬" : entry.data_source === "community_research" ? "📊" : "🤖";
+                  const srcLabel = entry.data_source === "own_experience"
+                    ? L("наші дані", "our data")
+                    : entry.data_source === "community_research"
+                      ? L("спільнота", "community")
+                      : L("AI оцінка", "AI est.");
+                  return (
+                    <div style={{ padding: "13px 14px" }}>
+                      {/* Freshness score row */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                        {/* Big score circle */}
+                        <div style={{
+                          width: 52, height: 52, borderRadius: "50%", flexShrink: 0,
+                          background: `conic-gradient(${freshColor} ${entry.freshness * 3.6}deg, rgba(255,255,255,0.06) 0deg)`,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          boxShadow: `0 0 16px ${freshColor}33`,
+                          position: "relative",
+                        }}>
+                          <div style={{
+                            width: 38, height: 38, borderRadius: "50%",
+                            background: "rgba(7,5,24,0.97)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}>
+                            <span style={{ fontSize: 13, fontWeight: 800, color: freshColor }}>{entry.freshness}%</span>
+                          </div>
+                        </div>
+
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(226,232,255,0.85)", marginBottom: 4 }}>
+                            {lang === "ua" ? "Свіжість номерів" : "Number freshness"}
+                          </div>
+                          {/* Bar */}
+                          <div style={{ height: 4, borderRadius: 3, background: "rgba(255,255,255,0.07)", overflow: "hidden", marginBottom: 5 }}>
+                            <div style={{
+                              width: `${entry.freshness}%`, height: "100%",
+                              background: `linear-gradient(90deg, ${freshColor}aa, ${freshColor})`,
+                              borderRadius: 3, transition: "width 0.6s ease",
+                            }} />
+                          </div>
+                          {/* Pills row */}
+                          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                            <div style={{
+                              display: "inline-flex", alignItems: "center", gap: 4,
+                              background: "rgba(139,92,246,0.13)",
+                              border: "1px solid rgba(139,92,246,0.28)",
+                              borderRadius: 6, padding: "2px 7px",
+                            }}>
+                              <span style={{ fontSize: 9, color: "rgba(167,139,250,0.6)" }}>
+                                {lang === "ua" ? "≈спроб:" : "≈attempts:"}
+                              </span>
+                              <span style={{ fontSize: 11, fontWeight: 800, color: "#c4b5fd" }}>
+                                {entry.avg_attempts}
+                              </span>
+                            </div>
+                            <div style={{
+                              display: "inline-flex", alignItems: "center", gap: 3,
+                              background: "rgba(255,255,255,0.04)",
+                              border: "1px solid rgba(255,255,255,0.08)",
+                              borderRadius: 5, padding: "2px 6px",
+                            }}>
+                              <span style={{ fontSize: 8 }}>{srcIcon}</span>
+                              <span style={{ fontSize: 8, color: "rgba(255,255,255,0.32)" }}>{srcLabel}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Divider */}
+                      <div style={{ height: 1, background: "rgba(139,92,246,0.12)", marginBottom: 11 }} />
+
+                      {/* Reasoning */}
+                      <div style={{
+                        fontSize: 11, color: "rgba(226,232,255,0.55)", lineHeight: 1.65,
+                        background: "rgba(139,92,246,0.05)",
+                        border: "1px solid rgba(139,92,246,0.10)",
+                        borderRadius: 10, padding: "10px 12px",
+                      }}>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(167,139,250,0.55)",
+                          textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 5 }}>
+                          {lang === "ua" ? "✦ AI аналіз" : "✦ AI insight"}
+                        </span>
+                        {entry.reasoning}
+                      </div>
+
+                      {/* Footer: use this country */}
+                      <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+                        <button
+                          onClick={() => { applyCountry(entry.id); setSmsPoolCountryId(entry.id); setCountryAiEntry(null); setCountryAiError(null); }}
+                          style={{
+                            background: "linear-gradient(135deg, rgba(139,92,246,0.35) 0%, rgba(109,40,217,0.25) 100%)",
+                            border: "1px solid rgba(139,92,246,0.5)",
+                            borderRadius: 9, padding: "6px 14px",
+                            fontSize: 11, fontWeight: 700, color: "#c4b5fd",
+                            cursor: "pointer", fontFamily: "inherit",
+                            boxShadow: "0 0 10px rgba(139,92,246,0.15)",
+                          }}
+                        >
+                          {lang === "ua" ? "Вибрати цю країну →" : "Use this country →"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
 
             {/* ── Per-country Telegram service stock badge ── */}
             {effectiveSmsPoolId && (serverHasKey || smsKey.trim()) && (

@@ -1732,7 +1732,9 @@ async def _pick_auto_switch_proxy(tried_countries: set[str]) -> dict:
             ) as _cur:
                 stats_rows = list(await _cur.fetchall())
 
-            # 3. Find best country that HAS a proxy in storage, ranked by success rate
+            # 3. Find best country that HAS a proxy in storage, ranked by success rate.
+            #    ONLY pick a country if we have real performance data for it —
+            #    never fall back to a random available proxy just because it exists.
             best_cc:    str | None = None
             best_name:  str | None = None
             best_score: float = -1.0
@@ -1744,10 +1746,6 @@ async def _pick_auto_switch_proxy(tried_countries: set[str]) -> dict:
                         best_score = score
                         best_cc    = cid
                         best_name  = row["country_name"]
-
-            # If no stats match, fall back to any available proxy country
-            if best_cc is None and proxy_country_set:
-                best_cc = min(proxy_country_set)  # deterministic fallback (alphabetical)
 
             if best_cc:
                 async with _conn.execute(

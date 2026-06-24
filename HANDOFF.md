@@ -15,22 +15,34 @@
 
 ## This session
 
-**Context:** User reported the Account Factory burning $2.08 on 6 consecutive pre-banned Indonesia (+62) numbers, then proxy dying. Two rounds of fixes were shipped.
+**Task:** Three-part improvement to Account Factory country selection UX.
 
-**Round 1 — Abort early to cap money burn:**
-- `PRE_BUY_MIN_SR` raised **45 → 60** (Indonesia at 53% blocked at pre-check)
-- `_banned_count` tracker: abort with `sms_retry_prompt` after **3 consecutive** pre-bans
-- `_proxy_fail_count` tracker: abort after **2 consecutive** proxy-unreachable failures
+**1. Fixed `_pick_auto_switch_proxy` smart selection logic (`account_factory.py`)**
+- Removed the alphabetical fallback that previously picked any proxy country available in storage even when we had zero performance data for it
+- Now: only switches to a country IF we have real `factory_country_stats` data showing it's good AND a proxy for it exists in storage
+- If stats say a country is best but no proxy stored for it → emits "suggest" SSE (upload proxy prompt)
+- If no matching data at all → "none" (no blind switches)
 
-**Round 2 — Auto-switch toggle with proxy store integration:**
-- New `_pick_auto_switch_proxy(tried_countries)` helper queries `saved_proxies` for a proxy with a different `country_code` (random pick, excludes already-tried countries)
-- `auto_switch: bool` parsed from request body in `register_account()`
-- `generate()` restructured with a while-loop per account slot: on `sms_retry_prompt`, if `auto_switch=True` and switches remaining (max 3), picks next proxy from store, emits `auto_switching` SSE, resets UI steps, and retries the same account slot with new country+proxy
-- Auto-switch state persists across batch slots — once it finds a working country, subsequent accounts start there
-- UI toggle "🔄 Авто-перемикання проксі" (glass button with iOS-style toggle switch, off by default)
-- SSE handler: `auto_switching` event resets steps/preflight/exitIp in the UI
+**2. Removed "Авто-перемикання проксі" toggle UI (`AccountFactory.tsx`)**
+- Removed the entire toggle button JSX (lines ~1659–1698 original)
+- Removed `autoSwitch` state + `setAutoSwitch`
+- Removed `auto_switch: autoSwitch` from `launch()` POST body
+- Removed `auto_switching` SSE event handler
+- Backend `auto_switch` defaults to `false` without the toggle (feature dormant)
 
-**What to do next session:** awaiting user direction
+**3. Beautified "Наявність" and "AI Вибір" buttons**
+- Both buttons enlarged with distinct icon blocks (40×40px rounded squares)
+- **Наявність**: 📡 icon, teal/cyan gradient theme, live pulse dot, "SMSPool live" subtitle
+- **AI Вибір**: 🧠 icon, purple/violet gradient theme, ✦ sparkle accent, "Топ-10 аналіз" subtitle
+- Active/inactive state glow + inset highlight on both
+
+**4. Added per-country AI analysis panel for Наявність tab (`AccountFactory.tsx`)**
+- `countryAiEntry` state was populated but never rendered — now displays a full panel
+- Triggers automatically when user clicks any country in the Наявність list (existing `fetchCountryAiAnalysis` call)
+- Panel: conic-gradient freshness score circle, bar, avg_attempts + source badge pills, reasoning block with AI label
+- "Вибрати цю країну →" button applies country + closes panel
+- Loading skeleton (3 animated bars + text) and error state included
+- Panel dismissable via ✕; appears between AI Top-10 panel and the SMSPool stock badge
 
 ---
 
@@ -39,7 +51,7 @@
 - ✅ Telegram Bot workflow running (supervisor + 2 workers + FastAPI port 8083)
 - ✅ Telegram Mini App workflow running (Vite dev port 5000)
 - ✅ All 8 secrets set
-- ✅ Account Factory: PRE_BUY_MIN_SR=60%, consecutive abort thresholds, auto-switch toggle
+- ✅ Account Factory: smart proxy selection, no авто toggle, beautiful buttons, per-country AI card
 
 ---
 
@@ -73,10 +85,8 @@ Non-sensitive env var: `PORT=8080`.
 - Python: `account_factory.py` → `_registration_stream()` + `_pick_auto_switch_proxy()`
 - Node API: `artifacts/api-server/src/routes/factory.ts`
 - UI: `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`
-- Retry loop (lines ~892–1110): MAX_NUM_RETRIES=5; `_banned_count` aborts at 3 consecutive bans; `_proxy_fail_count` aborts at 2 consecutive proxy fails
-- Auto-switch: `_pick_auto_switch_proxy()` before `register_account()`; `generate()` while-loop per account slot; SSE event `auto_switching`; UI toggle state `autoSwitch`
-- Non-SMS gate: ResendCode → SendCodeUnavailableError fast-fail → official creds → confirmed recycled
-- Country rankings: `BestCountryResult` carries `own_attempts/successes/recycled`; full history from `GET /api/factory/country-stats`
+- `_pick_auto_switch_proxy()`: only returns "found" if stats + proxy both exist; returns "suggest" if best country has no proxy stored; returns "none" if no data
+- No авто toggle — `auto_switch` always `false` from frontend
 
 ### Auth model
 - Bearer middleware (app.ts): active when `API_SECRET` set; skips `/twa`, `/health`, `/auth`, `/proxy-store`
