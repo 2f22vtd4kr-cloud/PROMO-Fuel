@@ -1,45 +1,49 @@
 ---
 name: Session handoff protocol
-description: Rolling HANDOFF.md convention — how to read and write the session handoff document every session.
+description: How to read and write HANDOFF.md — the rolling session context document for PROMO-Fuel.
 ---
 
 # Session Handoff Protocol
 
-## The rule
-Every session must begin by reading `HANDOFF.md` and end by rewriting it.
+## The rule (non-negotiable)
+1. **Session start**: read `HANDOFF.md` completely before touching any code.
+2. **After every response turn** that does real work: rewrite `HANDOFF.md`.
+3. **Do not accumulate**: the file is NOT a changelog. Previous session content gets dropped, not appended.
 
-**Why:** Replit sessions are isolated. Without a rolling handoff, each new agent starts blind to ongoing work, decisions already made, and bugs already ruled out — causing repeated mistakes and wasted time.
+**Why:** Replit sessions are isolated. Without a current-state handoff, each new agent starts blind and repeats work. The file must be lean so it's always fully read — a snowballing doc stops being read.
 
-**How to apply:**
-1. **Session start** — before touching any code, read `HANDOFF.md` in full. It contains: current state, immediate next action, prior session summaries, do-not-retry list, key architecture facts.
-2. **Session end (or after each significant conversation turn)** — rewrite `HANDOFF.md` completely. Carry forward the compressed prior session block. Add a new session summary block covering: what was discussed, what was built/changed, decisions made, things that didn't work.
-3. **Session span = 1** — always rewrite the full document. Do NOT append or accumulate. The file stays a single rolling document, not a changelog.
+## Document structure (strict)
 
-## Document structure (required sections)
 ```
-# PROMO-Fuel — Session Handoff
-**Last updated:** <date> (Session N)
+# PROMO-Fuel — Handoff
+Last updated: <date>
 
-> AGENT PROTOCOL — READ FIRST (the rule, always keep this)
+> AGENT PROTOCOL block (keep verbatim, always at top)
 
-## Current State
-  What's working, what's broken, what's blocked — right now.
+## This session
+  What was worked on this turn. Who asked for what, what was built, what was decided.
+  What to try next if interrupted.
+  ← REPLACE THIS BLOCK ENTIRELY on each new session. Never carry forward prior session content here.
 
-## Immediate Next Action
-  The single most important thing to do next. Be specific.
+## Current state
+  Brief bullet list: what's running, what's broken, any active blockers.
+  ← UPDATE this each session with current reality.
 
-## Session N Summary (This Session)
-  What was discussed and changed. Key files modified. Decisions made.
+## Required secrets (check on fresh import)
+  The 8 secret names + sources. Static — only changes if secrets change.
 
-## Session N-1 Summary (Previous Session)  [compressed]
-  Brief summary of prior session. Roll older sessions into this block.
-
-## Key Architecture Reference
-  Ports, secrets, startup sequence, key files — static reference.
+## Standing architecture facts
+  Ports, key files, startup sequence. Permanent reference — rarely changes.
 ```
 
-## Frequency — every turn, not just session end
-Update `HANDOFF.md` at the END OF EVERY RESPONSE — not just at session end.
-Each response that does real work (builds something, diagnoses something, makes a decision)
-must append/update the current session's summary block before sending the reply.
-This way: if the session ends abruptly after any turn, the full context is captured.
+## What "replace this session" means
+When you start a new session and write a new turn of work:
+- The PREVIOUS "This session" block is **deleted**
+- Your new work goes in as the fresh "This session" block
+- "Current state" is updated to reflect what's true NOW
+- Everything else stays the same
+
+Previous session details live in git history if ever needed. HANDOFF.md should never exceed ~150 lines.
+
+## Frequency
+Rewrite HANDOFF.md at the end of EVERY response that does real work. If the session ends mid-conversation, at minimum the last turn's work is captured.

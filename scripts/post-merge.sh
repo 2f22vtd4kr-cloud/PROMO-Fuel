@@ -13,6 +13,9 @@ echo "[post-merge] ════════════════════�
 echo "[post-merge] Parallel install: pip + pnpm + sqlite3"
 echo "[post-merge] ══════════════════════════════════════════"
 
+# ── Check for missing secrets early so user sees it immediately ─────────────
+source "$WORKSPACE/scripts/required-secrets.sh" 2>/dev/null && check_secrets || true
+
 # ── 1. Python packages ───────────────────────────────────────
 install_python() {
   echo "[post-merge/py] pip install..."

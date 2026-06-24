@@ -1,158 +1,101 @@
-# PROMO-Fuel — Session Handoff
+# PROMO-Fuel — Handoff
 
-**Last updated:** 2026-06-24 (Session 3, turn 2)
-**Project:** PROMO-Fuel — Telegram Mini App for fuel station operators
-**Stack:** Python Telethon + PTB bot · Express/Node API · React Mini App · SQLite
+**Last updated:** 2026-06-24
 
 ---
 
-> **AGENT PROTOCOL — READ FIRST**
-> This file is the single rolling context document for the project.
-> At the START of every session: read this file completely before doing anything.
-> After EVERY response turn that does real work: rewrite this file with the full updated picture.
-> Session span = 1: rewrite the whole doc, never append sessions to this file.
+> **AGENT PROTOCOL — read this first, every session**
+> 1. Read this file completely before touching code.
+> 2. Rewrite this file after EVERY response turn that does real work.
+> 3. Replace "This session" entirely — do NOT accumulate past sessions here.
+> 4. Check secrets on fresh import (see section below) before doing anything else.
+> HANDOFF.md must stay under ~150 lines. Previous session details live in git history.
 
 ---
 
-## Current State (Where We Are Right Now)
+## This session
 
-### Infrastructure — ✅ Fully Running
-- **Telegram Bot** workflow: running — supervisor spawns 2 workers + FastAPI on port 8083
-- **Telegram Mini App** workflow: running — Vite dev server on port 5000
-- **All secrets set** in Replit: `TELEGRAM_TOKEN`, `TELETHON_API_ID`, `TELETHON_API_HASH`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `SMSPOOL_API_KEY`, `API_SECRET`, `ADMIN_TELEGRAM_ID`
-- **Cold starts are now fast**: sentinel file `.deps-ready` written by `post-merge.sh` — startup scripts exit in <100ms when sentinel exists
+**What was worked on:**
 
-### Account Factory — ⚠️ Operational, country selection improved this session
-The factory code is correct and complete. The VN (Vietnam) SMSPool pool is 100% recycled.
-- **Country rankings now auto-load** when Account Factory opens (no button click needed) — see Session 3 below
-- User should switch to **KZ (Kazakhstan) or UA (Ukraine)**
+**Turn 1 — Per-turn handoff protocol wired in**
+Tightened the MEMORY.md rule to "after every response turn", updated session-handoff.md frequency section.
 
----
+**Turn 2 — SMSPool country dashboard auto-load**
+AccountFactory.tsx already had Auto Pick (⚡), Check Stock (📊), and AI Pick (✦) with a top-5 ranked list. What was missing: the list only appeared after clicking a button. Added a `useEffect` on `[serverHasKey]` that fires when the server confirms the SMSPool key is set — silently fetches `/api/factory/best-country`, populates `autoCountryTop5` without auto-applying a country. User opens factory, rankings appear immediately. Also fixed: panel border/header color was red when auto-loaded (no autoCountryMsg yet) — now green when top5 present. Title updated to "⚡ SMSPool Country Rankings — Telegram" / "⚡ Рейтинг країн SMSPool — Telegram".
 
-## Immediate Next Action
+**Turn 3 — Secrets persistence + lean handoff protocol**
+- Explained to user: Replit secrets are per-Repl, not per-repo. Fresh GitHub import = blank secrets.
+- Created `scripts/required-secrets.sh` — canonical list of 8 secret names + sources, `check_secrets()` function that prints a loud warning box with instructions for any that are missing.
+- Added `check_secrets` call to `post-merge.sh` — runs immediately at the top of every post-merge so the user sees missing secrets right away.
+- Added `required-secrets.md` memory topic with the agent protocol: on session start, run `viewEnvVars()`, then `requestEnvVar()` for any of the 8 secrets that are missing.
+- Rewrote `session-handoff.md` and `HANDOFF.md` protocol: lean document, previous session content dropped each session, max ~150 lines.
 
-Open the Account Factory tab. The country rankings panel (top-5 by SMSPool success rate) will appear automatically. Click any row to select that country, then start registration.
-
-If KZ/UA still fail:
-1. Check if user's own `api_id`/`api_hash` are flagged → generate new ones at my.telegram.org
-2. Check if Decodo proxy fingerprint is flagged → try a different provider
+**What to do next session:** User wanted historical `factory_country_stats` data (our own registration attempts/successes/recycled per country) shown alongside the SMSPool success rate in the country rankings panel. Both columns side-by-side in the same table.
 
 ---
 
-## Session 3 Summary — 2026-06-24 (This Session)
+## Current state
 
-### Turn 1: Session handoff protocol wired in
-- **Problem**: Handoff was only written at session end; if session ended mid-work, context was lost
-- **Fix**: Tightened protocol to "after every response turn" in `session-handoff.md`, `MEMORY.md` (first entry), and `replit.md` user preferences
-- MEMORY.md index entry changed from "at session end" → "after EVERY response turn"
+- ✅ Telegram Bot workflow running (supervisor + 2 workers + FastAPI port 8083)
+- ✅ Telegram Mini App workflow running (Vite dev port 5000)
+- ✅ All 8 secrets set in this Replit project
+- ⚠️ VN (Vietnam) SMSPool pool 100% recycled — use KZ or UA in Account Factory
+- ✅ Account Factory country rankings now auto-load on page open
+- ✅ Cold starts fast — `.deps-ready` sentinel written by `post-merge.sh`
 
-### Turn 2: SMSPool country dashboard — auto-load on factory open
-**Background**: AccountFactory already had three country intelligence tools:
-- ⚡ **Auto Pick** button — fetches `/api/factory/best-country` → shows top-5 ranked list, auto-selects #1
-- 📊 **Check Stock** button — checks real-time price/availability for selected country
-- ✦ **AI Pick** button — calls `/api/factory/ai-countries` → AI freshness analysis (community research + own data)
+---
 
-The ranked list already rendered with rank badges, success-rate progress bars, stock counts, and tap-to-select. BUT it only appeared after clicking "Auto Pick" — not upfront.
+## Required secrets (check on fresh import)
 
-**What was built**:
-- Added `fetchCountryRankings` effect in `AccountFactory.tsx`: a `useEffect` on `[serverHasKey]` that fires when `serverHasKey === true` is confirmed (after the `/api/factory/config` check)
-- Fetches `/api/factory/best-country` silently (no spinner shown in button, just the list spinner)
-- Populates `autoCountryTop5` without calling `applyCountry()` — shows the list but doesn't auto-apply a country (user still chooses)
-- Fixed panel border/header color: was red when no `autoCountryMsg`, now green whenever `top5.length > 0`
-- Fixed panel title: "⚡ SMSPool Country Rankings — Telegram" (was "Top 5 Countries by Telegram Success")
-- Russian: "⚡ Рейтинг країн SMSPool — Telegram"
+On fresh GitHub import: run `viewEnvVars()` in code_execution, then `requestEnvVar()` for any missing from this list:
 
-**Files changed this turn**:
-| File | Change |
+| Secret | Where to get it |
 |---|---|
-| `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx` | Added auto-load useEffect on serverHasKey; fixed panel border/title colors |
-| `.agents/memory/MEMORY.md` | Updated handoff rule to "every turn" |
-| `.agents/memory/session-handoff.md` | Updated frequency section to "every turn" |
-| `HANDOFF.md` | This file |
+| `TELEGRAM_TOKEN` | @BotFather on Telegram |
+| `TELETHON_API_ID` | https://my.telegram.org/apps (integer) |
+| `TELETHON_API_HASH` | https://my.telegram.org/apps |
+| `ADMIN_TELEGRAM_ID` | @userinfobot on Telegram |
+| `GEMINI_API_KEY` | https://aistudio.google.com/apikey |
+| `GROQ_API_KEY` | https://console.groq.com/keys |
+| `SMSPOOL_API_KEY` | https://smspool.net/profile |
+| `API_SECRET` | Any strong random string (`openssl rand -hex 32`) |
 
-**Key constraint to remember**: SMSPool `success_rate` = SMS delivery rate, NOT Telegram freshness. High success_rate ≠ fresh numbers. The AI Pick (✦) panel shows freshness estimates. Auto Pick shows SMS delivery rate only. Both are useful but mean different things.
-
----
-
-## Session 2 Summary — 2026-06-24
-
-**Topic: Replit environment migration + cold-start optimization**
-- Fixed `telegram` stub package v0.0.1 shadowing `python-telegram-bot` — real `__init__.py` extracted from PTB wheel; fix baked into `post-merge.sh` and `ensure-python-deps.sh`
-- Introduced `.deps-ready` sentinel file: `post-merge.sh` writes it after successful install; startup scripts exit in <100ms when sentinel exists
-- `post-merge.sh` now runs pip + pnpm in parallel, then sqlite3 compile
-- `--prefer-binary --progress-bar off` added to pip; `--frozen-lockfile` tried first in pnpm
-- Established rolling `HANDOFF.md` convention; wired into MEMORY.md and replit.md
+Non-sensitive env var already set as shared: `PORT=8080`.
 
 ---
 
-## Session 1 Summary — 2026-06-24
-
-**Topic: Account Factory debugging — `account_factory.py`**
-
-Fixes: device fingerprint (api_id→profile map), asyncio proxy gate, pre-buy success rate gate (PRE_BUY_MIN_SR=45%), `client.connect()` 3-retry loop, disconnected-error classification (continue vs fatal), ProxyError sleep+retry.
-
-Architecture of `_registration_stream()`:
-```
-Preflight: Gate 1 (TCP proxy), Gate 2 (SR ≥45%), Gate 3 (asyncio proxy path + residential IP)
-Retry loop (MAX_NUM_RETRIES=5):
-  Step 1: Buy SMSPool number
-  Step 2: Telethon connect (3 retries, 4s delay)
-  Step 3: Request SMS → fallback official creds → recycled detection
-  Step 4: Poll SMS (180s, resend at 90s)
-  Step 5: sign_in / sign_up
-  Step 6: Set 2FA password
-  Step 7: Set profile (AI Gemini or manual) + upload avatar
-  Step 8: Persist to campaigns.db + write .session file
-```
-
-SSE events consumed by UI: `preflight` · `step` · `poll` · `sms_retry_prompt` · `warmup_prompt` · `error` · `complete`
-
-Do NOT retry: changing Decodo session number, increasing retry count (all buy from same VN pool), using `is_connected()` to skip reconnect, resending code in SentCodeTypeApp path.
-
----
-
-## Key Architecture Reference
+## Standing architecture facts
 
 ### Ports
-| Service | Port | Notes |
-|---|---|---|
-| Vite dev (Mini App) | 5000 | exposed as port 80 |
-| Python FastAPI | 8083 | supervisor spawns apiserver.py |
-| Node.js Express API | 8080 | `PORT` env var; not running in current dev session |
-
-### Account Factory API endpoints (Node.js, port 8080)
-| Endpoint | What it does |
+| Service | Port |
 |---|---|
-| `GET /api/factory/config` | Returns `{has_smspool_key: bool}` — used on mount to check if key is set server-side |
-| `GET /api/factory/best-country` | Fetches SMSPool success rates for all countries → top-5 ranked list (5-min cache) |
-| `GET /api/factory/ai-countries` | AI freshness analysis — community research + own `factory_country_stats` DB data |
-| `GET /api/factory/success-rate?country=XX` | Per-country success rate check |
-| `GET /api/factory/health` | Python factory health check |
+| Vite Mini App dev | 5000 (exposed as 80) |
+| Python FastAPI | 8083 |
+| Node.js Express API | 8080 |
 
-### SMSPool country intelligence
-- `success_rate` from SMSPool = SMS delivery rate (0–100), NOT Telegram freshness
-- Good countries (as of June 2026): KH (Cambodia) > LA (Laos) > MM (Myanmar) > KZ > NP > UZ
-- VN (Vietnam): confirmed 100% recycled — do NOT use
+### Account Factory
+- Python: `account_factory.py` → `_registration_stream()` generator
+- Node API: `artifacts/api-server/src/routes/factory.ts` → `/api/factory/best-country`, `/api/factory/ai-countries`, `/api/factory/config`
+- UI: `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`
+- SMSPool `success_rate` = SMS delivery rate, NOT Telegram freshness. High rate ≠ fresh numbers.
+- Own freshness data: `factory_country_stats` table in `campaigns.db`
+- Best countries June 2026: KH > LA > MM > KZ > NP > UZ. VN = 100% recycled.
 - Service ID for Telegram on SMSPool: `907`
 - Proxy: Decodo residential — `socks5://user-{U}-session-{N}-country-{CC}:{P}@gate.decodo.com:7000`
 
-### Startup sequence
-1. `post-merge.sh` → pip + pnpm (parallel) → sqlite3 compile → writes `.deps-ready`
-2. All subsequent restarts: `ensure-*.sh` checks sentinel → exits in <100ms
-
-### All secrets (Replit secrets, all set)
-`TELEGRAM_TOKEN` · `TELETHON_API_ID` · `TELETHON_API_HASH` · `ADMIN_TELEGRAM_ID` · `API_SECRET` · `GEMINI_API_KEY` · `GROQ_API_KEY` · `SMSPOOL_API_KEY`
+### Startup
+1. `post-merge.sh` → checks missing secrets → pip+pnpm parallel → sqlite3 compile → writes `.deps-ready`
+2. All restarts after: `ensure-*.sh` sees sentinel → exits in <100ms
 
 ### Key files
 | File | Purpose |
 |---|---|
-| `account_factory.py` | All registration logic — `_registration_stream()` generator |
-| `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx` | Factory UI, SSE handling, auto-load country rankings |
-| `artifacts/api-server/src/routes/factory.ts` | Node API — best-country, ai-countries, success-rate, stats |
-| `supervisor.py` | Process manager — spawns apiserver.py, worker-1, worker-2 |
-| `scripts/post-merge.sh` | Parallel dep install + sentinel writer |
-| `scripts/ensure-python-deps.sh` | Sentinel fast-path → pip install fallback |
-| `.deps-ready` | Sentinel file — startup scripts skip install when present |
-| `campaigns.db` | SQLite — all app tables |
-| `sessions/` | Telethon `.session` files |
-| `HANDOFF.md` | This file — rolling session context (rewrite every turn) |
+| `account_factory.py` | All Telegram registration logic |
+| `supervisor.py` | Process manager |
+| `scripts/post-merge.sh` | Parallel dep install + sentinel + secrets warning |
+| `scripts/required-secrets.sh` | Canonical secret list + check_secrets() |
+| `scripts/ensure-python-deps.sh` | Sentinel fast-path → pip fallback |
+| `.deps-ready` | Sentinel file |
+| `campaigns.db` | SQLite — all tables |
+| `sessions/` | Telethon .session files |
+| `HANDOFF.md` | This file |
