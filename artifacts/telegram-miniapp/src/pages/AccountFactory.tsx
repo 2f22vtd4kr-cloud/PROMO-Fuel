@@ -56,6 +56,17 @@ interface StepState {
 }
 type RunState = "idle" | "running" | "done" | "error";
 
+interface RegHistoryEntry {
+  id:         number;
+  ts:         number;
+  status:     "done" | "error";
+  phone?:     string;
+  country:    string;
+  durationMs: number;
+  cost:       number;
+  errorMsg?:  string;
+}
+
 function LabelledInput({
   label, value, onChange, placeholder, type = "text", hint,
 }: {
@@ -184,6 +195,98 @@ function StepRow({ def, state, lang }: {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function RegHistoryPanel({ history, onClear, lang }: {
+  history: RegHistoryEntry[];
+  onClear: () => void;
+  lang: string;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  if (history.length === 0) return null;
+  const GREEN_C = "#2DE897"; const RED_C = "#FF6B7A";
+  const GLASS_P = "rgba(255,255,255,0.04)"; const BORDER_P = "rgba(255,255,255,0.09)";
+  const L2 = (en: string, ua: string) => lang === "ua" ? ua : en;
+  return (
+    <div style={{ background: GLASS_P, border: `1px solid ${BORDER_P}`, borderRadius: 18, overflow: "hidden" }}>
+      <div
+        onClick={() => setExpanded(e => !e)}
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "11px 14px", cursor: "pointer", userSelect: "none" }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)",
+            letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            {L2("History", "Журнал")}
+          </span>
+          <span style={{ fontSize: 10, background: "rgba(255,255,255,0.1)", borderRadius: 8,
+            padding: "1px 7px", color: "rgba(255,255,255,0.45)", fontWeight: 700 }}>
+            {history.length}
+          </span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            onClick={e => { e.stopPropagation(); onClear(); }}
+            style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+              color: "rgba(255,100,100,0.45)", fontSize: 10, padding: "2px 6px", borderRadius: 6 }}
+          >
+            {L2("Clear", "Очистити")}
+          </button>
+          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>{expanded ? "▲" : "▼"}</span>
+        </div>
+      </div>
+      {expanded && (
+        <div style={{ borderTop: `1px solid ${BORDER_P}` }}>
+          {history.map(entry => {
+            const displayCountry = COUNTRIES.find(c => c.code === entry.country)?.label ?? entry.country;
+            const timeStr = new Date(entry.ts).toLocaleTimeString(
+              lang === "ua" ? "uk-UA" : "en-US", { hour: "2-digit", minute: "2-digit" }
+            );
+            return (
+              <div key={entry.id} style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "8px 14px",
+                borderBottom: `1px solid rgba(255,255,255,0.04)`,
+              }}>
+                <div style={{
+                  width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+                  background: entry.status === "done" ? GREEN_C : RED_C,
+                  boxShadow: `0 0 6px ${entry.status === "done" ? GREEN_C : RED_C}80`,
+                }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 12, fontWeight: 600,
+                    color: entry.status === "done" ? "rgba(255,255,255,0.82)" : "rgba(255,107,122,0.8)",
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
+                    {entry.status === "done"
+                      ? entry.phone ?? "—"
+                      : (entry.errorMsg?.slice(0, 42) ?? L2("Error", "Помилка"))}
+                  </div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.28)", marginTop: 1 }}>
+                    {displayCountry} · {timeStr}
+                  </div>
+                </div>
+                <div style={{
+                  fontSize: 11, fontVariantNumeric: "tabular-nums",
+                  color: "rgba(255,255,255,0.32)", flexShrink: 0,
+                }}>
+                  {fmtMs(entry.durationMs)}
+                </div>
+                {entry.cost > 0 && (
+                  <div style={{
+                    fontSize: 11, fontVariantNumeric: "tabular-nums",
+                    color: "rgba(255,200,50,0.65)", flexShrink: 0,
+                  }}>
+                    ${entry.cost.toFixed(2)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
