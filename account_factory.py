@@ -1079,8 +1079,8 @@ async def _registration_stream(
             if _banned:
                 _banned_count += 1
                 _remaining_after = MAX_NUM_RETRIES - _num_attempt - 1
-                if _banned_count >= 2:
-                    # 2+ consecutive pre-bans → entire country pool is recycled.
+                if _banned_count >= 3:
+                    # 3+ consecutive pre-bans → entire country pool is recycled.
                     # Stop now — continuing just burns more SMSPool balance.
                     yield _sse("step", {"step": 3, "status": "error",
                                         "message": f"🚫 {_banned_count} consecutive pre-banned numbers — {country_id.upper()} pool is exhausted"})
@@ -1693,6 +1693,37 @@ async def factory_health():
     }
 
 
+async def _pick_auto_switch_proxy(tried_countries: set[str]) -> dict | None:
+    """
+    Query saved_proxies for a proxy whose country_code is NOT in tried_countries.
+    Returns {country_code, proxy_string, label} or None if nothing suitable exists.
+    """
+    try:
+        async with aiosqlite.connect(DB_PATH) as _conn:
+            _conn.row_factory = aiosqlite.Row
+            if tried_countries:
+                placeholders = ",".join("?" * len(tried_countries))
+                query = (
+                    f"SELECT country_code, proxy_string, label FROM saved_proxies "
+                    f"WHERE LOWER(country_code) NOT IN ({placeholders}) "
+                    f"AND proxy_string IS NOT NULL AND proxy_string != '' "
+                    f"ORDER BY RANDOM() LIMIT 1"
+                )
+                args: list[str] = [c.lower() for c in tried_countries]
+            else:
+                query = (
+                    "SELECT country_code, proxy_string, label FROM saved_proxies "
+                    "WHERE proxy_string IS NOT NULL AND proxy_string != '' "
+                    "ORDER BY RANDOM() LIMIT 1"
+                )
+                args = []
+            async with _conn.execute(query, args) as _cur:
+                row = await _cur.fetchone()
+            return dict(row) if row else None
+    except Exception:
+        return None
+
+
 @factory_router.post("/register")
 async def register_account(request: Request):
     try:
@@ -1721,6 +1752,7 @@ async def register_account(request: Request):
     avatars: list[str] = [str(a) for a in _avatars_raw if isinstance(a, str) and a]
     _gender_raw  = str(body.get("gender", "random")).strip().lower()
     gender       = _gender_raw if _gender_raw in ("male", "female", "random") else "random"
+    auto_switch  = bool(body.get("auto_switch", False))
 
     # Telethon creds — prefer env vars, fall back to request body
     api_id_raw  = os.environ.get("TELETHON_API_ID") or str(body.get("api_id", ""))
@@ -1751,6 +1783,7 @@ async def register_account(request: Request):
         )
 
     INTER_REG_DELAY = 12  # seconds between batch registrations
+    MAX_AUTO_SWITCHES = 3
 
     async def generate():
         if quantity > 1:
@@ -1758,6 +1791,13 @@ async def register_account(request: Request):
 
         succeeded = 0
         failed    = 0
+
+        # Auto-switch state persists across batch slots: once we find a
+        # working proxy/country, all subsequent accounts use it too.
+        _switch_count    = 0
+        _tried_countries: set[str] = set()
+        cur_country_id   = country_id
+        cur_proxy_string = proxy_string
 
         for i in range(quantity):
             if quantity > 1:
@@ -1770,35 +1810,71 @@ async def register_account(request: Request):
                 })
                 yield _sse("batch_reset", {})
 
-            got_complete      = False
-            got_retry_prompt  = False
             computed_session_name = (
                 f"{session_prefix}-{session_start_num + i}"
                 if session_prefix else ""
             )
-            async for chunk in _registration_stream(
-                smspool_api_key, country_id, proxy_string,
-                two_factor_password, api_id, api_hash,
-                profile_mode, first_name, last_name, bio, avatars,
-                warmup_mode,
-                computed_session_name,
-                gender=gender,
-            ):
-                yield chunk
-                # Track outcome for batch summary
-                if '"complete"' in chunk:
-                    got_complete = True
-                elif '"sms_retry_prompt"' in chunk:
-                    got_retry_prompt = True
 
-            if got_complete:
-                succeeded += 1
-            else:
-                failed += 1
+            # ── Auto-switch inner loop ─────────────────────────────────────
+            # On sms_retry_prompt: if auto_switch is enabled and we still have
+            # unused proxies in the store, switch country+proxy and retry the
+            # same account slot; otherwise fall through to normal stop logic.
+            _slot_done       = False
+            got_retry_prompt = False
+            got_complete     = False
 
-            # SMS retry prompt — stop the batch immediately so the UI
-            # can show the popup without continuing with remaining slots
-            if got_retry_prompt:
+            while not _slot_done:
+                got_complete     = False
+                got_retry_prompt = False
+
+                async for chunk in _registration_stream(
+                    smspool_api_key, cur_country_id, cur_proxy_string,
+                    two_factor_password, api_id, api_hash,
+                    profile_mode, first_name, last_name, bio, avatars,
+                    warmup_mode,
+                    computed_session_name,
+                    gender=gender,
+                ):
+                    yield chunk
+                    if '"complete"' in chunk:
+                        got_complete = True
+                    elif '"sms_retry_prompt"' in chunk:
+                        got_retry_prompt = True
+
+                if got_complete:
+                    succeeded += 1
+                    _slot_done = True
+                elif got_retry_prompt and auto_switch and _switch_count < MAX_AUTO_SWITCHES:
+                    _tried_countries.add(cur_country_id.lower())
+                    _next = await _pick_auto_switch_proxy(_tried_countries)
+                    if _next:
+                        _switch_count   += 1
+                        cur_country_id   = _next["country_code"]
+                        cur_proxy_string = _next["proxy_string"]
+                        _proxy_label     = (_next.get("label") or "").strip() or cur_proxy_string[:40]
+                        yield _sse("auto_switching", {
+                            "country_id":  cur_country_id,
+                            "proxy_label": _proxy_label,
+                            "switch_num":  _switch_count,
+                            "message": (
+                                f"🔄 Авто-перемикання → {cur_country_id.upper()} "
+                                f"(спроба {_switch_count}/{MAX_AUTO_SWITCHES})…"
+                            ),
+                        })
+                        # Reset the step display for the new attempt
+                        yield _sse("batch_reset", {})
+                        # continue while loop
+                    else:
+                        # No untried proxies left in store
+                        failed   += 1
+                        _slot_done = True
+                else:
+                    if not got_complete:
+                        failed += 1
+                    _slot_done = True
+
+            # SMS retry prompt — stop the batch if no auto-switch resolved it
+            if got_retry_prompt and not got_complete:
                 if quantity > 1:
                     yield _sse("batch_done", {
                         "total": quantity,

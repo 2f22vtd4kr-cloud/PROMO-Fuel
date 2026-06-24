@@ -15,19 +15,22 @@
 
 ## This session
 
-**Context:** User shared 14 screenshots showing the Account Factory burning $2.08 on 6 consecutive pre-banned Indonesia (+62) numbers, then the proxy dying completely ("Host unreachable").
+**Context:** User reported the Account Factory burning $2.08 on 6 consecutive pre-banned Indonesia (+62) numbers, then proxy dying. Two rounds of fixes were shipped.
 
-**Root causes identified:**
-1. `PRE_BUY_MIN_SR = 45%` — Indonesia at 53% passes the gate, but half the numbers are recycled
-2. No consecutive pre-ban counter — on `_banned`, code just `continue`s silently using all 5 retries
-3. No proxy-dead abort — when proxy dies mid-loop, it still buys more numbers before failing at Step 2
+**Round 1 — Abort early to cap money burn:**
+- `PRE_BUY_MIN_SR` raised **45 → 60** (Indonesia at 53% blocked at pre-check)
+- `_banned_count` tracker: abort with `sms_retry_prompt` after **3 consecutive** pre-bans
+- `_proxy_fail_count` tracker: abort after **2 consecutive** proxy-unreachable failures
 
-**Fixes applied to `account_factory.py`:**
-- `PRE_BUY_MIN_SR` raised **45 → 60** (Indonesia at 53% now blocked at the pre-check)
-- Added `_banned_count` tracker — **2 consecutive pre-bans** emits `sms_retry_prompt` and stops (was 5)
-- Added `_proxy_fail_count` tracker — **2 consecutive proxy-unreachable** emits `sms_retry_prompt` and stops
+**Round 2 — Auto-switch toggle with proxy store integration:**
+- New `_pick_auto_switch_proxy(tried_countries)` helper queries `saved_proxies` for a proxy with a different `country_code` (random pick, excludes already-tried countries)
+- `auto_switch: bool` parsed from request body in `register_account()`
+- `generate()` restructured with a while-loop per account slot: on `sms_retry_prompt`, if `auto_switch=True` and switches remaining (max 3), picks next proxy from store, emits `auto_switching` SSE, resets UI steps, and retries the same account slot with new country+proxy
+- Auto-switch state persists across batch slots — once it finds a working country, subsequent accounts start there
+- UI toggle "🔄 Авто-перемикання проксі" (glass button with iOS-style toggle switch, off by default)
+- SSE handler: `auto_switching` event resets steps/preflight/exitIp in the UI
 
-**Max money burned per session is now:** 2 numbers × ~$0.35 = **$0.70** (was $2.08+)
+**What to do next session:** awaiting user direction
 
 ---
 
@@ -36,11 +39,7 @@
 - ✅ Telegram Bot workflow running (supervisor + 2 workers + FastAPI port 8083)
 - ✅ Telegram Mini App workflow running (Vite dev port 5000)
 - ✅ All 8 secrets set
-- ✅ Account Factory: PRE_BUY_MIN_SR=60%, consecutive pre-ban abort at 2, proxy-dead abort at 2
-- ✅ Account Factory: gendered AI profile + avatar pool per gender
-- ✅ Account Factory: 3-layer non-SMS gate (ResendCode → SendCodeUnavailableError → official creds)
-- ✅ Proxy vault: saves and loads correctly (Bearer skip for /proxy-store)
-- ✅ Country rankings: own historical stats in ranked rows + full history panel
+- ✅ Account Factory: PRE_BUY_MIN_SR=60%, consecutive abort thresholds, auto-switch toggle
 
 ---
 
@@ -71,18 +70,16 @@ Non-sensitive env var: `PORT=8080`.
 | Node.js Express API | 8080 |
 
 ### Account Factory
-- Python: `account_factory.py` → `_registration_stream()` generator
+- Python: `account_factory.py` → `_registration_stream()` + `_pick_auto_switch_proxy()`
 - Node API: `artifacts/api-server/src/routes/factory.ts`
 - UI: `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`
-- Retry loop (lines ~892–1095): MAX_NUM_RETRIES=5; `_banned_count` aborts at 2 consecutive bans; `_proxy_fail_count` aborts at 2 consecutive proxy fails
-- Non-SMS gate (lines ~1095–1260): ResendCode → SendCodeUnavailableError fast-fail → official creds → confirmed recycled
-- 2FA: custom row with RefreshCw button; `crypto.getRandomValues` 16-char password
-- Proxy store: `/api/proxy-store` is in Bearer skip list — accessible without CRM login
+- Retry loop (lines ~892–1110): MAX_NUM_RETRIES=5; `_banned_count` aborts at 3 consecutive bans; `_proxy_fail_count` aborts at 2 consecutive proxy fails
+- Auto-switch: `_pick_auto_switch_proxy()` before `register_account()`; `generate()` while-loop per account slot; SSE event `auto_switching`; UI toggle state `autoSwitch`
+- Non-SMS gate: ResendCode → SendCodeUnavailableError fast-fail → official creds → confirmed recycled
 - Country rankings: `BestCountryResult` carries `own_attempts/successes/recycled`; full history from `GET /api/factory/country-stats`
 
 ### Auth model
 - Bearer middleware (app.ts): active when `API_SECRET` set; skips `/twa`, `/health`, `/auth`, `/proxy-store`
-- TWA middleware: HMAC validation on `/api/twa/*`; skipped in dev or when `TELEGRAM_TOKEN` missing
 - Factory + Verifications: mounted BEFORE Bearer middleware → no auth required
 
 ### Key files
@@ -93,5 +90,5 @@ Non-sensitive env var: `PORT=8080`.
 | `artifacts/api-server/src/routes/proxy-store.ts` | Proxy vault CRUD |
 | `artifacts/api-server/src/routes/factory.ts` | Factory API + country stats |
 | `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx` | Factory UI |
-| `campaigns.db` | SQLite — all tables incl. `factory_country_stats` |
+| `campaigns.db` | SQLite — all tables incl. `factory_country_stats`, `saved_proxies` |
 | `HANDOFF.md` | This file |

@@ -656,6 +656,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   // Profile Setup state
   // Warmup mode selector
   const [warmupMode,    setWarmupMode]    = useState<"none" | "all" | "ask">("all");
+  const [autoSwitch,    setAutoSwitch]    = useState(false);
   // Popup for "ask" mode — shown when backend emits warmup_prompt
   const [warmupPrompt,  setWarmupPrompt]  = useState<{ accountId: number; phone: string } | null>(null);
   // Popup shown on SMS timeout or recycled-number failure
@@ -1019,6 +1020,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           ...(apiHash ? { api_hash: apiHash }           : {}),
           profile_mode: profileMode,
           warmup_mode: warmupMode,
+          auto_switch: autoSwitch,
           ...(profileMode === "ai" ? { gender: aiGender } : {}),
           ...(profileMode === "manual" ? {
             first_name: profFirstName,
@@ -1137,6 +1139,13 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               accountId: p.account_id as number,
               phone:     p.phone     as string,
             });
+          } else if (event === "auto_switching") {
+            // Auto-switch fired — reset steps so the new preflight renders fresh
+            setSteps(initSteps());
+            setPreflightStatus("idle");
+            setPreflightMsg(null);
+            setExitIp(null);
+            setPollMsg(null);
           } else if (event === "sms_retry_prompt") {
             // SMS timeout or recycled-number failure
             const msg  = (p.message as string | undefined) ?? "";
@@ -1611,6 +1620,47 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               ))}
             </div>
           </div>
+        )}
+
+        {/* ── Auto-switch toggle ── */}
+        {runState === "idle" && (
+          <button
+            onClick={() => setAutoSwitch(v => !v)}
+            style={{
+              display: "flex", alignItems: "center", gap: 12,
+              background: autoSwitch ? "rgba(59,130,246,0.10)" : "rgba(255,255,255,0.03)",
+              border: autoSwitch ? "1.5px solid rgba(59,130,246,0.40)" : "1.5px solid rgba(255,255,255,0.08)",
+              borderRadius: 14, padding: "11px 14px", cursor: "pointer",
+              width: "100%", textAlign: "left", transition: "all .15s",
+            }}
+          >
+            <div style={{
+              width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+              background: autoSwitch ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)",
+              border: autoSwitch ? "1.5px solid rgba(59,130,246,0.35)" : "1px solid rgba(255,255,255,0.08)",
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+            }}>🔄</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 700,
+                color: autoSwitch ? "#3b82f6" : "rgba(255,255,255,0.7)", marginBottom: 2 }}>
+                Авто-перемикання проксі
+              </div>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.38)", lineHeight: 1.4 }}>
+                При невдачі автоматично перейти на інший проксі зі сховища (до 3 разів)
+              </div>
+            </div>
+            <div style={{
+              width: 36, height: 20, borderRadius: 10, flexShrink: 0,
+              background: autoSwitch ? "#3b82f6" : "rgba(255,255,255,0.12)",
+              position: "relative", transition: "background .2s",
+            }}>
+              <div style={{
+                position: "absolute", top: 3, left: autoSwitch ? 18 : 3,
+                width: 14, height: 14, borderRadius: "50%",
+                background: "#fff", transition: "left .2s",
+              }} />
+            </div>
+          </button>
         )}
 
         {/* ── Config form ── */}
