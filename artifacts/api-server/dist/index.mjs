@@ -59322,19 +59322,11 @@ router15.get("/avatar-counts", async (_req, res) => {
 router15.post("/upload-avatars", async (req, res) => {
   const pythonPort = process.env["PYTHON_API_PORT"] ?? "8083";
   try {
-    const contentType = req.headers["content-type"] ?? "";
-    const chunks = [];
-    req.on("data", (c) => chunks.push(c));
-    await new Promise((resolve, reject) => {
-      req.on("end", resolve);
-      req.on("error", reject);
-    });
-    const body = Buffer.concat(chunks);
     const r = await fetch(`http://127.0.0.1:${pythonPort}/api/factory/upload-avatars`, {
       method: "POST",
-      headers: { "content-type": contentType },
-      body,
-      signal: AbortSignal.timeout(3e4)
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(req.body),
+      signal: AbortSignal.timeout(6e4)
     });
     const data = await r.json();
     return void res.status(r.ok ? 200 : r.status).json(data);
@@ -59862,7 +59854,7 @@ app.use(
   })
 );
 app.use((0, import_cors.default)());
-app.use(import_express17.default.json({ limit: "10mb" }));
+app.use(import_express17.default.json({ limit: "50mb" }));
 app.use(import_express17.default.urlencoded({ extended: true }));
 app.use("/api/twa", twaLimiter);
 app.post("/api/auth", authLimiter);

@@ -957,24 +957,17 @@ router.get("/avatar-counts", async (_req: Request, res: Response) => {
 
 /**
  * POST /api/factory/upload-avatars
- * Proxies multipart upload to Python backend.
+ * Forwards JSON+base64 payload to Python backend.
+ * Body is already parsed by express.json() middleware; just re-serialise and forward.
  */
 router.post("/upload-avatars", async (req: Request, res: Response) => {
   const pythonPort = process.env["PYTHON_API_PORT"] ?? "8083";
   try {
-    const contentType = req.headers["content-type"] ?? "";
-    const chunks: Buffer[] = [];
-    req.on("data", (c: Buffer) => chunks.push(c));
-    await new Promise<void>((resolve, reject) => {
-      req.on("end", resolve);
-      req.on("error", reject);
-    });
-    const body = Buffer.concat(chunks);
     const r = await fetch(`http://127.0.0.1:${pythonPort}/api/factory/upload-avatars`, {
       method: "POST",
-      headers: { "content-type": contentType },
-      body,
-      signal: AbortSignal.timeout(30_000),
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(req.body),
+      signal: AbortSignal.timeout(60_000),
     });
     const data = await r.json();
     return void res.status(r.ok ? 200 : r.status).json(data);

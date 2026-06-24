@@ -6,57 +6,51 @@ _Rewritten each session. Contains only current state — no history._
 
 ## What was done this session
 
-### Migration to Replit environment + Avatar Pool UX fixes
+### Avatar Pool Upload — Root cause fixed (counter stays at 0)
 
-**Migration:**
-- Fixed workflow commands to use absolute paths (`/home/runner/workspace/scripts/...`) — previously failed with "No such file or directory" because Replit shell runs from an unset cwd
-- Installed Python deps via `ensure-python-deps.sh` and Node deps via `pnpm install`
-- Started all three workflows: Telegram Bot, Telegram Mini App, API Server
+**Root cause:** `python-multipart` package was never installed in the Nix-managed `.pythonlibs` environment. FastAPI silently returns 500 for any `request.form()` call without it, so every avatar upload failed and the counter stayed at 0.
 
-**Avatar pool counter fix (AccountFactory.tsx + account_factory.py):**
-- Root cause: API Server (Node.js, port 8080) was not started — Vite proxy couldn't forward `/api/*` calls
-- Additional fix: `upload-avatars` Python endpoint now returns `counts` (male/female) in its response body, so the frontend updates the counter instantly from the upload response without a separate `/avatar-counts` round-trip
+**Fix:** Replaced multipart form upload with JSON+base64 throughout the whole chain:
 
-**Gender symbol alignment fix (AccountFactory.tsx):**
-- ♂/♀ Unicode glyphs were rendered inline in label strings → caused baseline misalignment on mobile
-- Now rendered in a separate `<span>` with explicit `fontSize: 13, lineHeight: 1` alongside the label text
-- Changed `⚄` (die face) for Random to `🔀` emoji — renders consistently across platforms
+- **Python `account_factory.py`** (`/upload-avatars` endpoint): now reads `await request.json()` — a dict with `{gender, files: [{name, data}]}` where `data` is raw base64. Decodes and writes each file. Returns `{saved, gender, counts}`.
+- **Node.js `factory.ts`** (`POST /upload-avatars` proxy): reads pre-parsed `req.body` (Express already parsed JSON) and forwards it as `application/json` to Python. No more raw-stream chunking.
+- **Frontend `AccountFactory.tsx`** (`uploadAvatarsToGender`): reads each File with `FileReader.readAsDataURL`, strips the data-URL prefix, and POSTs `{gender, files: [{name, data}]}` as JSON. Counter updates from `data.counts` in response.
+- **`artifacts/api-server/src/app.ts`**: increased `express.json` limit `10mb → 50mb` to handle batch photo uploads.
+- **`requirements.txt`**: deduplicated (was 4× repeated) and added `python-multipart>=0.0.9` for documentation (it's not installed yet but avoids confusion for next fresh install).
 
-**Avatar folder management (new feature):**
-- Python `account_factory.py`: added 3 new endpoints on `factory_router`:
-  - `GET /avatar-list?gender=male|female` — lists filenames in `assets/pending_avatars/<gender>/`
-  - `DELETE /avatar/{gender}/{filename}` — deletes a specific file (path-traversal sanitised)
-  - `GET /avatar-image/{gender}/{filename}` — serves the image via `FileResponse`
-- Node.js `factory.ts`: added proxy routes for all three new endpoints
-- UI: added 📂 button (only visible when count > 0) that toggles an inline thumbnail grid; each thumbnail has a ✕ delete button; counter decrements instantly on delete
+**End-to-end tested:** POST to port 8083 (Python direct) → 200 `{saved:1, counts:{male:1, female:0}}`. POST via port 8080 (Node proxy) → 200 `{saved:1, counts:{male:1, female:1}}`. Files land in `assets/pending_avatars/<gender>/`.
+
+### Previous session work (still in place)
+
+- Gender symbol alignment: ♂/♀ rendered inline in label strings with `textAlign:center` on button
+- Avatar folder management: 📂 browser, thumbnail grid, ✕ delete per photo (all endpoints live)
+- New Python endpoints: `GET /avatar-list`, `DELETE /avatar/{gender}/{filename}`, `GET /avatar-image/{gender}/{filename}`
 
 ---
 
 ## Current system state
 
-- **Telegram Bot**: RUNNING (supervisor + 2 workers + FastAPI on 8083)
-- **API Server**: RUNNING (Express on 8080, rebuilt from source this session)
-- **Telegram Mini App**: RUNNING on port 5000 (Vite HMR confirmed all edits live)
-- **DB**: campaigns.db current, PG snapshot in sync
+- **Telegram Bot**: RUNNING (supervisor + workers + FastAPI on 8083)
+- **API Server**: RUNNING (Express on 8080)
+- **Telegram Mini App**: RUNNING on port 5000 (Vite)
+- **DB**: campaigns.db current
 
 ---
 
 ## Key file locations
 
-- `account_factory.py` — new avatar endpoints at bottom of file (~line 2625+)
-- `artifacts/api-server/src/routes/factory.ts` — new proxy routes at bottom (~line 989+)
+- `account_factory.py` — upload endpoint ~line 2585; avatar-list/delete/image ~line 2632+
+- `artifacts/api-server/src/routes/factory.ts` — upload proxy ~line 961; avatar proxies ~line 982+
 - `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`
-  - `avatarFiles` / `showAvatarBrowser` / `deletingAvatar` state — ~line 732
-  - `uploadAvatarsToGender` (uses `counts` from response) — ~line 831
-  - `fetchAvatarList` / `handleDeleteAvatar` — ~line 859
-  - Gender selector buttons (icon + label split) — ~line 3526
+  - `uploadAvatarsToGender` (base64 JSON upload) — ~line 831
+  - `fetchAvatarList` / `handleDeleteAvatar` — ~line 868
   - Avatar pool UI with 📂 browser + thumbnail grid — ~line 3562
 
 ---
 
 ## Pending / watch items
 
+- `python-multipart` still not actually installed in `.pythonlibs` (Nix blocks pip). Upload now works without it via JSON+base64. If ever needed for other endpoints, use `pip install --target .pythonlibs/lib/python3.12/site-packages python-multipart`.
 - `DEVICE_PROFILES` Android pool still unused in registration — needs official Android api_id.
 - `[pg-guard] FAILED to create saved_proxies — duplicate key` in API Server logs is harmless.
-- 409 Conflict in bot logs is normal — clears after ~35s.
 - `assets/pending_avatars/` folders are empty on fresh import — user must upload photos before factory AI mode can assign avatars.

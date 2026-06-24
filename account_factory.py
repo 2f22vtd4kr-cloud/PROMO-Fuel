@@ -2581,10 +2581,14 @@ async def get_avatar_counts():
 
 @factory_router.post("/upload-avatars")
 async def upload_avatars(request: Request):
-    """Save uploaded images to the gender-specific pending_avatars subfolder."""
-    from fastapi import Form, UploadFile
-    form = await request.form()
-    gender_val = str(form.get("gender", "")).strip().lower()
+    """Save uploaded images (sent as JSON with base64-encoded data) to pending_avatars."""
+    import base64 as _b64
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+
+    gender_val = str(body.get("gender", "")).strip().lower()
     if gender_val not in ("male", "female"):
         return JSONResponse({"error": "gender must be 'male' or 'female'"}, status_code=400)
 
@@ -2592,21 +2596,23 @@ async def upload_avatars(request: Request):
     os.makedirs(folder, exist_ok=True)
 
     saved = 0
-    for key in form:
-        field = form[key]
-        if not hasattr(field, "filename") or not field.filename:
-            continue
-        ext = os.path.splitext(field.filename)[1].lower()
+    for file_item in body.get("files", []):
+        name = str(file_item.get("name", "file.jpg"))
+        data_b64 = str(file_item.get("data", ""))
+        ext = os.path.splitext(name)[1].lower()
         if ext not in _AVATAR_EXTS:
+            ext = ".jpg"
+        try:
+            content = _b64.b64decode(data_b64)
+        except Exception:
             continue
         safe_name = f"{int(time.time() * 1000)}_{saved}{ext}"
         dest = os.path.join(folder, safe_name)
-        content = await field.read()
         with open(dest, "wb") as fh:
             fh.write(content)
         saved += 1
 
-    # Return updated counts immediately so the frontend can refresh without an extra request
+    # Return updated counts immediately
     counts: dict[str, int] = {}
     for g in ("male", "female"):
         g_folder = os.path.join(PENDING_AVATARS_DIR, g)

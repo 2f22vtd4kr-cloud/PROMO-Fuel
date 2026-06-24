@@ -828,23 +828,32 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const uploadAvatarsToGender = useCallback(async (files: File[], gender: "male" | "female") => {
     setUploadingGender(gender);
     try {
-      const fd = new FormData();
-      fd.append("gender", gender);
-      files.forEach((f, i) => fd.append(`file_${i}`, f));
+      // Read files as base64 so we can send JSON (avoids python-multipart dependency)
+      const b64Files = await Promise.all(files.map(f =>
+        new Promise<{ name: string; data: string }>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = e => {
+            const result = e.target?.result as string;
+            // Strip the data-URL prefix (e.g. "data:image/jpeg;base64,")
+            const data = result.includes(",") ? result.split(",")[1] : result;
+            resolve({ name: f.name, data });
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(f);
+        })
+      ));
       const r = await fetch("/api/factory/upload-avatars", {
         method: "POST",
-        headers: authHeaders(),
-        body: fd,
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ gender, files: b64Files }),
       });
       if (r.ok) {
         const data = await r.json() as { saved?: number; counts?: { male?: number; female?: number } };
         if (data.counts) {
-          // Instantly update counter from response — no extra round-trip needed
           setAvatarCounts({ male: data.counts.male ?? 0, female: data.counts.female ?? 0 });
         } else {
           await fetchAvatarCounts();
         }
-        // Refresh the browser list for this gender if it's open
         if (showAvatarBrowser === gender) void fetchAvatarList(gender);
       }
     } catch { /* silent */ } finally {
@@ -3522,20 +3531,19 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
                       {([
-                        { key: "male",   icon: "♂",  label: L("Man",    "Чоловік"),  color: "#60a5fa" },
-                        { key: "female", icon: "♀",  label: L("Woman",  "Жінка"),    color: "#f472b6" },
-                        { key: "random", icon: "🔀", label: L("Random", "Рандом"),   color: "#a78bfa" },
+                        { key: "male",   label: L("♂ Man",    "♂ Чоловік"),  color: "#60a5fa" },
+                        { key: "female", label: L("♀ Woman",  "♀ Жінка"),    color: "#f472b6" },
+                        { key: "random", label: L("🔀 Random", "🔀 Рандом"),  color: "#a78bfa" },
                       ] as const).map(opt => (
                         <button key={opt.key} onClick={() => setAiGender(opt.key)} style={{
                           flex: 1, padding: "7px 4px", borderRadius: 9, fontSize: 11, fontWeight: 700,
-                          cursor: "pointer", transition: "all .15s", display: "flex",
-                          alignItems: "center", justifyContent: "center", gap: 4,
+                          cursor: "pointer", transition: "all .15s",
+                          textAlign: "center", lineHeight: "20px",
                           background: aiGender === opt.key ? `${opt.color}22` : "rgba(255,255,255,0.04)",
                           border: aiGender === opt.key ? `1.5px solid ${opt.color}66` : "1.5px solid rgba(255,255,255,0.08)",
                           color: aiGender === opt.key ? opt.color : "rgba(255,255,255,0.38)",
                         }}>
-                          <span style={{ fontSize: 13, lineHeight: 1 }}>{opt.icon}</span>
-                          <span>{opt.label}</span>
+                          {opt.label}
                         </button>
                       ))}
                     </div>
