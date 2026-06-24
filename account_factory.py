@@ -821,7 +821,7 @@ async def _registration_stream(
         # If the chosen country has < PRE_BUY_MIN_SR% success rate we stop
         # immediately — buying would almost certainly yield recycled numbers.
         # Fail-open: if the API is unreachable we warn but proceed.
-        PRE_BUY_MIN_SR = 45  # %, below this we refuse to buy
+        PRE_BUY_MIN_SR = 60  # %, below this we refuse to buy
 
         yield _sse("preflight", {
             "status": "running",
@@ -890,6 +890,8 @@ async def _registration_stream(
         code: str | None = None
         raw_num: str = ""
         _app_stuck_count = 0
+        _banned_count = 0      # consecutive pre-banned numbers from this country
+        _proxy_fail_count = 0  # consecutive proxy-unreachable errors
 
         for _num_attempt in range(MAX_NUM_RETRIES):
 
@@ -995,6 +997,19 @@ async def _registration_stream(
                 # Do NOT crash the stream; a different residential exit node may route fine.
                 await cancel_order()
                 await safe_disconnect()
+                _proxy_fail_count += 1
+                if _proxy_fail_count >= 2:
+                    # Proxy unreachable twice in a row → proxy session is dead.
+                    # Buying more numbers would waste balance since they all fail at Step 2.
+                    yield _sse("sms_retry_prompt", {
+                        "country_id": country_id,
+                        "message": (
+                            f"🔌 Proxy unreachable {_proxy_fail_count}× in a row — "
+                            "the proxy connection is dead. Fix your proxy (try a fresh session URL) "
+                            "and restart. No SMSPool balance was spent on those numbers."
+                        ),
+                    })
+                    return
                 yield _sse("step", {"step": 2, "status": "running",
                                     "message": "🔄 Connection failed — buying fresh number and retrying…"})
                 await asyncio.sleep(3)
@@ -1062,8 +1077,27 @@ async def _registration_stream(
                     return
 
             if _banned:
+                _banned_count += 1
+                _remaining_after = MAX_NUM_RETRIES - _num_attempt - 1
+                if _banned_count >= 2:
+                    # 2+ consecutive pre-bans → entire country pool is recycled.
+                    # Stop now — continuing just burns more SMSPool balance.
+                    yield _sse("step", {"step": 3, "status": "error",
+                                        "message": f"🚫 {_banned_count} consecutive pre-banned numbers — {country_id.upper()} pool is exhausted"})
+                    await cancel_order()
+                    await safe_disconnect()
+                    yield _sse("sms_retry_prompt", {
+                        "country_id": country_id,
+                        "message": (
+                            f"🚫 {_banned_count} consecutive pre-banned numbers from {country_id.upper()} — "
+                            "this country's pool is recycled/exhausted right now. "
+                            "Switch to: Kazakhstan (KZ), Ukraine (UA), Philippines (PH), "
+                            "Georgia (GE), or Bangladesh (BD)."
+                        ),
+                    })
+                    return
                 yield _sse("step", {"step": 3, "status": "running",
-                                    "message": "🚫 Number pre-banned — cancelling and trying new number..."})
+                                    "message": f"🚫 Number pre-banned — cancelling and trying new number… ({_remaining_after} attempt(s) left)"})
                 await cancel_order()
                 await safe_disconnect()
                 continue  # auto-retry with new number

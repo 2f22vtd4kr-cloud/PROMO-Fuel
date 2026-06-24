@@ -15,28 +15,19 @@
 
 ## This session
 
-**Turn 1 — Project imported to Replit environment**
-Both workflows running. Python deps installed. `.deps-ready` sentinel written.
+**Context:** User shared 14 screenshots showing the Account Factory burning $2.08 on 6 consecutive pre-banned Indonesia (+62) numbers, then the proxy dying completely ("Host unreachable").
 
-**Turn 2 — Country rankings with own historical stats**
+**Root causes identified:**
+1. `PRE_BUY_MIN_SR = 45%` — Indonesia at 53% passes the gate, but half the numbers are recycled
+2. No consecutive pre-ban counter — on `_banned`, code just `continue`s silently using all 5 retries
+3. No proxy-dead abort — when proxy dies mid-loop, it still buys more numbers before failing at Step 2
 
-Added per-country historical stats (our own DB) to the Account Factory country ranking panel:
+**Fixes applied to `account_factory.py`:**
+- `PRE_BUY_MIN_SR` raised **45 → 60** (Indonesia at 53% now blocked at the pre-check)
+- Added `_banned_count` tracker — **2 consecutive pre-bans** emits `sms_retry_prompt` and stops (was 5)
+- Added `_proxy_fail_count` tracker — **2 consecutive proxy-unreachable** emits `sms_retry_prompt` and stops
 
-**API changes (`artifacts/api-server/src/routes/factory.ts`):**
-- Extended `BestCountryResult` interface with optional `own_attempts`, `own_successes`, `own_recycled` fields
-- `/best-country` now merges `getOwnStats()` data by country_id into each top-5 entry before returning
-
-**UI changes (`artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`):**
-- `autoCountryTop5` state type extended with `own_attempts?`, `own_successes?`, `own_recycled?`
-- Ranked country rows now show a 3rd line under the SMSPool success-rate bar:
-  `наші дані: N спроб · ✓X свіжих · ✗Y переробл · ZZ% fresh` (color-coded green/amber/red)
-  — only visible when we have data for that country
-- Added `ownStatsData` / `showOwnStats` / `ownStatsLoading` state + `fetchOwnStats()` + `handleToggleOwnStats()`
-- "📊 Наша повна статистика…" toggle button appears at the bottom of the ranked list
-- Clicking it opens a full history table: all countries with attempts > 0, sorted by attempts desc,
-  columns: Country | Tries | ✓Fresh | ✗Recycled | Fresh% — tapping a row selects that country
-
-**What to do next session:** (awaiting user direction)
+**Max money burned per session is now:** 2 numbers × ~$0.35 = **$0.70** (was $2.08+)
 
 ---
 
@@ -45,11 +36,11 @@ Added per-country historical stats (our own DB) to the Account Factory country r
 - ✅ Telegram Bot workflow running (supervisor + 2 workers + FastAPI port 8083)
 - ✅ Telegram Mini App workflow running (Vite dev port 5000)
 - ✅ All 8 secrets set
+- ✅ Account Factory: PRE_BUY_MIN_SR=60%, consecutive pre-ban abort at 2, proxy-dead abort at 2
 - ✅ Account Factory: gendered AI profile + avatar pool per gender
-- ✅ Account Factory: 3-layer non-SMS gate (ResendCode → SendCodeUnavailableError fast-fail → official creds → confirmed recycled)
+- ✅ Account Factory: 3-layer non-SMS gate (ResendCode → SendCodeUnavailableError → official creds)
 - ✅ Proxy vault: saves and loads correctly (Bearer skip for /proxy-store)
-- ✅ 2FA field: random password generator button
-- ✅ Country rankings: own historical stats (attempts/fresh/recycled/%) shown in ranked rows + full history panel
+- ✅ Country rankings: own historical stats in ranked rows + full history panel
 
 ---
 
@@ -83,9 +74,10 @@ Non-sensitive env var: `PORT=8080`.
 - Python: `account_factory.py` → `_registration_stream()` generator
 - Node API: `artifacts/api-server/src/routes/factory.ts`
 - UI: `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`
-- Non-SMS gate (lines ~1087–1250): ResendCode → SendCodeUnavailableError fast-fail → official creds → confirmed recycled
+- Retry loop (lines ~892–1095): MAX_NUM_RETRIES=5; `_banned_count` aborts at 2 consecutive bans; `_proxy_fail_count` aborts at 2 consecutive proxy fails
+- Non-SMS gate (lines ~1095–1260): ResendCode → SendCodeUnavailableError fast-fail → official creds → confirmed recycled
 - 2FA: custom row with RefreshCw button; `crypto.getRandomValues` 16-char password
-- Proxy store: `/api/proxy-store` is now in Bearer skip list — accessible from Mini App without CRM login
+- Proxy store: `/api/proxy-store` is in Bearer skip list — accessible without CRM login
 - Country rankings: `BestCountryResult` carries `own_attempts/successes/recycled`; full history from `GET /api/factory/country-stats`
 
 ### Auth model
