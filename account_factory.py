@@ -901,14 +901,44 @@ async def _registration_stream(
                 lang_code="en",
                 system_lang_code="en-US",
             )
-            await client.connect()
 
-            # Confirm which proxy host is being used (guards against silent fallback)
-            _proxy_label = ""
-            if proxy_tuple:
-                _ph = proxy_tuple[1]  # host field from _parse_proxy()
-                _pp = proxy_tuple[2]  # port
-                _proxy_label = f" via {_ph}:{_pp}"
+            # Wrap connect() — previously bare (no try/except), so any routing error
+            # like "Host unreachable" or "Connection refused" from the proxy's exit node
+            # would escape the generator and kill the whole SSE stream unrecoverably.
+            _connect_ok = False
+            _proxy_label = f" via {proxy_tuple[1]}:{proxy_tuple[2]}" if proxy_tuple else ""
+            for _conn_try in range(3):
+                try:
+                    await client.connect()
+                    _connect_ok = True
+                    break
+                except Exception as _ce:
+                    _ce_str = str(_ce)
+                    if _conn_try < 2:
+                        yield _sse("step", {"step": 2, "status": "running",
+                                            "message": (
+                                                f"⚠️ Connect attempt {_conn_try+1}/3 failed "
+                                                f"({type(_ce).__name__}: {_ce_str[:60]}) — retrying in 4s…"
+                                            )})
+                        try:
+                            await client.disconnect()
+                        except Exception:
+                            pass
+                        await asyncio.sleep(4)
+                    else:
+                        yield _sse("step", {"step": 2, "status": "error",
+                                            "message": f"❌ Proxy connection failed: {_ce_str[:80]}"})
+
+            if not _connect_ok:
+                # All 3 connect attempts failed — cancel this number and retry the loop.
+                # Do NOT crash the stream; a different residential exit node may route fine.
+                await cancel_order()
+                await safe_disconnect()
+                yield _sse("step", {"step": 2, "status": "running",
+                                    "message": "🔄 Connection failed — buying fresh number and retrying…"})
+                await asyncio.sleep(3)
+                continue
+
             yield _sse("step", {"step": 2, "status": "done",
                                 "message": f"📡 Proxy tunnel established — Telethon connected{_proxy_label}"})
 
