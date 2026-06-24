@@ -1131,7 +1131,6 @@ async def _registration_stream(
                 # residential proxies which can have higher initial latency.
                 connection_retries=5,
                 retry_delay=2,
-                receive_timeout=45,
             )
 
             # ── TELEMETRY 1: Telethon client init dump ────────────────────

@@ -14,9 +14,12 @@
 
 ## This session
 
-**Task:** Remove SMS rate gate (no blockers), add dual-stats to AI Вибір (SMSPool live + AI freshness), sort AI Вибір by SMSPool rate, wire auto-launch to SMSPool-priority order.
+**Task:** Remove SMS rate gate, add dual-stats to AI Вибір, fix `receive_timeout` crash.
 
-### Changes applied
+### Fix: `TelegramBaseClient.__init__() got an unexpected keyword argument 'receive_timeout'`
+Telethon 1.44.0 removed the `receive_timeout` parameter from `TelegramClient()`. Removed the `receive_timeout=45` line from `account_factory.py` (~line 1134). Bot restarted, fix live.
+
+### Other changes this session
 
 **`account_factory.py`**
 - Removed `PRE_BUY_MIN_SR` gate — success-rate check is now **informational only**: shows ✅/⚠️/🟡 icon + rate in preflight log, then proceeds unconditionally. `sms_retry_prompt` with `isLowRate` no longer emitted.
