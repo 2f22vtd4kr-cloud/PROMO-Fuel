@@ -28,6 +28,29 @@ assert _PT.SOCKS5 is not None
 " 2>/dev/null
 }
 
+# ── Fix conflicting stub `telegram` package (v0.0.1) that shadows python-telegram-bot ──
+# The old `telegram` stub package installs a 3-line __init__.py that hides all real
+# python-telegram-bot exports (Update, InlineKeyboardButton, etc.).
+# We detect it by checking if `from telegram import Update` fails, then replace the
+# stub __init__ with the real one extracted from the installed python-telegram-bot wheel.
+fix_telegram_stub() {
+  if ! "$PY" -c "from telegram import Update" 2>/dev/null; then
+    echo "[ensure-python-deps] Fixing conflicting telegram stub package..."
+    SITE="$("$PY" -c 'import site; print(site.getsitepackages()[0])')"
+    INIT="$SITE/telegram/__init__.py"
+    # Download and extract the real __init__.py from the python-telegram-bot wheel
+    PTB_VERSION="$("$PY" -c 'import telegram._version; print(telegram._version.__version__)' 2>/dev/null || echo "22.8")"
+    TMP_WHL="/tmp/ptb_fix_$$.whl"
+    "$PY" -m pip download "python-telegram-bot==$PTB_VERSION" --no-deps -d /tmp/ -q 2>/dev/null && \
+      WHL=$(ls /tmp/python_telegram_bot-*.whl 2>/dev/null | head -1) && \
+      [ -n "$WHL" ] && \
+      unzip -p "$WHL" telegram/__init__.py > "$INIT" && \
+      rm -f "${SITE}/telegram/__pycache__/__init__.cpython-"*.pyc 2>/dev/null || true
+    echo "[ensure-python-deps] telegram stub patched."
+  fi
+}
+fix_telegram_stub
+
 if smoke_test; then
   echo "[ensure-python-deps] ✓ All packages OK (including python_socks.async_.asyncio) — skipping install"
   exit 0
