@@ -1013,6 +1013,7 @@ async def _registration_stream(
     warmup_mode: str = "all",
     session_name: str = "",
     gender: str = "random",
+    force_country: bool = False,
 ):
     """Async generator yielding SSE chunks for the full 8-step pipeline."""
     os.makedirs(SESSION_DIR, exist_ok=True)
@@ -1022,7 +1023,13 @@ async def _registration_stream(
     # for this country, the entire SMSPool pool is recycled.  No amount of retries
     # will change Telegram's response.  Abort immediately so the UI can prompt the
     # user to pick a different country instead of burning balance.
-    if country_id.lower() in _RECYCLED_COUNTRY_POOL:
+    #
+    # force_country=True: user explicitly clicked "Keep Going" — clear the flag
+    # and let them try once more.  If it fails again the flag gets re-set and
+    # the popup will show again.
+    if force_country:
+        _RECYCLED_COUNTRY_POOL.discard(country_id.lower())
+    elif country_id.lower() in _RECYCLED_COUNTRY_POOL:
         yield _sse("sms_retry_prompt", {
             "country_id": country_id,
             "message": (
@@ -2373,6 +2380,7 @@ async def register_account(request: Request):
     auto_switch      = bool(body.get("auto_switch", False))
     _ai_ids_raw      = body.get("ai_country_ids") or []
     ai_country_ids   = [str(x).strip().lower() for x in _ai_ids_raw if isinstance(x, str) and str(x).strip()]
+    force_country    = bool(body.get("force_country", False))
 
     # Telethon creds — prefer env vars, fall back to request body
     api_id_raw  = os.environ.get("TELETHON_API_ID") or str(body.get("api_id", ""))
@@ -2454,12 +2462,16 @@ async def register_account(request: Request):
                     warmup_mode,
                     computed_session_name,
                     gender=gender,
+                    force_country=force_country,
                 ):
                     yield chunk
                     if '"complete"' in chunk:
                         got_complete = True
                     elif '"sms_retry_prompt"' in chunk:
                         got_retry_prompt = True
+                # force_country only applies to the user's first explicit retry;
+                # auto-switch attempts on different countries should obey the pool.
+                force_country = False
 
                 if got_complete:
                     succeeded += 1

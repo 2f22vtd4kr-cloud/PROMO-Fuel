@@ -716,6 +716,9 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   } | null>(null);
   // Countries for which user chose "keep trying" — skip recycled popup next time
   const suppressRecycledRef = useRef<Set<string>>(new Set());
+  // When user explicitly clicks "Keep Going" on recycled popup, force the backend
+  // to clear the in-memory recycled pool flag and attempt once more.
+  const forceCountryRef = useRef(false);
   // Session-level spend tracking
   const [totalSpent,      setTotalSpent]      = useState(0);
   const [recycledSkips,   setRecycledSkips]   = useState<Record<string, number>>({});
@@ -1353,6 +1356,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           ...(sortedAiCountryData.length > 0 ? {
             ai_country_ids: sortedAiCountryData.map(e => e.id),
           } : {}),
+          ...((() => { const f = forceCountryRef.current; forceCountryRef.current = false; return f; })() ? { force_country: true } : {}),
         }),
         signal: ctrl.signal,
       });
@@ -1699,6 +1703,9 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     suppressRecycledRef.current.add(key);
                     // Count this first manual "keep going" as skip #1
                     setRecycledSkips(prev => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }));
+                    // Tell the backend to clear the in-memory recycled pool flag
+                    // so it doesn't immediately block again before buying a number.
+                    forceCountryRef.current = true;
                     setSmsRetryPrompt(null);
                     void launch();
                   }}
