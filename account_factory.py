@@ -623,6 +623,25 @@ async def get_top_countries(api_key: str = "", service: str = TELEGRAM_SERVICE_I
     return {"countries": candidates[:limit]}
 
 
+import re as _re
+
+def _bump_proxy_session(proxy_string: str) -> str:
+    """Increment the sticky-session counter embedded in a Decodo/Smartproxy URL.
+
+    Residential proxies use session-N in the username to pin traffic to a specific
+    exit node: socks5://user-XXX-session-1-country-kz:PASS@gate.decodo.com:7000
+    After a registration attempt that node enters a brief cooldown.  Bumping to
+    session-2, session-3 … picks a fresh exit node so the next TCP pre-check and
+    Telethon connect don't hit a stale/cooling session.
+
+    If the proxy string contains no session-N pattern (e.g. non-Decodo proxies)
+    the string is returned unchanged.
+    """
+    if not proxy_string:
+        return proxy_string
+    return _re.sub(r"session-(\d+)", lambda m: f"session-{int(m.group(1)) + 1}", proxy_string, count=1)
+
+
 async def _test_proxy_connection(proxy_string: str, timeout: float = 12.0) -> tuple[bool, str]:
     """
     Test a SOCKS5/SOCKS4 proxy by connecting to Telegram DC1 (149.154.167.91:443).
@@ -841,6 +860,25 @@ async def _registration_stream(
             client = None
 
     try:
+        # ─── Bump residential proxy session before preflight ──────────────
+        # Decodo/Smartproxy sticky sessions (session-N in the username) pin
+        # traffic to a specific exit node.  After a previous registration attempt
+        # that node enters a brief cooldown — the immediate next TCP pre-check
+        # hits it while it's being released and gets "Host unreachable" (0x04).
+        # Bumping session-N → session-{N+1} assigns a fresh exit node so the
+        # preflight and the whole registration attempt use a clean connection.
+        if proxy_string:
+            _bumped = _bump_proxy_session(proxy_string)
+            if _bumped != proxy_string:
+                _old_sess = _re.search(r"session-(\d+)", proxy_string)
+                _new_sess = _re.search(r"session-(\d+)", _bumped)
+                if _old_sess and _new_sess:
+                    yield _sse("debug", {"message": (
+                        f"🔄 Proxy session rotated: session-{_old_sess.group(1)} "
+                        f"→ session-{_new_sess.group(1)} (fresh exit node)"
+                    )})
+            proxy_string = _bumped
+
         # ─── Preflight — Proxy health check ──────────────────────────────
         yield _sse("preflight", {
             "status": "running",
@@ -1036,6 +1074,14 @@ async def _registration_stream(
         _actual_app_version:   str = ""
 
         for _num_attempt in range(MAX_NUM_RETRIES):
+
+            # ─── Rotate residential session for every retry ───────────────
+            # Attempt 0 already has a fresh session (bumped before preflight).
+            # For retries, bump again so each number attempt hits a different
+            # exit node — avoids the "Host unreachable" that happens when the
+            # previous node is still cooling down.
+            if _num_attempt > 0 and proxy_string:
+                proxy_string = _bump_proxy_session(proxy_string)
 
             # ─── Step 1 — Purchase number ─────────────────────────────────
             _retry_label = f" (attempt {_num_attempt+1}/{MAX_NUM_RETRIES})" if _num_attempt else ""

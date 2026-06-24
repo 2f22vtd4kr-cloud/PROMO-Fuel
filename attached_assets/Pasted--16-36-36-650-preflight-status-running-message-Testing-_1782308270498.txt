@@ -1,0 +1,20 @@
+[16:36:36.650] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[16:36:37.693] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[16:36:40.007] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 149.27.57.9","exit_ip":"149.27.57.9","is_datacenter":false}
+[16:36:40.007] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
+[16:36:41.665] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 149.27.57.9 · 🔗 Telethon-path IP: 149.27.57.9","exit_ip":"149.27.57.9","is_datacenter":false,"async_exit_ip":"149.27.57.9"}
+[16:36:41.665] preflight: {"status":"running","message":"📊 Checking 7 SMS success rate on SMSPool…"}
+[16:36:41.750] preflight: {"status":"done","message":"📊 7 success rate: N/A — proceeding"}
+[16:36:41.750] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool..."}
+[16:36:44.217] step: {"step":1,"status":"done","message":"📱 Number Acquired: +77474473094","cost":2.14}
+[16:36:44.217] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[16:36:44.217] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2040,\n    \"platform\": \"desktop\",\n    \"device_model\": \"PC 64bit\",\n    \"system_version\": \"Windows 11\",\n    \"app_version\": \"5.9.5\",\n    \"lang_code\": \"en\",\n    \"system_lang_code\": \"en-US\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-1-country-kz:ra+H1whT5aLqxkH0q2@gate.decodo.com:7000\"\n  }\n}"}
+[16:36:50.588] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:7000"}
+[16:36:50.588] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[16:36:53.245] debug: {"message":"{\n  \"📨 SEND_CODE_RESPONSE\": {\n    \"type\": \"SentCodeTypeApp\",\n    \"phone_code_hash\": \"2264a9b5…\",\n    \"timeout\": null,\n    \"next_type\": null,\n    \"via\": \"RawSendCodeRequest\"\n  }\n}"}
+[16:36:53.245] step: {"step":3,"status":"running","message":"📲 SentCodeTypeApp — requesting SMS resend (ResendCode)…"}
+[16:36:53.888] step: {"step":3,"status":"error","message":"🚫 SendCodeUnavailable — code delivered to existing account's app; number confirmed recycled"}
+[16:36:54.054] sms_retry_prompt: {"country_id":"7","message":"🚫 7 pool is recycled — Telegram's SendCodeUnavailable confirms these numbers already have accounts. Switch to: Kazakhstan (KZ), Ukraine (UA), Philippines (PH), Georgia (GE), or Bangladesh (BD)."}
+[16:36:59.540] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[16:37:02.626] preflight: {"status":"error","message":"Connection refused or timeout: Socket error: 0x04: Host unreachable"}
+[16:37:02.626] error: {"message":"🔌 Proxy pre-check failed — Connection refused or timeout: Socket error: 0x04: Host unreachable. Fix your proxy before proceeding so you don't waste SMSPool balance."}
