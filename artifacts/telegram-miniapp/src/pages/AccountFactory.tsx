@@ -827,7 +827,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   }, [fetchAvatarCounts]);
 
   // Stock checker
-  const [showStock,    setShowStock]    = useState(true);
+  const [showStock,    setShowStock]    = useState(false);
   const [stockLoading, setStockLoading] = useState(false);
   const [stockError,   setStockError]   = useState<string | null>(null);
   const [stockData,    setStockData]    = useState<{ id: string; name: string; stock: number; price: number }[]>([]);
