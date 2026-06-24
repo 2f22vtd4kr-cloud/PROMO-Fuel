@@ -1003,10 +1003,26 @@ def run(args: argparse.Namespace) -> None:  # noqa: C901
     os.environ["DB_PATH"]         = env_state.db_path
     os.environ["API_SERVER_PORT"] = str(env_state.api_port)
 
+    # ── PG restore — must run BEFORE migrations so the schema is created
+    #    against the restored data, not an empty DB.
+    try:
+        import db_sync as _dbs
+        _dbs.restore_if_fresh(env_state.db_path)
+    except Exception as _e:
+        logger.warning("[phase0] db_sync restore skipped: %s", _e)
+
     # Migrations must run before any subprocess or import that touches the DB.
     _run_migrations(env_state.db_path)
     _recover_stale_locks_sync(env_state.db_path)
     _reset_stuck_campaigns(env_state.db_path)
+
+    # ── PG snapshot — save current state + start periodic sync thread
+    try:
+        import db_sync as _dbs
+        _dbs.save_snapshot(env_state.db_path)
+        _dbs.start_sync_thread(env_state.db_path)
+    except Exception as _e:
+        logger.warning("[phase0] db_sync start skipped: %s", _e)
 
     # ── Phase 1 & 2: Subprocess fleet ────────────────────────────────────
 

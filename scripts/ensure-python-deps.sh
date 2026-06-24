@@ -19,7 +19,7 @@ SENTINEL="$(cd "$(dirname "$0")/.." && pwd)/.deps-ready"
 smoke_test() {
   "$PY" -c "
 from telegram import Update
-import aiosqlite, filelock, fastapi, socks, python_socks, telethon
+import aiosqlite, filelock, fastapi, socks, python_socks, telethon, psycopg2
 from python_socks.async_.asyncio import Proxy as _P
 from python_socks import ProxyType as _PT
 assert _PT.SOCKS5 is not None
