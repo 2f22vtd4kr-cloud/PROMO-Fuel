@@ -1,20 +1,49 @@
-// Export your models here. Add one export per file
-// export * from "./posts";
-//
-// Each model/table should ideally be split into different files.
-// Each model/table should define a Drizzle table, insert schema, and types:
-//
-//   import { pgTable, text, serial } from "drizzle-orm/pg-core";
-//   import { createInsertSchema } from "drizzle-zod";
-//   import { z } from "zod/v4";
-//
-//   export const postsTable = pgTable("posts", {
-//     id: serial("id").primaryKey(),
-//     title: text("title").notNull(),
-//   });
-//
-//   export const insertPostSchema = createInsertSchema(postsTable).omit({ id: true });
-//   export type InsertPost = z.infer<typeof insertPostSchema>;
-//   export type Post = typeof postsTable.$inferSelect;
+import {
+  pgTable,
+  serial,
+  text,
+  integer,
+  timestamp,
+  customType,
+} from "drizzle-orm/pg-core";
 
-export {}
+const bytea = customType<{ data: Buffer }>({
+  dataType() { return "bytea"; },
+});
+
+/**
+ * Proxy store — managed by artifacts/api-server/src/routes/proxy-store.ts
+ * Stored in Replit PostgreSQL so proxies survive deployments.
+ * SQLite also keeps a mirror copy for fast local reads.
+ */
+export const savedProxies = pgTable("saved_proxies", {
+  id:             serial("id").primaryKey(),
+  countryCode:    text("country_code").notNull(),
+  label:          text("label").notNull().default(""),
+  proxyString:    text("proxy_string").notNull(),
+  lastSessionNum: integer("last_session_num").notNull().default(0),
+  createdAt:      timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:      timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * SQLite snapshot — managed by db_sync.py
+ * Binary snapshot of campaigns.db so the SQLite database
+ * survives Replit's ephemeral filesystem between deployments.
+ */
+export const pfDbSnapshot = pgTable("pf_db_snapshot", {
+  key:       text("key").primaryKey(),
+  dbData:    bytea("db_data").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Session files — managed by db_sync.py and pg-pool.ts
+ * Telethon .session file binaries stored in PostgreSQL so registered
+ * accounts survive between deployments.
+ */
+export const pfSessionFiles = pgTable("pf_session_files", {
+  filename:  text("filename").primaryKey(),
+  data:      bytea("data").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

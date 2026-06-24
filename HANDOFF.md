@@ -19,6 +19,13 @@
 ### Fix: `TelegramBaseClient.__init__() got an unexpected keyword argument 'receive_timeout'`
 Telethon 1.44.0 removed the `receive_timeout` parameter from `TelegramClient()`. Removed the `receive_timeout=45` line from `account_factory.py` (~line 1134). Bot restarted, fix live.
 
+### Fix: Replit deployment DROP TABLE migrations
+`lib/db/src/schema/index.ts` was empty — Replit's migration system treated every table in production PostgreSQL as "extra" and wanted to drop them. Added all three PostgreSQL-backed tables to the Drizzle schema:
+- `saved_proxies` (proxy-store.ts — proxies with country_code, proxy_string, last_session_num)
+- `pf_db_snapshot` (db_sync.py — binary SQLite snapshot for cold-start restore)
+- `pf_session_files` (db_sync.py + pg-pool.ts — Telethon .session binaries)
+`bytea` columns use `customType` since Drizzle doesn't export `bytea` directly from `pg-core`. Republishing will now see these tables as expected and generate no DROP migrations.
+
 ### Other changes this session
 
 **`account_factory.py`**
