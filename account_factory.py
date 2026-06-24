@@ -2606,4 +2606,69 @@ async def upload_avatars(request: Request):
             fh.write(content)
         saved += 1
 
-    return JSONResponse({"saved": saved, "gender": gender_val})
+    # Return updated counts immediately so the frontend can refresh without an extra request
+    counts: dict[str, int] = {}
+    for g in ("male", "female"):
+        g_folder = os.path.join(PENDING_AVATARS_DIR, g)
+        os.makedirs(g_folder, exist_ok=True)
+        try:
+            counts[g] = sum(1 for f in os.listdir(g_folder)
+                            if os.path.splitext(f)[1].lower() in _AVATAR_EXTS)
+        except OSError:
+            counts[g] = 0
+
+    return JSONResponse({"saved": saved, "gender": gender_val, "counts": counts})
+
+
+@factory_router.get("/avatar-list")
+async def get_avatar_list(gender: str = "male"):
+    """Return filenames for all pending avatars of the given gender."""
+    if gender not in ("male", "female"):
+        return JSONResponse({"error": "gender must be male or female"}, status_code=400)
+    folder = os.path.join(PENDING_AVATARS_DIR, gender)
+    os.makedirs(folder, exist_ok=True)
+    try:
+        files = sorted(
+            f for f in os.listdir(folder)
+            if os.path.splitext(f)[1].lower() in _AVATAR_EXTS
+        )
+    except OSError:
+        files = []
+    return JSONResponse({"gender": gender, "files": files})
+
+
+@factory_router.delete("/avatar/{gender}/{filename}")
+async def delete_avatar(gender: str, filename: str):
+    """Delete a specific pending avatar file."""
+    if gender not in ("male", "female"):
+        return JSONResponse({"error": "invalid gender"}, status_code=400)
+    # Sanitise — no path traversal
+    safe = os.path.basename(filename)
+    if not safe or safe != filename:
+        return JSONResponse({"error": "invalid filename"}, status_code=400)
+    path_to_del = os.path.join(PENDING_AVATARS_DIR, gender, safe)
+    if not os.path.isfile(path_to_del):
+        return JSONResponse({"error": "not found"}, status_code=404)
+    try:
+        os.remove(path_to_del)
+    except OSError as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse({"deleted": safe, "gender": gender})
+
+
+@factory_router.get("/avatar-image/{gender}/{filename}")
+async def serve_avatar_image(gender: str, filename: str):
+    """Serve a pending avatar image file."""
+    from fastapi.responses import FileResponse
+    if gender not in ("male", "female"):
+        return JSONResponse({"error": "invalid gender"}, status_code=400)
+    safe = os.path.basename(filename)
+    if not safe or safe != filename:
+        return JSONResponse({"error": "invalid filename"}, status_code=400)
+    img_path = os.path.join(PENDING_AVATARS_DIR, gender, safe)
+    if not os.path.isfile(img_path):
+        return JSONResponse({"error": "not found"}, status_code=404)
+    ext = os.path.splitext(safe)[1].lower()
+    media_types = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                   ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif"}
+    return FileResponse(img_path, media_type=media_types.get(ext, "image/jpeg"))

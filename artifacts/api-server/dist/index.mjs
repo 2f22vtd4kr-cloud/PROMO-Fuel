@@ -59342,6 +59342,51 @@ router15.post("/upload-avatars", async (req, res) => {
     return void res.status(502).json({ error: String(err) });
   }
 });
+router15.get("/avatar-list", async (req, res) => {
+  const pythonPort = process.env["PYTHON_API_PORT"] ?? "8083";
+  try {
+    const gender = req.query["gender"] ?? "male";
+    const r = await fetch(`http://127.0.0.1:${pythonPort}/api/factory/avatar-list?gender=${gender}`, {
+      signal: AbortSignal.timeout(5e3)
+    });
+    const data = await r.json();
+    return void res.status(r.ok ? 200 : r.status).json(data);
+  } catch (err) {
+    return void res.status(502).json({ error: String(err) });
+  }
+});
+router15.delete("/avatar/:gender/:filename", async (req, res) => {
+  const pythonPort = process.env["PYTHON_API_PORT"] ?? "8083";
+  try {
+    const { gender, filename } = req.params;
+    const r = await fetch(
+      `http://127.0.0.1:${pythonPort}/api/factory/avatar/${encodeURIComponent(gender)}/${encodeURIComponent(filename)}`,
+      { method: "DELETE", signal: AbortSignal.timeout(5e3) }
+    );
+    const data = await r.json();
+    return void res.status(r.ok ? 200 : r.status).json(data);
+  } catch (err) {
+    return void res.status(502).json({ error: String(err) });
+  }
+});
+router15.get("/avatar-image/:gender/:filename", async (req, res) => {
+  const pythonPort = process.env["PYTHON_API_PORT"] ?? "8083";
+  try {
+    const { gender, filename } = req.params;
+    const r = await fetch(
+      `http://127.0.0.1:${pythonPort}/api/factory/avatar-image/${encodeURIComponent(gender)}/${encodeURIComponent(filename)}`,
+      { signal: AbortSignal.timeout(1e4) }
+    );
+    if (!r.ok) return void res.status(r.status).json({ error: "not found" });
+    const ct = r.headers.get("content-type") ?? "image/jpeg";
+    res.setHeader("Content-Type", ct);
+    res.setHeader("Cache-Control", "no-cache");
+    const buf = await r.arrayBuffer();
+    return void res.end(Buffer.from(buf));
+  } catch (err) {
+    return void res.status(502).json({ error: String(err) });
+  }
+});
 var factory_default = router15;
 
 // src/routes/sync.ts

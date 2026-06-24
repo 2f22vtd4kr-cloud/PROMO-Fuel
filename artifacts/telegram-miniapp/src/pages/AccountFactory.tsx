@@ -726,6 +726,9 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [showMaleUpload,     setShowMaleUpload]     = useState(false);
   const [showFemaleUpload,   setShowFemaleUpload]   = useState(false);
   const [uploadingGender,    setUploadingGender]    = useState<"male" | "female" | null>(null);
+  const [avatarFiles,        setAvatarFiles]        = useState<{ male: string[]; female: string[] }>({ male: [], female: [] });
+  const [showAvatarBrowser,  setShowAvatarBrowser]  = useState<"male" | "female" | null>(null);
+  const [deletingAvatar,     setDeletingAvatar]     = useState<string | null>(null);
   const [profFirstName,      setProfFirstName]      = useState("");
   const [profLastName,       setProfLastName]       = useState("");
   const [profBio,            setProfBio]            = useState("");
@@ -833,11 +836,48 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
         headers: authHeaders(),
         body: fd,
       });
-      if (r.ok) await fetchAvatarCounts();
+      if (r.ok) {
+        const data = await r.json() as { saved?: number; counts?: { male?: number; female?: number } };
+        if (data.counts) {
+          // Instantly update counter from response — no extra round-trip needed
+          setAvatarCounts({ male: data.counts.male ?? 0, female: data.counts.female ?? 0 });
+        } else {
+          await fetchAvatarCounts();
+        }
+        // Refresh the browser list for this gender if it's open
+        if (showAvatarBrowser === gender) void fetchAvatarList(gender);
+      }
     } catch { /* silent */ } finally {
       setUploadingGender(null);
     }
-  }, [fetchAvatarCounts]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchAvatarCounts, showAvatarBrowser]);
+
+  const fetchAvatarList = useCallback(async (gender: "male" | "female") => {
+    try {
+      const r = await fetch(`/api/factory/avatar-list?gender=${gender}`, { headers: authHeaders() });
+      if (r.ok) {
+        const d = await r.json() as { files?: string[] };
+        setAvatarFiles(prev => ({ ...prev, [gender]: d.files ?? [] }));
+      }
+    } catch { /* silent */ }
+  }, []);
+
+  const handleDeleteAvatar = useCallback(async (gender: "male" | "female", filename: string) => {
+    setDeletingAvatar(filename);
+    try {
+      const r = await fetch(`/api/factory/avatar/${gender}/${encodeURIComponent(filename)}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      if (r.ok) {
+        setAvatarFiles(prev => ({ ...prev, [gender]: prev[gender].filter(f => f !== filename) }));
+        setAvatarCounts(prev => ({ ...prev, [gender]: Math.max(0, prev[gender] - 1) }));
+      }
+    } catch { /* silent */ } finally {
+      setDeletingAvatar(null);
+    }
+  }, []);
 
   // Stock checker
   const [showStock,    setShowStock]    = useState(true);
@@ -3482,18 +3522,20 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
                       {([
-                        { key: "male",   label: L("♂ Man",    "♂ Чоловік"),  color: "#60a5fa" },
-                        { key: "female", label: L("♀ Woman",  "♀ Жінка"),    color: "#f472b6" },
-                        { key: "random", label: L("⚄ Random", "⚄ Рандом"),   color: "#a78bfa" },
+                        { key: "male",   icon: "♂",  label: L("Man",    "Чоловік"),  color: "#60a5fa" },
+                        { key: "female", icon: "♀",  label: L("Woman",  "Жінка"),    color: "#f472b6" },
+                        { key: "random", icon: "🔀", label: L("Random", "Рандом"),   color: "#a78bfa" },
                       ] as const).map(opt => (
                         <button key={opt.key} onClick={() => setAiGender(opt.key)} style={{
                           flex: 1, padding: "7px 4px", borderRadius: 9, fontSize: 11, fontWeight: 700,
-                          cursor: "pointer", transition: "all .15s",
+                          cursor: "pointer", transition: "all .15s", display: "flex",
+                          alignItems: "center", justifyContent: "center", gap: 4,
                           background: aiGender === opt.key ? `${opt.color}22` : "rgba(255,255,255,0.04)",
                           border: aiGender === opt.key ? `1.5px solid ${opt.color}66` : "1.5px solid rgba(255,255,255,0.08)",
                           color: aiGender === opt.key ? opt.color : "rgba(255,255,255,0.38)",
                         }}>
-                          {opt.label}
+                          <span style={{ fontSize: 13, lineHeight: 1 }}>{opt.icon}</span>
+                          <span>{opt.label}</span>
                         </button>
                       ))}
                     </div>
@@ -3519,6 +3561,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                       const showUpload = g === "male" ? showMaleUpload : showFemaleUpload;
                       const setShowUpload = g === "male" ? setShowMaleUpload : setShowFemaleUpload;
                       const gColor = g === "male" ? "#60a5fa" : "#f472b6";
+                      const gIcon  = g === "male" ? "♂" : "♀";
                       const barColor = count === 0 ? "#374151"
                         : count < 5  ? "#ef4444"
                         : count < 15 ? "#f59e0b"
@@ -3526,11 +3569,17 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                       const barPct = Math.min(100, Math.round((count / 30) * 100));
                       const gLabel = g === "male" ? L("Male", "Чоловічі") : L("Female", "Жіночі");
                       const isUploading = uploadingGender === g;
+                      const isBrowsing = showAvatarBrowser === g;
 
                       return (
                         <div key={g} style={{ marginBottom: 8 }}>
+                          {/* Row: label + bar + count + buttons */}
                           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                            <span style={{ fontSize: 10, color: gColor, fontWeight: 700, minWidth: 52 }}>{gLabel}</span>
+                            <span style={{ fontSize: 10, color: gColor, fontWeight: 700, minWidth: 60,
+                              display: "flex", alignItems: "center", gap: 3 }}>
+                              <span style={{ fontSize: 12 }}>{gIcon}</span>
+                              {gLabel}
+                            </span>
                             <div style={{ flex: 1, height: 5, borderRadius: 3,
                               background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
                               <div style={{
@@ -3540,9 +3589,32 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                                 transition: "width .4s, background .4s",
                               }} />
                             </div>
-                            <span style={{ fontSize: 10, color: barColor, fontWeight: 700, minWidth: 22, textAlign: "right" }}>
+                            <span style={{ fontSize: 11, color: barColor, fontWeight: 700, minWidth: 22, textAlign: "right" }}>
                               {count}
                             </span>
+                            {/* Browse / manage button */}
+                            {count > 0 && (
+                              <button
+                                onClick={() => {
+                                  if (isBrowsing) {
+                                    setShowAvatarBrowser(null);
+                                  } else {
+                                    setShowAvatarBrowser(g);
+                                    void fetchAvatarList(g);
+                                  }
+                                }}
+                                style={{
+                                  background: isBrowsing ? `${gColor}22` : "rgba(255,255,255,0.05)",
+                                  border: `1px solid ${isBrowsing ? gColor + "55" : "rgba(255,255,255,0.1)"}`,
+                                  borderRadius: 6, padding: "3px 8px",
+                                  fontSize: 10, color: isBrowsing ? gColor : "rgba(255,255,255,0.4)",
+                                  cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap",
+                                }}
+                              >
+                                {isBrowsing ? "✕" : "📂"}
+                              </button>
+                            )}
+                            {/* Upload button */}
                             <button
                               onClick={() => setShowUpload(v => !v)}
                               style={{
@@ -3553,10 +3625,11 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                                 cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap",
                               }}
                             >
-                              {showUpload ? L("▲ Close", "▲ Закрити") : L("+ Add", "+ Додати")}
+                              {showUpload ? "▲" : L("+ Add", "+ Додати")}
                             </button>
                           </div>
 
+                          {/* Upload area */}
                           {showUpload && (
                             <label style={{
                               display: "flex", alignItems: "center", gap: 8,
@@ -3564,6 +3637,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                               border: `1.5px dashed ${gColor}44`,
                               borderRadius: 9, padding: "8px 12px", cursor: "pointer",
                               fontSize: 11, color: isUploading ? gColor : "rgba(255,255,255,0.4)",
+                              marginBottom: 6,
                             }}>
                               <span style={{ fontSize: 16 }}>{isUploading ? "⏳" : "+"}</span>
                               {isUploading
@@ -3581,6 +3655,53 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                                 }}
                               />
                             </label>
+                          )}
+
+                          {/* Photo browser grid */}
+                          {isBrowsing && (
+                            <div style={{
+                              background: "rgba(255,255,255,0.03)",
+                              border: `1px solid ${gColor}33`,
+                              borderRadius: 9, padding: 8, marginBottom: 4,
+                            }}>
+                              {avatarFiles[g].length === 0 ? (
+                                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.28)", textAlign: "center", padding: "8px 0" }}>
+                                  {L("Loading…", "Завантаження…")}
+                                </div>
+                              ) : (
+                                <div style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "repeat(auto-fill, minmax(60px, 1fr))",
+                                  gap: 6,
+                                }}>
+                                  {avatarFiles[g].map(fname => (
+                                    <div key={fname} style={{ position: "relative", aspectRatio: "1", borderRadius: 7, overflow: "hidden",
+                                      border: `1px solid ${gColor}33`, background: "rgba(0,0,0,0.3)" }}>
+                                      <img
+                                        src={`/api/factory/avatar-image/${g}/${encodeURIComponent(fname)}`}
+                                        alt={fname}
+                                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                                      />
+                                      <button
+                                        disabled={deletingAvatar === fname}
+                                        onClick={() => void handleDeleteAvatar(g, fname)}
+                                        style={{
+                                          position: "absolute", top: 2, right: 2,
+                                          background: "rgba(239,68,68,0.85)",
+                                          border: "none", borderRadius: 4,
+                                          width: 18, height: 18,
+                                          display: "flex", alignItems: "center", justifyContent: "center",
+                                          cursor: "pointer", fontSize: 9, color: "#fff", fontWeight: 700,
+                                          opacity: deletingAvatar === fname ? 0.5 : 1,
+                                        }}
+                                      >
+                                        {deletingAvatar === fname ? "…" : "✕"}
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
                       );
