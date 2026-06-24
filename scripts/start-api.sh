@@ -55,4 +55,25 @@ if [ ! -f "$API_DIST" ]; then
   cd "$WORKSPACE_ROOT/artifacts/api-server" && NODE_ENV=development node build.mjs
 fi
 
+TARGET_PORT="${PORT:-8080}"
+
+clear_port() {
+  local p="$1"
+  local pid
+  pid=$(ss -tlnp "sport = :$p" 2>/dev/null | grep -oP 'pid=\K\d+' | head -1 || true)
+  if [ -n "$pid" ] && [ "$pid" != "$$" ]; then
+    echo "Port $p held by PID $pid — killing it before starting..."
+    kill -9 "$pid" 2>/dev/null || true
+    sleep 0.5
+    return
+  fi
+  fuser -k "$p/tcp" 2>/dev/null || true
+}
+
+if ss -tlnp "sport = :$TARGET_PORT" 2>/dev/null | grep -q ":$TARGET_PORT"; then
+  echo "WARNING: Port $TARGET_PORT already in use — clearing before start..."
+  clear_port "$TARGET_PORT"
+  sleep 1
+fi
+
 exec node --enable-source-maps "$API_DIST"

@@ -50304,6 +50304,9 @@ var init_pg_pool = __esm({
   }
 });
 
+// src/index.ts
+import { execSync } from "child_process";
+
 // src/app.ts
 var import_express17 = __toESM(require_express2(), 1);
 var import_cors = __toESM(require_lib3(), 1);
@@ -60007,13 +60010,54 @@ var port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
-app_default.listen(port, "0.0.0.0", (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
+var MAX_RETRIES = 3;
+var RETRY_DELAY_MS = 1500;
+function killPortHolder(p) {
+  try {
+    const out = execSync(`ss -tlnp 'sport = :${p}' 2>/dev/null || true`, {
+      encoding: "utf8"
+    });
+    const pidMatch = out.match(/pid=(\d+)/);
+    if (pidMatch) {
+      const pid = pidMatch[1];
+      if (pid && pid !== String(process.pid)) {
+        execSync(`kill -9 ${pid} 2>/dev/null || true`);
+        logger.warn({ pid: Number(pid), port: p }, "Killed conflicting process holding port");
+        return true;
+      }
+    }
+  } catch {
   }
-  logger.info({ port }, "Server listening");
-});
+  try {
+    execSync(`fuser -k ${p}/tcp 2>/dev/null || true`);
+    logger.warn({ port: p }, "Cleared port via fuser");
+    return true;
+  } catch {
+    return false;
+  }
+}
+function startServer(attempt) {
+  const server = app_default.listen(port, "0.0.0.0", () => {
+    logger.info({ port, attempt }, "Server listening");
+  });
+  server.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      logger.warn({ port, attempt }, `EADDRINUSE on port ${port} (attempt ${attempt}/${MAX_RETRIES})`);
+      if (attempt >= MAX_RETRIES) {
+        logger.error({ port }, "Port still in use after max retries \u2014 giving up");
+        process.exit(1);
+      }
+      server.close(() => {
+        killPortHolder(port);
+        setTimeout(() => startServer(attempt + 1), RETRY_DELAY_MS);
+      });
+    } else {
+      logger.error({ err }, "Fatal server error");
+      process.exit(1);
+    }
+  });
+}
+startServer(1);
 /*! Bundled license information:
 
 depd/index.js:
