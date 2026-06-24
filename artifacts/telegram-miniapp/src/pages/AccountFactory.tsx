@@ -373,7 +373,8 @@ function ProxyGenHelper({
 // Inline component used inside the recycled-pool popup. Lets the user swap
 // both country AND proxy in one place before retrying.
 function RecycledPopupBody({
-  lang, L, currentProxy, currentCountry, customCountry, COUNTRIES, onSwitch, onCancel, onKeepGoing,
+  lang, L, currentProxy, currentCountry, customCountry, COUNTRIES,
+  onSwitch, onCancel, onKeepGoing, showKeepGoing = true, headerOverride,
 }: {
   lang: string;
   L: (en: string, ua: string) => string;
@@ -384,6 +385,8 @@ function RecycledPopupBody({
   onSwitch: (country: string, proxy: string) => void;
   onCancel: () => void;
   onKeepGoing: () => void;
+  showKeepGoing?: boolean;
+  headerOverride?: string;
 }) {
   const [newCountry, setNewCountry] = useState(currentCountry);
   const [newCustom,  setNewCustom]  = useState(customCountry);
@@ -413,7 +416,7 @@ function RecycledPopupBody({
         borderRadius: 12, padding: "11px 14px", marginBottom: 14,
         fontSize: 12, color: "rgba(255,200,50,0.9)", lineHeight: 1.6, fontWeight: 600,
       }}>
-        {L(
+        {headerOverride ?? L(
           "Numbers from this country are recycled — they already have Telegram accounts. " +
           "Switch country and the proxy URL will update automatically if it's a Decodo URL.",
           "Номери цієї країни переробленні — вони вже мають акаунти Telegram. " +
@@ -509,18 +512,20 @@ function RecycledPopupBody({
         />
       </div>
 
-      {/* Keep trying same country */}
-      <button
-        onClick={onKeepGoing}
-        style={{
-          width: "100%", padding: "12px 0", borderRadius: 13, marginBottom: 8,
-          background: "linear-gradient(135deg, rgba(45,232,151,0.22), rgba(45,232,151,0.1))",
-          border: "1px solid rgba(45,232,151,0.45)",
-          color: "#2de897", fontSize: 13, fontWeight: 800, cursor: "pointer",
-        }}
-      >
-        🔁 {L("Keep trying — fetch new number from same country", "Продовжити — новий номер з тієї ж країни")}
-      </button>
+      {/* Keep trying same country — hidden for low-rate failures */}
+      {showKeepGoing && (
+        <button
+          onClick={onKeepGoing}
+          style={{
+            width: "100%", padding: "12px 0", borderRadius: 13, marginBottom: 8,
+            background: "linear-gradient(135deg, rgba(45,232,151,0.22), rgba(45,232,151,0.1))",
+            border: "1px solid rgba(45,232,151,0.45)",
+            color: "#2de897", fontSize: 13, fontWeight: 800, cursor: "pointer",
+          }}
+        >
+          🔁 {L("Keep trying — fetch new number from same country", "Продовжити — новий номер з тієї ж країни")}
+        </button>
+      )}
 
       <div style={{ display: "flex", gap: 10 }}>
         <button
@@ -696,9 +701,9 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [warmupMode,    setWarmupMode]    = useState<"none" | "all" | "ask">("all");
   // Popup for "ask" mode — shown when backend emits warmup_prompt
   const [warmupPrompt,  setWarmupPrompt]  = useState<{ accountId: number; phone: string } | null>(null);
-  // Popup shown on SMS timeout or recycled-number failure
+  // Popup shown on SMS timeout, recycled-number failure, or low success rate
   const [smsRetryPrompt, setSmsRetryPrompt] = useState<{
-    reason: "timeout" | "recycled";
+    reason: "timeout" | "recycled" | "low_rate";
     message: string;
   } | null>(null);
   // Countries for which user chose "keep trying" — skip recycled popup next time
@@ -1335,9 +1340,12 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               phone:     p.phone     as string,
             });
           } else if (event === "sms_retry_prompt") {
-            // SMS timeout or recycled-number failure
+            // SMS timeout, recycled-number failure, or pre-buy low success rate
             const msg  = (p.message as string | undefined) ?? "";
-            const isRecycled = msg.includes("SentCodeTypeApp") || msg.includes("recycled");
+            // Low success rate: backend sends p.success_rate (number).
+            // Never auto-suppress this — the rate won't change until SMSPool improves.
+            const isLowRate = typeof p.success_rate === "number";
+            const isRecycled = !isLowRate && (msg.includes("SentCodeTypeApp") || msg.includes("recycled"));
             // Determine effective country key for suppression check
             const effectiveCountryKey = country === "custom" ? customCountry.trim() : country;
             if (isRecycled && suppressRecycledRef.current.has(effectiveCountryKey)) {
@@ -1349,7 +1357,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               void launch();
             } else {
               setSmsRetryPrompt({
-                reason:  isRecycled ? "recycled" : "timeout",
+                reason:  isLowRate ? "low_rate" : isRecycled ? "recycled" : "timeout",
                 message: msg,
               });
               setRunState("idle");
@@ -1469,6 +1477,9 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
       {/* ── SMS Retry / Recycled Pool Popup ────────────────────────────── */}
       {smsRetryPrompt && (() => {
         const isRecycled = smsRetryPrompt.reason === "recycled";
+        const isLowRate  = smsRetryPrompt.reason === "low_rate";
+        const accentColor = isRecycled || isLowRate ? "rgba(255,200,50,0.45)" : "rgba(255,107,122,0.4)";
+        const glowColor   = isRecycled || isLowRate ? "rgba(255,200,50,0.15)" : "rgba(255,107,122,0.2)";
         return (
           <div style={{
             position: "fixed", inset: 0, zIndex: 999,
@@ -1479,21 +1490,23 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           }}>
             <div style={{
               background: "rgba(12,15,26,0.98)",
-              border: `1px solid ${isRecycled ? "rgba(255,200,50,0.45)" : "rgba(255,107,122,0.4)"}`,
+              border: `1px solid ${accentColor}`,
               borderRadius: 22, padding: "28px 24px", maxWidth: 360, width: "100%",
-              boxShadow: `0 0 56px ${isRecycled ? "rgba(255,200,50,0.15)" : "rgba(255,107,122,0.2)"}`,
+              boxShadow: `0 0 56px ${glowColor}`,
               flexShrink: 0,
             }}>
               <div style={{ fontSize: 44, textAlign: "center", marginBottom: 14 }}>
-                {isRecycled ? "♻️" : "📵"}
+                {isRecycled ? "♻️" : isLowRate ? "📉" : "📵"}
               </div>
               <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", textAlign: "center", marginBottom: 8 }}>
                 {isRecycled
                   ? L("Recycled Number Pool", "Пул переробленних номерів")
-                  : L("SMS Timeout", "Час очікування SMS вичерпано")}
+                  : isLowRate
+                    ? L("Low SMS Success Rate", "Низький відсоток успішності SMS")
+                    : L("SMS Timeout", "Час очікування SMS вичерпано")}
               </div>
 
-              {isRecycled ? (
+              {isLowRate ? (
                 <RecycledPopupBody
                   lang={lang}
                   L={L}
@@ -1501,6 +1514,29 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   currentCountry={country}
                   customCountry={customCountry}
                   COUNTRIES={COUNTRIES}
+                  showKeepGoing={false}
+                  headerOverride={L(
+                    "This country has a low SMS success rate right now — buying would likely waste your balance. Switch to a different country.",
+                    "Ця країна зараз має низький відсоток доставки SMS — покупка, швидше за все, витратить баланс даремно. Змініть країну."
+                  )}
+                  onSwitch={(newCountry, newProxy) => {
+                    setSmsRetryPrompt(null);
+                    if (newProxy.trim()) setProxy(newProxy.trim());
+                    applyCountry(newCountry);
+                    setSmsPoolCountryId(newCountry);
+                  }}
+                  onCancel={() => setSmsRetryPrompt(null)}
+                  onKeepGoing={() => { /* not shown for low_rate */ }}
+                />
+              ) : isRecycled ? (
+                <RecycledPopupBody
+                  lang={lang}
+                  L={L}
+                  currentProxy={proxy}
+                  currentCountry={country}
+                  customCountry={customCountry}
+                  COUNTRIES={COUNTRIES}
+                  showKeepGoing={true}
                   onSwitch={(newCountry, newProxy) => {
                     setSmsRetryPrompt(null);
                     if (newProxy.trim()) setProxy(newProxy.trim());
