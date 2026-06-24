@@ -6,8 +6,8 @@
 
 WORKSPACE="$(cd "$(dirname "$0")/.." && pwd)"
 SENTINEL="$WORKSPACE/.deps-ready"
-PY="/home/runner/workspace/.pythonlibs/bin/python3"
-[ ! -x "$PY" ] && PY="$(which python3)"
+PY="$(which python3)"
+[ -x "/home/runner/workspace/.pythonlibs/bin/python3" ] && PY="/home/runner/workspace/.pythonlibs/bin/python3"
 
 echo "[post-merge] ══════════════════════════════════════════"
 echo "[post-merge] Parallel install: pip + pnpm + sqlite3"

@@ -10,8 +10,8 @@
 #   WITHOUT IT Telethon silently ignores the proxy → datacenter IP →
 #   Telegram returns SentCodeTypeApp on EVERY number → wasted SMSPool balance.
 
-PY="/home/runner/workspace/.pythonlibs/bin/python3"
-[ ! -x "$PY" ] && PY="$(which python3)"
+PY="$(which python3)"
+[ -x "/home/runner/workspace/.pythonlibs/bin/python3" ] && PY="/home/runner/workspace/.pythonlibs/bin/python3"
 
 SENTINEL="$(cd "$(dirname "$0")/.." && pwd)/.deps-ready"
 
