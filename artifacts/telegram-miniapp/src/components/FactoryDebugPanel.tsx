@@ -202,6 +202,7 @@ function eventColor(event: string, data: Record<string, unknown>): string {
   if (event === "error") return "#ff6b7a";
   if (event === "complete") return "#2de897";
   if (event === "poll") return "#60a5fa";
+  if (event === "debug") return "#06b6d4";
   if (event === "sms_retry_prompt") return "#fb923c";
   if (event === "preflight") {
     if (data.status === "error") return "#ff6b7a";
@@ -220,8 +221,20 @@ function eventColor(event: string, data: Record<string, unknown>): string {
   return "#94a3b8";
 }
 
+function debugLabel(data: Record<string, unknown>): string {
+  const msg = String(data.message ?? "");
+  try {
+    const parsed = JSON.parse(msg) as Record<string, unknown>;
+    const key = Object.keys(parsed)[0] ?? "DEBUG";
+    return key;
+  } catch {
+    return msg.slice(0, 80) || "DEBUG";
+  }
+}
+
 function eventLabel(entry: DebugLogEntry): string {
   const { event, data } = entry;
+  if (event === "debug") return debugLabel(data);
   if (event === "step") {
     const msg = (data.message as string | undefined) ?? "";
     const names = ["","🛒 SMSPool","📡 Proxy","💬 SendCode","⏳ SMS Wait","🤝 Sign-in","🔒 2FA","🪪 Profile","💾 Save"];
@@ -304,6 +317,90 @@ function DetailedAnalysis({ text }: { text: string }) {
   );
 }
 
+function DebugRow({ entry, isLast }: { entry: DebugLogEntry; isLast: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const color = eventColor(entry.event, entry.data);
+  const label = eventLabel(entry);
+
+  if (entry.event !== "debug") {
+    return (
+      <div style={{
+        display: "flex", alignItems: "flex-start", gap: 10,
+        padding: "3px 14px",
+        background: isLast ? "rgba(99,102,241,0.08)" : "transparent",
+      }}>
+        <span style={{ color: "rgba(255,255,255,0.28)", flexShrink: 0, fontSize: 10, paddingTop: 2 }}>
+          {fmtTime(entry.ts)}
+        </span>
+        <span style={{
+          flexShrink: 0, fontSize: 10, fontWeight: 800,
+          color, background: `${color}18`, border: `1px solid ${color}35`,
+          borderRadius: 6, padding: "1px 7px", letterSpacing: "0.04em",
+          minWidth: 58, textAlign: "center", lineHeight: "18px",
+        }}>
+          {entry.event === "step"
+            ? `step ${entry.data.step}`
+            : entry.event.replace("batch_", "bt/").replace("warmup_", "wu/")}
+        </span>
+        <span style={{ color: "rgba(255,255,255,0.82)", flex: 1, wordBreak: "break-word", fontSize: 11.5 }}>
+          {label}
+        </span>
+      </div>
+    );
+  }
+
+  let parsed: unknown = null;
+  try { parsed = JSON.parse(String(entry.data.message ?? "")); } catch {}
+
+  return (
+    <div style={{ borderBottom: expanded ? "1px solid rgba(6,182,212,0.12)" : "none" }}>
+      <div
+        onClick={() => setExpanded(o => !o)}
+        style={{
+          display: "flex", alignItems: "flex-start", gap: 10,
+          padding: "3px 14px", cursor: "pointer",
+          background: expanded ? "rgba(6,182,212,0.06)" : isLast ? "rgba(99,102,241,0.08)" : "transparent",
+        }}
+      >
+        <span style={{ color: "rgba(255,255,255,0.28)", flexShrink: 0, fontSize: 10, paddingTop: 2 }}>
+          {fmtTime(entry.ts)}
+        </span>
+        <span style={{
+          flexShrink: 0, fontSize: 10, fontWeight: 800,
+          color, background: `${color}18`, border: `1px solid ${color}35`,
+          borderRadius: 6, padding: "1px 7px", letterSpacing: "0.04em",
+          minWidth: 58, textAlign: "center", lineHeight: "18px",
+        }}>
+          🔬 DBG
+        </span>
+        <span style={{ color, flex: 1, wordBreak: "break-word", fontSize: 11.5, fontWeight: 700 }}>
+          {label}
+        </span>
+        <span style={{ color: `${color}80`, fontSize: 10, flexShrink: 0, paddingTop: 2 }}>
+          {expanded ? "▲" : "▼"}
+        </span>
+      </div>
+      {expanded && (
+        <div style={{
+          margin: "0 14px 8px",
+          background: "rgba(6,182,212,0.04)",
+          border: "1px solid rgba(6,182,212,0.18)",
+          borderRadius: 8,
+          padding: "8px 10px",
+          fontSize: 10.5,
+          color: "rgba(255,255,255,0.78)",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-all",
+          maxHeight: 300,
+          overflowY: "auto",
+        }}>
+          {parsed !== null ? JSON.stringify(parsed, null, 2) : String(entry.data.message ?? "")}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EventLog({ logs, scrollRef }: { logs: DebugLogEntry[]; scrollRef?: React.RefObject<HTMLDivElement | null> }) {
   return (
     <div ref={scrollRef} style={{
@@ -321,34 +418,9 @@ function EventLog({ logs, scrollRef }: { logs: DebugLogEntry[]; scrollRef?: Reac
           No events yet — start a registration
         </div>
       ) : (
-        logs.map((entry, i) => {
-          const color = eventColor(entry.event, entry.data);
-          const label = eventLabel(entry);
-          return (
-            <div key={i} style={{
-              display: "flex", alignItems: "flex-start", gap: 10,
-              padding: "3px 14px",
-              background: i === logs.length - 1 ? "rgba(99,102,241,0.08)" : "transparent",
-            }}>
-              <span style={{ color: "rgba(255,255,255,0.28)", flexShrink: 0, fontSize: 10, paddingTop: 2 }}>
-                {fmtTime(entry.ts)}
-              </span>
-              <span style={{
-                flexShrink: 0, fontSize: 10, fontWeight: 800,
-                color, background: `${color}18`, border: `1px solid ${color}35`,
-                borderRadius: 6, padding: "1px 7px", letterSpacing: "0.04em",
-                minWidth: 58, textAlign: "center", lineHeight: "18px",
-              }}>
-                {entry.event === "step"
-                  ? `step ${entry.data.step}`
-                  : entry.event.replace("batch_", "bt/").replace("warmup_", "wu/")}
-              </span>
-              <span style={{ color: "rgba(255,255,255,0.82)", flex: 1, wordBreak: "break-word", fontSize: 11.5 }}>
-                {label}
-              </span>
-            </div>
-          );
-        })
+        logs.map((entry, i) => (
+          <DebugRow key={i} entry={entry} isLast={i === logs.length - 1} />
+        ))
       )}
     </div>
   );

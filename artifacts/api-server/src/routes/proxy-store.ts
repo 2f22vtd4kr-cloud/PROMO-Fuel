@@ -1,5 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import pg from "pg";
+import Database from "better-sqlite3";
+import { DB_PATH } from "../lib/db-path";
 
 const { Pool } = pg;
 
@@ -131,16 +133,29 @@ router.patch("/proxy-store/:id/session-num", async (req: Request, res: Response)
 
 /**
  * DELETE /api/proxy-store/:id
+ * Deletes from PostgreSQL AND SQLite saved_proxies (matched by proxy_string).
  */
 router.delete("/proxy-store/:id", async (req: Request, res: Response) => {
   const id = Number(req.params["id"]);
   if (!Number.isInteger(id) || id <= 0) return void res.status(400).json({ error: "Invalid id" });
   try {
-    const result = await pool.query(
-      "DELETE FROM saved_proxies WHERE id = $1 RETURNING id",
+    const result = await pool.query<{ id: number; proxy_string: string }>(
+      "DELETE FROM saved_proxies WHERE id = $1 RETURNING id, proxy_string",
       [id]
     );
     if (result.rows.length === 0) return void res.status(404).json({ error: "Not found" });
+
+    const proxyString = result.rows[0]?.proxy_string;
+    if (proxyString) {
+      try {
+        const db = new Database(DB_PATH);
+        db.prepare("DELETE FROM saved_proxies WHERE proxy_string = ?").run(proxyString);
+        db.close();
+      } catch (sqliteErr) {
+        console.warn("[proxy-store] SQLite mirror delete failed (non-fatal):", sqliteErr);
+      }
+    }
+
     res.json({ deleted: true, id });
   } catch (err) {
     res.status(500).json({ error: String(err) });

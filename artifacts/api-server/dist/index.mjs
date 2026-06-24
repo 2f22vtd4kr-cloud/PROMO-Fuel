@@ -58426,6 +58426,7 @@ var ai_default = router12;
 // src/routes/proxy-store.ts
 var import_express13 = __toESM(require_express2(), 1);
 init_esm();
+import Database12 from "better-sqlite3";
 var { Pool: Pool3 } = esm_default;
 var pool = new Pool3({ connectionString: process.env["DATABASE_URL"] });
 var router13 = (0, import_express13.Router)();
@@ -58524,10 +58525,20 @@ router13.delete("/proxy-store/:id", async (req, res) => {
   if (!Number.isInteger(id) || id <= 0) return void res.status(400).json({ error: "Invalid id" });
   try {
     const result = await pool.query(
-      "DELETE FROM saved_proxies WHERE id = $1 RETURNING id",
+      "DELETE FROM saved_proxies WHERE id = $1 RETURNING id, proxy_string",
       [id]
     );
     if (result.rows.length === 0) return void res.status(404).json({ error: "Not found" });
+    const proxyString = result.rows[0]?.proxy_string;
+    if (proxyString) {
+      try {
+        const db = new Database12(DB_PATH);
+        db.prepare("DELETE FROM saved_proxies WHERE proxy_string = ?").run(proxyString);
+        db.close();
+      } catch (sqliteErr) {
+        console.warn("[proxy-store] SQLite mirror delete failed (non-fatal):", sqliteErr);
+      }
+    }
     res.json({ deleted: true, id });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -58563,7 +58574,7 @@ var routes_default = router14;
 
 // src/routes/factory.ts
 var import_express15 = __toESM(require_express2(), 1);
-import Database12 from "better-sqlite3";
+import Database13 from "better-sqlite3";
 var router15 = (0, import_express15.Router)();
 var SMSPOOL_STOCK_URL = "https://api.smspool.net/country/retrieve_all";
 var SMSPOOL_BALANCE_URL = "https://api.smspool.net/request/balance";
@@ -58574,7 +58585,7 @@ var TELEGRAM_SERVICE_ID = "907";
 var _cache = /* @__PURE__ */ new Map();
 var _serviceCache = /* @__PURE__ */ new Map();
 function ensureStatsTable() {
-  const db = new Database12(DB_PATH);
+  const db = new Database13(DB_PATH);
   try {
     db.prepare(`
       CREATE TABLE IF NOT EXISTS factory_country_stats (
@@ -58596,7 +58607,7 @@ try {
 }
 function getOwnStats() {
   try {
-    const db = new Database12(DB_PATH, { readonly: true });
+    const db = new Database13(DB_PATH, { readonly: true });
     try {
       const rows = db.prepare(
         "SELECT country_id, country_name, attempts, successes, recycled FROM factory_country_stats WHERE attempts > 0"
@@ -59267,7 +59278,7 @@ router15.post("/country-stats", (req, res) => {
     return void res.status(400).json({ error: "type must be attempt, success, or recycled" });
   }
   try {
-    const db = new Database12(DB_PATH);
+    const db = new Database13(DB_PATH);
     try {
       ensureStatsTable();
       const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -59393,7 +59404,7 @@ var logger = (0, import_pino.default)({
 });
 
 // src/lib/watchdog.ts
-import Database13 from "better-sqlite3";
+import Database14 from "better-sqlite3";
 
 // src/lib/notify.ts
 var TELEGRAM_API = "https://api.telegram.org";
@@ -59459,7 +59470,7 @@ function alreadySent(db, eventType, entityId) {
 async function checkCampaigns() {
   let db = null;
   try {
-    db = new Database13(DB_PATH);
+    db = new Database14(DB_PATH);
     ensureNotificationsTable(db);
     const campaigns = db.prepare(
       `SELECT id, name, status, sent_count, failed_count, target_count
@@ -59490,7 +59501,7 @@ async function checkCampaigns() {
 async function checkWorkers() {
   let db = null;
   try {
-    db = new Database13(DB_PATH);
+    db = new Database14(DB_PATH);
     ensureNotificationsTable(db);
     const workers = db.prepare("SELECT worker_id, pid, last_heartbeat, last_error FROM broadcast_workers").all();
     const now = Date.now();

@@ -14,28 +14,33 @@
 
 ## This session
 
-**Task:** Debug panel in AccountFactory with session history + .md download.
+**Task:** Three improvements:
+1. ✅ Last-saved indicator + manual PG backup trigger in Accounts page
+2. ✅ Cross-DB deletion — proxy delete now also cleans SQLite `saved_proxies`
+3. ✅ Account Factory debug panel — `debug` SSE events now properly visible and expandable
 
-### What was built
+### What was built / fixed
 
 **`artifacts/telegram-miniapp/src/components/FactoryDebugPanel.tsx`**
-- Foldable glass panel (indigo/purple) above action buttons in AccountFactory
-- Live event log: monospace, auto-scroll, 220px, color-coded event badges
-- Header alert badges: "DC IP!" (red) or "recycled" (orange) + "N saved" pill
-- Header toolbar: Copy raw | **Download .md** | Clear
-- **AI analysis section** — optional question input + "Аналіз AI" button → `POST /api/v3/ai/factory-debug` (Gemini 2.5 Flash primary, Groq fallback) → SeverityChip + engine badge + summary + issues▸ + suggestions✓ + collapsible detailed analysis
-- **Session history** — auto-saves to `localStorage["pf_factory_debug_sessions"]` (max 10) when `runState` transitions `running → done/error`
-- History UI: collapsible "SESSION HISTORY" section, per-session: label + event count + DC/recycled flags + **View** / **Download ↓** / **Delete** buttons
-- "View" loads a past session into the log view with an orange banner; "✕" returns to live log
-- **Download .md** (current or any saved session): generates LLM-friendly markdown with session summary, step-by-step breakdown, architecture reference, full event table, and raw JSON — filename `factory_debug_YYYYMMDD_HHMM.md`
+- Added `debug` event color `#06b6d4` (cyan) in `eventColor()`
+- Added `debugLabel()` helper: parses JSON message, extracts the key name (e.g. `🔧 TELETHON_INIT`) as the label
+- Replaced the flat row renderer in `EventLog` with a new `DebugRow` sub-component:
+  - Non-debug events: same monospace row as before
+  - `debug` events: cyan `🔬 DBG` badge, key label, **click to expand** — shows full pretty-printed JSON in a cyan-tinted panel (maxHeight 300px, scrollable)
+- Account Factory already emits `TELETHON_INIT`, `SEND_CODE_RESPONSE`, `SMSPOOL_CHECK`, `SMSPOOL_ACTIVE` as `debug` SSE events → these now appear visibly and are expandable
 
-**`artifacts/api-server/src/routes/ai.ts`** — `POST /api/v3/ai/factory-debug`
-- Already documented in previous turn — unchanged this turn
+**`artifacts/api-server/src/routes/proxy-store.ts`**
+- Added `import Database from "better-sqlite3"` + `import { DB_PATH } from "../lib/db-path"`
+- `DELETE /api/proxy-store/:id` now: deletes from PG (primary), then mirrors delete to SQLite `saved_proxies` by `proxy_string` match (non-fatal if SQLite fails)
 
-**`artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`**
-- Added `runState` prop to `<FactoryDebugPanel>` so auto-save fires on completion
+**Accounts page sync indicator (already existed):**
+- `GET /api/sync/status` → `artifacts/api-server/src/routes/sync.ts` → queries `pf_db_snapshot WHERE key='main'` in PG
+- `POST /api/sync/now` → sync.ts calls Python apiserver `POST /internal/sync` → `db_sync.save_snapshot()`
+- Python `/internal/sync` already existed in `apiserver.py` (line 1013)
+- UI in `Accounts.tsx` lines 1059-1081 + 1369-1393 already complete — `loadSyncStatus()` called on mount
 
-**Status:** build clean (1711 modules, 0 errors), both workflows running, HMR applied
+**better-sqlite3 rebuild (cold-start fix):**
+- `ensure-sqlite3.sh` only rebuilds when `.node` file is absent; after a Node version change the stale binary must be manually deleted first: `rm .../better_sqlite3.node && bash scripts/ensure-sqlite3.sh`
 
 ---
 
@@ -66,10 +71,15 @@ Non-sensitive: `PORT=8080`.
 
 Vite proxy: ALL `/api/*` → port 8080 (Node.js)
 
-### Account Factory rules
-- **CodeSettings:** ALL `RawSendCodeRequest` MUST have `allow_app_hash=False, unknown_number=True`
-- SSE events collected: preflight, step, poll, error, complete, sms_retry_prompt, warmup_*, batch_*
-- `pf_factory_debug_sessions` localStorage key — max 10 sessions
+### Account Factory debug SSE events
+Backend emits `debug` type SSE with `{"message": "JSON string"}` at:
+- `TELETHON_INIT` — after proxy + Telethon client init (~line 1097 of account_factory.py)
+- `SEND_CODE_RESPONSE` — after `SendCode` call (~line 1200)
+- `SMSPOOL_CHECK` / `SMSPOOL_ACTIVE` — during SMS polling (~lines 1538, 1579)
 
 ### Cold-start
-`better-sqlite3` binary not committed → `npm rebuild better-sqlite3 --build-from-source` on cold start.
+If `ensure-sqlite3.sh` says "already built" but server crashes with NODE_MODULE_VERSION error:
+```
+rm node_modules/.pnpm/better-sqlite3@12.10.1/node_modules/better-sqlite3/build/Release/better_sqlite3.node
+bash scripts/ensure-sqlite3.sh
+```
