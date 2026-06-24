@@ -567,6 +567,8 @@ interface AiCountryCacheEntry {
 }
 
 const _aiCountryCache = new Map<string, AiCountryCacheEntry>();
+const _singleCountryCache = new Map<string, { ts: number; entry: AiCountryEntry; model: string }>();
+const SINGLE_COUNTRY_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours
 const AI_CACHE_TTL_MS        = 12 * 60 * 60 * 1000;  // 12 hours (twice daily refresh)
 const AI_REFRESH_INTERVAL_MS = 12 * 60 * 60 * 1000;  // refresh every 12 hours (twice per day)
 // Cache version — bump to force regeneration after research data update
@@ -728,6 +730,128 @@ async function refreshAiCache() {
 
 // Schedule background refresh every 12 hours
 setInterval(() => { void refreshAiCache(); }, AI_REFRESH_INTERVAL_MS);
+
+// ── Single-country AI analysis ────────────────────────────────────────────────
+
+async function buildAiCountryAnalysis(id: string, name: string): Promise<{ entry: AiCountryEntry; model: string }> {
+  const GEMINI_API_KEY = process.env["GEMINI_API_KEY"];
+  const GROQ_API_KEY   = process.env["GROQ_API_KEY"];
+  if (!GEMINI_API_KEY && !GROQ_API_KEY) {
+    throw new Error("No AI API key configured (GEMINI_API_KEY or GROQ_API_KEY required)");
+  }
+
+  const ownStats  = getOwnStats();
+  const ownEntry  = ownStats.find(s => s.country_id.toLowerCase() === id.toLowerCase());
+  const ownLine   = ownEntry
+    ? `Our own DB: ${ownEntry.attempts} attempts, ${ownEntry.successes} successes, ${ownEntry.recycled} recycled` +
+      (ownEntry.avg_attempts != null ? `, avg_attempts=${ownEntry.avg_attempts}` : "")
+    : `We have no registration experience with ${name} (${id}) yet.`;
+
+  const prompt = `You are a specialized analyst for SMSPool.net Telegram account registration freshness.
+Analyze the following country specifically for Telegram account registration via SMSPool.
+
+Country to analyze: ${name} (SMSPool code: ${id})
+
+${COMMUNITY_RESEARCH}
+
+${ownLine}
+
+Return ONLY valid JSON (no markdown, no text outside JSON), exactly this shape:
+{
+  "entry": {
+    "rank": 0,
+    "id": "${id}",
+    "name": "${name}",
+    "freshness": <integer 0-100: % chance a purchased number is NOT already on Telegram>,
+    "avg_attempts": <decimal: avg numbers to buy per successful fresh registration>,
+    "reasoning": "<2-3 sentences citing specific community research data or our own data; be concrete about telecom providers and Telegram penetration>",
+    "data_source": "<own_experience if own DB successes>=3, community_research if in research data above, ai_estimate otherwise>"
+  },
+  "model": "gemini-2.5-flash"
+}
+
+Rules:
+- freshness and avg_attempts MUST match the community research data exactly if ${name} appears there.
+- If our own DB has 3+ successes, use that avg_attempts and set data_source="own_experience".
+- Be honest: if ${name} is a poor choice (e.g., high Telegram penetration), say so with low freshness.
+- reasoning must cite the specific data source, not generic statements.`;
+
+  let raw = "";
+  let modelUsed = "unknown";
+  let geminiError: string | null = null;
+
+  if (GEMINI_API_KEY) {
+    try {
+      const { GoogleGenAI } = await import("@google/genai");
+      const genai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+      const response = await genai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      });
+      raw = response.text ?? "";
+      modelUsed = "gemini-2.5-flash";
+    } catch (err: unknown) {
+      geminiError = String(err);
+      const isTransient = /503|502|UNAVAILABLE|high demand|overloaded|quota|rate.?limit|exceeded/i.test(geminiError);
+      if (!isTransient || !GROQ_API_KEY) throw err;
+      console.warn("[factory/ai-country/gemini] Transient, falling back to Groq:", geminiError.slice(0, 160));
+    }
+  }
+
+  if (!raw && GROQ_API_KEY) {
+    const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        max_tokens: 800,
+      }),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`Groq HTTP ${resp.status}: ${errText.slice(0, 200)}`);
+    }
+    const json = await resp.json() as { choices?: { message?: { content?: string } }[] };
+    raw = json.choices?.[0]?.message?.content ?? "";
+    modelUsed = `groq-llama-3.3-70b${geminiError ? " (gemini-fallback)" : ""}`;
+  }
+
+  if (!raw) throw new Error(geminiError ?? "No AI key configured");
+
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+  const parsed  = JSON.parse(cleaned) as { entry?: AiCountryEntry; model?: string };
+  if (!parsed.entry) throw new Error("AI returned no entry");
+
+  // Override avg_attempts with our own DB data if sufficient
+  if (ownEntry && ownEntry.successes >= 3 && ownEntry.avg_attempts != null) {
+    parsed.entry.avg_attempts = ownEntry.avg_attempts;
+    parsed.entry.data_source  = "own_experience";
+  }
+
+  modelUsed = parsed.model ?? modelUsed;
+  return { entry: parsed.entry, model: modelUsed };
+}
+
+router.get("/ai-country", async (req: Request, res: Response) => {
+  const { id, name } = req.query as { id?: string; name?: string };
+  if (!id) return void res.status(400).json({ error: "?id= is required" });
+
+  const cacheKey = id.toLowerCase();
+  const cached   = _singleCountryCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < SINGLE_COUNTRY_CACHE_TTL) {
+    return void res.json({ entry: cached.entry, model: cached.model, cached: true });
+  }
+
+  try {
+    const result = await buildAiCountryAnalysis(id.toLowerCase(), name || id.toUpperCase());
+    _singleCountryCache.set(cacheKey, { ts: Date.now(), entry: result.entry, model: result.model });
+    return void res.json({ entry: result.entry, model: result.model, cached: false });
+  } catch (err: unknown) {
+    return void res.status(502).json({ error: `AI analysis failed: ${String(err)}` });
+  }
+});
 
 router.get("/ai-countries", async (_req: Request, res: Response) => {
   const cacheKey = `default_${AI_CACHE_VERSION}`;

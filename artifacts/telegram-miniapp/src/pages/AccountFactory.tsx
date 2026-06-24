@@ -837,6 +837,16 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     reasoning: string; data_source?: "own_experience" | "community_research" | "ai_estimate";
   }[]>([]);
 
+  type AiCountryEntry = {
+    rank: number; id: string; name: string; freshness: number; avg_attempts: number;
+    reasoning: string; data_source?: "own_experience" | "community_research" | "ai_estimate";
+  };
+  const [countryAiEntry,   setCountryAiEntry]   = useState<AiCountryEntry | null>(null);
+  const [countryAiLoading, setCountryAiLoading] = useState(false);
+  const [countryAiError,   setCountryAiError]   = useState<string | null>(null);
+  const [countryAiModel,   setCountryAiModel]   = useState("");
+  const [countryAiTarget,  setCountryAiTarget]  = useState<{ id: string; name: string } | null>(null);
+
   // Freshness reporting per country row
   const [reportingCountryId, setReportingCountryId] = useState<string | null>(null);
   const [reportSent,         setReportSent]         = useState<Record<string, "fresh" | "recycled">>({});
@@ -968,6 +978,30 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
       setAiCountryError(String(e));
     } finally {
       setAiCountryLoading(false);
+    }
+  }
+
+  async function fetchCountryAiAnalysis(id: string, name: string) {
+    setCountryAiLoading(true);
+    setCountryAiError(null);
+    setCountryAiEntry(null);
+    setCountryAiTarget({ id, name });
+    try {
+      const resp = await fetch(
+        `/api/factory/ai-country?id=${encodeURIComponent(id)}&name=${encodeURIComponent(name)}`,
+        { headers: authHeaders() }
+      );
+      const json = await resp.json() as { entry?: AiCountryEntry; model?: string; error?: string };
+      if (!resp.ok || json.error) {
+        setCountryAiError(json.error ?? `HTTP ${resp.status}`);
+      } else {
+        setCountryAiEntry(json.entry ?? null);
+        setCountryAiModel(json.model ?? "");
+      }
+    } catch (e) {
+      setCountryAiError(String(e));
+    } finally {
+      setCountryAiLoading(false);
     }
   }
 
@@ -1780,76 +1814,81 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   letterSpacing: "0.06em", textTransform: "uppercase" }}>
                   {L("Country", "Країна")}
                 </div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {/* Auto-pick best country by success rate */}
-                  <button
-                    onClick={() => void fetchBestCountry()}
-                    disabled={autoCountryLoading}
-                    title={L("Auto-pick the country with highest Telegram success rate", "Автоматично обрати країну з найвищим успіхом Telegram")}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 5,
-                      background: autoCountryMsg?.startsWith("✅") ? "rgba(45,232,151,0.15)" : GLASS2,
-                      border: `1px solid ${autoCountryMsg?.startsWith("✅") ? "rgba(45,232,151,0.4)" : BORDER2}`,
-                      borderRadius: 8, padding: "4px 10px",
-                      cursor: autoCountryLoading ? "default" : "pointer",
-                      fontSize: 11,
-                      color: autoCountryMsg?.startsWith("✅") ? GREEN : "rgba(255,255,255,0.5)",
-                      fontFamily: "inherit", fontWeight: 600, transition: "all 0.2s",
-                    }}
-                  >
-                    {autoCountryLoading ? (
-                      <div style={{ width: 10, height: 10, borderRadius: "50%",
-                        border: `1.5px solid ${GREEN}44`, borderTopColor: GREEN,
-                        animation: "spin 0.8s linear infinite" }} />
-                    ) : "⚡"}
-                    {L("Auto Pick", "Авто")}
-                  </button>
-                  {/* Check stock panel */}
+                <div style={{ display: "flex", gap: 8 }}>
+                  {/* ── Наявність button ── */}
                   <button
                     onClick={() => void fetchStock()}
                     disabled={stockLoading}
                     title={L("Check real-time availability & price from SMSPool", "Перевірити доступність та ціну в SMSPool")}
                     style={{
-                      display: "flex", alignItems: "center", gap: 5,
-                      background: showStock ? `${ACCENT}20` : GLASS2,
-                      border: `1px solid ${showStock ? `${ACCENT}55` : BORDER2}`,
-                      borderRadius: 8, padding: "4px 10px", cursor: stockLoading ? "default" : "pointer",
-                      fontSize: 11, color: showStock ? ACCENT : "rgba(255,255,255,0.5)",
-                      fontFamily: "inherit", fontWeight: 600, transition: "all 0.2s",
+                      flex: 1,
+                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                      gap: 2, position: "relative", overflow: "hidden",
+                      background: showStock
+                        ? "linear-gradient(135deg, rgba(6,182,212,0.22) 0%, rgba(14,116,144,0.15) 100%)"
+                        : "linear-gradient(135deg, rgba(6,182,212,0.09) 0%, rgba(14,116,144,0.06) 100%)",
+                      border: `1px solid ${showStock ? "rgba(6,182,212,0.5)" : "rgba(6,182,212,0.2)"}`,
+                      borderRadius: 13, padding: "10px 8px",
+                      cursor: stockLoading ? "default" : "pointer",
+                      color: showStock ? "#22d3ee" : "rgba(255,255,255,0.5)",
+                      fontFamily: "inherit", fontWeight: 700, transition: "all 0.22s",
+                      boxShadow: showStock ? "0 0 16px rgba(6,182,212,0.15)" : "none",
                     }}
                   >
-                    {stockLoading ? (
-                      <div style={{ width: 10, height: 10, borderRadius: "50%",
-                        border: `1.5px solid ${ACCENT}44`, borderTopColor: ACCENT,
-                        animation: "spin 0.8s linear infinite" }} />
-                    ) : "📊"}
-                    {L("Check Stock", "Наявність")}
+                    <div style={{
+                      position: "absolute", top: 7, right: 8,
+                      width: 5, height: 5, borderRadius: "50%",
+                      background: showStock ? "#22d3ee" : "rgba(6,182,212,0.35)",
+                      boxShadow: showStock ? "0 0 6px #22d3ee" : "none",
+                      animation: "pulse 2s ease-in-out infinite",
+                    }} />
+                    {stockLoading
+                      ? <div style={{ width: 15, height: 15, borderRadius: "50%",
+                          border: "2px solid rgba(6,182,212,0.25)", borderTopColor: "#22d3ee",
+                          animation: "spin 0.8s linear infinite" }} />
+                      : <span style={{ fontSize: 17, lineHeight: 1 }}>📊</span>
+                    }
+                    <span style={{ fontSize: 11, letterSpacing: "0.02em", marginTop: 2 }}>
+                      {L("Availability", "Наявність")}
+                    </span>
+                    <span style={{ fontSize: 8, opacity: 0.5, fontWeight: 400 }}>
+                      {L("live", "в реальному часі")}
+                    </span>
                   </button>
-                  {/* AI freshness analysis */}
+
+                  {/* ── AI Вибір button ── */}
                   <button
                     onClick={() => showAiCountries ? setShowAiCountries(false) : void fetchAiCountries()}
                     disabled={aiCountryLoading}
                     title={L("AI analysis: best countries for fresh (unregistered) numbers", "AI аналіз: найкращі країни для «свіжих» номерів")}
                     style={{
-                      display: "flex", alignItems: "center", gap: 5,
+                      flex: 1,
+                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                      gap: 2,
                       background: showAiCountries && aiCountryData.length > 0
-                        ? "rgba(140,100,255,0.18)" : GLASS2,
+                        ? "linear-gradient(135deg, rgba(139,92,246,0.26) 0%, rgba(109,40,217,0.16) 100%)"
+                        : "linear-gradient(135deg, rgba(139,92,246,0.1) 0%, rgba(109,40,217,0.06) 100%)",
                       border: `1px solid ${showAiCountries && aiCountryData.length > 0
-                        ? "rgba(140,100,255,0.5)" : BORDER2}`,
-                      borderRadius: 8, padding: "4px 10px",
+                        ? "rgba(139,92,246,0.55)" : "rgba(139,92,246,0.22)"}`,
+                      borderRadius: 13, padding: "10px 8px",
                       cursor: aiCountryLoading ? "default" : "pointer",
-                      fontSize: 11,
-                      color: showAiCountries && aiCountryData.length > 0
-                        ? "#a78bfa" : "rgba(255,255,255,0.5)",
-                      fontFamily: "inherit", fontWeight: 600, transition: "all 0.2s",
+                      color: showAiCountries && aiCountryData.length > 0 ? "#a78bfa" : "rgba(255,255,255,0.5)",
+                      fontFamily: "inherit", fontWeight: 700, transition: "all 0.22s",
+                      boxShadow: showAiCountries && aiCountryData.length > 0 ? "0 0 16px rgba(139,92,246,0.18)" : "none",
                     }}
                   >
-                    {aiCountryLoading ? (
-                      <div style={{ width: 10, height: 10, borderRadius: "50%",
-                        border: "1.5px solid rgba(140,100,255,0.4)", borderTopColor: "#a78bfa",
-                        animation: "spin 0.8s linear infinite" }} />
-                    ) : "✦"}
-                    {L("AI Pick", "AI Вибір")}
+                    {aiCountryLoading
+                      ? <div style={{ width: 15, height: 15, borderRadius: "50%",
+                          border: "2px solid rgba(139,92,246,0.25)", borderTopColor: "#a78bfa",
+                          animation: "spin 0.8s linear infinite" }} />
+                      : <span style={{ fontSize: 17, lineHeight: 1 }}>✦</span>
+                    }
+                    <span style={{ fontSize: 11, letterSpacing: "0.02em", marginTop: 2 }}>
+                      {L("AI Choice", "AI Вибір")}
+                    </span>
+                    <span style={{ fontSize: 8, opacity: 0.5, fontWeight: 400 }}>
+                      {L("Top 10", "Топ-10")}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -1989,7 +2028,6 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                             <div
                               key={c.id}
                               onClick={() => {
-                                // Try to match against known countries; else use custom
                                 const known = COUNTRIES.find(
                                   k => k.code.toLowerCase() === c.id.toLowerCase() ||
                                        k.label.toLowerCase().includes(c.name.toLowerCase())
@@ -2002,6 +2040,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                                 }
                                 setSmsPoolCountryId(c.id);
                                 setShowStock(false);
+                                void fetchCountryAiAnalysis(c.id, c.name);
                               }}
                               style={{
                                 display: "flex", alignItems: "center", gap: 10,

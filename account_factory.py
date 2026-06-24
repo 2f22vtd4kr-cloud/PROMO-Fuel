@@ -1693,35 +1693,92 @@ async def factory_health():
     }
 
 
-async def _pick_auto_switch_proxy(tried_countries: set[str]) -> dict | None:
+async def _pick_auto_switch_proxy(tried_countries: set[str]) -> dict:
     """
-    Query saved_proxies for a proxy whose country_code is NOT in tried_countries.
-    Returns {country_code, proxy_string, label} or None if nothing suitable exists.
+    Pick the best proxy from saved_proxies ranked by our own historical success rate
+    (factory_country_stats). Cross-references stored proxies with our registration data.
+
+    Returns one of three shapes:
+      {"status": "found",   "country_code": ..., "proxy_string": ..., "label": ...}
+      {"status": "suggest", "suggested_id": ..., "suggested_name": ...}  — best country but no proxy stored
+      {"status": "none"}  — no useful data
     """
     try:
         async with aiosqlite.connect(DB_PATH) as _conn:
             _conn.row_factory = aiosqlite.Row
+
+            # 1. All distinct country codes available in proxy storage (excluding already tried)
             if tried_countries:
                 placeholders = ",".join("?" * len(tried_countries))
-                query = (
-                    f"SELECT country_code, proxy_string, label FROM saved_proxies "
+                _proxy_q = (
+                    f"SELECT DISTINCT LOWER(country_code) as cc FROM saved_proxies "
                     f"WHERE LOWER(country_code) NOT IN ({placeholders}) "
-                    f"AND proxy_string IS NOT NULL AND proxy_string != '' "
-                    f"ORDER BY RANDOM() LIMIT 1"
+                    f"AND proxy_string IS NOT NULL AND proxy_string != ''"
                 )
-                args: list[str] = [c.lower() for c in tried_countries]
+                _proxy_args: list[str] = [c.lower() for c in tried_countries]
             else:
-                query = (
-                    "SELECT country_code, proxy_string, label FROM saved_proxies "
-                    "WHERE proxy_string IS NOT NULL AND proxy_string != '' "
-                    "ORDER BY RANDOM() LIMIT 1"
+                _proxy_q = (
+                    "SELECT DISTINCT LOWER(country_code) as cc FROM saved_proxies "
+                    "WHERE proxy_string IS NOT NULL AND proxy_string != ''"
                 )
-                args = []
-            async with _conn.execute(query, args) as _cur:
-                row = await _cur.fetchone()
-            return dict(row) if row else None
+                _proxy_args = []
+            async with _conn.execute(_proxy_q, _proxy_args) as _cur:
+                proxy_country_set: set[str] = {row["cc"] for row in await _cur.fetchall()}
+
+            # 2. Our own registration stats (successes / attempts = quality score)
+            async with _conn.execute(
+                "SELECT country_id, country_name, attempts, successes "
+                "FROM factory_country_stats WHERE attempts > 0 ORDER BY attempts DESC"
+            ) as _cur:
+                stats_rows = list(await _cur.fetchall())
+
+            # 3. Find best country that HAS a proxy in storage, ranked by success rate
+            best_cc:    str | None = None
+            best_name:  str | None = None
+            best_score: float = -1.0
+            for row in stats_rows:
+                cid = row["country_id"].lower()
+                if cid in proxy_country_set:
+                    score = row["successes"] / row["attempts"]
+                    if score > best_score:
+                        best_score = score
+                        best_cc    = cid
+                        best_name  = row["country_name"]
+
+            # If no stats match, fall back to any available proxy country
+            if best_cc is None and proxy_country_set:
+                best_cc = min(proxy_country_set)  # deterministic fallback (alphabetical)
+
+            if best_cc:
+                async with _conn.execute(
+                    "SELECT country_code, proxy_string, label FROM saved_proxies "
+                    "WHERE LOWER(country_code) = ? AND proxy_string IS NOT NULL AND proxy_string != '' "
+                    "ORDER BY RANDOM() LIMIT 1",
+                    (best_cc,),
+                ) as _cur:
+                    row = await _cur.fetchone()
+                if row:
+                    return {"status": "found", **dict(row)}
+
+            # 4. No proxy for any untried country — suggest the best-performing country from our stats
+            best_sug_cc:    str | None = None
+            best_sug_name:  str | None = None
+            best_sug_score: float = -1.0
+            for row in stats_rows:
+                cid = row["country_id"].lower()
+                if cid not in tried_countries:
+                    score = row["successes"] / row["attempts"]
+                    if score > best_sug_score:
+                        best_sug_score = score
+                        best_sug_cc    = cid
+                        best_sug_name  = row["country_name"]
+
+            if best_sug_cc:
+                return {"status": "suggest", "suggested_id": best_sug_cc, "suggested_name": best_sug_name or best_sug_cc.upper()}
+
+            return {"status": "none"}
     except Exception:
-        return None
+        return {"status": "none"}
 
 
 @factory_router.post("/register")
@@ -1846,12 +1903,12 @@ async def register_account(request: Request):
                     _slot_done = True
                 elif got_retry_prompt and auto_switch and _switch_count < MAX_AUTO_SWITCHES:
                     _tried_countries.add(cur_country_id.lower())
-                    _next = await _pick_auto_switch_proxy(_tried_countries)
-                    if _next:
+                    _switch_result = await _pick_auto_switch_proxy(_tried_countries)
+                    if _switch_result["status"] == "found":
                         _switch_count   += 1
-                        cur_country_id   = _next["country_code"]
-                        cur_proxy_string = _next["proxy_string"]
-                        _proxy_label     = (_next.get("label") or "").strip() or cur_proxy_string[:40]
+                        cur_country_id   = _switch_result["country_code"]
+                        cur_proxy_string = _switch_result["proxy_string"]
+                        _proxy_label     = (_switch_result.get("label") or "").strip() or cur_proxy_string[:40]
                         yield _sse("auto_switching", {
                             "country_id":  cur_country_id,
                             "proxy_label": _proxy_label,
@@ -1861,13 +1918,26 @@ async def register_account(request: Request):
                                 f"(спроба {_switch_count}/{MAX_AUTO_SWITCHES})…"
                             ),
                         })
-                        # Reset the step display for the new attempt
                         yield _sse("batch_reset", {})
-                        # continue while loop
+                    elif _switch_result["status"] == "suggest":
+                        # Best country known but no proxy stored for it — prompt user to upload
+                        sug_id   = _switch_result["suggested_id"]
+                        sug_name = _switch_result["suggested_name"]
+                        yield _sse("sms_retry_prompt", {
+                            "no_proxy_for":  sug_id,
+                            "no_proxy_name": sug_name,
+                            "message": (
+                                f"🔄 Авто-перемикання: найкраща країна — {sug_name} ({sug_id.upper()}), "
+                                f"але проксі для неї немає у сховищі. "
+                                f"Додайте проксі для {sug_id.upper()} та запустіть знову."
+                            ),
+                        })
+                        failed     += 1
+                        _slot_done  = True
                     else:
-                        # No untried proxies left in store
-                        failed   += 1
-                        _slot_done = True
+                        # No proxies in storage at all for untried countries
+                        failed     += 1
+                        _slot_done  = True
                 else:
                     if not got_complete:
                         failed += 1
