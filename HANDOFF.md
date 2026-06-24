@@ -14,33 +14,33 @@
 
 ## This session
 
-**Task:** Three improvements:
-1. ✅ Last-saved indicator + manual PG backup trigger in Accounts page
-2. ✅ Cross-DB deletion — proxy delete now also cleans SQLite `saved_proxies`
-3. ✅ Account Factory debug panel — `debug` SSE events now properly visible and expandable
+**Task:** Fix "Python API unavailable" error in Account Factory, then audit all 8 pipeline steps for bugs.
 
-### What was built / fixed
+### Root cause of "Python API unavailable"
+Two compounding issues:
+1. **Race condition** — `scripts/start.sh` starts Python supervisor in background then immediately starts Node.js. Requests hit `/api/factory/*` proxy before Python's FastAPI is ready on port 8083 → ECONNREFUSED → 502.
+2. **No retry logic** in the Node.js proxy — a single ECONNREFUSED from Python immediately returns error to the client.
 
-**`artifacts/telegram-miniapp/src/components/FactoryDebugPanel.tsx`**
-- Added `debug` event color `#06b6d4` (cyan) in `eventColor()`
-- Added `debugLabel()` helper: parses JSON message, extracts the key name (e.g. `🔧 TELETHON_INIT`) as the label
-- Replaced the flat row renderer in `EventLog` with a new `DebugRow` sub-component:
-  - Non-debug events: same monospace row as before
-  - `debug` events: cyan `🔬 DBG` badge, key label, **click to expand** — shows full pretty-printed JSON in a cyan-tinted panel (maxHeight 300px, scrollable)
-- Account Factory already emits `TELETHON_INIT`, `SEND_CODE_RESPONSE`, `SMSPOOL_CHECK`, `SMSPOOL_ACTIVE` as `debug` SSE events → these now appear visibly and are expandable
+### Fixes applied
 
-**`artifacts/api-server/src/routes/proxy-store.ts`**
-- Added `import Database from "better-sqlite3"` + `import { DB_PATH } from "../lib/db-path"`
-- `DELETE /api/proxy-store/:id` now: deletes from PG (primary), then mirrors delete to SQLite `saved_proxies` by `proxy_string` match (non-fatal if SQLite fails)
+**`scripts/start.sh`**
+- Added 30-second readiness poll loop after starting Python supervisor, probing port 8083 with `socket.create_connection` before starting Node.js. Fail-open after 30s.
 
-**Accounts page sync indicator (already existed):**
-- `GET /api/sync/status` → `artifacts/api-server/src/routes/sync.ts` → queries `pf_db_snapshot WHERE key='main'` in PG
-- `POST /api/sync/now` → sync.ts calls Python apiserver `POST /internal/sync` → `db_sync.save_snapshot()`
-- Python `/internal/sync` already existed in `apiserver.py` (line 1013)
-- UI in `Accounts.tsx` lines 1059-1081 + 1369-1393 already complete — `loadSyncStatus()` called on mount
+**`artifacts/api-server/src/app.ts` — `makePythonProxy()`**
+- Added retry logic: 3 attempts with 800ms × attempt backoff for ECONNREFUSED/ECONNRESET errors.
+- Removed `transfer-encoding: chunked` from forwarded headers when body buffer is set — it conflicted with explicit `content-length`, potentially causing Python HTTP parse errors.
+- Added `attempt` counter to error log for diagnostics.
+- API server rebuilt and restarted — all changes live.
 
-**better-sqlite3 rebuild (cold-start fix):**
-- `ensure-sqlite3.sh` only rebuilds when `.node` file is absent; after a Node version change the stale binary must be manually deleted first: `rm .../better_sqlite3.node && bash scripts/ensure-sqlite3.sh`
+**`artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`**
+- Error display now shows `j.detail` alongside `j.error`: `"Python API unavailable: connect ECONNREFUSED 127.0.0.1:8083"` instead of just `"Python API unavailable"`.
+
+**`account_factory.py` — pipeline bug fixes**
+
+| Bug | Fix |
+|---|---|
+| Missing `cancel_order()` on step 5 sign_in/sign_up failures → leaks SMSPool balance | Added `_registration_succeeded = False` flag; `finally` block calls `cancel_order()` unless flag is True. |
+| Wrong device metadata in step 8 JSON when official creds used in step 3 Layer 2 | Added `_actual_device_model`, `_actual_system_version`, `_actual_app_version` tracking vars; updated when pool creds picked AND when official creds used; step 8 metadata uses `_actual_*` vars. |
 
 ---
 
@@ -69,13 +69,15 @@ Non-sensitive: `PORT=8080`.
 | Python FastAPI | 8083 |
 | Node.js Express | 8080 |
 
-Vite proxy: ALL `/api/*` → port 8080 (Node.js)
+Vite proxy: ALL `/api/*` → port 8080 (Node.js).
+Node.js `makePythonProxy` proxies `/api/factory/*` and `/api/verifications/*` → Python 8083, with 3 retries on ECONNREFUSED.
 
-### Account Factory debug SSE events
-Backend emits `debug` type SSE with `{"message": "JSON string"}` at:
-- `TELETHON_INIT` — after proxy + Telethon client init (~line 1097 of account_factory.py)
-- `SEND_CODE_RESPONSE` — after `SendCode` call (~line 1200)
-- `SMSPOOL_CHECK` / `SMSPOOL_ACTIVE` — during SMS polling (~lines 1538, 1579)
+### Account Factory pipeline (8 steps)
+```
+Preflight → Step 1 (SMSPool buy) → Step 2 (Telethon init) → Step 3 (SendCode + 3-layer fallback)
+→ Step 4 (SMS poll 120s) → Step 5 (sign_in/sign_up) → Step 6 (2FA) → Step 7 (Profile) → Step 8 (DB save)
+```
+All failure paths (except complete) now call `cancel_order()` via `finally` guard.
 
 ### Cold-start
 If `ensure-sqlite3.sh` says "already built" but server crashes with NODE_MODULE_VERSION error:

@@ -59669,7 +59669,7 @@ app.use("/api/twa", (req, res, next) => {
   next();
 });
 var PYTHON_PORT = parseInt(process.env["PYTHON_API_PORT"] ?? "8083");
-function makePythonProxy(prefix) {
+function makePythonProxy(prefix, maxRetries = 3) {
   return (req, res) => {
     const targetPath = `${prefix}${req.path === "/" ? "" : req.path}`;
     const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
@@ -59681,8 +59681,10 @@ function makePythonProxy(prefix) {
     if (bodyBuf) {
       forwardHeaders["content-type"] = "application/json";
       forwardHeaders["content-length"] = String(bodyBuf.length);
+      delete forwardHeaders["transfer-encoding"];
     } else {
       delete forwardHeaders["content-length"];
+      delete forwardHeaders["transfer-encoding"];
     }
     const options = {
       hostname: "127.0.0.1",
@@ -59691,30 +59693,44 @@ function makePythonProxy(prefix) {
       method: req.method,
       headers: forwardHeaders
     };
-    const proxyReq = http2.request(options, (proxyRes) => {
-      const isSSE = (proxyRes.headers["content-type"] ?? "").includes("text/event-stream");
-      res.status(proxyRes.statusCode ?? 200);
-      for (const [k, v] of Object.entries(proxyRes.headers)) {
-        if (isSSE && k.toLowerCase() === "content-length") continue;
-        if (v !== void 0) res.setHeader(k, v);
+    let attempt = 0;
+    function tryRequest() {
+      attempt++;
+      const proxyReq = http2.request(options, (proxyRes) => {
+        const isSSE = (proxyRes.headers["content-type"] ?? "").includes("text/event-stream");
+        res.status(proxyRes.statusCode ?? 200);
+        for (const [k, v] of Object.entries(proxyRes.headers)) {
+          if (isSSE && k.toLowerCase() === "content-length") continue;
+          if (v !== void 0) res.setHeader(k, v);
+        }
+        if (isSSE) {
+          res.setHeader("X-Accel-Buffering", "no");
+          res.setHeader("Cache-Control", "no-cache");
+          res.setHeader("Connection", "keep-alive");
+          res.flushHeaders();
+          if (res.socket) res.socket.setNoDelay(true);
+        }
+        proxyRes.pipe(res, { end: true });
+      });
+      proxyReq.on("error", (err) => {
+        const code = err.code;
+        if ((code === "ECONNREFUSED" || code === "ECONNRESET") && attempt < maxRetries) {
+          const delay = attempt * 800;
+          logger.warn({ attempt, delay, code }, `${prefix} proxy retry`);
+          setTimeout(tryRequest, delay);
+          return;
+        }
+        logger.error({ err, attempt }, `${prefix} proxy error`);
+        if (!res.headersSent) {
+          res.status(502).json({ error: "Python API unavailable", detail: err.message });
+        }
+      });
+      if (bodyBuf) {
+        proxyReq.write(bodyBuf);
       }
-      if (isSSE) {
-        res.setHeader("X-Accel-Buffering", "no");
-        res.setHeader("Cache-Control", "no-cache");
-        res.setHeader("Connection", "keep-alive");
-        res.flushHeaders();
-        if (res.socket) res.socket.setNoDelay(true);
-      }
-      proxyRes.pipe(res, { end: true });
-    });
-    proxyReq.on("error", (err) => {
-      logger.error({ err }, `${prefix} proxy error`);
-      if (!res.headersSent) res.status(502).json({ error: "Python API unavailable", detail: err.message });
-    });
-    if (bodyBuf) {
-      proxyReq.write(bodyBuf);
+      proxyReq.end();
     }
-    proxyReq.end();
+    tryRequest();
   };
 }
 app.use("/api", sync_default);

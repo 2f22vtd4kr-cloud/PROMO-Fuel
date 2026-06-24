@@ -84,7 +84,7 @@ app.use("/api/twa", (req: Request, res: Response, next: NextFunction) => {
 // auth check — the Python server receives the headers as-is.
 const PYTHON_PORT = parseInt(process.env["PYTHON_API_PORT"] ?? "8083");
 
-function makePythonProxy(prefix: string) {
+function makePythonProxy(prefix: string, maxRetries = 3) {
   return (req: Request, res: Response) => {
     const targetPath = `${prefix}${req.path === "/" ? "" : req.path}`;
     const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
@@ -99,10 +99,13 @@ function makePythonProxy(prefix: string) {
       host: `127.0.0.1:${PYTHON_PORT}`,
     };
     if (bodyBuf) {
-      forwardHeaders["content-type"]   = "application/json";
-      forwardHeaders["content-length"] = String(bodyBuf.length);
+      forwardHeaders["content-type"]    = "application/json";
+      forwardHeaders["content-length"]  = String(bodyBuf.length);
+      // Remove transfer-encoding — we send a fixed-length body, not chunked
+      delete forwardHeaders["transfer-encoding"];
     } else {
       delete forwardHeaders["content-length"];
+      delete forwardHeaders["transfer-encoding"];
     }
 
     const options: http.RequestOptions = {
@@ -113,38 +116,55 @@ function makePythonProxy(prefix: string) {
       headers: forwardHeaders,
     };
 
-    const proxyReq = http.request(options, (proxyRes) => {
-      const isSSE = (proxyRes.headers["content-type"] ?? "").includes("text/event-stream");
+    let attempt = 0;
 
-      res.status(proxyRes.statusCode ?? 200);
-      for (const [k, v] of Object.entries(proxyRes.headers)) {
-        // Strip content-length for SSE — the stream has no fixed length
-        if (isSSE && k.toLowerCase() === "content-length") continue;
-        if (v !== undefined) res.setHeader(k, v);
+    function tryRequest() {
+      attempt++;
+      const proxyReq = http.request(options, (proxyRes) => {
+        const isSSE = (proxyRes.headers["content-type"] ?? "").includes("text/event-stream");
+
+        res.status(proxyRes.statusCode ?? 200);
+        for (const [k, v] of Object.entries(proxyRes.headers)) {
+          // Strip content-length for SSE — the stream has no fixed length
+          if (isSSE && k.toLowerCase() === "content-length") continue;
+          if (v !== undefined) res.setHeader(k, v);
+        }
+
+        if (isSSE) {
+          // Tell every proxy layer (nginx, Replit CDN) not to buffer SSE chunks
+          res.setHeader("X-Accel-Buffering", "no");
+          res.setHeader("Cache-Control", "no-cache");
+          res.setHeader("Connection", "keep-alive");
+          res.flushHeaders();
+          if (res.socket) res.socket.setNoDelay(true);
+        }
+
+        proxyRes.pipe(res, { end: true });
+      });
+
+      proxyReq.on("error", (err) => {
+        const code = (err as NodeJS.ErrnoException).code;
+        // Retry on connection-refused (Python still starting up) or reset
+        if ((code === "ECONNREFUSED" || code === "ECONNRESET") && attempt < maxRetries) {
+          const delay = attempt * 800;
+          logger.warn({ attempt, delay, code }, `${prefix} proxy retry`);
+          setTimeout(tryRequest, delay);
+          return;
+        }
+        logger.error({ err, attempt }, `${prefix} proxy error`);
+        if (!res.headersSent) {
+          res.status(502).json({ error: "Python API unavailable", detail: err.message });
+        }
+      });
+
+      // Write the body directly (stream already consumed by express.json)
+      if (bodyBuf) {
+        proxyReq.write(bodyBuf);
       }
-
-      if (isSSE) {
-        // Tell every proxy layer (nginx, Replit CDN) not to buffer SSE chunks
-        res.setHeader("X-Accel-Buffering", "no");
-        res.setHeader("Cache-Control", "no-cache");
-        res.setHeader("Connection", "keep-alive");
-        res.flushHeaders();
-        if (res.socket) res.socket.setNoDelay(true);
-      }
-
-      proxyRes.pipe(res, { end: true });
-    });
-
-    proxyReq.on("error", (err) => {
-      logger.error({ err }, `${prefix} proxy error`);
-      if (!res.headersSent) res.status(502).json({ error: "Python API unavailable", detail: err.message });
-    });
-
-    // Write the body directly (stream already consumed by express.json)
-    if (bodyBuf) {
-      proxyReq.write(bodyBuf);
+      proxyReq.end();
     }
-    proxyReq.end();
+
+    tryRequest();
   };
 }
 

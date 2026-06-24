@@ -1237,7 +1237,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
 
       if (!resp.ok || !resp.body) {
         let errText = `HTTP ${resp.status}`;
-        try { const j = await resp.json(); errText = j.error || errText; } catch {}
+        try { const j = await resp.json(); errText = (j.detail ? `${j.error}: ${j.detail}` : j.error) || errText; } catch {}
         setErrorMsg(errText);
         setRunState("error");
         return;

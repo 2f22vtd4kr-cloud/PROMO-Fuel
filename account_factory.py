@@ -766,9 +766,10 @@ async def _registration_stream(
     """Async generator yielding SSE chunks for the full 8-step pipeline."""
     os.makedirs(SESSION_DIR, exist_ok=True)
 
-    order_code: str | None = None   # alphanumeric e.g. "ECKU5XM9" — used for check/cancel
-    phone:      str | None = None
-    client:     TelegramClient | None = None
+    order_code:              str | None = None   # alphanumeric e.g. "ECKU5XM9" — used for check/cancel
+    phone:                   str | None = None
+    client:                  TelegramClient | None = None
+    _registration_succeeded: bool = False        # set True before complete SSE — guards cancel in finally
 
     async def cancel_order():
         if order_code:
@@ -992,11 +993,14 @@ async def _registration_stream(
         _reg_pool: list[tuple] = _REGISTRATION_CREDS.copy()
         random.shuffle(_reg_pool)
 
-        # Track which api_id / api_hash were ACTUALLY used for the successful
-        # registration.  Updated each time we switch credentials.  Saved to DB
-        # so groupbroadcaster can reconnect with the correct credential pair.
-        _actual_api_id:   int = api_id
-        _actual_api_hash: str = api_hash
+        # Track which api_id / api_hash / device profile were ACTUALLY used for the
+        # successful registration.  Updated each time we switch credentials.  Saved
+        # to DB so groupbroadcaster can reconnect with the correct credential pair.
+        _actual_api_id:        int = api_id
+        _actual_api_hash:      str = api_hash
+        _actual_device_model:  str = ""
+        _actual_system_version: str = ""
+        _actual_app_version:   str = ""
 
         for _num_attempt in range(MAX_NUM_RETRIES):
 
@@ -1057,8 +1061,11 @@ async def _registration_stream(
             _reg_api_id, _reg_api_hash, device_model, system_version, app_version, _reg_plat = _reg_pool[_cred_idx]
 
             # Update tracking vars so the DB save uses the correct credential pair
-            _actual_api_id   = _reg_api_id
-            _actual_api_hash = _reg_api_hash
+            _actual_api_id        = _reg_api_id
+            _actual_api_hash      = _reg_api_hash
+            _actual_device_model  = device_model
+            _actual_system_version = system_version
+            _actual_app_version   = app_version
 
             # Country-aware locale: a Ukrainian number with lang_code="en" is an
             # immediate bot fingerprint.  Desktop/iOS creds still get locale since
@@ -1377,9 +1384,13 @@ async def _registration_stream(
                             system_lang_code="en-US",
                         )
                         # Track which credentials we switched to — DB save must use
-                        # these so groupbroadcaster can reconnect with the same api_id.
-                        _actual_api_id   = _off_api_id
-                        _actual_api_hash = _off_api_hash
+                        # these so groupbroadcaster can reconnect with the same api_id
+                        # and matching device profile.
+                        _actual_api_id        = _off_api_id
+                        _actual_api_hash      = _off_api_hash
+                        _actual_device_model  = _off_dev
+                        _actual_system_version = _off_sys
+                        _actual_app_version   = _off_app
                         client = _off_client
                         _off_result = None
                         for _off_try in range(3):  # up to 3 attempts for transient proxy/network errors
@@ -1811,9 +1822,9 @@ async def _registration_stream(
             "phone": phone,
             "api_id": _actual_api_id,
             "api_hash": _actual_api_hash,
-            "device_model": device_model,
-            "system_version": system_version,
-            "app_version": app_version,
+            "device_model":   _actual_device_model,
+            "system_version": _actual_system_version,
+            "app_version":    _actual_app_version,
             "lang_code": _reg_lang,
             "system_lang_code": _reg_sys_lang,
             "proxy_string": proxy_string.strip() if proxy_string else "",
@@ -1855,6 +1866,7 @@ async def _registration_stream(
 
         yield _sse("step", {"step": 8, "status": "done",
                             "message": "🎉 Account generated, profiled, and added to your CRM!"})
+        _registration_succeeded = True
         yield _sse("complete", {"phone": phone})
 
         # ─── Warmup (mode: none / all / ask) ─────────────────────────────
@@ -1894,6 +1906,10 @@ async def _registration_stream(
         logger.exception("Account factory pipeline failed")
         yield _sse("error", {"message": f"Unexpected error: {e}"})
     finally:
+        # Cancel the SMSPool order whenever registration didn't fully complete,
+        # so the user gets a refund rather than losing balance on a failed attempt.
+        if not _registration_succeeded:
+            await cancel_order()
         await safe_disconnect()
 
 
