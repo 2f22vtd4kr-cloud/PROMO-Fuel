@@ -1267,6 +1267,13 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             bio:        profBio,
             avatars:    profAvatars,
           } : {}),
+          auto_switch: true,
+          ...(aiCountryData.length > 0 ? {
+            ai_country_ids: aiCountryData
+              .slice()
+              .sort((a, b) => a.rank - b.rank)
+              .map(e => e.id),
+          } : {}),
         }),
         signal: ctrl.signal,
       });
@@ -1375,6 +1382,13 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               setPollMsg(null);
               setBatchDelayMsg(null);
             }
+          } else if (event === "auto_switching") {
+            // Backend automatically switched to a new country+proxy — reset steps and show status
+            setSteps(initSteps());
+            setPollMsg(null);
+            setErrorMsg(null);
+            setPreflightStatus("running");
+            setPreflightMsg(p.message as string ?? L("🔄 Auto-switching country…", "🔄 Авто-перемикання країни…"));
           } else if (event === "warmup_queued") {
             // auto-warmup already queued — nothing extra needed in UI
           } else if (event === "warmup_prompt") {
@@ -1568,6 +1582,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     if (newProxy.trim()) setProxy(newProxy.trim());
                     applyCountry(newCountry);
                     setSmsPoolCountryId(newCountry);
+                    void launch();
                   }}
                   onCancel={() => setSmsRetryPrompt(null)}
                   onKeepGoing={() => { /* not shown for low_rate */ }}
@@ -1586,6 +1601,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     if (newProxy.trim()) setProxy(newProxy.trim());
                     applyCountry(newCountry);
                     setSmsPoolCountryId(newCountry);
+                    void launch();
                   }}
                   onCancel={() => setSmsRetryPrompt(null)}
                   onKeepGoing={() => {

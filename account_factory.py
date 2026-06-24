@@ -1947,10 +1947,14 @@ async def factory_health():
     }
 
 
-async def _pick_auto_switch_proxy(tried_countries: set[str]) -> dict:
+async def _pick_auto_switch_proxy(tried_countries: set[str], ai_country_ids: list[str] | None = None) -> dict:
     """
-    Pick the best proxy from saved_proxies ranked by our own historical success rate
-    (factory_country_stats). Cross-references stored proxies with our registration data.
+    Pick the best proxy from saved_proxies for auto-switching on sms_retry_prompt.
+
+    Priority order:
+      1. AI Вибір rankings (ai_country_ids in rank order) — first untried country with a proxy wins.
+      2. Our own historical success rate from factory_country_stats.
+      3. Any available proxy for an untried country (last resort).
 
     Returns one of three shapes:
       {"status": "found",   "country_code": ..., "proxy_string": ..., "label": ...}
@@ -1979,22 +1983,37 @@ async def _pick_auto_switch_proxy(tried_countries: set[str]) -> dict:
             async with _conn.execute(_proxy_q, _proxy_args) as _cur:
                 proxy_country_set: set[str] = {row["cc"] for row in await _cur.fetchall()}
 
-            # 2. Our own registration stats (successes / attempts = quality score)
+            # ── Priority 1: AI Вибір rankings ─────────────────────────────────
+            # Walk AI-ranked countries in order; first one with a stored proxy wins.
+            if ai_country_ids:
+                for ai_cc in ai_country_ids:
+                    ai_cc = ai_cc.lower()
+                    if ai_cc in tried_countries:
+                        continue
+                    if ai_cc in proxy_country_set:
+                        async with _conn.execute(
+                            "SELECT country_code, proxy_string, label FROM saved_proxies "
+                            "WHERE LOWER(country_code) = ? AND proxy_string IS NOT NULL AND proxy_string != '' "
+                            "ORDER BY RANDOM() LIMIT 1",
+                            (ai_cc,),
+                        ) as _cur:
+                            row = await _cur.fetchone()
+                        if row:
+                            return {"status": "found", **dict(row)}
+
+            # ── Priority 2: our own historical success rate ────────────────────
             async with _conn.execute(
                 "SELECT country_id, country_name, attempts, successes "
                 "FROM factory_country_stats WHERE attempts > 0 ORDER BY attempts DESC"
             ) as _cur:
                 stats_rows = list(await _cur.fetchall())
 
-            # 3. Find best country that HAS a proxy in storage, ranked by success rate.
-            #    ONLY pick a country if we have real performance data for it —
-            #    never fall back to a random available proxy just because it exists.
             best_cc:    str | None = None
             best_name:  str | None = None
             best_score: float = -1.0
             for row in stats_rows:
                 cid = row["country_id"].lower()
-                if cid in proxy_country_set:
+                if cid in proxy_country_set and cid not in tried_countries:
                     score = row["successes"] / row["attempts"]
                     if score > best_score:
                         best_score = score
@@ -2012,7 +2031,25 @@ async def _pick_auto_switch_proxy(tried_countries: set[str]) -> dict:
                 if row:
                     return {"status": "found", **dict(row)}
 
-            # 4. No proxy for any untried country — suggest the best-performing country from our stats
+            # ── Priority 3: any untried country with a proxy (last resort) ────
+            if proxy_country_set:
+                any_cc = next(iter(proxy_country_set))
+                async with _conn.execute(
+                    "SELECT country_code, proxy_string, label FROM saved_proxies "
+                    "WHERE LOWER(country_code) = ? AND proxy_string IS NOT NULL AND proxy_string != '' "
+                    "ORDER BY RANDOM() LIMIT 1",
+                    (any_cc,),
+                ) as _cur:
+                    row = await _cur.fetchone()
+                if row:
+                    return {"status": "found", **dict(row)}
+
+            # ── Suggest: best country from AI list or stats but no proxy stored ─
+            if ai_country_ids:
+                for ai_cc in ai_country_ids:
+                    if ai_cc.lower() not in tried_countries:
+                        return {"status": "suggest", "suggested_id": ai_cc.lower(), "suggested_name": ai_cc.upper()}
+
             best_sug_cc:    str | None = None
             best_sug_name:  str | None = None
             best_sug_score: float = -1.0
@@ -2061,7 +2098,9 @@ async def register_account(request: Request):
     avatars: list[str] = [str(a) for a in _avatars_raw if isinstance(a, str) and a]
     _gender_raw  = str(body.get("gender", "random")).strip().lower()
     gender       = _gender_raw if _gender_raw in ("male", "female", "random") else "random"
-    auto_switch  = bool(body.get("auto_switch", False))
+    auto_switch      = bool(body.get("auto_switch", False))
+    _ai_ids_raw      = body.get("ai_country_ids") or []
+    ai_country_ids   = [str(x).strip().lower() for x in _ai_ids_raw if isinstance(x, str) and str(x).strip()]
 
     # Telethon creds — prefer env vars, fall back to request body
     api_id_raw  = os.environ.get("TELETHON_API_ID") or str(body.get("api_id", ""))
@@ -2155,7 +2194,7 @@ async def register_account(request: Request):
                     _slot_done = True
                 elif got_retry_prompt and auto_switch and _switch_count < MAX_AUTO_SWITCHES:
                     _tried_countries.add(cur_country_id.lower())
-                    _switch_result = await _pick_auto_switch_proxy(_tried_countries)
+                    _switch_result = await _pick_auto_switch_proxy(_tried_countries, ai_country_ids)
                     if _switch_result["status"] == "found":
                         _switch_count   += 1
                         cur_country_id   = _switch_result["country_code"]

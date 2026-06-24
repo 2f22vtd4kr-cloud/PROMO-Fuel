@@ -1,0 +1,25 @@
+[14:59:39.526] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[14:59:40.757] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[14:59:42.627] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 178.90.224.97","exit_ip":"178.90.224.97","is_datacenter":false}
+[14:59:42.627] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
+[14:59:43.904] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 178.90.224.97 · 🔗 Telethon-path IP: 178.90.224.97","exit_ip":"178.90.224.97","is_datacenter":false,"async_exit_ip":"178.90.224.97"}
+[14:59:43.904] preflight: {"status":"running","message":"📊 Checking KZ SMS success rate on SMSPool…"}
+[14:59:43.946] preflight: {"status":"error","message":"🚫 KZ success rate: 30%","success_rate":30,"country_id":"kz"}
+[14:59:43.946] sms_retry_prompt: {"country_id":"kz","message":"🚫 KZ has only 30% SMS success rate right now (minimum 60%). Buying would waste your balance on recycled numbers. Switch to: Kazakhstan (KZ), Ukraine (UA), Philippines (PH), Georgia (GE), or Bangladesh (BD)."}
+[14:59:53.587] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[14:59:56.264] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[15:00:00.099] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 178.90.224.97","exit_ip":"178.90.224.97","is_datacenter":false}
+[15:00:00.099] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
+[15:00:03.156] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 178.90.224.97 · ⚠️ Asyncio path: Asyncio proxy check failed: Host unreachable","exit_ip":"178.90.224.97","is_datacenter":false}
+[15:00:03.156] preflight: {"status":"running","message":"📊 Checking KZ SMS success rate on SMSPool…"}
+[15:00:03.250] preflight: {"status":"error","message":"🚫 KZ success rate: 30%","success_rate":30,"country_id":"kz"}
+[15:00:03.250] sms_retry_prompt: {"country_id":"kz","message":"🚫 KZ has only 30% SMS success rate right now (minimum 60%). Buying would waste your balance on recycled numbers. Switch to: Kazakhstan (KZ), Ukraine (UA), Philippines (PH), Georgia (GE), or Bangladesh (BD)."}
+[15:00:03.463] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[15:00:04.146] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[15:00:05.932] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 178.90.224.97","exit_ip":"178.90.224.97","is_datacenter":false}
+[15:00:05.932] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
+[15:00:07.032] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 178.90.224.97 · 🔗 Telethon-path IP: 178.90.224.97","exit_ip":"178.90.224.97","is_datacenter":false,"async_exit_ip":"178.90.224.97"}
+[15:00:07.032] preflight: {"status":"running","message":"📊 Checking KZ SMS success rate on SMSPool…"}
+[15:00:07.124] preflight: {"status":"error","message":"🚫 KZ success rate: 30%","success_rate":30,"country_id":"kz"}
+[15:00:07.124] sms_retry_prompt: {"country_id":"kz","message":"🚫 KZ has only 30% SMS success rate right now (minimum 60%). Buying would waste your balance on recycled numbers. Switch to: Kazakhstan (KZ), Ukraine (UA), Philippines (PH), Georgia (GE), or Bangladesh (BD)."}
+[15:00:07.295] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
