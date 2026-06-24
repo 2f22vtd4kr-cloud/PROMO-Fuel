@@ -9,9 +9,12 @@ WORKSPACE="$(cd "$(dirname "$0")/.." && pwd)"
 SENTINEL="$WORKSPACE/.deps-ready"
 VITE_JS="$WORKSPACE/artifacts/telegram-miniapp/node_modules/vite/bin/vite.js"
 
-# ── Fast path A: sentinel written by post-merge → trust it, skip everything ──
-if [ -f "$SENTINEL" ]; then
-  echo "[ensure-node-deps] ✓ .deps-ready sentinel found — skipping install"
+# ── Fast path A: sentinel + vite already present → skip install ─────────────
+# NOTE: We check BOTH sentinel AND vite.js existence.
+# The sentinel can be stale (committed to git, fresh import, empty node_modules)
+# so trusting it blindly would skip install and let vite fail to start.
+if [ -f "$SENTINEL" ] && [ -f "$VITE_JS" ]; then
+  echo "[ensure-node-deps] ✓ .deps-ready sentinel + vite found — skipping install"
   exit 0
 fi
 

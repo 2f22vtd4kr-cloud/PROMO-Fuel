@@ -1,4 +1,7 @@
 - [Session handoff protocol](session-handoff.md) — read HANDOFF.md first; rewrite after EVERY turn; lean doc (current session only, no history accumulation).
+- [Stale sentinel bug](stale-sentinel.md) — `.deps-ready` was tracked by git; ensure-*.sh now validates packages/vite even when sentinel exists; never trust sentinel blindly.
+- [Drizzle schema must mirror all PG tables](drizzle-pg-schema.md) — `lib/db/src/schema/index.ts` was empty; Replit deploy generates DROP TABLE for every table not in schema; add all 3 PostgreSQL tables there.
+- [Telethon 1.44.0 removed receive_timeout](telethon-receive-timeout.md) — `receive_timeout` param removed from TelegramClient(); caused Step 2 crash on every registration; check 1.44.0 docs before adding new TelegramClient kwargs.
 - [Required secrets on fresh import](required-secrets.md) — on session start run viewEnvVars(); if any of the 8 required secrets missing → call requestEnvVar() before doing anything else. Secret names in scripts/required-secrets.sh.
 - [Telegram stub conflict](telegram-stub.md) — never add `telegram>=0.0.1` to pyproject.toml; it shadows python-telegram-bot.
 - [SQLite DB schema](sqlite-schema.md) — campaigns.db tables: `campaigns`, `users`, `sends`, `sender_accounts`, `message_templates`, `uploads`, `saved_proxies` (Step 11: country_code, proxy_string, label, last_session_num).

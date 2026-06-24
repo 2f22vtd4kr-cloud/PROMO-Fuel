@@ -49,3 +49,7 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Cold-start sentinel — written by post-merge.sh after successful install.
+# Must NOT be committed: a stale sentinel on fresh import skips all dep install.
+.deps-ready

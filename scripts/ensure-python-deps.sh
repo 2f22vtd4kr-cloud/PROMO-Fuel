@@ -26,9 +26,12 @@ assert _PT.SOCKS5 is not None
 " 2>/dev/null
 }
 
-# ── Fast path A: sentinel written by post-merge → trust it, skip everything ──
-if [ -f "$SENTINEL" ]; then
-  echo "[ensure-python-deps] ✓ .deps-ready sentinel found — skipping install"
+# ── Fast path A: sentinel + smoke test pass → skip install ──────────────────
+# NOTE: We ALWAYS run smoke_test even when the sentinel exists.
+# The sentinel can be stale (committed to git, fresh import, empty .pythonlibs)
+# and would cause silent failure if we trusted it blindly.
+if [ -f "$SENTINEL" ] && smoke_test; then
+  echo "[ensure-python-deps] ✓ .deps-ready sentinel + smoke test passed — skipping install"
   exit 0
 fi
 
