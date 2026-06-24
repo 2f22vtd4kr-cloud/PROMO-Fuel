@@ -1,0 +1,19 @@
+We have run 50 automated account registration attempts across multiple countries using our account factory, and NOT A SINGLE ONE went through. Every attempt successfully purchases a number and establishes a proxy tunnel, but then gets permanently stuck and times out at the "Waiting for SMS code" step. 
+
+Statistically, 50 consecutive failures across different regions mean this is NOT an SMSPool inventory issue. Telegram's anti-fraud system is likely "silent-blocking" our registration requests at the gateway because of a digital footprint leak or a structural bug on OUR side.
+
+Anthropic and Gemini, I need you to go into an aggressive, deep-dive architectural audit of our backend code. Do not suggest superficial fixes. Investigate our system for the following 4 critical failure vectors:
+
+1. TELETHON CLIENT FOOTPRINT & DEVICE SPOOFING:
+Review how we initialize the Telethon TelegramClient. Are we using default, outdated, or static values for `device_model`, `system_version`, `app_version`, `lang_code`, and `system_lang`? If Telegram sees dozens of requests from identical, generic device strings or raw Telethon default strings, it flags it instantly as a script and refuses to dispatch the SMS. Suggest a robust randomizer/spoofer configuration for these parameters.
+
+2. PROXY LEAKS AND DNS RESOLUTION:
+Audit exactly how the Decodo SOCKS5 proxy string is being injected into the Telethon connection. Are we using `socks5h://` or mapping it correctly so that DNS queries are resolved *through the proxy*? If Telethon performs DNS resolution using our Replit server’s real IP before routing traffic through the proxy, Telegram detects the geolocation mismatch and drops the SMS delivery.
+
+3. FORCE SMS LOGIC IN `send_code_request`:
+Examine our `client.send_code_request()` implementation. Telegram's updated protocol often tries to send the verification code via an active session (in-app notification) first, rather than an SMS text, if it suspects anything. Are we explicitly catching the phone code type or properly handling the parameters to force Telegram to send a physical SMS?
+
+4. ASYNCHRONOUS EVENT LOOP & TIMEOUT LIFECYCLE:
+Check the 120-second sleep loop during the SMS polling phase. Is our Telethon connection falling asleep, getting disconnected by the server, or choking the asyncio event loop while waiting? If the socket drops background heartbeats during those 2 minutes, the registration handshake breaks.
+
+Please thoroughly analyze all our relevant backend files handling the Telethon registration, point out exact logical vulnerabilities or footprint leaks, and provide the fully optimized Python code to make our automated registration look 100% like a real human mobile device.

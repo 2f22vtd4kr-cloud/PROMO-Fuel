@@ -1174,7 +1174,9 @@ async def _registration_stream(
                         allow_flashcall=False,
                         allow_missed_call=False,
                         allow_firebase=False,
+                        allow_app_hash=False,
                         current_number=False,
+                        unknown_number=True,
                     ),
                 ))
                 phone_code_hash = raw_result.phone_code_hash
@@ -1182,20 +1184,11 @@ async def _registration_stream(
             except PhoneNumberBannedError:
                 _banned = True
             except Exception:
-                # Raw request failed — fall back to standard helper, but still
-                # use explicit CodeSettings so we keep current_number=False.
+                # Raw request failed — fall back to Telethon high-level send_code_request.
+                # This uses a different internal code path and sometimes succeeds when the
+                # raw TL call fails (e.g. on certain proxy/DC routing issues).
                 try:
-                    fb = await client(RawSendCodeRequest(
-                        phone_number=phone,
-                        api_id=_actual_api_id,
-                        api_hash=_actual_api_hash,
-                        settings=tl_types.CodeSettings(
-                            allow_flashcall=False,
-                            allow_missed_call=False,
-                            allow_firebase=False,
-                            current_number=False,
-                        ),
-                    ))
+                    fb = await client.send_code_request(phone)
                     phone_code_hash = fb.phone_code_hash
                     code_type_name  = type(fb.type).__name__ if fb.type else "Unknown"
                 except PhoneNumberBannedError:
@@ -1367,7 +1360,9 @@ async def _registration_stream(
                                         allow_flashcall=False,
                                         allow_missed_call=False,
                                         allow_firebase=False,
+                                        allow_app_hash=False,
                                         current_number=False,
+                                        unknown_number=True,
                                     ),
                                 ))
                                 break

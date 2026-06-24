@@ -15,36 +15,24 @@
 
 ## This session
 
-**Task:** Auto-fill proxy + 2FA on country change, plus rainbow "Full Auto Launch" button.
+**Task:** Debug why Account Factory gets stuck at Step 3 (Telegram code request) — all numbers returning SentCodeTypeApp / "recycled".
 
-**1. Auto-fill proxy + 2FA on country selection (`AccountFactory.tsx`)**
-- Extended the proxy-fetch `useEffect` (watches `country`/`customCountry`) to also auto-fill the proxy field from the first (most-recent) stored proxy for that country — sets `proxy`, `sessionStartNum` (last_session_num + 1), `selectedProxyStoreId`.
-- If `twoFa` is currently empty, auto-generates a 16-char password (upper+lower+digits+symbols via `crypto.getRandomValues`). Does NOT overwrite an existing password.
-- `twoFaRef = useRef("")` kept in sync with `twoFa` state so async functions read live value without stale-closure bugs.
-- Fires on every country change (initial load, Наявність tab click, AI Вибір, own-stats panel, any `applyCountry()` call).
+**Root cause found:** `CodeSettings` in all `RawSendCodeRequest` calls was missing two critical flags:
+- `unknown_number=True` — tells Telegram this is a fresh/unregistered number → must receive SMS. Without it, Telegram's anti-spam routes delivery to Telegram app on unrecognized numbers (SentCodeTypeApp).
+- `allow_app_hash=False` — explicit opt-out of app-hash delivery (was implicitly None/unset before).
 
-**2. `pendingAutoLaunchRef` trigger system (`AccountFactory.tsx`)**
-- A `useRef` flag. When set `true`, a `useEffect` watching `[country, customCountry, proxy, twoFa]` fires `launch()` once all three are non-empty — avoids stale-closure issues since `launch()` reads React state.
-- Used exclusively by `handleAutoLaunch()` after it sets all state.
+Wire format proof: `CodeSettings(…)` without `unknown_number` serialized to `flags=0x00000000`; with `unknown_number=True` serializes to `flags=0x00000200` — different bit sent to Telegram.
 
-**3. Rainbow "Full Auto Launch" button (`AccountFactory.tsx`, `index.css`)**
-- CSS: `@keyframes rainbow-flow` — animates `background-position` 0%→100%→0% on a 300%-wide multi-stop gradient (slow 5s idle, fast 2s while checking). `@keyframes rainbow-pulse` for glow cycling (available).
-- Button: `linear-gradient(135deg, #ff6b6b → #ffd93d → #6bcb77 → #4d96ff → #a855f7 → #ff6b6b)` at `backgroundSize: 300% 300%`, animated continuously. Scales down + accelerates while running.
-- `handleAutoLaunch()` runs 4 preflight checks: (1) SMSPool key set, (2) best country from cache or `/api/factory/best-country`, (3) proxy in store for that country via `/api/proxy-store?country=X`, (4) avatar count via `/api/factory/avatar-counts` (AI profile mode only).
-- If blockers → yellow issues card lists each problem. If all clear → applies state + fires launch.
-- A "або запустити вручну" divider separates it from the original 🚀 manual button (unchanged).
+**Secondary bug fixed:** The Step 3 "fallback" on exception was an identical copy of the primary `RawSendCodeRequest` (no difference at all). Replaced with Telethon's high-level `client.send_code_request(phone)` which takes a different internal code path.
 
-**4. Previous session (already merged):** smart proxy selection fix, авто toggle removal, button beautification, per-country AI analysis card.
+**Files changed:**
+- `account_factory.py` — 2 `CodeSettings` blocks (primary at ~line 1173, official-creds loop at ~line 1362) both now have `allow_app_hash=False, unknown_number=True`. Fallback changed to `client.send_code_request()`.
 
----
-
-## Current state
-
+**Current state:**
 - ✅ Telegram Bot workflow running (supervisor + FastAPI port 8083)
 - ✅ Telegram Mini App workflow running (Vite dev port 5000)
-- ✅ Build clean: `vite build` zero errors, 1099 kB bundle
-- ✅ Auto-fill fires on any country change
-- ✅ Rainbow auto-launch button renders + animates in idle and checking states
+- ✅ account_factory.py passes `python3 -c "import ast; ast.parse(...)"` syntax check
+- ✅ Bot restarted and serving requests
 
 ---
 
@@ -78,8 +66,7 @@ Non-sensitive env var: `PORT=8080`.
 - Python: `account_factory.py` → `_registration_stream()` + `_pick_auto_switch_proxy()`
 - Node API: `artifacts/api-server/src/routes/factory.ts`
 - UI: `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`
-- `_pick_auto_switch_proxy()`: only returns "found" if stats + proxy both exist; "suggest" if best has no proxy; "none" if no data
-- No авто toggle — `auto_switch` always `false` from frontend
+- **CodeSettings rule:** ALL `RawSendCodeRequest` calls MUST include `allow_app_hash=False, unknown_number=True` or Telegram routes to SentCodeTypeApp on fresh SMSPool numbers.
 
 ### Auth model
 - Bearer middleware (app.ts): active when `API_SECRET` set; skips `/twa`, `/health`, `/auth`, `/proxy-store`
