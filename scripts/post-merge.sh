@@ -89,6 +89,23 @@ compile_sqlite() {
     echo "[post-merge/sqlite3] ⚠ Compile failed (startup will retry)"
 }
 
+# ── 4. Drizzle schema push — keeps dev PostgreSQL in sync with schema ─────
+push_drizzle() {
+  DRIZZLE_BIN="$WORKSPACE/node_modules/.pnpm/node_modules/.bin/drizzle-kit"
+  if [ ! -x "$DRIZZLE_BIN" ]; then
+    echo "[post-merge/drizzle] drizzle-kit not found — skipping"
+    return 0
+  fi
+  if [ -z "$DATABASE_URL" ]; then
+    echo "[post-merge/drizzle] DATABASE_URL not set — skipping"
+    return 0
+  fi
+  echo "[post-merge/drizzle] Pushing schema to dev PostgreSQL..."
+  cd "$WORKSPACE/lib/db"
+  "$DRIZZLE_BIN" push --force --config ./drizzle.config.ts 2>&1 | tail -4 || true
+  echo "[post-merge/drizzle] ✓ Done"
+}
+
 # ── Run pip and pnpm in parallel; compile sqlite3 after pnpm finishes ───────
 install_python &
 PY_PID=$!
@@ -96,13 +113,15 @@ PY_PID=$!
 install_node &
 NODE_PID=$!
 
-# Wait for node install, then immediately start sqlite3 compile
-# (sqlite3 needs the pnpm tree to exist but doesn't need python to finish)
+# Wait for node install, then immediately start sqlite3 compile + drizzle push
+# (both need the pnpm tree to exist but don't need python to finish)
 wait $NODE_PID
 compile_sqlite &
 SQLITE_PID=$!
+push_drizzle &
+DRIZZLE_PID=$!
 
-wait $PY_PID $SQLITE_PID
+wait $PY_PID $SQLITE_PID $DRIZZLE_PID
 
 echo ""
 echo "[post-merge] Writing sentinel..."
