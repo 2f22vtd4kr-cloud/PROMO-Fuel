@@ -15,24 +15,42 @@
 
 ## This session
 
-**Task:** Debug why Account Factory gets stuck at Step 3 (Telegram code request) — all numbers returning SentCodeTypeApp / "recycled".
+**Task:** Build a foldable AI debug panel in AccountFactory that captures live SSE events and lets Gemini/Groq analyze the registration session.
 
-**Root cause found:** `CodeSettings` in all `RawSendCodeRequest` calls was missing two critical flags:
-- `unknown_number=True` — tells Telegram this is a fresh/unregistered number → must receive SMS. Without it, Telegram's anti-spam routes delivery to Telegram app on unrecognized numbers (SentCodeTypeApp).
-- `allow_app_hash=False` — explicit opt-out of app-hash delivery (was implicitly None/unset before).
+**What was built:**
 
-Wire format proof: `CodeSettings(…)` without `unknown_number` serialized to `flags=0x00000000`; with `unknown_number=True` serializes to `flags=0x00000200` — different bit sent to Telegram.
+1. **`artifacts/telegram-miniapp/src/components/FactoryDebugPanel.tsx`** (new file)
+   - Foldable glass panel with indigo/purple glass morphism design
+   - Monospace event log (max 220px, scrollable, auto-scrolls to bottom)
+   - Each event: `HH:mm:ss.ms` timestamp + color-coded event-type badge + smart label
+   - Color scheme: step/done=green, step/running=amber, step/error=red, poll=blue, preflight=purple, error=red, complete=bright green, sms_retry=orange, batch_*=cyan, warmup_*=purple
+   - Smart label extraction: extracts `SentCodeType*` from step messages, shows exit IP + DC warning for preflight
+   - Header badges: red "DC IP!" or orange "recycled" alert badges appear when relevant
+   - Copy-log and Clear buttons in header
+   - AI analysis section: optional question input + "Аналіз AI" button (Sparkles icon)
+   - Shows loading spinner, then: SeverityChip (✅/⚠️/❌) + engine badge (GEMINI/GROQ) + summary + issues list (red ▸) + suggestions (green ✓) + collapsible detailed analysis
+   - Inline `DetailedAnalysis` sub-component (expand/collapse)
 
-**Secondary bug fixed:** The Step 3 "fallback" on exception was an identical copy of the primary `RawSendCodeRequest` (no difference at all). Replaced with Telethon's high-level `client.send_code_request(phone)` which takes a different internal code path.
+2. **`artifacts/api-server/src/routes/ai.ts`** — added `POST /api/v3/ai/factory-debug`
+   - Takes `{ events: DebugLogEntry[], question?: string }`
+   - Formats event timeline as readable log (max 120 events)
+   - System prompt encodes full factory architecture: 8-step pipeline, CodeSettings rule, SMS delivery types, proxy requirements, pre-flight events, healthy signature, common failure patterns
+   - Gemini 2.5 Flash primary (JSON mode), Groq llama-3.3-70b fallback
+   - Returns `{ severity, summary, issues[], suggestions[], analysis, engine }`
 
-**Files changed:**
-- `account_factory.py` — 2 `CodeSettings` blocks (primary at ~line 1173, official-creds loop at ~line 1362) both now have `allow_app_hash=False, unknown_number=True`. Fallback changed to `client.send_code_request()`.
+3. **`artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`** — wired up:
+   - Import `FactoryDebugPanel` + `DebugLogEntry` type
+   - Added `debugLog` / `setDebugLog` state (capped at 500 entries)
+   - SSE loop: every parsed event pushed to `debugLog` before the if/else dispatch
+   - `reset()` function: clears `debugLog` (called on "Register More")
+   - `<FactoryDebugPanel>` rendered before the action buttons (always visible when panel active)
+
+**Also fixed this session:** `better-sqlite3` native binary mismatch after cold start — ran `npm rebuild better-sqlite3 --build-from-source`, API server now running.
 
 **Current state:**
-- ✅ Telegram Bot workflow running (supervisor + FastAPI port 8083)
-- ✅ Telegram Mini App workflow running (Vite dev port 5000)
-- ✅ account_factory.py passes `python3 -c "import ast; ast.parse(...)"` syntax check
-- ✅ Bot restarted and serving requests
+- ✅ Telegram Bot workflow running
+- ✅ Telegram Mini App workflow running (Vite, port 5000), build: 1711 modules, 0 errors
+- ✅ API server workflow running (port 8080), new endpoint deployed
 
 ---
 
@@ -40,45 +58,34 @@ Wire format proof: `CodeSettings(…)` without `unknown_number` serialized to `f
 
 | Secret | Where to get it |
 |---|---|
-| `TELEGRAM_TOKEN` | @BotFather on Telegram |
-| `TELETHON_API_ID` | https://my.telegram.org/apps (integer) |
+| `TELEGRAM_TOKEN` | @BotFather |
+| `TELETHON_API_ID` | https://my.telegram.org/apps |
 | `TELETHON_API_HASH` | https://my.telegram.org/apps |
-| `ADMIN_TELEGRAM_ID` | @userinfobot on Telegram |
+| `ADMIN_TELEGRAM_ID` | @userinfobot |
 | `GEMINI_API_KEY` | https://aistudio.google.com/apikey |
 | `GROQ_API_KEY` | https://console.groq.com/keys |
 | `SMSPOOL_API_KEY` | https://smspool.net/profile |
-| `API_SECRET` | Any strong random string (`openssl rand -hex 32`) |
+| `API_SECRET` | Any strong random string |
 
-Non-sensitive env var: `PORT=8080`.
+Non-sensitive: `PORT=8080`.
 
 ---
 
-## Standing architecture facts
+## Architecture snapshot
 
 ### Ports
 | Service | Port |
 |---|---|
 | Vite Mini App dev | 5000 (exposed as 80) |
 | Python FastAPI | 8083 |
-| Node.js Express API | 8080 |
+| Node.js Express | 8080 |
+
+### Vite proxy: ALL `/api/*` → port 8080 (Node.js Express)
 
 ### Account Factory
-- Python: `account_factory.py` → `_registration_stream()` + `_pick_auto_switch_proxy()`
-- Node API: `artifacts/api-server/src/routes/factory.ts`
-- UI: `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`
-- **CodeSettings rule:** ALL `RawSendCodeRequest` calls MUST include `allow_app_hash=False, unknown_number=True` or Telegram routes to SentCodeTypeApp on fresh SMSPool numbers.
+- **CodeSettings rule:** ALL `RawSendCodeRequest` calls MUST have `allow_app_hash=False, unknown_number=True`
+- SSE events captured: preflight, step, poll, error, complete, sms_retry_prompt, warmup_*, batch_*
+- Debug panel renders once `runState !== "idle"` (after first launch)
 
-### Auth model
-- Bearer middleware (app.ts): active when `API_SECRET` set; skips `/twa`, `/health`, `/auth`, `/proxy-store`
-- Factory + Verifications: mounted BEFORE Bearer middleware → no auth required
-
-### Key files
-| File | Purpose |
-|---|---|
-| `account_factory.py` | All Telegram registration logic |
-| `artifacts/api-server/src/app.ts` | Express app + auth middleware |
-| `artifacts/api-server/src/routes/proxy-store.ts` | Proxy vault CRUD |
-| `artifacts/api-server/src/routes/factory.ts` | Factory API + country stats |
-| `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx` | Factory UI |
-| `artifacts/telegram-miniapp/src/index.css` | Global CSS incl. rainbow-flow keyframes |
-| `campaigns.db` | SQLite — all tables incl. `factory_country_stats`, `saved_proxies` |
+### cold-start note
+`better-sqlite3` native binary is NOT committed. On cold start: `npm rebuild better-sqlite3 --build-from-source` or `scripts/post-merge.sh`.

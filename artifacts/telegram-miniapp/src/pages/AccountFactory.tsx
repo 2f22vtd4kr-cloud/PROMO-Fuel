@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { X, ChevronDown, Loader, Minus, Plus, RefreshCw } from "lucide-react";
 import { useI18n } from "../lib/i18n";
 import { getStoredSecret } from "./LockScreen";
+import { FactoryDebugPanel, type DebugLogEntry } from "../components/FactoryDebugPanel";
 
 function authHeaders(): Record<string, string> {
   const s = getStoredSecret();
@@ -908,6 +909,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [exitIp,          setExitIp]          = useState<string | null>(null);
   const [isDcIp,          setIsDcIp]          = useState<boolean>(false);
 
+  const [debugLog,        setDebugLog]        = useState<DebugLogEntry[]>([]);
+
   // Batch tracking
   const [batchTotal,     setBatchTotal]     = useState(0);
   const [batchCurrent,   setBatchCurrent]   = useState(0);
@@ -1248,6 +1251,11 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           let p: Record<string, unknown>;
           try { p = JSON.parse(data); } catch { continue; }
 
+          setDebugLog(prev => {
+            const entry: DebugLogEntry = { event, data: p, ts: Date.now() };
+            return prev.length >= 500 ? [...prev.slice(-499), entry] : [...prev, entry];
+          });
+
           if (event === "batch_start") {
             setBatchTotal(p.total as number);
           } else if (event === "batch_progress") {
@@ -1386,6 +1394,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setPreflightMsg(null);
     setWarmupPrompt(null);
     setSmsRetryPrompt(null);
+    setDebugLog([]);
   }
 
   function handleSmsRetry(yes: boolean) {
@@ -4103,6 +4112,13 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                 </div>
               );
             })()}
+
+            {/* Debug panel */}
+            <FactoryDebugPanel
+              logs={debugLog}
+              onClear={() => setDebugLog([])}
+              authHeaders={authHeaders}
+            />
 
             {/* Action buttons */}
             <div style={{ display: "flex", gap: 10 }}>

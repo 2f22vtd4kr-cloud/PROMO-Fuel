@@ -53099,6 +53099,145 @@ ${seed_text.trim()}`;
     return void res.status(503).json({ error: "capacity" });
   }
 });
+var FACTORY_DEBUG_SYSTEM = `You are the PROMO-Fuel Account Factory Debugger \u2014 a specialist AI that analyzes SSE event streams from the Telegram account registration pipeline.
+
+## Architecture Reference
+
+### Registration Pipeline (8 steps)
+1. \u{1F6D2} Purchase number from SMSPool via API (service=907 = Telegram)
+2. \u{1F4E1} Initialize proxy SOCKS5 tunnel via Telethon
+3. \u{1F4AC} Request Telegram code via RawSendCodeRequest with CodeSettings(allow_app_hash=False, unknown_number=True)
+4. \u23F3 Wait for SMS code from SMSPool (polling every 5s, timeout=120s)
+5. \u{1F91D} Sign in with received code (SignInRequest)
+6. \u{1F512} Enable 2FA (two-factor password)
+7. \u{1FAAA} Profile setup & warming (Gemini AI picks name/bio/avatar, or manual)
+8. \u{1F4BE} Save .session file + add to CRM SQLite database
+
+### Critical CodeSettings Rule
+ALL RawSendCodeRequest calls MUST include:
+  CodeSettings(allow_app_hash=False, unknown_number=True)
+- unknown_number=True \u2192 wire flags=0x00000200 \u2192 tells Telegram this is a fresh/unregistered number \u2192 delivers SMS
+- Without it: Telegram routes to SentCodeTypeApp (treats as suspicious login attempt, not new registration)
+- SentCodeTypeApp in Step 3 response = either: (a) recycled number, (b) missing flag, (c) datacenter IP detected
+
+### SMS Delivery Type Meanings
+- SentCodeTypeSms \u2705 \u2014 correct; SMS will arrive, pipeline can continue
+- SentCodeTypeApp \u274C \u2014 Telegram app delivery; pipeline must abort and retry with new number
+  Causes: recycled number OR missing unknown_number=True OR DC/datacenter IP
+- SentCodeTypeCall \u2014 voice call delivery (uncommon, sometimes acceptable)
+- SentCodeTypeFlashCall \u2014 flash call (rare)
+
+### Proxy Requirements
+- Must be SOCKS5 format: socks5://user:pass@host:port
+- Requires BOTH python-socks[asyncio] AND PySocks (import socks) installed
+- Without python-socks: Telethon silently bypasses the proxy \u2192 gets datacenter IP \u2192 SentCodeTypeApp on ALL numbers
+- Pre-flight exit IP check: is_datacenter=true \u2192 BAD \u2192 all numbers will fail
+
+### Pre-flight Events
+- preflight status=running \u2192 connecting to proxy, checking exit IP
+- preflight exit_ip=X is_datacenter=true \u2192 CRITICAL: residential proxy is actually routing through a Telegram DC
+- preflight is_datacenter=false \u2192 OK: residential/mobile IP confirmed
+
+### Healthy Session Signature
+preflight(done,is_datacenter=false) \u2192 step1(done) \u2192 step2(done) \u2192 step3(done,SentCodeTypeSms) \u2192 step4(done) \u2192 step5(done) \u2192 step6(done) \u2192 step7(done) \u2192 step8(done) \u2192 complete
+
+### Common Failure Patterns
+1. SentCodeTypeApp at Step 3 \u2192 recycled number or missing unknown_number=True flag
+2. Proxy timeout / connection refused at Step 2 \u2192 SOCKS5 auth failed or proxy down
+3. FloodWaitError at Step 3/5 \u2192 Telegram rate limiting this IP
+4. Code expired / sign_in failed at Step 5 \u2192 SMS arrived but 120s window exceeded
+5. SessionPasswordNeeded \u2192 2FA required on recycled account (unexpected)
+6. PhoneNumberBanned \u2192 phone number banned from registration
+7. All numbers recycled \u2192 SMSPool country pool exhausted
+
+Respond in the SAME LANGUAGE as the question asked (Ukrainian/Russian/English).
+You MUST output ONLY valid JSON with this exact shape, no extra text:
+{
+  "severity": "ok" | "warning" | "error",
+  "summary": "1-2 sentence summary",
+  "issues": ["issue description 1", "issue description 2"],
+  "suggestions": ["suggestion 1", "suggestion 2"],
+  "analysis": "detailed analysis (2-4 paragraphs, markdown ok)"
+}`;
+router12.post("/v3/ai/factory-debug", async (req, res) => {
+  const { events, question } = req.body;
+  if (!events || !Array.isArray(events) || events.length === 0) {
+    return void res.status(400).json({ error: "events array is required and must not be empty" });
+  }
+  const lines = events.slice(-120).map((e) => {
+    const t = new Date(e.ts);
+    const hms = `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}:${String(t.getSeconds()).padStart(2, "0")}.${String(t.getMilliseconds()).padStart(3, "0")}`;
+    return `[${hms}] ${e.event}: ${JSON.stringify(e.data)}`;
+  }).join("\n");
+  const userPrompt = `SSE Event Log (${events.length} events):
+\`\`\`
+${lines}
+\`\`\`
+
+${question ? `Question: ${question}` : "Analyze this registration session. Identify issues, root causes, and recommendations."}`;
+  const GEMINI_API_KEY = process.env["GEMINI_API_KEY"];
+  const GROQ_API_KEY = process.env["GROQ_API_KEY"];
+  if (GEMINI_API_KEY) {
+    try {
+      const genai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+      const response = await genai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+        config: {
+          systemInstruction: FACTORY_DEBUG_SYSTEM,
+          temperature: 0.15,
+          maxOutputTokens: 2048,
+          responseMimeType: "application/json"
+        }
+      });
+      const raw = (response.text ?? "").trim();
+      try {
+        const parsed = JSON.parse(raw);
+        return void res.json({ ...parsed, engine: "gemini" });
+      } catch {
+        return void res.json({ severity: "warning", summary: raw.slice(0, 200), issues: [], suggestions: [], analysis: raw, engine: "gemini" });
+      }
+    } catch (err) {
+      const errStr = String(err);
+      if (!errStr.includes("503") && !errStr.includes("overloaded") && !errStr.includes("UNAVAILABLE") && !errStr.includes("fetch")) {
+        console.error("[factory-debug/gemini] Error:", errStr.slice(0, 200));
+      } else {
+        console.warn("[factory-debug/gemini] Transient, falling back to Groq");
+      }
+    }
+  }
+  if (!GROQ_API_KEY) {
+    return void res.status(503).json({ error: "No AI keys configured" });
+  }
+  try {
+    const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.15,
+        max_tokens: 2048,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: FACTORY_DEBUG_SYSTEM },
+          { role: "user", content: userPrompt }
+        ]
+      })
+    });
+    if (!groqRes.ok) throw new Error(`Groq HTTP ${groqRes.status}`);
+    const groqData = await groqRes.json();
+    const raw = (groqData.choices?.[0]?.message?.content ?? "").trim();
+    try {
+      const parsed = JSON.parse(raw);
+      return void res.json({ ...parsed, engine: "groq" });
+    } catch {
+      return void res.json({ severity: "warning", summary: raw.slice(0, 200), issues: [], suggestions: [], analysis: raw, engine: "groq" });
+    }
+  } catch (err) {
+    console.error("[factory-debug/groq] Failed:", err);
+    return void res.status(503).json({ error: "capacity" });
+  }
+});
 var ai_default = router12;
 
 // src/routes/proxy-store.ts
@@ -53641,13 +53780,20 @@ router15.get("/best-country", async (req, res) => {
       return void res.status(404).json({ error: "No countries with available stock found" });
     }
     parsed.sort((a, b) => b.success_rate - a.success_rate || b.quantity - a.quantity);
-    const top5 = parsed.slice(0, 5).map((c, i) => ({
-      id: c.country_id,
-      name: c.country_name,
-      success_rate: c.success_rate,
-      quantity: c.quantity,
-      rank: i + 1
-    }));
+    const ownStatsMap = new Map(getOwnStats().map((s) => [s.country_id.toLowerCase(), s]));
+    const top5 = parsed.slice(0, 5).map((c, i) => {
+      const own = ownStatsMap.get(c.country_id.toLowerCase());
+      return {
+        id: c.country_id,
+        name: c.country_name,
+        success_rate: c.success_rate,
+        quantity: c.quantity,
+        rank: i + 1,
+        own_attempts: own?.attempts,
+        own_successes: own?.successes,
+        own_recycled: own?.recycled
+      };
+    });
     const best = top5[0];
     _bestCountryCache.set(cacheKey, { ts: Date.now(), best, top5 });
     return void res.json({ ...best, top5, cached: false });
@@ -53656,6 +53802,8 @@ router15.get("/best-country", async (req, res) => {
   }
 });
 var _aiCountryCache = /* @__PURE__ */ new Map();
+var _singleCountryCache = /* @__PURE__ */ new Map();
+var SINGLE_COUNTRY_CACHE_TTL = 4 * 60 * 60 * 1e3;
 var AI_CACHE_TTL_MS = 12 * 60 * 60 * 1e3;
 var AI_REFRESH_INTERVAL_MS = 12 * 60 * 60 * 1e3;
 var AI_CACHE_VERSION = "v3-jun2026";
@@ -53795,6 +53943,109 @@ async function refreshAiCache() {
 setInterval(() => {
   void refreshAiCache();
 }, AI_REFRESH_INTERVAL_MS);
+async function buildAiCountryAnalysis(id, name) {
+  const GEMINI_API_KEY = process.env["GEMINI_API_KEY"];
+  const GROQ_API_KEY = process.env["GROQ_API_KEY"];
+  if (!GEMINI_API_KEY && !GROQ_API_KEY) {
+    throw new Error("No AI API key configured (GEMINI_API_KEY or GROQ_API_KEY required)");
+  }
+  const ownStats = getOwnStats();
+  const ownEntry = ownStats.find((s) => s.country_id.toLowerCase() === id.toLowerCase());
+  const ownLine = ownEntry ? `Our own DB: ${ownEntry.attempts} attempts, ${ownEntry.successes} successes, ${ownEntry.recycled} recycled` + (ownEntry.avg_attempts != null ? `, avg_attempts=${ownEntry.avg_attempts}` : "") : `We have no registration experience with ${name} (${id}) yet.`;
+  const prompt = `You are a specialized analyst for SMSPool.net Telegram account registration freshness.
+Analyze the following country specifically for Telegram account registration via SMSPool.
+
+Country to analyze: ${name} (SMSPool code: ${id})
+
+${COMMUNITY_RESEARCH}
+
+${ownLine}
+
+Return ONLY valid JSON (no markdown, no text outside JSON), exactly this shape:
+{
+  "entry": {
+    "rank": 0,
+    "id": "${id}",
+    "name": "${name}",
+    "freshness": <integer 0-100: % chance a purchased number is NOT already on Telegram>,
+    "avg_attempts": <decimal: avg numbers to buy per successful fresh registration>,
+    "reasoning": "<2-3 sentences citing specific community research data or our own data; be concrete about telecom providers and Telegram penetration>",
+    "data_source": "<own_experience if own DB successes>=3, community_research if in research data above, ai_estimate otherwise>"
+  },
+  "model": "gemini-2.5-flash"
+}
+
+Rules:
+- freshness and avg_attempts MUST match the community research data exactly if ${name} appears there.
+- If our own DB has 3+ successes, use that avg_attempts and set data_source="own_experience".
+- Be honest: if ${name} is a poor choice (e.g., high Telegram penetration), say so with low freshness.
+- reasoning must cite the specific data source, not generic statements.`;
+  let raw = "";
+  let modelUsed = "unknown";
+  let geminiError = null;
+  if (GEMINI_API_KEY) {
+    try {
+      const { GoogleGenAI: GoogleGenAI2 } = await import("@google/genai");
+      const genai = new GoogleGenAI2({ apiKey: GEMINI_API_KEY });
+      const response = await genai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{ role: "user", parts: [{ text: prompt }] }]
+      });
+      raw = response.text ?? "";
+      modelUsed = "gemini-2.5-flash";
+    } catch (err) {
+      geminiError = String(err);
+      const isTransient = /503|502|UNAVAILABLE|high demand|overloaded|quota|rate.?limit|exceeded/i.test(geminiError);
+      if (!isTransient || !GROQ_API_KEY) throw err;
+      console.warn("[factory/ai-country/gemini] Transient, falling back to Groq:", geminiError.slice(0, 160));
+    }
+  }
+  if (!raw && GROQ_API_KEY) {
+    const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        max_tokens: 800
+      })
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`Groq HTTP ${resp.status}: ${errText.slice(0, 200)}`);
+    }
+    const json = await resp.json();
+    raw = json.choices?.[0]?.message?.content ?? "";
+    modelUsed = `groq-llama-3.3-70b${geminiError ? " (gemini-fallback)" : ""}`;
+  }
+  if (!raw) throw new Error(geminiError ?? "No AI key configured");
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+  const parsed = JSON.parse(cleaned);
+  if (!parsed.entry) throw new Error("AI returned no entry");
+  if (ownEntry && ownEntry.successes >= 3 && ownEntry.avg_attempts != null) {
+    parsed.entry.avg_attempts = ownEntry.avg_attempts;
+    parsed.entry.data_source = "own_experience";
+  }
+  modelUsed = parsed.model ?? modelUsed;
+  return { entry: parsed.entry, model: modelUsed };
+}
+router15.get("/ai-country", async (req, res) => {
+  const { id, name } = req.query;
+  if (!id) return void res.status(400).json({ error: "?id= is required" });
+  const cacheKey = id.toLowerCase();
+  const cached = _singleCountryCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < SINGLE_COUNTRY_CACHE_TTL) {
+    return void res.json({ entry: cached.entry, model: cached.model, cached: true });
+  }
+  try {
+    const result = await buildAiCountryAnalysis(id.toLowerCase(), name || id.toUpperCase());
+    _singleCountryCache.set(cacheKey, { ts: Date.now(), entry: result.entry, model: result.model });
+    return void res.json({ entry: result.entry, model: result.model, cached: false });
+  } catch (err) {
+    return void res.status(502).json({ error: `AI analysis failed: ${String(err)}` });
+  }
+});
 router15.get("/ai-countries", async (_req, res) => {
   const cacheKey = `default_${AI_CACHE_VERSION}`;
   const cached = _aiCountryCache.get(cacheKey);
@@ -53856,6 +54107,41 @@ router15.get("/country-stats", (_req, res) => {
     return void res.json({ stats });
   } catch (err) {
     return void res.status(500).json({ error: String(err) });
+  }
+});
+router15.get("/avatar-counts", async (_req, res) => {
+  const pythonPort = process.env["PYTHON_API_PORT"] ?? "8083";
+  try {
+    const r = await fetch(`http://127.0.0.1:${pythonPort}/api/factory/avatar-counts`, {
+      signal: AbortSignal.timeout(5e3)
+    });
+    const data = await r.json();
+    return void res.json(data);
+  } catch (err) {
+    return void res.status(502).json({ error: String(err) });
+  }
+});
+router15.post("/upload-avatars", async (req, res) => {
+  const pythonPort = process.env["PYTHON_API_PORT"] ?? "8083";
+  try {
+    const contentType = req.headers["content-type"] ?? "";
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    await new Promise((resolve, reject) => {
+      req.on("end", resolve);
+      req.on("error", reject);
+    });
+    const body = Buffer.concat(chunks);
+    const r = await fetch(`http://127.0.0.1:${pythonPort}/api/factory/upload-avatars`, {
+      method: "POST",
+      headers: { "content-type": contentType },
+      body,
+      signal: AbortSignal.timeout(3e4)
+    });
+    const data = await r.json();
+    return void res.status(r.ok ? 200 : r.status).json(data);
+  } catch (err) {
+    return void res.status(502).json({ error: String(err) });
   }
 });
 var factory_default = router15;
@@ -54199,7 +54485,7 @@ app.use("/api/factory", makePythonProxy("/api/factory"));
 if (API_SECRET) {
   app.use("/api", (req, res, next) => {
     const p = req.path;
-    if (p === "/auth" || p.startsWith("/twa") || p === "/health") return next();
+    if (p === "/auth" || p.startsWith("/twa") || p === "/health" || p.startsWith("/proxy-store")) return next();
     const auth = req.headers.authorization ?? "";
     if (auth !== `Bearer ${API_SECRET}`) {
       return void res.status(401).json({ error: "Unauthorized" });

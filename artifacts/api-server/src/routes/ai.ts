@@ -1041,4 +1041,156 @@ router.post("/v3/spintax/generate", async (req: Request, res: Response) => {
   }
 });
 
+// ── POST /api/v3/ai/factory-debug ─────────────────────────────────────────
+// Analyzes a live SSE event stream from the Account Factory registration
+// pipeline and returns a structured AI diagnosis.
+
+const FACTORY_DEBUG_SYSTEM = `You are the PROMO-Fuel Account Factory Debugger — a specialist AI that analyzes SSE event streams from the Telegram account registration pipeline.
+
+## Architecture Reference
+
+### Registration Pipeline (8 steps)
+1. 🛒 Purchase number from SMSPool via API (service=907 = Telegram)
+2. 📡 Initialize proxy SOCKS5 tunnel via Telethon
+3. 💬 Request Telegram code via RawSendCodeRequest with CodeSettings(allow_app_hash=False, unknown_number=True)
+4. ⏳ Wait for SMS code from SMSPool (polling every 5s, timeout=120s)
+5. 🤝 Sign in with received code (SignInRequest)
+6. 🔒 Enable 2FA (two-factor password)
+7. 🪪 Profile setup & warming (Gemini AI picks name/bio/avatar, or manual)
+8. 💾 Save .session file + add to CRM SQLite database
+
+### Critical CodeSettings Rule
+ALL RawSendCodeRequest calls MUST include:
+  CodeSettings(allow_app_hash=False, unknown_number=True)
+- unknown_number=True → wire flags=0x00000200 → tells Telegram this is a fresh/unregistered number → delivers SMS
+- Without it: Telegram routes to SentCodeTypeApp (treats as suspicious login attempt, not new registration)
+- SentCodeTypeApp in Step 3 response = either: (a) recycled number, (b) missing flag, (c) datacenter IP detected
+
+### SMS Delivery Type Meanings
+- SentCodeTypeSms ✅ — correct; SMS will arrive, pipeline can continue
+- SentCodeTypeApp ❌ — Telegram app delivery; pipeline must abort and retry with new number
+  Causes: recycled number OR missing unknown_number=True OR DC/datacenter IP
+- SentCodeTypeCall — voice call delivery (uncommon, sometimes acceptable)
+- SentCodeTypeFlashCall — flash call (rare)
+
+### Proxy Requirements
+- Must be SOCKS5 format: socks5://user:pass@host:port
+- Requires BOTH python-socks[asyncio] AND PySocks (import socks) installed
+- Without python-socks: Telethon silently bypasses the proxy → gets datacenter IP → SentCodeTypeApp on ALL numbers
+- Pre-flight exit IP check: is_datacenter=true → BAD → all numbers will fail
+
+### Pre-flight Events
+- preflight status=running → connecting to proxy, checking exit IP
+- preflight exit_ip=X is_datacenter=true → CRITICAL: residential proxy is actually routing through a Telegram DC
+- preflight is_datacenter=false → OK: residential/mobile IP confirmed
+
+### Healthy Session Signature
+preflight(done,is_datacenter=false) → step1(done) → step2(done) → step3(done,SentCodeTypeSms) → step4(done) → step5(done) → step6(done) → step7(done) → step8(done) → complete
+
+### Common Failure Patterns
+1. SentCodeTypeApp at Step 3 → recycled number or missing unknown_number=True flag
+2. Proxy timeout / connection refused at Step 2 → SOCKS5 auth failed or proxy down
+3. FloodWaitError at Step 3/5 → Telegram rate limiting this IP
+4. Code expired / sign_in failed at Step 5 → SMS arrived but 120s window exceeded
+5. SessionPasswordNeeded → 2FA required on recycled account (unexpected)
+6. PhoneNumberBanned → phone number banned from registration
+7. All numbers recycled → SMSPool country pool exhausted
+
+Respond in the SAME LANGUAGE as the question asked (Ukrainian/Russian/English).
+You MUST output ONLY valid JSON with this exact shape, no extra text:
+{
+  "severity": "ok" | "warning" | "error",
+  "summary": "1-2 sentence summary",
+  "issues": ["issue description 1", "issue description 2"],
+  "suggestions": ["suggestion 1", "suggestion 2"],
+  "analysis": "detailed analysis (2-4 paragraphs, markdown ok)"
+}`;
+
+router.post("/v3/ai/factory-debug", async (req: Request, res: Response) => {
+  const { events, question } = req.body as {
+    events?: Array<{ event: string; data: Record<string, unknown>; ts: number }>;
+    question?: string;
+  };
+
+  if (!events || !Array.isArray(events) || events.length === 0) {
+    return void res.status(400).json({ error: "events array is required and must not be empty" });
+  }
+
+  // Format the event log as a readable timeline
+  const lines = events.slice(-120).map(e => {
+    const t = new Date(e.ts);
+    const hms = `${String(t.getHours()).padStart(2,"0")}:${String(t.getMinutes()).padStart(2,"0")}:${String(t.getSeconds()).padStart(2,"0")}.${String(t.getMilliseconds()).padStart(3,"0")}`;
+    return `[${hms}] ${e.event}: ${JSON.stringify(e.data)}`;
+  }).join("\n");
+
+  const userPrompt = `SSE Event Log (${events.length} events):\n\`\`\`\n${lines}\n\`\`\`\n\n${question ? `Question: ${question}` : "Analyze this registration session. Identify issues, root causes, and recommendations."}`;
+
+  const GEMINI_API_KEY = process.env["GEMINI_API_KEY"];
+  const GROQ_API_KEY   = process.env["GROQ_API_KEY"];
+
+  // ── Primary: Gemini 2.5 Flash ───────────────────────────────────────────
+  if (GEMINI_API_KEY) {
+    try {
+      const genai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+      const response = await genai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+        config: {
+          systemInstruction: FACTORY_DEBUG_SYSTEM,
+          temperature: 0.15,
+          maxOutputTokens: 2048,
+          responseMimeType: "application/json",
+        },
+      });
+      const raw = (response.text ?? "").trim();
+      try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        return void res.json({ ...parsed, engine: "gemini" });
+      } catch {
+        return void res.json({ severity: "warning", summary: raw.slice(0, 200), issues: [], suggestions: [], analysis: raw, engine: "gemini" });
+      }
+    } catch (err) {
+      const errStr = String(err);
+      if (!errStr.includes("503") && !errStr.includes("overloaded") && !errStr.includes("UNAVAILABLE") && !errStr.includes("fetch")) {
+        console.error("[factory-debug/gemini] Error:", errStr.slice(0, 200));
+      } else {
+        console.warn("[factory-debug/gemini] Transient, falling back to Groq");
+      }
+    }
+  }
+
+  // ── Fallback: Groq Llama 3.3 70B ────────────────────────────────────────
+  if (!GROQ_API_KEY) {
+    return void res.status(503).json({ error: "No AI keys configured" });
+  }
+  try {
+    const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.15,
+        max_tokens: 2048,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: FACTORY_DEBUG_SYSTEM },
+          { role: "user",   content: userPrompt },
+        ],
+      }),
+    });
+    if (!groqRes.ok) throw new Error(`Groq HTTP ${groqRes.status}`);
+    const groqData = await groqRes.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const raw = (groqData.choices?.[0]?.message?.content ?? "").trim();
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      return void res.json({ ...parsed, engine: "groq" });
+    } catch {
+      return void res.json({ severity: "warning", summary: raw.slice(0, 200), issues: [], suggestions: [], analysis: raw, engine: "groq" });
+    }
+  } catch (err) {
+    console.error("[factory-debug/groq] Failed:", err);
+    return void res.status(503).json({ error: "capacity" });
+  }
+});
+
 export default router;
