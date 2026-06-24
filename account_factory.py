@@ -298,9 +298,12 @@ _AVATAR_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
 def _ensure_avatar_pool_table() -> None:
     """Create avatar_pool table in campaigns.db if it doesn't exist, and migrate any
-    leftover filesystem images from assets/pending_avatars/ into it (one-time)."""
+    leftover filesystem images from assets/pending_avatars/ into it (one-time).
+    Runs a WAL checkpoint at the end so the data is flushed to the main DB file
+    and survives container restarts / republishing."""
     import sqlite3 as _sq3
-    with _sq3.connect(DB_PATH) as conn:
+    conn = _sq3.connect(DB_PATH, timeout=15)
+    try:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS avatar_pool (
                 id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -333,6 +336,11 @@ def _ensure_avatar_pool_table() -> None:
                     os.remove(fpath)
                 except Exception:
                     pass
+        # Flush WAL to main DB file so data persists across restarts / republishing
+        conn.execute("PRAGMA wal_checkpoint(FULL)")
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # Run migration/table-creation once at import time
@@ -342,32 +350,31 @@ except Exception as _e:
     logger.warning(f"avatar_pool table setup failed (will retry on first use): {_e}")
 
 
-def _pick_pending_avatar(gender: str = "random") -> tuple[bytes, str] | None:
+async def _pick_pending_avatar(gender: str = "random") -> tuple[bytes, str] | None:
     """Pick one avatar from the DB pool for the given gender, remove it from pool.
 
     Returns (image_bytes, ext) or None if the pool is empty.
-    Uses a context-managed connection that is fully closed after use.
+    Uses aiosqlite to avoid WAL snapshot-isolation gaps with concurrent readers.
     """
-    import sqlite3 as _sq3
     resolved = gender if gender in ("male", "female") else random.choice(("male", "female"))
-    conn = _sq3.connect(DB_PATH, timeout=10)
-    try:
-        row = conn.execute(
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute("PRAGMA journal_mode=WAL")
+        async with conn.execute(
             "SELECT id, data, ext FROM avatar_pool WHERE gender=? ORDER BY RANDOM() LIMIT 1",
             (resolved,),
-        ).fetchone()
+        ) as cur:
+            row = await cur.fetchone()
         if not row:
-            row = conn.execute(
+            async with conn.execute(
                 "SELECT id, data, ext FROM avatar_pool ORDER BY RANDOM() LIMIT 1"
-            ).fetchone()
+            ) as cur:
+                row = await cur.fetchone()
         if not row:
             return None
         rid, data, ext = row
-        conn.execute("DELETE FROM avatar_pool WHERE id=?", (rid,))
-        conn.commit()
+        await conn.execute("DELETE FROM avatar_pool WHERE id=?", (rid,))
+        await conn.commit()
         return (bytes(data), ext)
-    finally:
-        conn.close()
 
 
 async def _generate_ai_profile(
@@ -2059,7 +2066,7 @@ async def _registration_stream(
                 logger.warning(f"AI profile update failed: {_pe}")
                 _profile_display = phone or ""
 
-            _av_result = _pick_pending_avatar(gender=gender)
+            _av_result = await _pick_pending_avatar(gender=gender)
             if _av_result:
                 _av_bytes, _av_ext = _av_result
                 try:
@@ -2658,6 +2665,7 @@ async def upload_avatars(request: Request):
             except Exception:
                 continue
         await conn.commit()
+        await conn.execute("PRAGMA wal_checkpoint(FULL)")
         counts = await _avatar_db_counts_async(conn)
 
     return JSONResponse({"saved": saved, "gender": gender_val, "counts": counts})
