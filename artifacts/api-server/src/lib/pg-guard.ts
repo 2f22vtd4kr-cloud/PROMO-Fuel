@@ -12,6 +12,7 @@
 
 import { getPgPool } from "./pg-pool.js";
 import { logger } from "./logger.js";
+import { notifyAdmins } from "./notify.js";
 import Database from "better-sqlite3";
 import { DB_PATH } from "./db-path.js";
 
@@ -109,13 +110,14 @@ export async function ensurePgTables(): Promise<void> {
 
     // Session files missing while bot accounts exist → critical data loss signal
     if (sessionCount === 0 && sqliteAccounts > 0) {
-      logger.error(
-        { sqliteAccounts },
-        "[pg-guard] ⛔ CRITICAL: pf_session_files is EMPTY but SQLite has " +
-        sqliteAccounts + " sender_account(s). " +
-        "Bot account Telegram sessions may have been lost (bad migration or first deploy). " +
-        "Accounts will need to be re-authenticated."
-      );
+      const msg =
+        `⛔ <b>КРИТИЧНО: Сессии бот-аккаунтов утеряны!</b>\n\n` +
+        `Таблица <code>pf_session_files</code> пуста, но в базе найдено ` +
+        `<b>${sqliteAccounts}</b> аккаунт(ов).\n\n` +
+        `Возможная причина: откат базы данных при деплое или ошибочная миграция.\n` +
+        `Аккаунты потребуют повторной авторизации в Telegram.`;
+      logger.error({ sqliteAccounts }, "[pg-guard] ⛔ CRITICAL: pf_session_files EMPTY but accounts exist");
+      notifyAdmins(msg).catch(() => undefined);
     } else if (sessionCount === 0) {
       logger.warn("[pg-guard] ⚠ pf_session_files is empty — no bot account sessions stored yet");
     } else {

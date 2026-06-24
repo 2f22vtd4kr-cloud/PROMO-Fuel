@@ -59443,7 +59443,9 @@ async function notifyAdmins(text) {
 }
 
 // src/lib/watchdog.ts
+init_pg_pool();
 var POLL_INTERVAL_MS = 6e4;
+var PG_HEALTH_INTERVAL_MS = 30 * 6e4;
 var WORKER_DEAD_THRESHOLD_S = 120;
 function ensureNotificationsTable(db) {
   db.exec(`
@@ -59538,10 +59540,87 @@ async function checkWorkers() {
 function escapeHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
+var PG_TABLES = [
+  { key: "pf_session_files", label: "\u0421\u0435\u0441\u0441\u0438\u0438 \u0431\u043E\u0442-\u0430\u043A\u043A\u0430\u0443\u043D\u0442\u043E\u0432", critical: true },
+  { key: "pf_db_snapshot", label: "\u0420\u0435\u0437\u0435\u0440\u0432\u043D\u0430\u044F \u043A\u043E\u043F\u0438\u044F SQLite", critical: true },
+  { key: "saved_proxies", label: "\u041F\u0440\u043E\u043A\u0441\u0438 \u0434\u043B\u044F \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438", critical: false }
+];
+function ensureHealthSnapshotTable(db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS pg_health_snapshots (
+      key        TEXT PRIMARY KEY,
+      count      INTEGER NOT NULL,
+      checked_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+}
+async function checkPgHealth() {
+  if (!process.env["DATABASE_URL"]) return;
+  let db = null;
+  try {
+    db = new Database14(DB_PATH);
+    ensureHealthSnapshotTable(db);
+    const pool2 = getPgPool();
+    const counts = {};
+    await Promise.all(
+      PG_TABLES.map(async ({ key }) => {
+        try {
+          const { rows } = await pool2.query(
+            `SELECT COUNT(*) AS n FROM ${key}`
+          );
+          counts[key] = parseInt(rows[0]?.n ?? "0", 10);
+        } catch {
+          counts[key] = -1;
+        }
+      })
+    );
+    const getStmt = db.prepare(
+      "SELECT count FROM pg_health_snapshots WHERE key = ?"
+    );
+    const upsertStmt = db.prepare(
+      "INSERT OR REPLACE INTO pg_health_snapshots (key, count, checked_at) VALUES (?, ?, datetime('now'))"
+    );
+    for (const { key, label, critical } of PG_TABLES) {
+      const current = counts[key];
+      if (current === -1) continue;
+      const lastRow = getStmt.get(key);
+      if (lastRow === void 0) {
+        upsertStmt.run(key, current);
+        continue;
+      }
+      const last = lastRow.count;
+      if (current < last) {
+        const dropped = last - current;
+        const severity = critical ? "\u26D4" : "\u26A0\uFE0F";
+        const urgency = critical ? "\u0421\u0440\u043E\u0447\u043D\u043E \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0431\u0430\u0437\u0443 \u0434\u0430\u043D\u043D\u044B\u0445 \u2014 \u0432\u043E\u0437\u043C\u043E\u0436\u043D\u0430 \u043F\u043E\u0442\u0435\u0440\u044F \u0434\u0430\u043D\u043D\u044B\u0445!" : "\u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043F\u0430\u043D\u0435\u043B\u044C \u0443\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u044F.";
+        const text = `${severity} <b>\u0421\u043D\u0438\u0436\u0435\u043D\u0438\u0435 \u0434\u0430\u043D\u043D\u044B\u0445 \u0432 PostgreSQL</b>
+
+\u{1F4CB} \u0422\u0430\u0431\u043B\u0438\u0446\u0430: <code>${key}</code>
+\u{1F4CC} ${label}
+
+\u0411\u044B\u043B\u043E: <b>${last}</b>  \u2192  \u0421\u0442\u0430\u043B\u043E: <b>${current}</b>  (\u2212${dropped})
+
+${urgency}`;
+        await notifyAdmins(text);
+        logger.error(
+          { key, last, current, dropped },
+          `[pg-health] \u26D4 COUNT DROP detected in ${key} (${last} \u2192 ${current})`
+        );
+      }
+      upsertStmt.run(key, current);
+    }
+    logger.info(counts, "[pg-health] PostgreSQL row counts OK");
+  } catch (err) {
+    logger.warn({ err }, "[pg-health] checkPgHealth error (non-fatal)");
+  } finally {
+    db?.close();
+  }
+}
 var timer = null;
+var pgTimer = null;
 function startWatchdog() {
   if (timer) return;
-  logger.info("Watchdog started \u2014 polling every 60 s for campaign/worker events");
+  logger.info("Watchdog started \u2014 campaigns/workers every 60 s, PG health every 30 min");
   async function poll() {
     await checkCampaigns();
     await checkWorkers();
@@ -59550,6 +59629,10 @@ function startWatchdog() {
   timer = setInterval(() => {
     poll().catch((e) => logger.warn({ e }, "watchdog: poll error"));
   }, POLL_INTERVAL_MS);
+  checkPgHealth().catch((e) => logger.warn({ e }, "watchdog: initial pg-health error"));
+  pgTimer = setInterval(() => {
+    checkPgHealth().catch((e) => logger.warn({ e }, "watchdog: pg-health error"));
+  }, PG_HEALTH_INTERVAL_MS);
 }
 
 // src/lib/rate-limit.ts
@@ -59688,10 +59771,14 @@ async function ensurePgTables() {
     ]);
     const sqliteAccounts = sqliteAccountCount();
     if (sessionCount === 0 && sqliteAccounts > 0) {
-      logger.error(
-        { sqliteAccounts },
-        "[pg-guard] \u26D4 CRITICAL: pf_session_files is EMPTY but SQLite has " + sqliteAccounts + " sender_account(s). Bot account Telegram sessions may have been lost (bad migration or first deploy). Accounts will need to be re-authenticated."
-      );
+      const msg = `\u26D4 <b>\u041A\u0420\u0418\u0422\u0418\u0427\u041D\u041E: \u0421\u0435\u0441\u0441\u0438\u0438 \u0431\u043E\u0442-\u0430\u043A\u043A\u0430\u0443\u043D\u0442\u043E\u0432 \u0443\u0442\u0435\u0440\u044F\u043D\u044B!</b>
+
+\u0422\u0430\u0431\u043B\u0438\u0446\u0430 <code>pf_session_files</code> \u043F\u0443\u0441\u0442\u0430, \u043D\u043E \u0432 \u0431\u0430\u0437\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E <b>${sqliteAccounts}</b> \u0430\u043A\u043A\u0430\u0443\u043D\u0442(\u043E\u0432).
+
+\u0412\u043E\u0437\u043C\u043E\u0436\u043D\u0430\u044F \u043F\u0440\u0438\u0447\u0438\u043D\u0430: \u043E\u0442\u043A\u0430\u0442 \u0431\u0430\u0437\u044B \u0434\u0430\u043D\u043D\u044B\u0445 \u043F\u0440\u0438 \u0434\u0435\u043F\u043B\u043E\u0435 \u0438\u043B\u0438 \u043E\u0448\u0438\u0431\u043E\u0447\u043D\u0430\u044F \u043C\u0438\u0433\u0440\u0430\u0446\u0438\u044F.
+\u0410\u043A\u043A\u0430\u0443\u043D\u0442\u044B \u043F\u043E\u0442\u0440\u0435\u0431\u0443\u044E\u0442 \u043F\u043E\u0432\u0442\u043E\u0440\u043D\u043E\u0439 \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u0430\u0446\u0438\u0438 \u0432 Telegram.`;
+      logger.error({ sqliteAccounts }, "[pg-guard] \u26D4 CRITICAL: pf_session_files EMPTY but accounts exist");
+      notifyAdmins(msg).catch(() => void 0);
     } else if (sessionCount === 0) {
       logger.warn("[pg-guard] \u26A0 pf_session_files is empty \u2014 no bot account sessions stored yet");
     } else {
