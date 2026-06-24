@@ -670,6 +670,11 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [recycledSkips,   setRecycledSkips]   = useState<Record<string, number>>({});
 
   const [profileMode,        setProfileMode]        = useState<"ai" | "manual">("ai");
+  const [aiGender,           setAiGender]           = useState<"male" | "female" | "random">("random");
+  const [avatarCounts,       setAvatarCounts]       = useState<{ male: number; female: number }>({ male: 0, female: 0 });
+  const [showMaleUpload,     setShowMaleUpload]     = useState(false);
+  const [showFemaleUpload,   setShowFemaleUpload]   = useState(false);
+  const [uploadingGender,    setUploadingGender]    = useState<"male" | "female" | null>(null);
   const [profFirstName,      setProfFirstName]      = useState("");
   const [profLastName,       setProfLastName]       = useState("");
   const [profBio,            setProfBio]            = useState("");
@@ -749,6 +754,36 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     }, 500);
     return () => clearTimeout(timer);
   }, [effectiveSmsPoolId, smsKey, serverHasKey]);
+
+  // Avatar pool counts — fetch on mount and after uploads
+  const fetchAvatarCounts = useCallback(async () => {
+    try {
+      const r = await fetch("/api/factory/avatar-counts", { headers: authHeaders() });
+      if (r.ok) {
+        const d = await r.json() as { male?: number; female?: number };
+        setAvatarCounts({ male: d.male ?? 0, female: d.female ?? 0 });
+      }
+    } catch { /* silent */ }
+  }, []);
+
+  useEffect(() => { void fetchAvatarCounts(); }, [fetchAvatarCounts]);
+
+  const uploadAvatarsToGender = useCallback(async (files: File[], gender: "male" | "female") => {
+    setUploadingGender(gender);
+    try {
+      const fd = new FormData();
+      fd.append("gender", gender);
+      files.forEach((f, i) => fd.append(`file_${i}`, f));
+      const r = await fetch("/api/factory/upload-avatars", {
+        method: "POST",
+        headers: authHeaders(),
+        body: fd,
+      });
+      if (r.ok) await fetchAvatarCounts();
+    } catch { /* silent */ } finally {
+      setUploadingGender(null);
+    }
+  }, [fetchAvatarCounts]);
 
   // Stock checker
   const [showStock,    setShowStock]    = useState(false);
@@ -958,6 +993,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           ...(apiHash ? { api_hash: apiHash }           : {}),
           profile_mode: profileMode,
           warmup_mode: warmupMode,
+          ...(profileMode === "ai" ? { gender: aiGender } : {}),
           ...(profileMode === "manual" ? {
             first_name: profFirstName,
             last_name:  profLastName,
@@ -2799,28 +2835,127 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                 </div>
               </div>
 
-              {/* AI mode — info cards */}
+              {/* AI mode — gender selector + avatar pool */}
               {profileMode === "ai" && (
-                <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 7 }}>
-                  {([
-                    { icon: "🤖", title: L("AI-generated Russian name", "AI-ім'я (рос. аудиторія)"),
-                      desc: L("Cyrillic / Latinized / Nickname / Patriotic — weighted random per account",
-                              "Кирилиця / транслітерація / нікнейм / патріотичний — зважена рандомізація") },
-                    { icon: "📝", title: L("Bio — 35 % chance", "Біо — 35 % ймовірність"),
-                      desc: L("Short Russian/English phrase; rest of accounts stay blank for organic look",
-                              "Короткий рос./англ. вираз; решта акаунтів без біо для органічності") },
-                    { icon: "📸", title: L("Avatar pool", "Пул аватарів"),
-                      desc: L("Picks from assets/pending_avatars/ → moves to used_avatars/ (never reused)",
-                              "Бере з assets/pending_avatars/ → переміщує в used_avatars/ (без повторів)") },
-                  ] as const).map((row, i) => (
-                    <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
-                      <div style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>{row.icon}</div>
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.68)" }}>{row.title}</div>
-                        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.32)", marginTop: 2, lineHeight: 1.4 }}>{row.desc}</div>
-                      </div>
+                <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
+
+                  {/* Gender selector */}
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.38)",
+                      letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 7 }}>
+                      {L("Account gender", "Стать акаунту")}
                     </div>
-                  ))}
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {([
+                        { key: "male",   label: L("♂ Man",    "♂ Чоловік"),  color: "#60a5fa" },
+                        { key: "female", label: L("♀ Woman",  "♀ Жінка"),    color: "#f472b6" },
+                        { key: "random", label: L("⚄ Random", "⚄ Рандом"),   color: "#a78bfa" },
+                      ] as const).map(opt => (
+                        <button key={opt.key} onClick={() => setAiGender(opt.key)} style={{
+                          flex: 1, padding: "7px 4px", borderRadius: 9, fontSize: 11, fontWeight: 700,
+                          cursor: "pointer", transition: "all .15s",
+                          background: aiGender === opt.key ? `${opt.color}22` : "rgba(255,255,255,0.04)",
+                          border: aiGender === opt.key ? `1.5px solid ${opt.color}66` : "1.5px solid rgba(255,255,255,0.08)",
+                          color: aiGender === opt.key ? opt.color : "rgba(255,255,255,0.38)",
+                        }}>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    {aiGender !== "random" && (
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.28)", marginTop: 5, lineHeight: 1.4 }}>
+                        {aiGender === "male"
+                          ? L("AI uses masculine Russian names, bio themes: business/sports/cars",
+                              "AI: чоловічі імена, біо: бізнес/спорт/авто")
+                          : L("AI uses feminine Russian names, bio themes: lifestyle/beauty/travel",
+                              "AI: жіночі імена, біо: лайфстайл/краса/подорожі")}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Avatar pool counters */}
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.38)",
+                      letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 7 }}>
+                      📸 {L("Avatar pool", "Пул аватарів")}
+                    </div>
+                    {(["male", "female"] as const).map(g => {
+                      const count = avatarCounts[g];
+                      const showUpload = g === "male" ? showMaleUpload : showFemaleUpload;
+                      const setShowUpload = g === "male" ? setShowMaleUpload : setShowFemaleUpload;
+                      const gColor = g === "male" ? "#60a5fa" : "#f472b6";
+                      const barColor = count === 0 ? "#374151"
+                        : count < 5  ? "#ef4444"
+                        : count < 15 ? "#f59e0b"
+                        : "#22c55e";
+                      const barPct = Math.min(100, Math.round((count / 30) * 100));
+                      const gLabel = g === "male" ? L("Male", "Чоловічі") : L("Female", "Жіночі");
+                      const isUploading = uploadingGender === g;
+
+                      return (
+                        <div key={g} style={{ marginBottom: 8 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                            <span style={{ fontSize: 10, color: gColor, fontWeight: 700, minWidth: 52 }}>{gLabel}</span>
+                            <div style={{ flex: 1, height: 5, borderRadius: 3,
+                              background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                              <div style={{
+                                height: "100%", borderRadius: 3,
+                                width: `${barPct}%`,
+                                background: barColor,
+                                transition: "width .4s, background .4s",
+                              }} />
+                            </div>
+                            <span style={{ fontSize: 10, color: barColor, fontWeight: 700, minWidth: 22, textAlign: "right" }}>
+                              {count}
+                            </span>
+                            <button
+                              onClick={() => setShowUpload(v => !v)}
+                              style={{
+                                background: showUpload ? `${gColor}22` : "rgba(255,255,255,0.05)",
+                                border: `1px solid ${showUpload ? gColor + "55" : "rgba(255,255,255,0.1)"}`,
+                                borderRadius: 6, padding: "3px 8px",
+                                fontSize: 10, color: showUpload ? gColor : "rgba(255,255,255,0.4)",
+                                cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap",
+                              }}
+                            >
+                              {showUpload ? L("▲ Close", "▲ Закрити") : L("+ Add", "+ Додати")}
+                            </button>
+                          </div>
+
+                          {showUpload && (
+                            <label style={{
+                              display: "flex", alignItems: "center", gap: 8,
+                              background: "rgba(255,255,255,0.03)",
+                              border: `1.5px dashed ${gColor}44`,
+                              borderRadius: 9, padding: "8px 12px", cursor: "pointer",
+                              fontSize: 11, color: isUploading ? gColor : "rgba(255,255,255,0.4)",
+                            }}>
+                              <span style={{ fontSize: 16 }}>{isUploading ? "⏳" : "+"}</span>
+                              {isUploading
+                                ? L("Uploading…", "Завантаження…")
+                                : L("Select photos to add…", "Обрати фото…")}
+                              <input
+                                type="file" accept="image/*" multiple style={{ display: "none" }}
+                                disabled={isUploading}
+                                onChange={async e => {
+                                  const files = Array.from(e.target.files ?? []);
+                                  if (!files.length) return;
+                                  e.target.value = "";
+                                  await uploadAvatarsToGender(files, g);
+                                  setShowUpload(false);
+                                }}
+                              />
+                            </label>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.22)", marginTop: 2, lineHeight: 1.5 }}>
+                      {L("Photos are picked from the matching gender folder and moved to used/ after assignment.",
+                         "Фото беруться з папки відповідної статі та переміщуються до used/ після використання.")}
+                    </div>
+                  </div>
+
                 </div>
               )}
 

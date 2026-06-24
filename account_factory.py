@@ -1437,7 +1437,7 @@ async def _registration_stream(
 
         else:  # AI mode
             async with aiohttp.ClientSession() as _ai_http:
-                _ai_prof = await _generate_ai_profile(_ai_http)
+                _ai_prof = await _generate_ai_profile(_ai_http, gender=gender)
 
             _fn = _ai_prof.get("first_name") or random.choice(FIRST_NAMES)
             _ln = _ai_prof.get("last_name")  or ""
@@ -1452,7 +1452,7 @@ async def _registration_stream(
                 logger.warning(f"AI profile update failed: {_pe}")
                 _profile_display = phone or ""
 
-            _av_path = _pick_pending_avatar()
+            _av_path = _pick_pending_avatar(gender=gender)
             if _av_path:
                 try:
                     _uploaded = await client.upload_file(_av_path)
@@ -1622,6 +1622,8 @@ async def register_account(request: Request):
     bio          = str(body.get("bio",          "")).strip()
     _avatars_raw = body.get("avatars") or []
     avatars: list[str] = [str(a) for a in _avatars_raw if isinstance(a, str) and a]
+    _gender_raw  = str(body.get("gender", "random")).strip().lower()
+    gender       = _gender_raw if _gender_raw in ("male", "female", "random") else "random"
 
     # Telethon creds — prefer env vars, fall back to request body
     api_id_raw  = os.environ.get("TELETHON_API_ID") or str(body.get("api_id", ""))
@@ -1683,6 +1685,7 @@ async def register_account(request: Request):
                 profile_mode, first_name, last_name, bio, avatars,
                 warmup_mode,
                 computed_session_name,
+                gender=gender,
             ):
                 yield chunk
                 # Track outcome for batch summary
@@ -1795,3 +1798,53 @@ async def get_warmup_status(account_id: int):
         return JSONResponse({"error": "Account not found"}, status_code=404)
 
     return JSONResponse(dict(row))
+
+
+# ── Avatar pool management ────────────────────────────────────────────────────
+
+@factory_router.get("/avatar-counts")
+async def get_avatar_counts():
+    """Return how many unused photos are in each gender subfolder."""
+    result = {}
+    for g in ("male", "female"):
+        folder = os.path.join(PENDING_AVATARS_DIR, g)
+        os.makedirs(folder, exist_ok=True)
+        try:
+            count = sum(
+                1 for f in os.listdir(folder)
+                if os.path.splitext(f)[1].lower() in _AVATAR_EXTS
+            )
+        except OSError:
+            count = 0
+        result[g] = count
+    return JSONResponse(result)
+
+
+@factory_router.post("/upload-avatars")
+async def upload_avatars(request: Request):
+    """Save uploaded images to the gender-specific pending_avatars subfolder."""
+    from fastapi import Form, UploadFile
+    form = await request.form()
+    gender_val = str(form.get("gender", "")).strip().lower()
+    if gender_val not in ("male", "female"):
+        return JSONResponse({"error": "gender must be 'male' or 'female'"}, status_code=400)
+
+    folder = os.path.join(PENDING_AVATARS_DIR, gender_val)
+    os.makedirs(folder, exist_ok=True)
+
+    saved = 0
+    for key in form:
+        field = form[key]
+        if not hasattr(field, "filename") or not field.filename:
+            continue
+        ext = os.path.splitext(field.filename)[1].lower()
+        if ext not in _AVATAR_EXTS:
+            continue
+        safe_name = f"{int(time.time() * 1000)}_{saved}{ext}"
+        dest = os.path.join(folder, safe_name)
+        content = await field.read()
+        with open(dest, "wb") as fh:
+            fh.write(content)
+        saved += 1
+
+    return JSONResponse({"saved": saved, "gender": gender_val})
