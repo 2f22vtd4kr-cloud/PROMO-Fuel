@@ -1434,16 +1434,26 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             // Never auto-suppress this — the rate won't change until SMSPool improves.
             const isLowRate = typeof p.success_rate === "number";
             const isRecycled = !isLowRate && (msg.includes("SentCodeTypeApp") || msg.includes("recycled"));
+            // Hard recycled = SendCodeUnavailable: Telegram definitively confirms these
+            // numbers already have accounts. No fresh number from this country will work.
+            // Never auto-retry even if the user previously clicked "Keep Going".
+            const isHardRecycled = msg.includes("SendCodeUnavailable");
             // Determine effective country key for suppression check
             const effectiveCountryKey = country === "custom" ? customCountry.trim() : country;
-            if (isRecycled && suppressRecycledRef.current.has(effectiveCountryKey)) {
-              // User already chose "keep trying" for this country — auto-retry silently
+            if (isRecycled && !isHardRecycled && suppressRecycledRef.current.has(effectiveCountryKey)) {
+              // Soft signal + user already chose "keep trying" — auto-retry silently
               setRecycledSkips(prev => ({ ...prev, [effectiveCountryKey]: (prev[effectiveCountryKey] ?? 0) + 1 }));
               setRunState("idle");
               setPollMsg(null);
               setBatchDelayMsg(null);
               void launch();
             } else {
+              // Hard recycled (SendCodeUnavailable), low rate, or first-time recycled:
+              // always show the prompt so the user can switch countries.
+              // Also clear the suppress entry so this country won't auto-retry next time.
+              if (isHardRecycled) {
+                suppressRecycledRef.current.delete(effectiveCountryKey);
+              }
               setSmsRetryPrompt({
                 reason:  isLowRate ? "low_rate" : isRecycled ? "recycled" : "timeout",
                 message: msg,

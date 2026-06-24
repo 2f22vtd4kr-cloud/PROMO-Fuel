@@ -37,39 +37,24 @@ Both workflows running:
 
 Ports: Vite Mini App = 5000 (exposed 80), Python FastAPI = 8083, Node.js Express = 8080.
 
+Python environment: `.pythonlibs/bin/python3` is a wrapper script that sets `PYTHONPATH` to `.pythonlibs/lib/python3.12/site-packages`. System Python (NixOS) is immutable — always install via `pip install --target .pythonlibs/lib/python3.12/site-packages`.
+
 ---
 
-## This session: fixes and new features
+## This session: fixes
 
-### 1. Proxy session counter (account_factory.py)
-Global monotonic `_PROXY_SESSION_COUNTER` + `_next_session_proxy()` — each registration attempt across all streams and retries gets a strictly unique session number. Prevents reuse of cooling Decodo residential exit nodes.
+### 1. Account Factory — `SendCodeUnavailable` infinite loop (AccountFactory.tsx)
 
-### 2. +7 shared-prefix bug (account_factory.py)
-`_PLUS7_COUNTRY_IDS` set + `_suggest_alt_countries()` excludes ALL +7 countries from suggestions when failing country is Russia/Kazakhstan. Applied at all 4 `sms_retry_prompt` sites.
+**Bug:** User clicks "Keep Going" on a recycled country (e.g. KH) → `suppressRecycledRef` adds "kh". Every subsequent `sms_retry_prompt` with `isRecycled=true` silently called `void launch()` again, buying more KH numbers and burning SMSPool balance in a loop.
 
-### 3. Four-layer PostgreSQL data preservation
-Protects: **pf_session_files** (bot account Telethon sessions), **pf_db_snapshot** (full SQLite backup = all sender_accounts/campaigns), **saved_proxies** (proxy configs).
+**Root cause:** The suppression path (lines 1439–1445) treated ALL recycled signals the same. `SendCodeUnavailable` is a **hard** Telegram signal (the entire country pool is definitively recycled — no fresh number will ever work). Soft signals (SentCodeTypeApp without SendCodeUnavailable) may work with a new number from the same country.
 
-| Layer | Where | Trigger |
-|---|---|---|
-| 1 | `lib/db/src/schema/index.ts` | Replit never generates DROP TABLE for known tables |
-| 2 | `scripts/post-merge.sh` `push_drizzle()` | Every dev cold-start/merge |
-| 3 | `scripts/deploy-build.sh` Step 2b | Every production build |
-| 4 | `artifacts/api-server/src/lib/pg-guard.ts` `ensurePgTables()` | Every API server boot — recreates dropped tables + fires Telegram alert if sessions empty while accounts exist |
+**Fix (AccountFactory.tsx, `sms_retry_prompt` handler):**
+- Added `isHardRecycled = msg.includes("SendCodeUnavailable")`
+- Guard on suppress path changed from `isRecycled && suppressed` → `isRecycled && !isHardRecycled && suppressed`
+- Hard recycled always shows the country-switch prompt and clears the country from `suppressRecycledRef`
 
-### 4. Periodic PG health-check with Telegram alerts (`watchdog.ts`)
-- New `checkPgHealth()` function in watchdog — runs on startup + every **30 minutes**
-- Stores row counts for all 3 PG tables in SQLite (`pg_health_snapshots` table)
-- Compares current count vs last stored count — if any table drops, sends Telegram alert:
-  - `pf_session_files` / `pf_db_snapshot` drop → ⛔ critical alert (Russian text)
-  - `saved_proxies` drop → ⚠️ warning alert
-- First run always records baseline (no spurious alert on fresh install)
-- Drop to same low level doesn't re-alert (snapshot updates after each alert)
-- `pg-guard.ts` startup check also fires immediately if `pf_session_files` is empty but SQLite has accounts
-
-**drizzle-kit binary (dev):** `/home/runner/workspace/node_modules/.pnpm/node_modules/.bin/drizzle-kit`
-
-**⚠️ NEVER approve a DROP TABLE migration in Replit Publishing.** Re-sync: `cd lib/db && <drizzle-kit> push --force --config ./drizzle.config.ts`
+After this fix: one `SendCodeUnavailable` → prompt appears immediately → user must manually switch countries. No more auto-loop.
 
 ---
 
@@ -78,9 +63,6 @@ Protects: **pf_session_files** (bot account Telethon sessions), **pf_db_snapshot
 ### Database split
 - **SQLite** (`campaigns.db`) — ALL app data: campaigns, users, sends, sender_accounts, group_campaigns, tasks, broadcast_workers, etc.
 - **PostgreSQL** — 3 tables only: `pf_session_files` (Telethon sessions), `pf_db_snapshot` (SQLite backup), `saved_proxies` (proxies)
-
-### pg_health_snapshots (SQLite)
-New table added by `checkPgHealth()`. Stores `{key, count, checked_at}`. Used for cross-restart drop detection. Don't delete it — it's the baseline for alerting.
 
 ### Account Factory pipeline (8 steps)
 ```
@@ -98,6 +80,10 @@ rm node_modules/.pnpm/better-sqlite3@12.10.1/node_modules/better-sqlite3/build/R
 bash scripts/ensure-sqlite3.sh
 ```
 
+**drizzle-kit binary (dev):** `/home/runner/workspace/node_modules/.pnpm/node_modules/.bin/drizzle-kit`
+
+**⚠️ NEVER approve a DROP TABLE migration in Replit Publishing.** Re-sync: `cd lib/db && <drizzle-kit> push --force --config ./drizzle.config.ts`
+
 ---
 
 ## Gotchas for next agent
@@ -109,3 +95,5 @@ bash scripts/ensure-sqlite3.sh
 5. **Never add `telegram>=0.0.1`** to pyproject.toml — shadows python-telegram-bot.
 6. **`python-socks[asyncio]`** must be installed — Telethon silently ignores proxy without it.
 7. **pg-guard CRITICAL Telegram alert** — if you see `⛔ КРИТИЧНО: Сессии бот-аккаунтов утеряны!` in chat, sessions are gone and accounts need re-auth.
+8. **SendCodeUnavailable = hard recycled** — never auto-retry, always show country-switch prompt (fixed in AccountFactory.tsx).
+9. **Bot 409 Conflict** — normal on session start if a prior instance was running; clears after ~35s when Telegram revokes the old polling token.
