@@ -1,0 +1,48 @@
+[18:42:49.577] debug: {"message":"🔄 Proxy session rotated: session-1 → session-2 (fresh exit node)"}
+[18:42:49.577] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[18:42:51.442] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[18:42:53.424] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 81.88.147.13","exit_ip":"81.88.147.13","is_datacenter":false}
+[18:42:53.424] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
+[18:42:55.572] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 81.88.147.13 · 🔗 Telethon-path IP: 81.88.147.13","exit_ip":"81.88.147.13","is_datacenter":false,"async_exit_ip":"81.88.147.13"}
+[18:42:55.572] preflight: {"status":"running","message":"📊 Checking 7 SMS success rate on SMSPool…"}
+[18:42:55.659] preflight: {"status":"done","message":"📊 7 success rate: N/A — proceeding"}
+[18:42:55.659] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool..."}
+[18:42:56.593] step: {"step":1,"status":"done","message":"📱 Number Acquired: +77781606352","cost":2.14}
+[18:42:56.593] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[18:42:56.593] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2040,\n    \"platform\": \"desktop\",\n    \"device_model\": \"PC 64bit\",\n    \"system_version\": \"Windows 10\",\n    \"app_version\": \"5.8.4\",\n    \"lang_code\": \"en\",\n    \"system_lang_code\": \"en-US\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-2-country-kz:ra+H1whT5aLqxkH0q2@gate.decodo.com:7000\"\n  }\n}"}
+[18:43:01.788] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:7000"}
+[18:43:01.788] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[18:43:04.515] debug: {"message":"{\n  \"📨 SEND_CODE_RESPONSE\": {\n    \"type\": \"SentCodeTypeApp\",\n    \"phone_code_hash\": \"94915448…\",\n    \"timeout\": null,\n    \"next_type\": null,\n    \"via\": \"RawSendCodeRequest\"\n  }\n}"}
+[18:43:04.515] step: {"step":3,"status":"running","message":"📲 SentCodeTypeApp — requesting SMS resend (ResendCode)…"}
+[18:43:05.016] step: {"step":3,"status":"error","message":"🚫 SendCodeUnavailable — code delivered to existing account's app; number confirmed recycled"}
+[18:43:05.203] sms_retry_prompt: {"country_id":"7","message":"🚫 7 pool is recycled — Telegram's SendCodeUnavailable confirms these numbers already have accounts. Switch to: Kazakhstan (KZ), Ukraine (UA), Philippines (PH), Georgia (GE), or Bangladesh (BD)."}
+[18:43:09.012] debug: {"message":"🔄 Proxy session rotated: session-1 → session-2 (fresh exit node)"}
+[18:43:09.012] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[18:43:09.632] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[18:43:12.494] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 81.88.147.13","exit_ip":"81.88.147.13","is_datacenter":false}
+[18:43:12.494] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
+[18:43:14.647] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 81.88.147.13 · 🔗 Telethon-path IP: 81.88.147.13","exit_ip":"81.88.147.13","is_datacenter":false,"async_exit_ip":"81.88.147.13"}
+[18:43:14.647] preflight: {"status":"running","message":"📊 Checking 7 SMS success rate on SMSPool…"}
+[18:43:14.733] preflight: {"status":"done","message":"📊 7 success rate: N/A — proceeding"}
+[18:43:14.733] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool..."}
+[18:43:15.737] step: {"step":1,"status":"done","message":"📱 Number Acquired: +77781409143","cost":2.14}
+[18:43:15.737] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[18:43:15.737] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2040,\n    \"platform\": \"desktop\",\n    \"device_model\": \"PC 64bit\",\n    \"system_version\": \"Windows 10\",\n    \"app_version\": \"5.8.4\",\n    \"lang_code\": \"en\",\n    \"system_lang_code\": \"en-US\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-2-country-kz:ra+H1whT5aLqxkH0q2@gate.decodo.com:7000\"\n  }\n}"}
+[18:43:18.835] step: {"step":2,"status":"running","message":"⚠️ Connect attempt 1/3 failed (ProxyError: Host unreachable) — retrying in 4s…"}
+[18:43:25.923] step: {"step":2,"status":"running","message":"⚠️ Connect attempt 2/3 failed (ProxyError: Host unreachable) — retrying in 4s…"}
+[18:43:34.435] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:7000"}
+[18:43:34.435] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[18:43:38.812] debug: {"message":"{\n  \"📨 SEND_CODE_RESPONSE\": {\n    \"type\": \"SentCodeTypeApp\",\n    \"phone_code_hash\": \"c9d36dbf…\",\n    \"timeout\": null,\n    \"next_type\": null,\n    \"via\": \"RawSendCodeRequest\"\n  }\n}"}
+[18:43:38.812] step: {"step":3,"status":"running","message":"📲 SentCodeTypeApp — requesting SMS resend (ResendCode)…"}
+[18:43:39.320] step: {"step":3,"status":"error","message":"🚫 SendCodeUnavailable — code delivered to existing account's app; number confirmed recycled"}
+[18:43:39.476] sms_retry_prompt: {"country_id":"7","message":"🚫 7 pool is recycled — Telegram's SendCodeUnavailable confirms these numbers already have accounts. Switch to: Kazakhstan (KZ), Ukraine (UA), Philippines (PH), Georgia (GE), or Bangladesh (BD)."}
+[18:43:39.772] debug: {"message":"🔄 Proxy session rotated: session-1 → session-2 (fresh exit node)"}
+[18:43:39.772] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[18:43:41.300] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[18:43:43.161] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 81.88.147.13","exit_ip":"81.88.147.13","is_datacenter":false}
+[18:43:43.161] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
+[18:43:45.319] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 81.88.147.13 · 🔗 Telethon-path IP: 81.88.147.13","exit_ip":"81.88.147.13","is_datacenter":false,"async_exit_ip":"81.88.147.13"}
+[18:43:45.320] preflight: {"status":"running","message":"📊 Checking 7 SMS success rate on SMSPool…"}
+[18:43:45.372] preflight: {"status":"done","message":"📊 7 success rate: N/A — proceeding"}
+[18:43:45.372] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool..."}
+[18:43:45.486] error: {"message":"SMSPool purchase failed: Pool Charlie: Insufficient balance, the price is: 2.14 while you only have: 0.31Pool Mike: Insufficient balance, the price is: 2.41 while you only have: 0.31"}

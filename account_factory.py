@@ -625,21 +625,32 @@ async def get_top_countries(api_key: str = "", service: str = TELEGRAM_SERVICE_I
 
 import re as _re
 
-def _bump_proxy_session(proxy_string: str) -> str:
-    """Increment the sticky-session counter embedded in a Decodo/Smartproxy URL.
+# ── Global monotonic session counter ─────────────────────────────────────────
+# Each registration attempt (including retries and batch slots) must use a
+# strictly unique residential exit node.  A simple relative +1 bump fails
+# because the outer generate() loop always passes the original proxy_string
+# (e.g. session-1) to every new _registration_stream call — so every stream
+# bumps session-1 → session-2 and reuses the same cooling exit node.
+# A global counter solves this: session-1, session-2, session-3 … across ALL
+# streams and ALL retries, never repeating a node within a process lifetime.
+_PROXY_SESSION_COUNTER: int = 0
 
-    Residential proxies use session-N in the username to pin traffic to a specific
-    exit node: socks5://user-XXX-session-1-country-kz:PASS@gate.decodo.com:7000
-    After a registration attempt that node enters a brief cooldown.  Bumping to
-    session-2, session-3 … picks a fresh exit node so the next TCP pre-check and
-    Telethon connect don't hit a stale/cooling session.
+def _next_session_proxy(proxy_string: str) -> tuple[str, int]:
+    """Replace session-N in proxy_string with the next globally unique session number.
 
-    If the proxy string contains no session-N pattern (e.g. non-Decodo proxies)
-    the string is returned unchanged.
+    Returns (updated_proxy_string, new_session_number).
+    If the proxy_string contains no session-N pattern the string is returned
+    unchanged and session_number=0 (indicates no-op for logging).
+
+    Thread-safe within a single-threaded asyncio event loop (CPython GIL
+    protects the integer increment).
     """
-    if not proxy_string:
-        return proxy_string
-    return _re.sub(r"session-(\d+)", lambda m: f"session-{int(m.group(1)) + 1}", proxy_string, count=1)
+    global _PROXY_SESSION_COUNTER
+    if not proxy_string or not _re.search(r"session-\d+", proxy_string):
+        return proxy_string, 0
+    _PROXY_SESSION_COUNTER += 1
+    n = _PROXY_SESSION_COUNTER
+    return _re.sub(r"session-\d+", f"session-{n}", proxy_string, count=1), n
 
 
 async def _test_proxy_connection(proxy_string: str, timeout: float = 12.0) -> tuple[bool, str]:
@@ -860,24 +871,17 @@ async def _registration_stream(
             client = None
 
     try:
-        # ─── Bump residential proxy session before preflight ──────────────
-        # Decodo/Smartproxy sticky sessions (session-N in the username) pin
-        # traffic to a specific exit node.  After a previous registration attempt
-        # that node enters a brief cooldown — the immediate next TCP pre-check
-        # hits it while it's being released and gets "Host unreachable" (0x04).
-        # Bumping session-N → session-{N+1} assigns a fresh exit node so the
-        # preflight and the whole registration attempt use a clean connection.
+        # ─── Assign globally unique residential session before preflight ─────
+        # Each _registration_stream call gets the next number from a global
+        # monotonic counter, so session-1 → session-2 → session-3 … across all
+        # streams and all retries within a process lifetime.  This prevents
+        # reusing a cooling exit node when the outer loop immediately retries with
+        # the same original proxy_string (which always has session-1 or whatever
+        # the user typed — the outer cur_proxy_string is never updated).
         if proxy_string:
-            _bumped = _bump_proxy_session(proxy_string)
-            if _bumped != proxy_string:
-                _old_sess = _re.search(r"session-(\d+)", proxy_string)
-                _new_sess = _re.search(r"session-(\d+)", _bumped)
-                if _old_sess and _new_sess:
-                    yield _sse("debug", {"message": (
-                        f"🔄 Proxy session rotated: session-{_old_sess.group(1)} "
-                        f"→ session-{_new_sess.group(1)} (fresh exit node)"
-                    )})
-            proxy_string = _bumped
+            proxy_string, _sn = _next_session_proxy(proxy_string)
+            if _sn:
+                yield _sse("debug", {"message": f"🔄 Proxy session → session-{_sn} (global slot #{_sn})"})
 
         # ─── Preflight — Proxy health check ──────────────────────────────
         yield _sse("preflight", {
@@ -1076,12 +1080,14 @@ async def _registration_stream(
         for _num_attempt in range(MAX_NUM_RETRIES):
 
             # ─── Rotate residential session for every retry ───────────────
-            # Attempt 0 already has a fresh session (bumped before preflight).
-            # For retries, bump again so each number attempt hits a different
-            # exit node — avoids the "Host unreachable" that happens when the
-            # previous node is still cooling down.
+            # Attempt 0 already has a fresh session (assigned before preflight).
+            # For retries, advance to the next global slot so each number attempt
+            # hits a different exit node — prevents "Host unreachable" from a
+            # still-cooling node used by the previous number attempt.
             if _num_attempt > 0 and proxy_string:
-                proxy_string = _bump_proxy_session(proxy_string)
+                proxy_string, _retry_sn = _next_session_proxy(proxy_string)
+                if _retry_sn:
+                    yield _sse("debug", {"message": f"🔄 Proxy session → session-{_retry_sn} (retry #{_num_attempt})"})
 
             # ─── Step 1 — Purchase number ─────────────────────────────────
             _retry_label = f" (attempt {_num_attempt+1}/{MAX_NUM_RETRIES})" if _num_attempt else ""
