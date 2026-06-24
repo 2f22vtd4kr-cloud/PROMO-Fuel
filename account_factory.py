@@ -1237,9 +1237,9 @@ async def _registration_stream(
 
             # ─── Step 4 — Poll for SMS code ──────────────────────────────
             yield _sse("step", {"step": 4, "status": "running",
-                                "message": "💬 Waiting for Telegram SMS verification code (Timeout in 180s)..."})
+                                "message": "💬 Waiting for Telegram SMS verification code (Timeout in 120s)..."})
 
-            _deadline    = time.time() + 180
+            _deadline    = time.time() + 120
             _resent_code = False
 
             def _extract_code(raw: str) -> str | None:
@@ -1256,8 +1256,8 @@ async def _registration_stream(
                 while time.time() < _deadline:
                     _remaining = int(_deadline - time.time())
 
-                    # Mid-poll resend at 90 s remaining
-                    if not _resent_code and _remaining <= 90:
+                    # Mid-poll resend at 60 s remaining (halfway through 120s window)
+                    if not _resent_code and _remaining <= 60:
                         _resent_code = True
                         try:
                             _resent = await client(ResendCodeRequest(
