@@ -43,6 +43,19 @@ else
   echo "WARNING: better-sqlite3 not found at $BSQ"
 fi
 
+# Step 2b: Push Drizzle schema to PostgreSQL — prevents DROP TABLE on redeploy
+# Runs with --force so it never prompts. Non-fatal: if DATABASE_URL is missing
+# during a dry-run build it simply skips. The Layer-4 startup guard in pg-guard.ts
+# provides a second safety net at runtime.
+DRIZZLE_BIN="$(pwd)/node_modules/.pnpm/node_modules/.bin/drizzle-kit"
+if [ -x "$DRIZZLE_BIN" ] && [ -n "$DATABASE_URL" ]; then
+  echo "Pushing Drizzle schema to PostgreSQL (saved_proxies, pf_db_snapshot, pf_session_files)..."
+  (cd lib/db && "$DRIZZLE_BIN" push --force --config ./drizzle.config.ts 2>&1) || \
+    echo "WARNING: drizzle-kit push failed — tables will be created by startup guard instead"
+else
+  echo "NOTE: drizzle-kit push skipped (DATABASE_URL not set or binary missing — OK for dry-run)"
+fi
+
 # Step 3: Build the API server
 echo "Building API server..."
 pnpm --filter @workspace/api-server run build

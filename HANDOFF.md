@@ -36,47 +36,45 @@ Both workflows running:
 - **Telegram Mini App** — `bash scripts/ensure-node-deps.sh && cd artifacts/telegram-miniapp && node node_modules/vite/bin/vite.js --config vite.config.ts --host 0.0.0.0`
 
 Ports: Vite Mini App = 5000 (exposed 80), Python FastAPI = 8083, Node.js Express = 8080.
-Vite proxy: `/api/*` → 8080 (Node.js). Node.js `makePythonProxy` forwards `/api/factory/*` + `/api/verifications/*` → 8083 (Python), with 3 retries on ECONNREFUSED.
 
 ---
 
 ## This session: fixes applied
 
 ### 1. Proxy session counter (account_factory.py)
-- **Problem:** Relative `_bump_proxy_session()` always reset to session-1 on retry because the outer `generate()` loop in `register_account` never updated `cur_proxy_string`. Cooling Decodo residential exit nodes were reused.
-- **Fix:** Global monotonic `_PROXY_SESSION_COUNTER` + `_next_session_proxy()` — each registration attempt across ALL streams and retries gets a strictly unique session number. Called once before preflight and once per retry in `_registration_stream`.
+- **Problem:** Relative `_bump_proxy_session()` always reset to session-1 on retry — cooling Decodo residential exit nodes reused.
+- **Fix:** Global monotonic `_PROXY_SESSION_COUNTER` + `_next_session_proxy()`. Each registration attempt (all streams + retries) gets a strictly unique session number.
 
 ### 2. +7 shared-prefix bug (account_factory.py)
-- **Problem:** When Russia/Kazakhstan SMS fails, alternative country suggestions included other +7 countries (Kazakhstan/Russia respectively), which share the same Telegram SMS routing and fail identically.
-- **Fix:** `_PLUS7_COUNTRY_IDS` set + `_suggest_alt_countries(country_id)` helper excludes ALL +7 countries from suggestions when the failing country is in that set. Explanatory ⚠️ note added. Applied at all 4 `sms_retry_prompt` emission sites.
+- **Problem:** When Russia/Kazakhstan SMS fails, suggestions included other +7 countries that share the same Telegram routing.
+- **Fix:** `_PLUS7_COUNTRY_IDS` set + `_suggest_alt_countries()` excludes ALL +7 countries from suggestions when the failing country is in that set. Applied at all 4 `sms_retry_prompt` emission sites.
 
-### 3. DROP TABLE saved_proxies — prevented (scripts/post-merge.sh + lib/db)
-- **Problem:** Replit Publishing showed `DROP TABLE "saved_proxies" CASCADE` (1 row at risk). Replit's deployment migration system compares dev PostgreSQL vs prod. `saved_proxies` existed in prod but NOT in dev DB → interpreted as "intentionally dropped from dev" → generated DROP TABLE. **DO NOT approve any migration that DROPs saved_proxies.**
-- **Fix:**
-  1. Ran `drizzle-kit push --force` against the dev database — all 3 tables now exist in both dev and prod PostgreSQL (`saved_proxies`, `pf_db_snapshot`, `pf_session_files`).
-  2. Added `push_drizzle()` function to `scripts/post-merge.sh` — runs `drizzle-kit push --force` in parallel after every cold start / merge, keeping dev DB permanently in sync with schema.
-- **Binary:** `/home/runner/workspace/node_modules/.pnpm/node_modules/.bin/drizzle-kit`
+### 3. Four-layer PostgreSQL data preservation (DROP TABLE prevention)
+Protects: **saved_proxies** (proxy configs), **pf_session_files** (Telethon bot-account sessions), **pf_db_snapshot** (full SQLite backup including all sender_accounts).
 
----
-
-## Known-good fixes applied (do NOT revert)
-
-| File | What was fixed | Why |
+| Layer | Where | What it does |
 |---|---|---|
-| `account_factory.py` ~line 1133 | Removed `receive_timeout=45` from `TelegramClient()` | Telethon 1.44.0 dropped this param — caused crash at Step 2 on every registration |
-| `lib/db/src/schema/index.ts` | Added `saved_proxies`, `pf_db_snapshot`, `pf_session_files` tables to Drizzle schema | Schema was empty → Replit deployment generated `DROP TABLE saved_proxies` migration on every republish |
-| `scripts/post-merge.sh` | Added `push_drizzle()` step (runs after pnpm install) | Keeps dev PostgreSQL in sync with Drizzle schema after every cold start/merge — prevents spurious DROP TABLE migrations |
-| `scripts/ensure-python-deps.sh` | Sentinel fast-path now also runs `smoke_test` | Sentinel `.deps-ready` is committed to git — on fresh import it exists but packages aren't installed |
-| `scripts/ensure-node-deps.sh` | Sentinel fast-path now checks `vite.js` exists | Same stale-sentinel bug |
-| `.gitignore` | Added `.deps-ready` | Was tracked by git; stale sentinel caused ensure-*.sh to skip dep install on fresh import |
+| 1 | `lib/db/src/schema/index.ts` | All 3 tables in Drizzle schema → Replit never generates DROP TABLE migration |
+| 2 | `scripts/post-merge.sh` `push_drizzle()` | `drizzle-kit push --force` after every cold-start/merge → dev DB stays in sync |
+| 3 | `scripts/deploy-build.sh` Step 2b | `drizzle-kit push --force` during every production build → prod schema always current |
+| 4 | `artifacts/api-server/src/lib/pg-guard.ts` | `ensurePgTables()` called from `app.ts` on every API server boot — recreates any accidentally dropped tables + emits ⛔ CRITICAL log if `pf_session_files` is empty while SQLite has bot accounts (data-loss signal) |
+
+**drizzle-kit binary:** `$(pwd)/node_modules/.pnpm/node_modules/.bin/drizzle-kit`
+
+**DO NOT approve any publishing migration that DROPs saved_proxies, pf_session_files, or pf_db_snapshot.** If you see such a migration, run: `cd lib/db && /home/runner/workspace/node_modules/.pnpm/node_modules/.bin/drizzle-kit push --force --config ./drizzle.config.ts` to re-sync dev, then republish.
 
 ---
 
 ## Architecture snapshot
 
 ### Database split
-- **SQLite** (`campaigns.db`) — ALL app data: campaigns, users, sends, sender_accounts, group_campaigns, tasks, broadcast_workers, etc.
-- **PostgreSQL** (`DATABASE_URL`) — 3 tables only: `saved_proxies` (proxies), `pf_db_snapshot` (SQLite backup), `pf_session_files` (Telethon sessions). All created via `CREATE TABLE IF NOT EXISTS` in their respective files at startup.
+- **SQLite** (`campaigns.db`) — ALL app data: campaigns, users, sends, sender_accounts, group_campaigns, tasks, broadcast_workers, message_templates, uploads, etc.
+- **PostgreSQL** (`DATABASE_URL`) — 3 tables only:
+  - `saved_proxies` — proxy configs for account registration
+  - `pf_session_files` — Telethon `.session` binaries for every bot account (these ARE the bot accounts)
+  - `pf_db_snapshot` — full binary backup of campaigns.db (restores all SQLite data on cold start)
+
+Bot account data flow: Telethon session → `pf_session_files` (PostgreSQL) + metadata → `sender_accounts` (SQLite → `pf_db_snapshot`). Both must survive deployment.
 
 ### Account Factory pipeline (8 steps)
 ```
@@ -90,10 +88,9 @@ Preflight (info-only SMS rate check)
 → Step 7 (Profile: AI name+bio+avatar or manual)
 → Step 8 (DB save + session sync)
 ```
-All failure paths call `cancel_order()` via `finally` guard.
 
 ### Cold-start bootstrap
-`post-merge.sh` runs pip + pnpm + better-sqlite3 compile + drizzle push in parallel, then writes `.deps-ready`. The ensure-*.sh scripts validate both the sentinel AND actual package presence before skipping.
+`post-merge.sh` runs pip + pnpm + better-sqlite3 compile + drizzle push in parallel, then writes `.deps-ready`.
 
 If better-sqlite3 crashes with `NODE_MODULE_VERSION` error:
 ```bash
@@ -105,10 +102,10 @@ bash scripts/ensure-sqlite3.sh
 
 ## Gotchas for next agent
 
-1. **Telethon version is 1.44.0** — `receive_timeout` and other old params are gone. If you add new `TelegramClient()` kwargs, check the 1.44.0 docs.
-2. **Drizzle schema** (`lib/db/src/schema/index.ts`) must stay in sync with every PostgreSQL table the app creates. Adding a new PostgreSQL table without adding it to the schema → Replit deployment will generate a DROP TABLE migration on next republish.
-3. **Replit deploy migration warning** — if you see a DROP TABLE migration in the Publishing UI for `saved_proxies`, `pf_db_snapshot`, or `pf_session_files`, it means the dev DB drifted. Run `cd lib/db && /home/runner/workspace/node_modules/.pnpm/node_modules/.bin/drizzle-kit push --force --config ./drizzle.config.ts` to fix. **Never approve a DROP TABLE migration for those tables.**
+1. **Telethon 1.44.0** — `receive_timeout` and other old params removed. Check docs before adding new `TelegramClient()` kwargs.
+2. **Drizzle schema + pg-guard** — If adding a new PostgreSQL table: (a) add to `lib/db/src/schema/index.ts`, (b) add DDL to `pg-guard.ts` `ensurePgTables()`. Both must stay in sync.
+3. **DROP TABLE in Publishing UI** — Never approve. Re-sync with `drizzle-kit push --force` then republish.
 4. **No `@twa-dev/sdk`** — uses `window.Telegram.WebApp` global from `https://telegram.org/js/telegram-web-app.js` in index.html.
-5. **`VITE_OWNER_IDS`** — role detection. If unset → defaults to owner view in dev.
-6. **Never add `telegram>=0.0.1`** to pyproject.toml — it shadows python-telegram-bot.
-7. **`python-socks[asyncio]`** must be installed — Telethon silently ignores proxy without it, causing SentCodeTypeApp on all numbers.
+5. **Never add `telegram>=0.0.1`** to pyproject.toml — it shadows python-telegram-bot.
+6. **`python-socks[asyncio]`** must be installed — Telethon silently ignores proxy without it, causing SentCodeTypeApp on all numbers.
+7. **pg-guard CRITICAL log** — if API server logs `⛔ CRITICAL: pf_session_files is EMPTY but SQLite has N sender_account(s)`, bot accounts exist in DB but their Telegram sessions are gone. They'll need re-authentication.

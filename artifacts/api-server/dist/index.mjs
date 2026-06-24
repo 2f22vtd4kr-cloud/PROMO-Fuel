@@ -59612,6 +59612,108 @@ var apiLimiter = createLimiter({
   skipInDev: true
 });
 
+// src/lib/pg-guard.ts
+init_pg_pool();
+import Database15 from "better-sqlite3";
+var DDL_SAVED_PROXIES = `
+  CREATE TABLE IF NOT EXISTS saved_proxies (
+    id               SERIAL PRIMARY KEY,
+    country_code     TEXT        NOT NULL,
+    label            TEXT        NOT NULL DEFAULT '',
+    proxy_string     TEXT        NOT NULL,
+    last_session_num INTEGER     NOT NULL DEFAULT 0,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_saved_proxies_country ON saved_proxies(country_code);
+`;
+var DDL_PF_DB_SNAPSHOT = `
+  CREATE TABLE IF NOT EXISTS pf_db_snapshot (
+    key        TEXT    PRIMARY KEY,
+    db_data    BYTEA   NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+`;
+var DDL_PF_SESSION_FILES = `
+  CREATE TABLE IF NOT EXISTS pf_session_files (
+    filename   TEXT    PRIMARY KEY,
+    data       BYTEA   NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+`;
+async function pgCount(table) {
+  const pool2 = getPgPool();
+  const { rows } = await pool2.query(`SELECT COUNT(*) AS n FROM ${table}`);
+  return parseInt(rows[0]?.n ?? "0", 10);
+}
+function sqliteAccountCount() {
+  try {
+    const db = new Database15(DB_PATH, { readonly: true, fileMustExist: true });
+    const row = db.prepare("SELECT COUNT(*) AS n FROM sender_accounts").get();
+    db.close();
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+async function ensurePgTables() {
+  if (!process.env["DATABASE_URL"]) {
+    logger.warn("[pg-guard] DATABASE_URL not set \u2014 skipping PostgreSQL table guard");
+    return;
+  }
+  const pool2 = getPgPool();
+  try {
+    await pool2.query(DDL_SAVED_PROXIES);
+    logger.info("[pg-guard] \u2713 saved_proxies table OK");
+  } catch (err) {
+    logger.error({ err }, "[pg-guard] FAILED to create saved_proxies \u2014 proxies may be unavailable");
+  }
+  try {
+    await pool2.query(DDL_PF_DB_SNAPSHOT);
+    logger.info("[pg-guard] \u2713 pf_db_snapshot table OK");
+  } catch (err) {
+    logger.error({ err }, "[pg-guard] FAILED to create pf_db_snapshot \u2014 SQLite backup unavailable");
+  }
+  try {
+    await pool2.query(DDL_PF_SESSION_FILES);
+    logger.info("[pg-guard] \u2713 pf_session_files table OK");
+  } catch (err) {
+    logger.error({ err }, "[pg-guard] FAILED to create pf_session_files \u2014 bot account sessions unavailable");
+  }
+  try {
+    const [sessionCount, snapshotCount, proxyCount] = await Promise.all([
+      pgCount("pf_session_files"),
+      pgCount("pf_db_snapshot"),
+      pgCount("saved_proxies")
+    ]);
+    const sqliteAccounts = sqliteAccountCount();
+    if (sessionCount === 0 && sqliteAccounts > 0) {
+      logger.error(
+        { sqliteAccounts },
+        "[pg-guard] \u26D4 CRITICAL: pf_session_files is EMPTY but SQLite has " + sqliteAccounts + " sender_account(s). Bot account Telegram sessions may have been lost (bad migration or first deploy). Accounts will need to be re-authenticated."
+      );
+    } else if (sessionCount === 0) {
+      logger.warn("[pg-guard] \u26A0 pf_session_files is empty \u2014 no bot account sessions stored yet");
+    } else {
+      logger.info({ sessionCount }, "[pg-guard] \u2713 pf_session_files has " + sessionCount + " session(s)");
+    }
+    if (snapshotCount === 0) {
+      logger.warn(
+        "[pg-guard] \u26A0 pf_db_snapshot is empty \u2014 SQLite DB has not been backed up to PostgreSQL yet (normal on first run; db_sync.py will write the first snapshot shortly)"
+      );
+    } else {
+      logger.info({ snapshotCount }, "[pg-guard] \u2713 pf_db_snapshot present (" + snapshotCount + " snapshot(s))");
+    }
+    if (proxyCount === 0) {
+      logger.warn("[pg-guard] \u26A0 saved_proxies is empty \u2014 add proxies in the Accounts \u2192 Proxies panel");
+    } else {
+      logger.info({ proxyCount }, "[pg-guard] \u2713 saved_proxies has " + proxyCount + " proxy entry/entries");
+    }
+  } catch (err) {
+    logger.warn({ err }, "[pg-guard] Data integrity check failed (non-fatal)");
+  }
+}
+
 // src/app.ts
 var app = (0, import_express17.default)();
 app.use(
@@ -59749,6 +59851,9 @@ if (API_SECRET) {
   });
 }
 app.use("/api", routes_default);
+ensurePgTables().catch(
+  (err) => logger.error({ err }, "[pg-guard] Startup guard failed (non-fatal)")
+);
 startWatchdog();
 var WORKSPACE_ROOT = join2(import.meta.dirname, "../../..");
 var FRONTEND_DIST = join2(WORKSPACE_ROOT, "artifacts", "telegram-miniapp", "dist");

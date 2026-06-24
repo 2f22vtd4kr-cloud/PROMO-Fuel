@@ -11,6 +11,7 @@ import syncRouter from "./routes/sync";
 import { logger } from "./lib/logger";
 import { startWatchdog } from "./lib/watchdog";
 import { twaLimiter, authLimiter, apiLimiter } from "./lib/rate-limit";
+import { ensurePgTables } from "./lib/pg-guard";
 
 const app: Express = express();
 
@@ -190,6 +191,13 @@ if (API_SECRET) {
 }
 
 app.use("/api", router);
+
+// ── PostgreSQL table guard — runs on every boot (dev + production) ───────────
+// Ensures critical tables exist even if a bad deployment migration dropped them.
+// Logs CRITICAL warnings if bot-account session data or SQLite backup appears lost.
+ensurePgTables().catch(err =>
+  logger.error({ err }, "[pg-guard] Startup guard failed (non-fatal)"),
+);
 
 // ── Background watchdog: campaign completion + worker crash notifications ──
 startWatchdog();
