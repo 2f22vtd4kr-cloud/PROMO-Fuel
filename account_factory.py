@@ -755,6 +755,73 @@ async def _registration_stream(
                 })
                 return
 
+        # ─── Pre-buy success rate gate ────────────────────────────────────
+        # Call SMSPool's /request/success_rate BEFORE spending any money.
+        # If the chosen country has < PRE_BUY_MIN_SR% success rate we stop
+        # immediately — buying would almost certainly yield recycled numbers.
+        # Fail-open: if the API is unreachable we warn but proceed.
+        PRE_BUY_MIN_SR = 45  # %, below this we refuse to buy
+
+        yield _sse("preflight", {
+            "status": "running",
+            "message": f"📊 Checking {country_id.upper()} SMS success rate on SMSPool…",
+        })
+        _pre_sr: int | None = None
+        try:
+            async with aiohttp.ClientSession() as _sr_http:
+                async with _sr_http.post(
+                    SMSPOOL_SUCCESS_RATE,
+                    data={"key": smspool_api_key, "service": TELEGRAM_SERVICE_ID},
+                    timeout=aiohttp.ClientTimeout(total=12),
+                ) as _sr_resp:
+                    _sr_raw = await _sr_resp.json(content_type=None)
+
+            if isinstance(_sr_raw, dict):
+                for _code, _data in _sr_raw.items():
+                    if isinstance(_data, dict) and _code.lower() == country_id.lower():
+                        _pre_sr = int(_data.get("success_rate",
+                                       _data.get("average_success_rate", 0)) or 0)
+                        break
+            elif isinstance(_sr_raw, list):
+                for _item in _sr_raw:
+                    if isinstance(_item, dict):
+                        _c = str(_item.get("short_name", _item.get("id", ""))).lower()
+                        if _c == country_id.lower():
+                            _pre_sr = int(_item.get("success_rate",
+                                           _item.get("average_success_rate", 0)) or 0)
+                            break
+        except Exception as _sr_ex:
+            yield _sse("preflight", {
+                "status": "done",
+                "message": f"⚠️ Success rate check failed ({str(_sr_ex)[:60]}) — proceeding",
+            })
+            _pre_sr = None  # fail-open
+
+        if _pre_sr is not None:
+            _sr_icon = "✅" if _pre_sr >= 70 else "⚠️" if _pre_sr >= PRE_BUY_MIN_SR else "🚫"
+            yield _sse("preflight", {
+                "status": "done" if _pre_sr >= PRE_BUY_MIN_SR else "error",
+                "message": f"{_sr_icon} {country_id.upper()} success rate: {_pre_sr}%",
+                "success_rate": _pre_sr,
+                "country_id": country_id,
+            })
+            if _pre_sr < PRE_BUY_MIN_SR:
+                yield _sse("sms_retry_prompt", {
+                    "country_id": country_id,
+                    "message": (
+                        f"🚫 {country_id.upper()} has only {_pre_sr}% SMS success rate right now "
+                        f"(minimum {PRE_BUY_MIN_SR}%). Buying would waste your balance on recycled "
+                        "numbers. Switch to: Kazakhstan (KZ), Ukraine (UA), Philippines (PH), "
+                        "Georgia (GE), or Bangladesh (BD)."
+                    ),
+                })
+                return
+        else:
+            yield _sse("preflight", {
+                "status": "done",
+                "message": f"📊 {country_id.upper()} success rate: N/A — proceeding",
+            })
+
         # ─── Steps 1–4 retry loop ─────────────────────────────────────────
         # If a purchased number fails (SentCodeTypeApp / SMS timeout), automatically
         # cancel it, buy a fresh number and retry — up to MAX_NUM_RETRIES times.

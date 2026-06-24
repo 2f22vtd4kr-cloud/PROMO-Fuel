@@ -2,6 +2,13 @@
 # Runs before supervisor on every cold start.
 # Fast path: if all critical packages import OK, skip pip install entirely.
 # Slow path: runs pip install, then re-verifies — screams if anything is still missing.
+#
+# CRITICAL FOR ACCOUNT FACTORY:
+#   Telethon needs python-socks[asyncio] (python_socks.async_.asyncio.Proxy).
+#   WITHOUT IT Telethon silently ignores the proxy and connects from the
+#   datacenter IP → Telegram returns SentCodeTypeApp on EVERY number.
+#   PySocks (the `socks` package) is a completely different package and does
+#   NOT satisfy this requirement.
 
 PY="/home/runner/workspace/.pythonlibs/bin/python3"
 
@@ -10,18 +17,23 @@ if [ ! -x "$PY" ]; then
   PY="$(which python3)"
 fi
 
-CRITICAL_IMPORTS="aiosqlite, filelock, fastapi, socks, python_socks, telethon, telegram"
-
+# ── Smoke test: imports that must ALL succeed ────────────────────────────────
 smoke_test() {
-  "$PY" -c "import $CRITICAL_IMPORTS" 2>/dev/null
+  "$PY" -c "
+import aiosqlite, filelock, fastapi, socks, python_socks, telethon, telegram
+# The one that actually matters for Telethon proxy routing:
+from python_socks.async_.asyncio import Proxy as _P
+from python_socks import ProxyType as _PT
+assert _PT.SOCKS5 is not None
+" 2>/dev/null
 }
 
 if smoke_test; then
-  echo "[ensure-python-deps] ✓ All packages OK — skipping install"
+  echo "[ensure-python-deps] ✓ All packages OK (including python_socks.async_.asyncio) — skipping install"
   exit 0
 fi
 
-echo "[ensure-python-deps] Missing packages detected — running pip install..."
+echo "[ensure-python-deps] Missing or broken packages detected — running pip install..."
 "$PY" -m pip install -r requirements.txt --quiet 2>&1 | grep -v "already satisfied" || true
 
 # Post-install verification — fail loudly if anything is still broken
@@ -30,14 +42,16 @@ if ! smoke_test; then
   echo "╔══════════════════════════════════════════════════════════════╗"
   echo "║  ⛔  CRITICAL: Python packages failed to install             ║"
   echo "║                                                              ║"
-  echo "║  Telethon WILL silently ignore proxies → SentCodeTypeApp     ║"
-  echo "║  on every registration → burns SMSPool balance for nothing.  ║"
+  echo "║  Telethon proxy chain is BROKEN:                             ║"
+  echo "║  Without python-socks[asyncio], Telethon silently ignores   ║"
+  echo "║  your proxy → all registrations exit from datacenter IP     ║"
+  echo "║  → SentCodeTypeApp on every number → wasted SMSPool money.  ║"
   echo "║                                                              ║"
   echo "║  Run manually:                                               ║"
   echo "║    .pythonlibs/bin/python3 -m pip install -r requirements.txt║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo ""
-  # Check each package individually so the user knows exactly what's missing
+  echo "  Per-package audit:"
   for pkg in aiosqlite filelock fastapi socks python_socks telethon telegram; do
     if ! "$PY" -c "import $pkg" 2>/dev/null; then
       echo "  ✗ MISSING: $pkg"
@@ -46,7 +60,20 @@ if ! smoke_test; then
     fi
   done
   echo ""
-  # Don't exit 1 — let the supervisor start anyway (bot works; factory will abort safely)
+  # Specifically test the asyncio path — most likely failure point
+  if "$PY" -c "import python_socks" 2>/dev/null; then
+    if ! "$PY" -c "from python_socks.async_.asyncio import Proxy" 2>/dev/null; then
+      echo "  ✗ CRITICAL: python_socks installed but async_.asyncio.Proxy missing"
+      echo "              This means python-socks was installed WITHOUT [asyncio] extra."
+      echo "              Fix: pip install 'python-socks[asyncio]>=2.8.2'"
+    else
+      echo "  ✓ OK:      python_socks.async_.asyncio.Proxy (Telethon proxy path)"
+    fi
+  fi
+  echo ""
+  # Don't exit 1 — let the supervisor start anyway (bot works; factory will abort safely
+  # because the asyncio preflight gate will catch the broken proxy and stop before
+  # spending any SMSPool balance)
 fi
 
 echo "[ensure-python-deps] Done."
