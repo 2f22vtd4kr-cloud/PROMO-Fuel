@@ -1070,124 +1070,167 @@ async def _registration_stream(
 
             # ── Non-SMS delivery gate ─────────────────────────────────────────
             # SentCodeTypeApp/Flash/Firebase means Telegram wants to deliver via app.
-            # For recycled numbers (existing account) this NEVER switches to SMS no
-            # matter how many ResendCode calls we make. Skip the useless resend loop
-            # entirely and go straight to official Telegram Desktop creds (api_id=2040).
-            # Official creds only help when SentCodeTypeApp is Telegram's anti-spam
-            # response to an unknown api_id — for recycled numbers they also return
-            # SentCodeTypeApp, which lets us confirm recycling in one fast round-trip.
+            #
+            # Strategy (3-layer):
+            # 1. ResendCodeRequest on the SAME connected client → escalates to SMS for
+            #    fresh numbers on carriers that use App-first delivery as an anti-spam
+            #    measure (e.g. Vietnamobile 056x).  For recycled numbers ResendCode may
+            #    also return SentCodeTypeSms, but the SMS goes to the real owner's SIM
+            #    and never appears in SMSPool → detected as timeout in step 4.
+            # 2. Official creds check (api_id=2040 / 2496) → only run when ResendCode
+            #    still returns a non-SMS type; distinguishes unknown-api_id anti-spam
+            #    from genuine recycled numbers for most carriers.
+            # 3. If all strategies return non-SMS → confirmed recycled → stop.
             _non_sms = ("App", "Flash", "Firebase", "MissedCall")
             if any(t in code_type_name for t in _non_sms):
+                # ── Layer 1: ResendCodeRequest ────────────────────────────────────
+                # Call on the still-connected original client (same api_id / session).
+                # Telegram often escalates App → SMS on resend for fresh numbers even
+                # when it uses App-first delivery as an anti-spam gate.
+                _resend_escalated = False
                 yield _sse("step", {"step": 3, "status": "running",
-                                    "message": f"📲 {code_type_name} — skipping to official Telegram Desktop creds…"})
-                _switched_to_official = False
-                for _off_api_id, _off_api_hash, _off_dev, _off_sys, _off_app in _OFFICIAL_CLIENT_CREDS:
-                    await safe_disconnect()
-                    # Wait for the proxy to close the previous SOCKS5 tunnel before
-                    # opening a new one. Without this pause, Decodo (and most residential
-                    # proxy providers) reject the second connection immediately with ProxyError
-                    # because the first tunnel is still being torn down on their end.
-                    await asyncio.sleep(3)
-                    # Wipe ALL session artefacts (including WAL/SHM) before new client
-                    for _ext in (".session", ".session-journal", ".session-wal", ".session-shm"):
-                        try:
-                            os.remove(session_path + _ext)
-                        except FileNotFoundError:
-                            pass
-                    _off_client = TelegramClient(
-                        session_path, _off_api_id, _off_api_hash,
-                        proxy=proxy_tuple,
-                        device_model=_off_dev,      # ← platform-correct profile
-                        system_version=_off_sys,    # ← must match api_id's platform
-                        app_version=_off_app,       # ← actual app version, not Android
-                        lang_code="en",
-                        system_lang_code="en-US",
-                    )
-                    client = _off_client
-                    _off_result = None
-                    for _off_try in range(3):  # up to 3 attempts for transient proxy/network errors
-                        try:
-                            # Always do a clean connect — never trust is_connected() after a
-                            # client switch; the MTProto state from the old client bleeds through.
-                            if client.is_connected():
-                                await client.disconnect()
-                            await client.connect()
-                            _off_result = await client(RawSendCodeRequest(
-                                phone_number=phone,
-                                api_id=_off_api_id,
-                                api_hash=_off_api_hash,
-                                settings=tl_types.CodeSettings(
-                                    allow_flashcall=False,
-                                    allow_missed_call=False,
-                                    allow_firebase=False,
-                                    current_number=False,
-                                ),
-                            ))
-                            break
-                        except PhoneNumberBannedError:
-                            _banned = True
-                            break
-                        except Exception as _e_off:
-                            _ename = type(_e_off).__name__
-                            # ProxyError / connection errors: longer delay to let proxy recover
-                            _retry_delay = 6 if "Proxy" in _ename else 3
-                            if _off_try < 2:
-                                yield _sse("step", {"step": 3, "status": "running",
-                                                    "message": f"⚠️ Official creds ({_ename}) — retrying in {_retry_delay}s… ({_off_try+1}/3)"})
-                                try:
+                                    "message": f"📲 {code_type_name} — requesting SMS resend (ResendCode)…"})
+                try:
+                    _rc_result = await client(ResendCodeRequest(
+                        phone_number=phone,
+                        phone_code_hash=phone_code_hash,
+                    ))
+                    _rc_type = type(_rc_result.type).__name__ if _rc_result.type else code_type_name
+                    # Always update hash — Telegram issues a new hash on every resend
+                    phone_code_hash = _rc_result.phone_code_hash
+                    if not any(t in _rc_type for t in _non_sms):
+                        # Escalated to SMS (or other codeable type)!
+                        code_type_name = _rc_type
+                        _resend_escalated = True
+                        yield _sse("step", {"step": 3, "status": "done",
+                                            "message": f"✅ ResendCode escalated to {_rc_type} — polling SMS…"})
+                    else:
+                        # Still non-SMS → fall through to official creds check
+                        code_type_name = _rc_type
+                        yield _sse("step", {"step": 3, "status": "running",
+                                            "message": f"📲 ResendCode still {_rc_type} — checking with official Telegram creds…"})
+                except Exception as _rc_ex:
+                    # ResendCode failed (proxy hiccup, etc.) — proceed to official creds
+                    yield _sse("step", {"step": 3, "status": "running",
+                                        "message": f"⚠️ ResendCode failed ({type(_rc_ex).__name__}) — trying official creds…"})
+
+                if _resend_escalated:
+                    pass  # fall through to step 4 — SMS is on its way
+                else:
+                    # ── Layer 2: Official creds check ─────────────────────────────
+                    # ResendCode didn't escalate to SMS.  Try official Telegram client
+                    # credentials (api_id=2040 Desktop, api_id=2496 iOS).  If these get
+                    # SentCodeTypeSms the number is fresh but our api_id was hitting
+                    # Telegram's anti-spam gate.  If they also return SentCodeTypeApp the
+                    # number is almost certainly recycled.
+                    _switched_to_official = False
+                    for _off_api_id, _off_api_hash, _off_dev, _off_sys, _off_app in _OFFICIAL_CLIENT_CREDS:
+                        await safe_disconnect()
+                        # Wait for the proxy to close the previous SOCKS5 tunnel before
+                        # opening a new one. Without this pause, Decodo (and most residential
+                        # proxy providers) reject the second connection immediately with ProxyError
+                        # because the first tunnel is still being torn down on their end.
+                        await asyncio.sleep(3)
+                        # Wipe ALL session artefacts (including WAL/SHM) before new client
+                        for _ext in (".session", ".session-journal", ".session-wal", ".session-shm"):
+                            try:
+                                os.remove(session_path + _ext)
+                            except FileNotFoundError:
+                                pass
+                        _off_client = TelegramClient(
+                            session_path, _off_api_id, _off_api_hash,
+                            proxy=proxy_tuple,
+                            device_model=_off_dev,      # ← platform-correct profile
+                            system_version=_off_sys,    # ← must match api_id's platform
+                            app_version=_off_app,       # ← actual app version, not Android
+                            lang_code="en",
+                            system_lang_code="en-US",
+                        )
+                        client = _off_client
+                        _off_result = None
+                        for _off_try in range(3):  # up to 3 attempts for transient proxy/network errors
+                            try:
+                                # Always do a clean connect — never trust is_connected() after a
+                                # client switch; the MTProto state from the old client bleeds through.
+                                if client.is_connected():
                                     await client.disconnect()
-                                except Exception:
-                                    pass
-                                await asyncio.sleep(_retry_delay)
+                                await client.connect()
+                                _off_result = await client(RawSendCodeRequest(
+                                    phone_number=phone,
+                                    api_id=_off_api_id,
+                                    api_hash=_off_api_hash,
+                                    settings=tl_types.CodeSettings(
+                                        allow_flashcall=False,
+                                        allow_missed_call=False,
+                                        allow_firebase=False,
+                                        current_number=False,
+                                    ),
+                                ))
+                                break
+                            except PhoneNumberBannedError:
+                                _banned = True
+                                break
+                            except Exception as _e_off:
+                                _ename = type(_e_off).__name__
+                                # ProxyError / connection errors: longer delay to let proxy recover
+                                _retry_delay = 6 if "Proxy" in _ename else 3
+                                if _off_try < 2:
+                                    yield _sse("step", {"step": 3, "status": "running",
+                                                        "message": f"⚠️ Official creds ({_ename}) — retrying in {_retry_delay}s… ({_off_try+1}/3)"})
+                                    try:
+                                        await client.disconnect()
+                                    except Exception:
+                                        pass
+                                    await asyncio.sleep(_retry_delay)
+                                else:
+                                    yield _sse("step", {"step": 3, "status": "running",
+                                                        "message": f"⚠️ Official creds (api_id={_off_api_id}): {_ename} — all retries exhausted"})
+                        if _banned:
+                            break
+                        if _off_result is not None:
+                            phone_code_hash = _off_result.phone_code_hash
+                            code_type_name  = type(_off_result.type).__name__ if _off_result.type else code_type_name
+                            if not any(t in code_type_name for t in _non_sms):
+                                yield _sse("step", {"step": 3, "status": "running",
+                                                    "message": f"✅ Official creds (api_id={_off_api_id}) → {code_type_name} — polling SMS…"})
+                                _switched_to_official = True
+                                break
                             else:
                                 yield _sse("step", {"step": 3, "status": "running",
-                                                    "message": f"⚠️ Official creds (api_id={_off_api_id}): {_ename} — all retries exhausted"})
-                    if _banned:
-                        break
-                    if _off_result is not None:
-                        phone_code_hash = _off_result.phone_code_hash
-                        code_type_name  = type(_off_result.type).__name__ if _off_result.type else code_type_name
-                        if not any(t in code_type_name for t in _non_sms):
-                            yield _sse("step", {"step": 3, "status": "running",
-                                                "message": f"✅ Official creds (api_id={_off_api_id}) → {code_type_name} — polling SMS…"})
-                            _switched_to_official = True
-                            break
-                        else:
-                            yield _sse("step", {"step": 3, "status": "running",
-                                                "message": f"🔴 Official creds (api_id={_off_api_id}) also got {code_type_name} — number is recycled"})
+                                                    "message": f"🔴 Official creds (api_id={_off_api_id}) also got {code_type_name} — number is recycled"})
 
-                if _switched_to_official:
-                    pass  # fall through to step 4
-                elif _banned:
-                    yield _sse("step", {"step": 3, "status": "running",
-                                        "message": "🚫 Number banned — cancelling, buying new number…"})
-                    await cancel_order()
-                    await safe_disconnect()
-                    continue
-                else:
-                    # All credential strategies exhausted — number is confirmed recycled.
-                    # Official Telegram Desktop also returning SentCodeTypeApp is definitive
-                    # proof the number has an existing account. Stop immediately: further
-                    # purchases from the same country will waste balance on the same result.
-                    _app_stuck_count += 1
-                    yield _sse("step", {"step": 3, "status": "error",
-                                        "message": (
-                                            f"🚫 Recycled number confirmed — all credentials (including official "
-                                            f"Telegram Desktop) returned {code_type_name}. "
-                                            "This country's pool has existing accounts. Switch country."
-                                        )})
-                    await cancel_order()
-                    await safe_disconnect()
-                    yield _sse("sms_retry_prompt", {
-                        "country_id": country_id,
-                        "message": (
-                            f"🚫 Number pool is recycled — SMSPool's {country_id} numbers already have "
-                            "Telegram accounts. Even official Telegram Desktop creds got SentCodeTypeApp. "
-                            "Switch to a different country: Kazakhstan (KZ), Ukraine (UA), "
-                            "Philippines (PH), Georgia (GE), or Bangladesh (BD) have fresher pools."
-                        ),
-                    })
-                    return
+                    if _switched_to_official:
+                        pass  # fall through to step 4
+                    elif _banned:
+                        yield _sse("step", {"step": 3, "status": "running",
+                                            "message": "🚫 Number banned — cancelling, buying new number…"})
+                        await cancel_order()
+                        await safe_disconnect()
+                        continue
+                    else:
+                        # All credential strategies exhausted — number is confirmed recycled.
+                        # Official Telegram Desktop also returning SentCodeTypeApp is definitive
+                        # proof the number has an existing account. Stop immediately: further
+                        # purchases from the same country will waste balance on the same result.
+                        _app_stuck_count += 1
+                        yield _sse("step", {"step": 3, "status": "error",
+                                            "message": (
+                                                f"🚫 Recycled number confirmed — ResendCode + all official "
+                                                f"credentials returned {code_type_name}. "
+                                                "This country's pool has existing accounts. Switch country."
+                                            )})
+                        await cancel_order()
+                        await safe_disconnect()
+                        yield _sse("sms_retry_prompt", {
+                            "country_id": country_id,
+                            "message": (
+                                f"🚫 Number pool is recycled — SMSPool's {country_id} numbers already have "
+                                "Telegram accounts. ResendCode + official Telegram Desktop creds all returned "
+                                "SentCodeTypeApp. Switch to: Kazakhstan (KZ), Ukraine (UA), "
+                                "Philippines (PH), Georgia (GE), or Bangladesh (BD)."
+                            ),
+                        })
+                        return
 
             yield _sse("step", {"step": 3, "status": "done",
                                 "message": f"✅ Code sent via {code_type_name} — polling SMSPool..."})
