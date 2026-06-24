@@ -598,6 +598,14 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
       .catch(() => setServerHasKey(false));
   }, []);
 
+  // Auto-fetch stock panel data on mount once serverHasKey is known
+  useEffect(() => {
+    if (serverHasKey === null) return; // still loading
+    if (stockData.length > 0 || stockLoading) return; // already loaded
+    void fetchStock();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverHasKey]);
+
   // Auto-load country rankings when server key is confirmed — show list upfront
   useEffect(() => {
     if (serverHasKey !== true) return;
@@ -832,7 +840,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   }, [fetchAvatarCounts]);
 
   // Stock checker
-  const [showStock,    setShowStock]    = useState(false);
+  const [showStock,    setShowStock]    = useState(true);
   const [stockLoading, setStockLoading] = useState(false);
   const [stockError,   setStockError]   = useState<string | null>(null);
   const [stockData,    setStockData]    = useState<{ id: string; name: string; stock: number; price: number }[]>([]);
