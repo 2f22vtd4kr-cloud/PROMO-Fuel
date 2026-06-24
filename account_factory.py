@@ -949,10 +949,24 @@ async def _registration_stream(
                 except PhoneNumberBannedError:
                     _banned = True
                 except Exception as e2:
+                    _e2_str = str(e2).lower()
+                    # Classify the error: transient connection/proxy errors should retry
+                    # with a fresh number; permanent errors (auth, flood) should abort.
+                    _is_transient = any(x in _e2_str for x in (
+                        "disconnected", "not connected", "connection",
+                        "timeout", "proxy", "network", "eof",
+                    ))
                     yield _sse("step", {"step": 3, "status": "error",
                                         "message": f"❌ Code request failed: {e2}"})
                     await cancel_order()
                     await safe_disconnect()
+                    if _is_transient and _num_attempt < MAX_NUM_RETRIES - 1:
+                        # Transient connectivity issue — cancel this number, wait, buy another.
+                        # Do NOT abort the whole factory; a fresh number + reconnect usually works.
+                        yield _sse("step", {"step": 3, "status": "running",
+                                            "message": "🔄 Connection dropped — cancelling number, retrying with fresh one…"})
+                        await asyncio.sleep(4)
+                        continue   # ← retry loop: buy new number
                     yield _sse("error", {"message": f"Failed to request code from Telegram: {e2}"})
                     return
 
@@ -978,6 +992,11 @@ async def _registration_stream(
                 _switched_to_official = False
                 for _off_api_id, _off_api_hash, _off_dev, _off_sys, _off_app in _OFFICIAL_CLIENT_CREDS:
                     await safe_disconnect()
+                    # Wait for the proxy to close the previous SOCKS5 tunnel before
+                    # opening a new one. Without this pause, Decodo (and most residential
+                    # proxy providers) reject the second connection immediately with ProxyError
+                    # because the first tunnel is still being torn down on their end.
+                    await asyncio.sleep(3)
                     # Wipe ALL session artefacts (including WAL/SHM) before new client
                     for _ext in (".session", ".session-journal", ".session-wal", ".session-shm"):
                         try:
@@ -995,10 +1014,13 @@ async def _registration_stream(
                     )
                     client = _off_client
                     _off_result = None
-                    for _off_try in range(2):  # retry once on transient network errors
+                    for _off_try in range(3):  # up to 3 attempts for transient proxy/network errors
                         try:
-                            if not client.is_connected():
-                                await client.connect()
+                            # Always do a clean connect — never trust is_connected() after a
+                            # client switch; the MTProto state from the old client bleeds through.
+                            if client.is_connected():
+                                await client.disconnect()
+                            await client.connect()
                             _off_result = await client(RawSendCodeRequest(
                                 phone_number=phone,
                                 api_id=_off_api_id,
@@ -1015,17 +1037,20 @@ async def _registration_stream(
                             _banned = True
                             break
                         except Exception as _e_off:
-                            if _off_try == 0:
+                            _ename = type(_e_off).__name__
+                            # ProxyError / connection errors: longer delay to let proxy recover
+                            _retry_delay = 6 if "Proxy" in _ename else 3
+                            if _off_try < 2:
                                 yield _sse("step", {"step": 3, "status": "running",
-                                                    "message": f"⚠️ Official creds ({type(_e_off).__name__}) — retrying in 2s…"})
+                                                    "message": f"⚠️ Official creds ({_ename}) — retrying in {_retry_delay}s… ({_off_try+1}/3)"})
                                 try:
                                     await client.disconnect()
                                 except Exception:
                                     pass
-                                await asyncio.sleep(2)
+                                await asyncio.sleep(_retry_delay)
                             else:
                                 yield _sse("step", {"step": 3, "status": "running",
-                                                    "message": f"⚠️ Official creds (api_id={_off_api_id}): {type(_e_off).__name__}"})
+                                                    "message": f"⚠️ Official creds (api_id={_off_api_id}): {_ename} — all retries exhausted"})
                     if _banned:
                         break
                     if _off_result is not None:
