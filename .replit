@@ -35,7 +35,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "bash scripts/ensure-python-deps.sh && /home/runner/workspace/.pythonlibs/bin/python3 supervisor.py"
+args = "bash /home/runner/workspace/scripts/ensure-python-deps.sh && /home/runner/workspace/.pythonlibs/bin/python3 /home/runner/workspace/supervisor.py"
 
 [[workflows.workflow]]
 name = "Telegram Mini App"
@@ -46,7 +46,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "bash scripts/ensure-node-deps.sh && cd artifacts/telegram-miniapp && node node_modules/vite/bin/vite.js --config vite.config.ts --host 0.0.0.0"
+args = "bash /home/runner/workspace/scripts/ensure-node-deps.sh && cd /home/runner/workspace/artifacts/telegram-miniapp && node node_modules/vite/bin/vite.js --config vite.config.ts --host 0.0.0.0"
 waitForPort = 5000
 
 [agent]
@@ -69,11 +69,6 @@ externalPort = 3001
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 8083
-externalPort = 80
-exposeLocalhost = true
 
 [[ports]]
 localPort = 8090
