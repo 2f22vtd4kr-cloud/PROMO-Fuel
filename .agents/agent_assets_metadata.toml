@@ -1,5 +1,4 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "YBkNSDWvQM4JNtFnf7D0P"
@@ -30,3 +29,9 @@ id = "Ew0fpIuhCq7Ed4pBurWoK"
 uri = "file://artifacts/mockup-sandbox/public/images/abstract-dashboard.png"
 type = "image"
 title = "Dashboard abstract ui"
+
+[[outputs]]
+id = "ELscd_fgtmFSJZrifjLxW"
+uri = "file://HANDOFF.md"
+type = "text"
+title = "Account Factory Debugging Handoff"
