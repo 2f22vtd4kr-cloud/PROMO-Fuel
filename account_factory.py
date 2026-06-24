@@ -65,31 +65,122 @@ TELEGRAM_SERVICE_ID = "907"
 _country_cache: dict[str, tuple[float, list]] = {}
 COUNTRY_CACHE_TTL = 60.0  # seconds
 
-# Device profiles: each entry is (device_model, system_version, app_version).
-# Consistent pairing is important — Telegram flags mismatched iOS version on Android device.
+# ── Android device profiles for env api_id fallback ──────────────────────────
+# Larger pool with real devices spanning Android 11-14 and multiple brands.
+# Consistent pairing is important — Telegram flags mismatched iOS version on
+# Android device.
 DEVICE_PROFILES = [
-    ("Samsung Galaxy S23",     "Android 13",   "9.6.3"),
-    ("Samsung Galaxy S22 Ultra","Android 12",  "9.5.9"),
-    ("Xiaomi 13 Pro",          "Android 13",   "9.7.1"),
-    ("Google Pixel 7 Pro",     "Android 14",   "9.6.3"),
-    ("OnePlus 11",             "Android 13",   "9.4.4"),
-    ("Motorola Edge 40 Pro",   "Android 13",   "9.3.3"),
-    ("Realme GT 5",            "Android 14",   "9.7.1"),
-    ("OPPO Find X6",           "Android 13",   "9.5.9"),
-    ("Samsung Galaxy A54 5G",  "Android 13",   "9.6.3"),
-    ("Xiaomi Redmi Note 12",   "Android 12",   "9.4.4"),
+    # Samsung flagship / mid-range
+    ("Samsung Galaxy S24 Ultra",  "Android 14",   "10.0.1"),
+    ("Samsung Galaxy S23",        "Android 13",   "9.6.3"),
+    ("Samsung Galaxy S22 Ultra",  "Android 12",   "9.5.9"),
+    ("Samsung Galaxy S21 FE",     "Android 12",   "9.4.4"),
+    ("Samsung Galaxy A54 5G",     "Android 13",   "9.6.3"),
+    ("Samsung Galaxy A34 5G",     "Android 13",   "9.5.9"),
+    ("Samsung Galaxy A24",        "Android 13",   "9.4.4"),
+    ("Samsung Galaxy M54 5G",     "Android 13",   "9.6.3"),
+    # Xiaomi / Redmi
+    ("Xiaomi 14 Pro",             "Android 14",   "10.0.1"),
+    ("Xiaomi 13 Pro",             "Android 13",   "9.7.1"),
+    ("Xiaomi 12X",                "Android 12",   "9.5.9"),
+    ("Xiaomi Redmi Note 13 Pro",  "Android 13",   "9.6.3"),
+    ("Xiaomi Redmi Note 12",      "Android 12",   "9.4.4"),
+    ("Xiaomi Redmi 12C",          "Android 12",   "9.3.3"),
+    ("Poco X5 Pro",               "Android 13",   "9.5.9"),
+    ("Poco F5",                   "Android 13",   "9.7.1"),
+    # Google Pixel
+    ("Google Pixel 8 Pro",        "Android 14",   "10.0.1"),
+    ("Google Pixel 7 Pro",        "Android 14",   "9.6.3"),
+    ("Google Pixel 7a",           "Android 14",   "9.7.1"),
+    ("Google Pixel 6a",           "Android 13",   "9.5.9"),
+    # OnePlus / OPPO
+    ("OnePlus 12",                "Android 14",   "10.0.1"),
+    ("OnePlus 11",                "Android 13",   "9.4.4"),
+    ("OnePlus Nord 3",            "Android 13",   "9.6.3"),
+    ("OPPO Find X6 Pro",          "Android 13",   "9.7.1"),
+    ("OPPO Reno10 Pro",           "Android 13",   "9.5.9"),
+    # Vivo / Realme
+    ("Vivo X90 Pro",              "Android 13",   "9.6.3"),
+    ("Realme GT 5 Pro",           "Android 14",   "10.0.1"),
+    ("Realme 11 Pro+",            "Android 13",   "9.5.9"),
+    # Motorola
+    ("Motorola Edge 40 Pro",      "Android 13",   "9.3.3"),
+    ("Motorola Moto G84",         "Android 13",   "9.4.4"),
+    # Huawei (uses Android strings even though GMS-free)
+    ("Huawei P60 Pro",            "Android 13",   "9.6.3"),
 ]
 
-# Official Telegram credentials with CORRECT platform device profiles.
-# CRITICAL: api_id and device_model/system_version MUST match the platform.
-# Using Desktop api_id (2040) with Android device strings = immediate bot flag
-# by Telegram's server → SentCodeTypeApp even on fresh numbers. Always use the
-# exact fingerprint that the real Telegram app for that platform would send.
+# ── Country → (lang_code, system_lang_code) ───────────────────────────────────
+# A real mobile user in UA with lang_code="en" is an obvious bot fingerprint.
+# Map country IDs (SMSPool format) to the locale a real device in that country sends.
+_COUNTRY_LANG_MAP: dict[str, tuple[str, str]] = {
+    "ua":  ("uk", "uk-UA"),   # Ukraine
+    "ru":  ("ru", "ru-RU"),   # Russia
+    "kz":  ("ru", "ru-KZ"),   # Kazakhstan
+    "by":  ("ru", "ru-BY"),   # Belarus
+    "kg":  ("ru", "ru-KG"),   # Kyrgyzstan
+    "uz":  ("uz", "uz-UZ"),   # Uzbekistan
+    "az":  ("az", "az-AZ"),   # Azerbaijan
+    "ge":  ("ka", "ka-GE"),   # Georgia
+    "am":  ("hy", "hy-AM"),   # Armenia
+    "md":  ("ro", "ro-MD"),   # Moldova
+    "ph":  ("en", "en-PH"),   # Philippines
+    "bd":  ("bn", "bn-BD"),   # Bangladesh
+    "in":  ("hi", "hi-IN"),   # India
+    "pk":  ("ur", "ur-PK"),   # Pakistan
+    "ng":  ("en", "en-NG"),   # Nigeria
+    "vn":  ("vi", "vi-VN"),   # Vietnam
+    "id":  ("id", "id-ID"),   # Indonesia
+    "th":  ("th", "th-TH"),   # Thailand
+    "ro":  ("ro", "ro-RO"),   # Romania
+    "pl":  ("pl", "pl-PL"),   # Poland
+    "de":  ("de", "de-DE"),   # Germany
+    "br":  ("pt", "pt-BR"),   # Brazil
+    "mx":  ("es", "es-MX"),   # Mexico
+    "co":  ("es", "es-CO"),   # Colombia
+    "es":  ("es", "es-ES"),   # Spain
+    "fr":  ("fr", "fr-FR"),   # France
+    "it":  ("it", "it-IT"),   # Italy
+    "tr":  ("tr", "tr-TR"),   # Turkey
+    "il":  ("he", "he-IL"),   # Israel
+    "ae":  ("ar", "ar-AE"),   # UAE
+    "sa":  ("ar", "ar-SA"),   # Saudi Arabia
+    "eg":  ("ar", "ar-EG"),   # Egypt
+}
+
+# ── Registration-grade credential pool ───────────────────────────────────────
+# CRITICAL: each entry = (api_id, api_hash, device_model, system_version,
+#           app_version, platform).
+# Official Telegram app credentials have MUCH higher per-api_id registration
+# limits than custom my.telegram.org credentials. A single developer api_id
+# gets shadow-blocked after ~20-30 fresh registrations: Telegram returns
+# SentCodeTypeSms with a valid hash but never dispatches the carrier SMS.
+# 50 consecutive SMS timeouts with no SentCodeTypeApp errors = api_id
+# shadow-block, not a carrier issue.
+# MUST pair api_id with the correct platform device strings — mismatched
+# platform triggers immediate SentCodeTypeApp on fresh numbers.
+_REGISTRATION_CREDS: list[tuple] = [
+    # Telegram Desktop Windows — api_id 2040
+    (2040, "b18441a1ff607e10a989891a5462e627",
+     "PC 64bit", "Windows 11", "5.9.5", "desktop"),
+    (2040, "b18441a1ff607e10a989891a5462e627",
+     "PC 64bit", "Windows 10", "5.8.4", "desktop"),
+    # Telegram iOS — api_id 2496
+    (2496, "8da85b0d5bfe62527e5b244c209159c3",
+     "iPhone 16 Pro Max", "18.3.2", "11.4.0", "ios"),
+    (2496, "8da85b0d5bfe62527e5b244c209159c3",
+     "iPhone 15 Pro",     "17.6.1", "10.9.1", "ios"),
+    (2496, "8da85b0d5bfe62527e5b244c209159c3",
+     "iPhone 14 Pro Max", "17.5.1", "10.8.0", "ios"),
+]
+
+# Keep _OFFICIAL_CLIENT_CREDS as the recycled-number detection fallback
+# (used in the SentCodeTypeApp → ResendCode → official creds check path).
 # Tuple: (api_id, api_hash, device_model, system_version, app_version)
 _OFFICIAL_CLIENT_CREDS = [
     (
         2040, "b18441a1ff607e10a989891a5462e627",
-        "PC 64bit", "Windows 11", "5.9.3",         # Telegram Desktop (Windows)
+        "PC 64bit", "Windows 11", "5.9.5",         # Telegram Desktop (Windows)
     ),
     (
         2496, "8da85b0d5bfe62527e5b244c209159c3",
@@ -889,9 +980,23 @@ async def _registration_stream(
         MAX_NUM_RETRIES = 5
         code: str | None = None
         raw_num: str = ""
-        _app_stuck_count = 0
-        _banned_count = 0      # consecutive pre-banned numbers from this country
-        _proxy_fail_count = 0  # consecutive proxy-unreachable errors
+        _app_stuck_count    = 0
+        _banned_count       = 0   # consecutive pre-banned numbers from this country
+        _proxy_fail_count   = 0   # consecutive proxy-unreachable errors
+        _sms_timeout_count  = 0   # consecutive SMS timeouts — flag for api_id shadow-block
+
+        # Shuffle the official registration credential pool so each factory
+        # session uses a different rotation order.  Each retry attempt cycles
+        # to the next credential, ensuring we never hit the same api_id twice
+        # in a row when SMS delivery is being shadow-blocked.
+        _reg_pool: list[tuple] = _REGISTRATION_CREDS.copy()
+        random.shuffle(_reg_pool)
+
+        # Track which api_id / api_hash were ACTUALLY used for the successful
+        # registration.  Updated each time we switch credentials.  Saved to DB
+        # so groupbroadcaster can reconnect with the correct credential pair.
+        _actual_api_id:   int = api_id
+        _actual_api_hash: str = api_hash
 
         for _num_attempt in range(MAX_NUM_RETRIES):
 
@@ -940,7 +1045,26 @@ async def _registration_stream(
             yield _sse("step", {"step": 2, "status": "running",
                                 "message": "📡 Routing Telethon connection via Residential Proxy..."})
 
-            device_model, system_version, app_version = random.choice(DEVICE_PROFILES)
+            # ── Pick registration credentials for this attempt ────────────────
+            # Rotate through official Telegram app credentials.  Official api_ids
+            # (2040 Desktop, 2496 iOS) have per-api_id registration headroom orders
+            # of magnitude larger than a single developer my.telegram.org credential.
+            # 50 consecutive SMS timeouts with no SentCodeTypeApp errors = the user's
+            # env api_id is shadow-blocked: Telegram returns SentCodeTypeSms with a
+            # valid hash but never dispatches the carrier SMS.  Rotating credentials
+            # eliminates this failure mode.
+            _cred_idx = _num_attempt % len(_reg_pool)
+            _reg_api_id, _reg_api_hash, device_model, system_version, app_version, _reg_plat = _reg_pool[_cred_idx]
+
+            # Update tracking vars so the DB save uses the correct credential pair
+            _actual_api_id   = _reg_api_id
+            _actual_api_hash = _reg_api_hash
+
+            # Country-aware locale: a Ukrainian number with lang_code="en" is an
+            # immediate bot fingerprint.  Desktop/iOS creds still get locale since
+            # Telegram users in those countries use localised apps.
+            _cid_lower = country_id.lower()
+            _reg_lang, _reg_sys_lang = _COUNTRY_LANG_MAP.get(_cid_lower, ("en", "en-US"))
 
             digits        = raw_num
             effective_stem = session_name if session_name else digits
@@ -956,13 +1080,18 @@ async def _registration_stream(
                     pass
 
             client = TelegramClient(
-                session_path, api_id, api_hash,
+                session_path, _reg_api_id, _reg_api_hash,
                 proxy=proxy_tuple,
                 device_model=device_model,
                 system_version=system_version,
                 app_version=app_version,
-                lang_code="en",
-                system_lang_code="en-US",
+                lang_code=_reg_lang,
+                system_lang_code=_reg_sys_lang,
+                # Explicit retry/timeout params — defaults are too conservative for
+                # residential proxies which can have higher initial latency.
+                connection_retries=5,
+                retry_delay=2,
+                receive_timeout=45,
             )
 
             # Wrap connect() — previously bare (no try/except), so any routing error
@@ -1029,12 +1158,18 @@ async def _registration_stream(
             # Valid fields: allow_flashcall, current_number, allow_app_hash,
             # allow_missed_call, allow_firebase.  There is NO allow_app field.
             # current_number=False discourages SentCodeTypeApp routing.
+
+            # Human-like delay: a real user takes 1-4 seconds to read the phone
+            # number input screen and tap "Send Code".  Sending the request
+            # immediately after connect() is a strong bot fingerprint.
+            await asyncio.sleep(random.uniform(1.2, 4.1))
+
             _banned = False
             try:
                 raw_result = await client(RawSendCodeRequest(
                     phone_number=phone,
-                    api_id=api_id,
-                    api_hash=api_hash,
+                    api_id=_actual_api_id,
+                    api_hash=_actual_api_hash,
                     settings=tl_types.CodeSettings(
                         allow_flashcall=False,
                         allow_missed_call=False,
@@ -1047,9 +1182,20 @@ async def _registration_stream(
             except PhoneNumberBannedError:
                 _banned = True
             except Exception:
-                # Raw request failed — fall back to standard helper
+                # Raw request failed — fall back to standard helper, but still
+                # use explicit CodeSettings so we keep current_number=False.
                 try:
-                    fb = await client.send_code_request(phone)
+                    fb = await client(RawSendCodeRequest(
+                        phone_number=phone,
+                        api_id=_actual_api_id,
+                        api_hash=_actual_api_hash,
+                        settings=tl_types.CodeSettings(
+                            allow_flashcall=False,
+                            allow_missed_call=False,
+                            allow_firebase=False,
+                            current_number=False,
+                        ),
+                    ))
                     phone_code_hash = fb.phone_code_hash
                     code_type_name  = type(fb.type).__name__ if fb.type else "Unknown"
                 except PhoneNumberBannedError:
@@ -1200,6 +1346,10 @@ async def _registration_stream(
                             lang_code="en",
                             system_lang_code="en-US",
                         )
+                        # Track which credentials we switched to — DB save must use
+                        # these so groupbroadcaster can reconnect with the same api_id.
+                        _actual_api_id   = _off_api_id
+                        _actual_api_hash = _off_api_hash
                         client = _off_client
                         _off_result = None
                         for _off_try in range(3):  # up to 3 attempts for transient proxy/network errors
@@ -1325,6 +1475,18 @@ async def _registration_stream(
 
                     yield _sse("poll", {"remaining": _remaining,
                                         "message": f"💬 Polling SMS... ({_remaining}s remaining)"})
+
+                    # Keepalive: if the SOCKS5 proxy dropped the idle TCP connection,
+                    # Telethon silently becomes disconnected.  Re-connect before the next
+                    # poll so sign_in() still works when the code arrives.
+                    if not client.is_connected():
+                        try:
+                            yield _sse("poll", {"remaining": _remaining,
+                                                "message": "🔄 Telethon reconnecting (proxy idle timeout)…"})
+                            await client.connect()
+                        except Exception:
+                            pass
+
                     await asyncio.sleep(4)
 
                     try:
@@ -1392,7 +1554,22 @@ async def _registration_stream(
             if code:
                 break  # exit the number-retry loop — we have a code!
 
-            # No code — cancel order and auto-retry with a new number
+            # No code — cancel order and auto-retry with a new number.
+            # Track consecutive timeouts: N≥2 is the api_id shadow-block signature
+            # (Telegram accepts RawSendCodeRequest and returns SentCodeTypeSms but
+            # never routes the SMS to the carrier).  Emit a diagnostic so the user
+            # knows what is happening and that the next attempt will rotate api_id.
+            _sms_timeout_count += 1
+            if _sms_timeout_count >= 2:
+                _nums_left_warn = MAX_NUM_RETRIES - _num_attempt - 1
+                yield _sse("poll", {"remaining": 0, "message": (
+                    f"⚠️ {_sms_timeout_count} consecutive SMS timeouts "
+                    f"(api_id={_actual_api_id}). "
+                    "This matches Telegram's api_id shadow-block: SentCodeTypeSms is "
+                    "returned but the carrier SMS is never dispatched. "
+                    f"Next attempt rotates to a different credential set "
+                    f"({_nums_left_warn} attempt(s) left)."
+                )})
             await cancel_order()
             await safe_disconnect()
             _nums_left = MAX_NUM_RETRIES - _num_attempt - 1
@@ -1574,13 +1751,13 @@ async def _registration_stream(
         metadata = {
             "session_file_name": f"{effective_stem}.session",
             "phone": phone,
-            "api_id": api_id,
-            "api_hash": api_hash,
+            "api_id": _actual_api_id,
+            "api_hash": _actual_api_hash,
             "device_model": device_model,
             "system_version": system_version,
             "app_version": app_version,
-            "lang_code": lang_code,
-            "system_lang_code": system_lang,
+            "lang_code": _reg_lang,
+            "system_lang_code": _reg_sys_lang,
             "proxy_string": proxy_string.strip() if proxy_string else "",
         }
         with open(json_path, "w", encoding="utf-8") as f:
@@ -1599,19 +1776,22 @@ async def _registration_stream(
                 await conn.execute(
                     """UPDATE sender_accounts
                        SET two_factor_pass=?, session_file=?, proxy=?,
+                           api_id=?, api_hash=?,
                            auth_status='active', is_active=1
                        WHERE phone=?""",
                     (two_factor_password, f"{effective_stem}.session",
-                     proxy_string.strip() if proxy_string else "", phone),
+                     proxy_string.strip() if proxy_string else "",
+                     _actual_api_id, _actual_api_hash, phone),
                 )
             else:
                 await conn.execute(
                     """INSERT INTO sender_accounts
                          (phone, two_factor_pass, session_file, proxy,
-                          auth_status, is_active)
-                       VALUES (?, ?, ?, ?, 'active', 1)""",
+                          api_id, api_hash, auth_status, is_active)
+                       VALUES (?, ?, ?, ?, ?, ?, 'active', 1)""",
                     (phone, two_factor_password, f"{effective_stem}.session",
-                     proxy_string.strip() if proxy_string else ""),
+                     proxy_string.strip() if proxy_string else "",
+                     _actual_api_id, _actual_api_hash),
                 )
             await conn.commit()
 
