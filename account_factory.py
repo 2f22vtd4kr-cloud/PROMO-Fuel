@@ -635,6 +635,50 @@ import re as _re
 # streams and ALL retries, never repeating a node within a process lifetime.
 _PROXY_SESSION_COUNTER: int = 0
 
+# ── +7 prefix awareness ──────────────────────────────────────────────────────
+# Russia and Kazakhstan both use the +7 country code and therefore draw from
+# the SAME SMSPool pool.  Suggesting "Kazakhstan" when the +7 pool is recycled
+# is useless — it's identical inventory.  Any country_id that resolves to +7
+# must exclude both RU and KZ from its alternative suggestions.
+_PLUS7_COUNTRY_IDS: frozenset[str] = frozenset({"7", "ru", "kz", "russia", "kazakhstan"})
+
+# Alternatives ordered best → last (freshest pools first based on historical SR)
+_ALT_COUNTRY_POOL = [
+    ("ua", "Ukraine"),
+    ("ph", "Philippines"),
+    ("ge", "Georgia"),
+    ("bd", "Bangladesh"),
+    ("kz", "Kazakhstan"),
+    ("in", "India"),
+]
+
+
+def _suggest_alt_countries(country_id: str) -> str:
+    """Build a smart 'Switch to:' suggestion string, excluding the current
+    country and any pool-siblings (Russia + Kazakhstan share +7 → same pool).
+
+    Returns a ready-to-append sentence including the ⚠️ note for +7 countries.
+    """
+    cid = country_id.lower().strip()
+    is_plus7 = cid in _PLUS7_COUNTRY_IDS
+
+    alts = []
+    for code, name in _ALT_COUNTRY_POOL:
+        if is_plus7 and code in ("kz", "ru"):
+            continue  # same +7 pool — useless suggestion
+        if code == cid:
+            continue  # same country the user is already using
+        alts.append(f"{name} ({code.upper()})")
+
+    suggestion = "Switch to: " + ", ".join(alts) + "."
+    if is_plus7:
+        suggestion = (
+            "⚠️ Russia and Kazakhstan share the +7 prefix — they're the same SMSPool pool. "
+            + suggestion
+        )
+    return suggestion
+
+
 def _next_session_proxy(proxy_string: str) -> tuple[str, int]:
     """Replace session-N in proxy_string with the next globally unique session number.
 
@@ -1358,8 +1402,7 @@ async def _registration_stream(
                         "message": (
                             f"🚫 {_banned_count} consecutive pre-banned numbers from {country_id.upper()} — "
                             "this country's pool is recycled/exhausted right now. "
-                            "Switch to: Kazakhstan (KZ), Ukraine (UA), Philippines (PH), "
-                            "Georgia (GE), or Bangladesh (BD)."
+                            + _suggest_alt_countries(country_id)
                         ),
                     })
                     return
@@ -1425,8 +1468,7 @@ async def _registration_stream(
                         "message": (
                             f"🚫 {country_id.upper()} pool is recycled — Telegram's SendCodeUnavailable "
                             "confirms these numbers already have accounts. "
-                            "Switch to: Kazakhstan (KZ), Ukraine (UA), Philippines (PH), "
-                            "Georgia (GE), or Bangladesh (BD)."
+                            + _suggest_alt_countries(country_id)
                         ),
                     })
                     return
@@ -1557,8 +1599,8 @@ async def _registration_stream(
                             "message": (
                                 f"🚫 Number pool is recycled — SMSPool's {country_id} numbers already have "
                                 "Telegram accounts. ResendCode + official Telegram Desktop creds all returned "
-                                "SentCodeTypeApp. Switch to: Kazakhstan (KZ), Ukraine (UA), "
-                                "Philippines (PH), Georgia (GE), or Bangladesh (BD)."
+                                "SentCodeTypeApp. "
+                                + _suggest_alt_countries(country_id)
                             ),
                         })
                         return
@@ -1741,8 +1783,7 @@ async def _registration_stream(
                 "message": (
                     f"⏱️ All {MAX_NUM_RETRIES} numbers from this country returned SentCodeTypeApp — "
                     "these are recycled numbers with existing Telegram accounts. "
-                    "Switch to a different country: Kazakhstan (KZ), Ukraine (UA), Philippines (PH), "
-                    "or Georgia (GE) have much fresher number pools."
+                    + _suggest_alt_countries(country_id)
                 ) if _all_app else (
                     f"⏱️ SMS code not received after {MAX_NUM_RETRIES} attempts. "
                     "Try a different country or check your SMSPool balance."
