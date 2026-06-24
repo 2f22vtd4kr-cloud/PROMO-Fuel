@@ -590,6 +590,21 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
       .catch(() => setServerHasKey(false));
   }, []);
 
+  // Auto-load country rankings when server key is confirmed — show list upfront
+  useEffect(() => {
+    if (serverHasKey !== true) return;
+    setAutoCountryLoading(true);
+    fetch("/api/factory/best-country", { headers: authHeaders() })
+      .then(r => r.json())
+      .then((json: { id?: string; name?: string; success_rate?: number; quantity?: number; top5?: typeof autoCountryTop5; error?: string }) => {
+        if (!json.error && json.top5?.length) {
+          setAutoCountryTop5(json.top5);
+        }
+      })
+      .catch(() => { /* silent — user can still click Auto Pick manually */ })
+      .finally(() => setAutoCountryLoading(false));
+  }, [serverHasKey]);
+
   // ── Proxy Store ────────────────────────────────────────────────────────────
   type SavedProxy = { id: number; country_code: string; label: string; proxy_string: string; last_session_num: number };
   const [savedProxies,         setSavedProxies]         = useState<SavedProxy[]>([]);
@@ -1938,7 +1953,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                 <div style={{
                   marginTop: 8,
                   background: "rgba(7,9,20,0.97)",
-                  border: `1px solid ${autoCountryMsg?.startsWith("✅") ? "rgba(45,232,151,0.28)" : "rgba(255,107,122,0.28)"}`,
+                  border: `1px solid ${(autoCountryTop5.length > 0 || autoCountryMsg?.startsWith("✅")) ? "rgba(45,232,151,0.28)" : "rgba(255,107,122,0.28)"}`,
                   borderRadius: 14, overflow: "hidden",
                 }}>
                   {/* Header */}
@@ -1950,10 +1965,10 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   }}>
                     <div style={{
                       fontSize: 11, fontWeight: 700,
-                      color: autoCountryMsg?.startsWith("✅") ? GREEN : RED,
+                      color: (autoCountryTop5.length > 0 || autoCountryMsg?.startsWith("✅")) ? GREEN : RED,
                     }}>
                       {autoCountryTop5.length > 0
-                        ? (lang === "ua" ? "⚡ Топ-5 країн за успіхом Telegram" : "⚡ Top 5 Countries by Telegram Success")
+                        ? (lang === "ua" ? "⚡ Рейтинг країн SMSPool — Telegram" : "⚡ SMSPool Country Rankings — Telegram")
                         : autoCountryMsg}
                     </div>
                     <button

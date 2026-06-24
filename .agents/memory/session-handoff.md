@@ -38,11 +38,8 @@ Every session must begin by reading `HANDOFF.md` and end by rewriting it.
   Ports, secrets, startup sequence, key files — static reference.
 ```
 
-## When to update mid-session
-Update `HANDOFF.md` mid-session (not just at the end) after any:
-- Major feature completed
-- Bug diagnosed and fixed
-- Decision made that rules out a whole class of approaches
-- User explicitly asks to record something
-
-This way, if the session ends abruptly, context is still captured.
+## Frequency — every turn, not just session end
+Update `HANDOFF.md` at the END OF EVERY RESPONSE — not just at session end.
+Each response that does real work (builds something, diagnoses something, makes a decision)
+must append/update the current session's summary block before sending the reply.
+This way: if the session ends abruptly after any turn, the full context is captured.
