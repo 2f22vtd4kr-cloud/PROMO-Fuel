@@ -57,9 +57,15 @@ Fix: added `receivedTerminal` bool. After the reader loop exits, if still false,
 
 ---
 
-### Step Timing Display
+### Step Timing Display + Session Summary Row
 
-Each step row now shows a live elapsed-time badge while running (ticking every 100ms in accent color), then a frozen green/red badge when done/error. Format: `0.0s` / `12s` / `1m 3s`. `StepState` extended with `startedAt`+`elapsedMs`; `updateStep` auto-stamps; `StepRow` has local `useState`+`useEffect` interval.
+**Step timing**: Each step shows a live ticking badge (100ms, accent color) while running → frozen green/red badge showing time taken when done/error. `StepState.startedAt`+`elapsedMs`; `updateStep` auto-stamps; `StepRow` has `useState`+`useEffect` interval.
+
+**Session summary strip**: The Session Stats Strip now appears as soon as registration starts (condition: `runState !== "idle" || ...`). Shows:
+- Live ticking session total (1s interval, `sessionLiveMs` state driven by `useEffect` on `runState`) in accent/green/muted color depending on outcome
+- `·` divider → `$0.18 spent` (SMSPool cost)
+- `·` divider → recycled skip counts (existing)
+`sessionStartedAt` ref stamped in `launch()`; `sessionElapsedMs` state frozen in `complete`/`batch_done`/`error` handlers; both cleared in `reset()`.
 
 ## Key file locations
 

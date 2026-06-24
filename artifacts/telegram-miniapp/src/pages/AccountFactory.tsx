@@ -1047,6 +1047,18 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [batchDone,      setBatchDone]      = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
+  const sessionStartedAt = useRef<number | null>(null);
+  const [sessionElapsedMs, setSessionElapsedMs] = useState<number | null>(null);
+  const [sessionLiveMs,    setSessionLiveMs]    = useState(0);
+
+  // Live session-level clock — ticks every second while registration is running
+  useEffect(() => {
+    if (runState !== "running" || !sessionStartedAt.current) { setSessionLiveMs(0); return; }
+    const tick = () => setSessionLiveMs(Date.now() - sessionStartedAt.current!);
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [runState]);
 
   async function fetchStock() {
     if (!serverHasKey && !smsKey.trim()) {
@@ -1381,6 +1393,9 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setPreflightStatus("idle");
     setPreflightMsg(null);
 
+    sessionStartedAt.current = Date.now();
+    setSessionElapsedMs(null);
+    setSessionLiveMs(0);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
@@ -1478,6 +1493,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             setBatchDelayMsg(p.message as string);
           } else if (event === "batch_done") {
             receivedTerminal = true;
+            setSessionElapsedMs(Date.now() - (sessionStartedAt.current ?? Date.now()));
             const doneSucceeded = (p.succeeded as number) ?? 0;
             setBatchTotal(p.total as number);
             setBatchSucceeded(doneSucceeded);
@@ -1516,6 +1532,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             setPollMsg(p.message as string);
           } else if (event === "complete") {
             receivedTerminal = true;
+            setSessionElapsedMs(Date.now() - (sessionStartedAt.current ?? Date.now()));
             setDonePhones(prev => [...prev, p.phone as string]);
             if (quantity === 1) {
               setRunState("done");
@@ -1575,6 +1592,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             }
           } else if (event === "error") {
             receivedTerminal = true;
+            setSessionElapsedMs(Date.now() - (sessionStartedAt.current ?? Date.now()));
             setErrorMsg(p.message as string);
             if (quantity === 1) {
               setRunState("error");
@@ -1624,6 +1642,9 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setWarmupPrompt(null);
     setSmsRetryPrompt(null);
     setDebugLog([]);
+    sessionStartedAt.current = null;
+    setSessionElapsedMs(null);
+    setSessionLiveMs(0);
   }
 
   function handleSmsRetry(yes: boolean) {
@@ -4198,24 +4219,54 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             </div>
 
             {/* ── Session Stats Strip ──────────────────────────────────────── */}
-            {(totalSpent > 0 || Object.keys(recycledSkips).length > 0) && (() => {
+            {(runState !== "idle" || totalSpent > 0 || Object.keys(recycledSkips).length > 0) && (() => {
               const effectiveKey = country === "custom" ? customCountry.trim() : country;
-              const skipCount = recycledSkips[effectiveKey] ?? 0;
+              const skipCount  = recycledSkips[effectiveKey] ?? 0;
               const totalSkips = Object.values(recycledSkips).reduce((a, b) => a + b, 0);
+
+              // Time to show: live ticker while running, frozen value once done
+              const sessionTimeMs: number | null = runState === "running" && sessionStartedAt.current
+                ? sessionLiveMs
+                : sessionElapsedMs;
+              const showTime = sessionTimeMs != null && sessionTimeMs > 0;
+              const showCost = totalSpent > 0;
+              const timeColor = runState === "running" ? ACCENT
+                : runState === "done" ? GREEN : "rgba(255,255,255,0.55)";
+
               return (
                 <div style={{
                   background: "rgba(255,255,255,0.035)",
                   border: "1px solid rgba(255,255,255,0.09)",
                   borderRadius: 14, padding: "10px 14px",
-                  display: "flex", alignItems: "center", gap: 0,
+                  display: "flex", alignItems: "center", flexWrap: "wrap", gap: 0,
                 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)",
                     letterSpacing: "0.06em", textTransform: "uppercase", marginRight: 12, flexShrink: 0 }}>
                     {L("Session", "Сесія")}
                   </div>
 
+                  {/* Total elapsed time */}
+                  {showTime && (
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginRight: 14 }}>
+                      <span style={{
+                        fontSize: 15, fontWeight: 800, color: timeColor,
+                        fontVariantNumeric: "tabular-nums",
+                      }}>
+                        {fmtMs(sessionTimeMs!)}
+                      </span>
+                      <span style={{ fontSize: 10, color: `${timeColor}88` }}>
+                        {L("total", "загалом")}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Divider time|cost */}
+                  {showTime && showCost && (
+                    <div style={{ width: 1, height: 22, background: "rgba(255,255,255,0.1)", marginRight: 14 }} />
+                  )}
+
                   {/* Money spent */}
-                  {totalSpent > 0 && (
+                  {showCost && (
                     <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginRight: 14 }}>
                       <span style={{ fontSize: 15, fontWeight: 800, color: "#ffc832" }}>
                         ${totalSpent.toFixed(2)}
@@ -4226,8 +4277,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     </div>
                   )}
 
-                  {/* Divider */}
-                  {totalSpent > 0 && totalSkips > 0 && (
+                  {/* Divider cost|recycled */}
+                  {showCost && totalSkips > 0 && (
                     <div style={{ width: 1, height: 22, background: "rgba(255,255,255,0.1)", marginRight: 14 }} />
                   )}
 
@@ -4243,7 +4294,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     </div>
                   )}
 
-                  {/* Total skips across all countries (if more than one country involved) */}
+                  {/* Total skips across all countries */}
                   {totalSkips > 0 && totalSkips !== skipCount && (
                     <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,107,122,0.5)" }}>
