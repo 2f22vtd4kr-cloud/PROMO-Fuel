@@ -307,17 +307,17 @@ function DetailedAnalysis({ text }: { text: string }) {
 function EventLog({ logs, scrollRef }: { logs: DebugLogEntry[]; scrollRef?: React.RefObject<HTMLDivElement | null> }) {
   return (
     <div ref={scrollRef} style={{
-      height: logs.length === 0 ? 48 : 220,
+      height: logs.length === 0 ? 56 : 320,
       overflowY: "auto",
       background: "rgba(0,0,0,0.35)",
-      borderRadius: 12,
+      borderRadius: 14,
       border: "1px solid rgba(255,255,255,0.08)",
-      padding: "8px 0",
+      padding: "10px 0",
       fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code',monospace",
-      fontSize: 10.5, lineHeight: 1.6,
+      fontSize: 11.5, lineHeight: 1.7,
     }}>
       {logs.length === 0 ? (
-        <div style={{ textAlign: "center", color: "rgba(255,255,255,0.22)", padding: "8px 0", fontSize: 11 }}>
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,0.22)", padding: "12px 0", fontSize: 12 }}>
           No events yet — start a registration
         </div>
       ) : (
@@ -326,24 +326,24 @@ function EventLog({ logs, scrollRef }: { logs: DebugLogEntry[]; scrollRef?: Reac
           const label = eventLabel(entry);
           return (
             <div key={i} style={{
-              display: "flex", alignItems: "flex-start", gap: 8,
-              padding: "1.5px 10px",
+              display: "flex", alignItems: "flex-start", gap: 10,
+              padding: "3px 14px",
               background: i === logs.length - 1 ? "rgba(99,102,241,0.08)" : "transparent",
             }}>
-              <span style={{ color: "rgba(255,255,255,0.25)", flexShrink: 0, fontSize: 9.5, paddingTop: 1 }}>
+              <span style={{ color: "rgba(255,255,255,0.28)", flexShrink: 0, fontSize: 10, paddingTop: 2 }}>
                 {fmtTime(entry.ts)}
               </span>
               <span style={{
-                flexShrink: 0, fontSize: 9, fontWeight: 800,
+                flexShrink: 0, fontSize: 10, fontWeight: 800,
                 color, background: `${color}18`, border: `1px solid ${color}35`,
-                borderRadius: 5, padding: "0px 5px", letterSpacing: "0.04em",
-                minWidth: 52, textAlign: "center", lineHeight: "16px",
+                borderRadius: 6, padding: "1px 7px", letterSpacing: "0.04em",
+                minWidth: 58, textAlign: "center", lineHeight: "18px",
               }}>
                 {entry.event === "step"
                   ? `step ${entry.data.step}`
                   : entry.event.replace("batch_", "bt/").replace("warmup_", "wu/")}
               </span>
-              <span style={{ color: "rgba(255,255,255,0.78)", flex: 1, wordBreak: "break-word" }}>
+              <span style={{ color: "rgba(255,255,255,0.82)", flex: 1, wordBreak: "break-word", fontSize: 11.5 }}>
                 {label}
               </span>
             </div>
@@ -524,7 +524,7 @@ export function FactoryDebugPanel({ logs, runState, onClear, authHeaders }: Prop
 
       {/* ── Body ──────────────────────────────────────────────────────────── */}
       {open && (
-        <div style={{ padding: "0 12px 14px" }}>
+        <div style={{ padding: "0 16px 20px" }}>
 
           {/* History banner if viewing a saved session */}
           {viewSession && (
@@ -546,10 +546,10 @@ export function FactoryDebugPanel({ logs, runState, onClear, authHeaders }: Prop
           <EventLog logs={activeLogs} scrollRef={viewSession ? undefined : scrollRef} />
 
           {/* AI section */}
-          <div style={{ marginTop: 10 }}>
+          <div style={{ marginTop: 16 }}>
             <Divider label="AI ANALYSIS" />
 
-            <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "stretch" }}>
               <input
                 value={question}
                 onChange={e => setQuestion(e.target.value)}
@@ -558,8 +558,8 @@ export function FactoryDebugPanel({ logs, runState, onClear, authHeaders }: Prop
                 style={{
                   flex: 1, background: "rgba(255,255,255,0.06)",
                   border: "1px solid rgba(99,102,241,0.3)",
-                  borderRadius: 12, padding: "9px 12px",
-                  fontSize: 12, color: "rgba(255,255,255,0.85)",
+                  borderRadius: 14, padding: "11px 14px",
+                  fontSize: 13, color: "rgba(255,255,255,0.85)",
                   fontFamily: "inherit", outline: "none",
                 }}
               />
@@ -567,13 +567,13 @@ export function FactoryDebugPanel({ logs, runState, onClear, authHeaders }: Prop
                 onClick={() => void analyze(activeLogs)}
                 disabled={loading || activeLogs.length === 0}
                 style={{
-                  flexShrink: 0, display: "flex", alignItems: "center", gap: 6,
+                  flexShrink: 0, display: "flex", alignItems: "center", gap: 7,
                   background: loading || activeLogs.length === 0
                     ? "rgba(99,102,241,0.08)"
                     : "linear-gradient(135deg,rgba(99,102,241,0.55),rgba(139,92,246,0.55))",
                   border: `1px solid ${loading || activeLogs.length === 0 ? "rgba(99,102,241,0.2)" : "rgba(139,92,246,0.5)"}`,
-                  borderRadius: 12, padding: "9px 14px",
-                  fontSize: 12, fontWeight: 700,
+                  borderRadius: 14, padding: "11px 18px",
+                  fontSize: 13, fontWeight: 700,
                   color: loading || activeLogs.length === 0 ? "rgba(160,160,255,0.35)" : "#e0e7ff",
                   cursor: loading || activeLogs.length === 0 ? "not-allowed" : "pointer",
                   fontFamily: "inherit",
