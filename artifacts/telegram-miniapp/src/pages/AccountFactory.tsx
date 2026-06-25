@@ -4361,7 +4361,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                                 ? (g === "male" ? "#93c5fd" : "#f9a8d4")
                                 : "rgba(255,255,255,0.3)",
                             }}>
-                              {g === "male" ? `♂ ${L("Male", "Чоловіч.")}` : `♀ ${L("Female", "Жіноч.")}`}
+                              {g === "male" ? L("Male", "Чоловіч.") : L("Female", "Жіноч.")}
                             </button>
                           ))}
                         </div>
@@ -4376,8 +4376,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                         }}>
                           <span style={{ fontSize: 16 }}>+</span>
                           {uploadGender === "male"
-                            ? `♂ ${L("Select male photos…", "Обрати фото (♂)…")}`
-                            : `♀ ${L("Select female photos…", "Обрати фото (♀)…")}`}
+                            ? L("Select male photos…", "Обрати фото…")
+                            : L("Select female photos…", "Обрати фото…")}
                           <input
                             type="file" accept="image/*" multiple style={{ display: "none" }}
                             disabled={isUploadingAvatars}
@@ -4424,7 +4424,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                                     letterSpacing: "0.08em", textTransform: "uppercase",
                                     marginBottom: 5,
                                   }}>
-                                    {g === "male" ? `♂ ${L("Male", "Чоловічі")}` : `♀ ${L("Female", "Жіночі")}`}
+                                    {g === "male" ? L("Male", "Чоловічі") : L("Female", "Жіночі")}
                                     <span style={{ fontWeight: 400, color: "rgba(255,255,255,0.28)", marginLeft: 4 }}>
                                       ({gFiles.length})
                                     </span>
