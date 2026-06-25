@@ -1951,7 +1951,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                 reason:  isLowRate ? "low_rate" : isRecycled ? "recycled" : "timeout",
                 message: msg,
               });
-              setRunState("idle");
+              setRunState("error");
               setPollMsg(null);
               setBatchDelayMsg(null);
             }
