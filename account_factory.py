@@ -878,7 +878,8 @@ async def get_country_availability(api_key: str = "", service: str = TELEGRAM_SE
 async def get_service_stock(country: str = "", service: str = TELEGRAM_SERVICE_ID, api_key: str = ""):
     """
     Real-time price + availability for Telegram (service 907) in a specific country.
-    Uses SMSPool /request/price — returns {available, stock (=success_rate), price}.
+    Returns {available, stock (=success_rate 0-100), price, quantity (actual available numbers)}.
+    Fetches price/success_rate and pool quantity in parallel from SMSPool.
     """
     resolved_key = (api_key.strip() or os.environ.get("SMSPOOL_API_KEY", "").strip())
     if not resolved_key:
@@ -886,32 +887,61 @@ async def get_service_stock(country: str = "", service: str = TELEGRAM_SERVICE_I
     if not country:
         return JSONResponse({"error": "country is required"}, status_code=400)
 
-    try:
-        async with aiohttp.ClientSession() as http:
-            async with http.get(
-                SMSPOOL_PRICE,
-                params={"key": resolved_key, "service": service, "country": country},
-                timeout=aiohttp.ClientTimeout(total=12),
-            ) as resp:
-                raw = await resp.json(content_type=None)
-    except Exception as exc:
-        return JSONResponse({"error": f"SMSPool unreachable: {exc}"}, status_code=502)
+    async def _fetch_price():
+        try:
+            async with aiohttp.ClientSession() as http:
+                async with http.get(
+                    SMSPOOL_PRICE,
+                    params={"key": resolved_key, "service": service, "country": country},
+                    timeout=aiohttp.ClientTimeout(total=12),
+                ) as resp:
+                    return await resp.json(content_type=None)
+        except Exception:
+            return None
+
+    async def _fetch_quantity():
+        """Query /pool/retrieve_valid to get actual available number count."""
+        try:
+            async with aiohttp.ClientSession() as http:
+                async with http.post(
+                    "https://api.smspool.net/pool/retrieve_valid",
+                    data={"key": resolved_key, "service": service, "country": country, "web": "1"},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    return await resp.json(content_type=None)
+        except Exception:
+            return None
+
+    raw, pools_raw = await asyncio.gather(_fetch_price(), _fetch_quantity())
+
+    if raw is None:
+        return JSONResponse({"error": "SMSPool unreachable"}, status_code=502)
 
     if isinstance(raw, dict) and raw.get("success") == 0:
         msgs = "; ".join(e.get("message", "") for e in raw.get("errors", []))
         return JSONResponse({"error": msgs or "Invalid API key"}, status_code=401)
 
     if not isinstance(raw, dict) or "price" not in raw:
-        # Service not available in this country
-        return {"available": False, "stock": 0, "price": 0.0}
+        return {"available": False, "stock": 0, "price": 0.0, "quantity": 0}
 
     price        = float(raw.get("price", 0) or 0)
     success_rate = int(raw.get("success_rate", 0) or 0)
 
+    # Parse pool quantity — total available numbers across all pools for this country+service
+    quantity = 0
+    if isinstance(pools_raw, list):
+        for pool in pools_raw:
+            if isinstance(pool, dict):
+                q = int(pool.get("stock", pool.get("quantity", pool.get("available", 0)) or 0) or 0)
+                quantity += q
+    elif isinstance(pools_raw, dict):
+        quantity = int(pools_raw.get("stock", pools_raw.get("quantity", pools_raw.get("available", 0)) or 0) or 0)
+
     return {
         "available": price > 0,
-        "stock":     success_rate,   # 0-100 success-rate used as stock indicator
+        "stock":     success_rate,
         "price":     price,
+        "quantity":  quantity,
     }
 
 
@@ -1864,10 +1894,6 @@ async def _registration_stream(
                 _recycled_phones_this_session.append(phone)
                 await cancel_order()
                 _app_stuck_count += 1
-                if _app_stuck_count == 2:
-                    _pricing_option = "0"
-                elif _app_stuck_count == 3:
-                    _pricing_option = "2"
                 if _app_stuck_count < 3:
                     yield _sse("step", {"step": 3, "status": "error",
                                         "message": (
@@ -1903,10 +1929,6 @@ async def _registration_stream(
                 _recycled_phones_this_session.append(phone)
                 await cancel_order()
                 _app_stuck_count += 1
-                if _app_stuck_count == 2:
-                    _pricing_option = "0"
-                elif _app_stuck_count == 4:
-                    _pricing_option = "2"
                 if _app_stuck_count < 5:
                     yield _sse("step", {"step": 3, "status": "error",
                                         "message": (
@@ -2184,15 +2206,7 @@ async def _registration_stream(
                 _record_recycled_prefix(phone, country_id, _pricing_option)
                 _recycled_phones_this_session.append(phone)
 
-                # Rotate SMSPool pricing pool on pre-bans just like recycled numbers.
-                # Pre-banned batches tend to be pool-specific; trying pool 0 or 2 often
-                # draws from a different carrier batch with a lower ban rate.
-                if _app_stuck_count == 2:
-                    _pricing_option = "0"
-                    yield _sse("debug", {"message": "🔄 Pre-ban: pricing_option → 0 (mixed pool)"})
-                elif _app_stuck_count == 3:
-                    _pricing_option = "2"
-                    yield _sse("debug", {"message": "🔄 Pre-ban: pricing_option → 2 (premium pool)"})
+                # Always keep pricing_option=1 (highest success rate) — rotation removed.
 
                 _remaining_after = MAX_NUM_RETRIES - _num_attempt - 1
                 if _banned_count >= 3:
@@ -2511,21 +2525,7 @@ async def _registration_stream(
                         await cancel_order()
                         await safe_disconnect()
 
-                        # Auto-rotate SMSPool pricing pool when standard pool is recycled.
-                        # Pool 1 (standard) → Pool 0 (mixed/cheapest) → Pool 2 (premium).
-                        # Each pool draws from a different carrier batch — different recycled rates.
-                        if _app_stuck_count == 2:
-                            _pricing_option = "0"
-                            yield _sse("debug", {"message": (
-                                f"🔄 SMSPool pricing_option → 0 (mixed pool) — "
-                                f"standard pool (1) appears recycled after {_app_stuck_count} numbers"
-                            )})
-                        elif _app_stuck_count == 4:
-                            _pricing_option = "2"
-                            yield _sse("debug", {"message": (
-                                f"🔄 SMSPool pricing_option → 2 (premium pool) — "
-                                f"trying higher-quality carrier batch after {_app_stuck_count} recycled numbers"
-                            )})
+                        # Always keep pricing_option=1 (highest success rate) — rotation removed.
 
                         # SNSS: record confirmed-recycled prefix (Layer 2 detection)
                         # and run Gemini pattern analysis when 2+ recycled in session.

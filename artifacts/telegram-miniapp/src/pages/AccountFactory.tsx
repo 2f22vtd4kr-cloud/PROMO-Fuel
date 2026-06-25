@@ -939,8 +939,9 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     available: boolean | null;
     stock: number;
     price: number;
+    quantity: number;
     error: string | null;
-  }>({ loading: false, available: null, stock: 0, price: 0, error: null });
+  }>({ loading: false, available: null, stock: 0, price: 0, quantity: 0, error: null });
 
   // Server-side SMSPOOL_API_KEY detection
   const [serverHasKey,  setServerHasKey]  = useState<boolean | null>(null);
@@ -1142,7 +1143,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   // Auto-fetch per-country Telegram service stock whenever country changes
   useEffect(() => {
     if (!effectiveSmsPoolId) {
-      setSvcStock({ loading: false, available: null, stock: 0, price: 0, error: null });
+      setSvcStock({ loading: false, available: null, stock: 0, price: 0, quantity: 0, error: null });
       return;
     }
     if (!serverHasKey && !smsKey.trim()) return;
@@ -1154,15 +1155,15 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
         if (!serverHasKey && smsKey.trim()) qs.set("api_key", smsKey.trim());
         const resp = await fetch(`/api/factory/service-stock?${qs}`, { headers: authHeaders() });
         const json = await resp.json() as {
-          available?: boolean; stock?: number; price?: number; error?: string;
+          available?: boolean; stock?: number; price?: number; quantity?: number; error?: string;
         };
         if (!resp.ok || json.error) {
-          setSvcStock({ loading: false, available: null, stock: 0, price: 0, error: json.error ?? `HTTP ${resp.status}` });
+          setSvcStock({ loading: false, available: null, stock: 0, price: 0, quantity: 0, error: json.error ?? `HTTP ${resp.status}` });
         } else {
-          setSvcStock({ loading: false, available: json.available ?? false, stock: json.stock ?? 0, price: json.price ?? 0, error: null });
+          setSvcStock({ loading: false, available: json.available ?? false, stock: json.stock ?? 0, price: json.price ?? 0, quantity: json.quantity ?? 0, error: null });
         }
       } catch (e) {
-        setSvcStock({ loading: false, available: null, stock: 0, price: 0, error: String(e) });
+        setSvcStock({ loading: false, available: null, stock: 0, price: 0, quantity: 0, error: String(e) });
       }
     }, 500);
     return () => clearTimeout(timer);
@@ -1324,6 +1325,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [countryAiError,   setCountryAiError]   = useState<string | null>(null);
   const [countryAiModel,   setCountryAiModel]   = useState("");
   const [countryAiTarget,  setCountryAiTarget]  = useState<{ id: string; name: string } | null>(null);
+  const [countryAiStock,   setCountryAiStock]   = useState<{ stock: number; price: number; quantity: number } | null>(null);
 
   // Freshness reporting per country row
   const [reportingCountryId, setReportingCountryId] = useState<string | null>(null);
@@ -1661,18 +1663,29 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setCountryAiLoading(true);
     setCountryAiError(null);
     setCountryAiEntry(null);
+    setCountryAiStock(null);
     setCountryAiTarget({ id, name });
     try {
-      const resp = await fetch(
-        `/api/factory/ai-country?id=${encodeURIComponent(id)}&name=${encodeURIComponent(name)}`,
-        { headers: authHeaders() }
-      );
-      const json = await resp.json() as { entry?: AiCountryEntry; model?: string; error?: string };
-      if (!resp.ok || json.error) {
-        setCountryAiError(json.error ?? `HTTP ${resp.status}`);
+      const stockQs = new URLSearchParams({ country: id, service: "907" });
+      if (!serverHasKey && smsKey.trim()) stockQs.set("api_key", smsKey.trim());
+      const [aiResp, stockResp] = await Promise.all([
+        fetch(`/api/factory/ai-country?id=${encodeURIComponent(id)}&name=${encodeURIComponent(name)}`, { headers: authHeaders() }),
+        (serverHasKey || smsKey.trim())
+          ? fetch(`/api/factory/service-stock?${stockQs}`, { headers: authHeaders() })
+          : Promise.resolve(null),
+      ]);
+      const aiJson = await aiResp.json() as { entry?: AiCountryEntry; model?: string; error?: string };
+      if (!aiResp.ok || aiJson.error) {
+        setCountryAiError(aiJson.error ?? `HTTP ${aiResp.status}`);
       } else {
-        setCountryAiEntry(json.entry ?? null);
-        setCountryAiModel(json.model ?? "");
+        setCountryAiEntry(aiJson.entry ?? null);
+        setCountryAiModel(aiJson.model ?? "");
+      }
+      if (stockResp) {
+        try {
+          const sj = await stockResp.json() as { stock?: number; price?: number; quantity?: number; error?: string };
+          if (!sj.error) setCountryAiStock({ stock: sj.stock ?? 0, price: sj.price ?? 0, quantity: sj.quantity ?? 0 });
+        } catch { /* silent */ }
       }
     } catch (e) {
       setCountryAiError(String(e));
@@ -3387,7 +3400,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     )}
                   </div>
                   <button
-                    onClick={() => { setCountryAiEntry(null); setCountryAiError(null); setCountryAiTarget(null); }}
+                    onClick={() => { setCountryAiEntry(null); setCountryAiError(null); setCountryAiTarget(null); setCountryAiStock(null); }}
                     style={{ background: "none", border: "none", cursor: "pointer",
                       color: "rgba(255,255,255,0.32)", fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0 }}>
                     ✕
@@ -3431,69 +3444,120 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     : entry.data_source === "community_research"
                       ? L("спільнота", "community")
                       : L("AI оцінка", "AI est.");
+                  const smsRate = countryAiStock?.stock ?? 0;
+                  const smsQty  = countryAiStock?.quantity ?? 0;
+                  const smsPrice = countryAiStock?.price ?? 0;
+                  const smsColor = smsRate >= 50 ? GREEN : smsRate >= 25 ? ACCENT : RED;
                   return (
                     <div style={{ padding: "13px 14px" }}>
-                      {/* Freshness score row */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                        {/* Big score circle */}
+
+                      {/* ── SMSPool live data row (prominent) ─────────────────── */}
+                      {countryAiStock && (
                         <div style={{
-                          width: 52, height: 52, borderRadius: "50%", flexShrink: 0,
+                          background: "rgba(16,185,129,0.07)",
+                          border: `1px solid ${smsColor}33`,
+                          borderRadius: 10, padding: "10px 12px", marginBottom: 10,
+                        }}>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: `${smsColor}99`,
+                            textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 7 }}>
+                            📡 SMSPool · live
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            {/* Success rate — primary metric */}
+                            <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                              <span style={{ fontSize: 24, fontWeight: 900, color: smsColor, lineHeight: 1 }}>
+                                {smsRate}%
+                              </span>
+                              <span style={{ fontSize: 9, color: "rgba(226,232,255,0.45)", whiteSpace: "nowrap" }}>
+                                {lang === "ua" ? "успішних SMS" : "SMS success"}
+                              </span>
+                            </div>
+                            {/* Separator */}
+                            <div style={{ width: 1, height: 22, background: "rgba(255,255,255,0.08)", flexShrink: 0 }} />
+                            {/* Quantity */}
+                            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                              <span style={{ fontSize: 13, fontWeight: 800, color: "rgba(226,232,255,0.9)", lineHeight: 1 }}>
+                                {smsQty > 0 ? smsQty.toLocaleString(lang === "ua" ? "uk-UA" : "en-US") : "—"}
+                              </span>
+                              <span style={{ fontSize: 8, color: "rgba(226,232,255,0.35)" }}>
+                                {lang === "ua" ? "доступно" : "available"}
+                              </span>
+                            </div>
+                            {/* Price */}
+                            {smsPrice > 0 && (
+                              <>
+                                <div style={{ width: 1, height: 22, background: "rgba(255,255,255,0.08)", flexShrink: 0 }} />
+                                <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                                  <span style={{ fontSize: 13, fontWeight: 800, color: "rgba(226,232,255,0.9)", lineHeight: 1 }}>
+                                    ${smsPrice.toFixed(2)}
+                                  </span>
+                                  <span style={{ fontSize: 8, color: "rgba(226,232,255,0.35)" }}>
+                                    {lang === "ua" ? "за номер" : "per number"}
+                                  </span>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── AI freshness row (secondary) ───────────────────────── */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                        {/* Small freshness ring */}
+                        <div style={{
+                          width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
                           background: `conic-gradient(${freshColor} ${entry.freshness * 3.6}deg, rgba(255,255,255,0.06) 0deg)`,
                           display: "flex", alignItems: "center", justifyContent: "center",
-                          boxShadow: `0 0 16px ${freshColor}33`,
-                          position: "relative",
                         }}>
                           <div style={{
-                            width: 38, height: 38, borderRadius: "50%",
+                            width: 24, height: 24, borderRadius: "50%",
                             background: "rgba(7,5,24,0.97)",
                             display: "flex", alignItems: "center", justifyContent: "center",
                           }}>
-                            <span style={{ fontSize: 13, fontWeight: 800, color: freshColor }}>{entry.freshness}%</span>
+                            <span style={{ fontSize: 8, fontWeight: 800, color: freshColor }}>{entry.freshness}%</span>
                           </div>
                         </div>
 
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(226,232,255,0.85)", marginBottom: 4 }}>
-                            {lang === "ua" ? "Свіжість номерів" : "Number freshness"}
+                          <div style={{ fontSize: 10, fontWeight: 600, color: "rgba(226,232,255,0.55)", marginBottom: 3 }}>
+                            {lang === "ua" ? "AI свіжість пула" : "AI pool freshness"}
                           </div>
-                          {/* Bar */}
-                          <div style={{ height: 4, borderRadius: 3, background: "rgba(255,255,255,0.07)", overflow: "hidden", marginBottom: 5 }}>
+                          <div style={{ height: 3, borderRadius: 2, background: "rgba(255,255,255,0.07)", overflow: "hidden", marginBottom: 4 }}>
                             <div style={{
                               width: `${entry.freshness}%`, height: "100%",
                               background: `linear-gradient(90deg, ${freshColor}aa, ${freshColor})`,
-                              borderRadius: 3, transition: "width 0.6s ease",
+                              borderRadius: 2, transition: "width 0.6s ease",
                             }} />
                           </div>
-                          {/* Pills row */}
-                          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                             <div style={{
-                              display: "inline-flex", alignItems: "center", gap: 4,
-                              background: "rgba(139,92,246,0.13)",
-                              border: "1px solid rgba(139,92,246,0.28)",
-                              borderRadius: 6, padding: "2px 7px",
+                              display: "inline-flex", alignItems: "center", gap: 3,
+                              background: "rgba(139,92,246,0.10)",
+                              border: "1px solid rgba(139,92,246,0.22)",
+                              borderRadius: 5, padding: "1px 6px",
                             }}>
-                              <span style={{ fontSize: 9, color: "rgba(167,139,250,0.6)" }}>
-                                {lang === "ua" ? "≈спроб:" : "≈attempts:"}
+                              <span style={{ fontSize: 8, color: "rgba(167,139,250,0.55)" }}>
+                                {lang === "ua" ? "≈спроб:" : "≈att:"}
                               </span>
-                              <span style={{ fontSize: 11, fontWeight: 800, color: "#c4b5fd" }}>
+                              <span style={{ fontSize: 10, fontWeight: 800, color: "#c4b5fd" }}>
                                 {entry.avg_attempts}
                               </span>
                             </div>
                             <div style={{
                               display: "inline-flex", alignItems: "center", gap: 3,
-                              background: "rgba(255,255,255,0.04)",
-                              border: "1px solid rgba(255,255,255,0.08)",
-                              borderRadius: 5, padding: "2px 6px",
+                              background: "rgba(255,255,255,0.03)",
+                              border: "1px solid rgba(255,255,255,0.07)",
+                              borderRadius: 5, padding: "1px 5px",
                             }}>
                               <span style={{ fontSize: 8 }}>{srcIcon}</span>
-                              <span style={{ fontSize: 8, color: "rgba(255,255,255,0.32)" }}>{srcLabel}</span>
+                              <span style={{ fontSize: 8, color: "rgba(255,255,255,0.28)" }}>{srcLabel}</span>
                             </div>
                           </div>
                         </div>
                       </div>
 
                       {/* Divider */}
-                      <div style={{ height: 1, background: "rgba(139,92,246,0.12)", marginBottom: 11 }} />
+                      <div style={{ height: 1, background: "rgba(139,92,246,0.12)", marginBottom: 10 }} />
 
                       {/* Reasoning */}
                       <div style={{
@@ -3512,7 +3576,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                       {/* Footer: use this country */}
                       <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
                         <button
-                          onClick={() => { applyCountry(entry.id); setSmsPoolCountryId(entry.id); setCountryAiEntry(null); setCountryAiError(null); }}
+                          onClick={() => { applyCountry(entry.id); setSmsPoolCountryId(entry.id); setCountryAiEntry(null); setCountryAiError(null); setCountryAiStock(null); }}
                           style={{
                             background: "linear-gradient(135deg, rgba(139,92,246,0.35) 0%, rgba(109,40,217,0.25) 100%)",
                             border: "1px solid rgba(139,92,246,0.5)",
@@ -3598,8 +3662,18 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                               )}
                     </div>
                     {!svcStock.loading && !svcStock.error && svcStock.available && (
-                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.38)", marginTop: 2 }}>
-                        {L("Real-time SMSPool data · Telegram service 907", "Дані SMSPool в реальному часі · сервіс Telegram 907")}
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.38)", marginTop: 2, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span>{L("Real-time SMSPool · service 907", "Дані SMSPool · сервіс 907")}</span>
+                        {svcStock.quantity > 0 && (
+                          <span style={{
+                            background: "rgba(45,232,151,0.10)",
+                            border: "1px solid rgba(45,232,151,0.25)",
+                            borderRadius: 4, padding: "1px 5px",
+                            fontSize: 9, fontWeight: 700, color: "rgba(45,232,151,0.75)",
+                          }}>
+                            {svcStock.quantity.toLocaleString(lang === "ua" ? "uk-UA" : "en-US")} {L("available", "доступно")}
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
