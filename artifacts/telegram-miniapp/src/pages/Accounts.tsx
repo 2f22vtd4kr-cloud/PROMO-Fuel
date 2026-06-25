@@ -11,6 +11,7 @@ import { ConfirmModal } from "../components/ConfirmModal";
 import { useSse } from "../lib/useSse";
 import { haptic } from "../lib/haptics";
 import { AccountFactoryPanel } from "./AccountFactory";
+import { SessionHealthPanel } from "../components/SessionHealthPanel";
 
 // ── Flood wait countdown badge ────────────────────────────────────────────────
 
@@ -1520,6 +1521,9 @@ export function AccountsPage({ onClose, onManualAccounts }: { onClose?: () => vo
                 ))}
             </div>
           )}
+
+          {/* ── Session Health Dashboard ── */}
+          <SessionHealthPanel />
           </>
         )}
 

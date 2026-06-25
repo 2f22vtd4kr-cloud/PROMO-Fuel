@@ -3,6 +3,7 @@ import { X, ChevronDown, Loader, Minus, Plus, RefreshCw } from "lucide-react";
 import { useI18n } from "../lib/i18n";
 import { getStoredSecret } from "./LockScreen";
 import { FactoryDebugPanel, type DebugLogEntry } from "../components/FactoryDebugPanel";
+import { SnssPanel } from "../components/SnssPanel";
 
 function authHeaders(): Record<string, string> {
   const s = getStoredSecret();
@@ -4837,6 +4838,10 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           try { localStorage.removeItem("pf_reg_history"); } catch {}
         }}
       />
+
+      {/* ── SNSS prefix blacklist management ── */}
+      <SnssPanel authHeaders={authHeaders} lang={lang} />
+
       </div>
     </div>
   );

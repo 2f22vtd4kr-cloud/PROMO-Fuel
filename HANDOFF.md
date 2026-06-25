@@ -4,98 +4,64 @@ _Rewritten each session. Contains only current state — no history._
 
 ---
 
-## What was done this session
+## What was built this session
 
-### Smart Number Screening System (SNSS) — fully implemented
+### Session Health Dashboard (`SessionHealthPanel`)
+- **New component**: `artifacts/telegram-miniapp/src/components/SessionHealthPanel.tsx`
+- Collapsible panel injected into **Accounts page** (after summary cards + problem badges, line ~1528)
+- Lazy-loads on first expand — no fetch until user opens it
+- `GET /api/accounts/session-health` → fast DB-only read (no Telethon) added to `accounts.ts`
+- Health classification: `active` 🟢 | `flood_wait` 🟡 | `banned` 🔴 | `session_invalid` 🔴 | `no_session` ⚪
+- Per-account "check" button + "Validate All" + "Recheck problems" → `POST /api/accounts/validate-sessions`
+- Shows: name, phone, health badge, quota bar (sent_today/daily_limit), last_used_at, flood countdown, validate result inline
 
-Three pre-registration screening layers added to `account_factory.py` to detect recycled SMSPool numbers before spending Telethon time/proxy budget.
+### SNSS Stats Panel (`SnssPanel`)
+- **New component**: `artifacts/telegram-miniapp/src/components/SnssPanel.tsx`
+- Injected into **AccountFactory overlay** below `<RegHistoryPanel>` (line ~4845)
+- 4 stat chips: Blocked prefixes, Countries, Total hits, Threshold
+- **Threshold slider** (1–10) with save → `POST /api/factory/snss/config` (updates `_SNSS_MIN_COUNT` in-process, no restart)
+- Prefix table: monospace prefix, country flag, hit count (color-coded by severity), last-seen, per-row unblock ✕
+- Clear-all button; all mutations sync both DB and `_RECYCLED_PREFIX_MEM` atomically
 
----
+### Backend additions
 
-## SNSS Architecture
+#### `account_factory.py`
+- `_SNSS_MIN_COUNT: int = 2` global added after `_RECYCLED_PREFIX_MEM`
+- `_check_prefix_blacklist(min_count: int | None = None)` — uses `_SNSS_MIN_COUNT` as default (was hardcoded 2)
+- 5 new routes on `factory_router` (all proxied via Node.js → Python 8083):
+  - `GET  /api/factory/snss/stats` — full prefix list + aggregate counts
+  - `DELETE /api/factory/snss/prefix?prefix=&country_id=` — unblock single prefix
+  - `POST /api/factory/snss/clear` — wipe entire blacklist
+  - `GET  /api/factory/snss/config` — read current threshold
+  - `POST /api/factory/snss/config` — set `_SNSS_MIN_COUNT` at runtime
 
-### Layer 0 — Prefix Blacklist (instant, free)
-- After any number is confirmed recycled, its first 9 characters (e.g. `+99870704`) are recorded in `recycled_prefix_cache` SQLite table **and** `_RECYCLED_PREFIX_MEM` in-memory dict.
-- On each new purchase, `_check_prefix_blacklist(phone, country_id)` hits the in-memory dict. If count ≥ 2 → cancel immediately, `continue` retry loop — no Telethon started. Saves ~25 s per detection.
-- `_RECYCLED_PREFIX_MEM` is loaded from SQLite at import time via `_ensure_recycled_prefix_table()`.
+#### `artifacts/api-server/src/routes/accounts.ts`
+- `GET /api/accounts/session-health` — DB-only health read; maps account fields → `health` string
 
-### Layer 1 — contacts.importContacts (~2 s, free)
-- After step-1-done SSE, before step-2 Telethon init:
-  `_check_registered_via_contact(phone)` picks a random idle sender account (is_active=1, is_banned=0, broadcasting=0, session_file not null), connects Telethon as that account (no proxy, direct server), calls `ImportContactsRequest`, checks if users returned.
-- Returns `True` (found = recycled), `False` (not found), `None` (no idle account / any error).
-- Fail-open always. Catches ~40-60% of recycled numbers with public privacy settings.
+## Workflow status
+- **API Server** (port 8080): RUNNING — Express + Python proxy
+- **Telegram Bot**: RUNNING — polling (409 conflicts normal for multi-instance)
+- **Telegram Mini App** (port 5000): RUNNING — Vite dev HMR active
+- `artifacts/api-server: API Server` artifact workflow: FAILED — not used by main app, ignore
 
-### Layer 2 AI — Gemini Pattern Analysis (advisory)
-- Triggered inside confirmed-recycled path (after SentCodeTypeApp Layer 2 detection) when `len(_recycled_phones_this_session) >= 2`.
-- `_ai_analyze_recycled_pattern()` calls Gemini with the list of all recycled phones seen this session.
-- Returns `{prefix, confidence, switch_pool, recommendation}`.
-- AI-identified prefix widened into `_RECYCLED_PREFIX_MEM` for the remainder of the session.
-- Results emitted as `debug` SSE events.
+## Architecture reminders
+- Vite proxy: `/api/*` → `http://localhost:8080` (Node.js)
+- Node.js: `/api/factory/*` → Python FastAPI 8083 via `makePythonProxy`; `/api/accounts/*` handled natively
+- `SessionHealthPanel` imports `getStoredSecret` from LockScreen for Bearer auth
+- `SnssPanel` receives `authHeaders` function prop from AccountFactory
+- `_SNSS_MIN_COUNT` is process-global — resets to 2 on Python restart (not persisted to DB; by design)
 
----
+## Key files
+| File | Role |
+|------|------|
+| `account_factory.py` | Python FastAPI — SNSS routes + blacklist logic (lines 80–84, 609–626, 3562–3652) |
+| `artifacts/api-server/src/routes/accounts.ts` | Node.js — `/accounts/session-health` route (line ~530) |
+| `artifacts/telegram-miniapp/src/components/SnssPanel.tsx` | SNSS management UI (new) |
+| `artifacts/telegram-miniapp/src/components/SessionHealthPanel.tsx` | Session health dashboard (new) |
+| `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx` | Imports + mounts `<SnssPanel>` |
+| `artifacts/telegram-miniapp/src/pages/Accounts.tsx` | Imports + mounts `<SessionHealthPanel>` |
 
-## Files Changed This Session
-
-| File | Change |
-|------|--------|
-| `account_factory.py` | Added `_RECYCLED_PREFIX_MEM`, `_SNSS_PREFIX_LEN` globals; added 2 new imports (InputPhoneContact, ImportContactsRequest/DeleteContactsRequest); 5 new SNSS functions; Layer 0+1 checks after step-1-done SSE; Layer 2 recording + Gemini call after pricing rotation in confirmed-recycled path |
-| `dbmigrations.py` | Added Step 12: `recycled_prefix_cache` table + index |
-
----
-
-## New Functions (all in account_factory.py)
-
-- `_ensure_recycled_prefix_table()` — idempotent CREATE TABLE + load into memory; called at module import
-- `_record_recycled_prefix(phone, country_id, pricing_option)` — in-memory + DB UPSERT
-- `_check_prefix_blacklist(phone, country_id, min_count=2)` → `(hit: bool, count: int, prefix: str)`
-- `async _check_registered_via_contact(phone)` → `True | False | None`
-- `async _ai_analyze_recycled_pattern(recycled_phones, country_id, pricing_option, http_session)` → `dict | None`
-
----
-
-## Flow After Step 1 Done
-
-```
-step 1 done SSE
-  → Layer 0: _check_prefix_blacklist
-      hit → cancel_order, _record_recycled_prefix, _app_stuck_count++, continue/halt
-  → Layer 1: _check_registered_via_contact
-      True → cancel_order, _record_recycled_prefix, _app_stuck_count++, continue/halt
-      False → ✅ debug SSE, proceed
-      None  → ℹ️ debug SSE (no idle account), proceed
-step 2 SSE (Telethon init)
-... existing Telethon + SMS flow ...
-  → SentCodeTypeApp Layer 2 confirmation:
-      _record_recycled_prefix(phone, ...)
-      _recycled_phones_this_session.append(phone)
-      if len >= 2: _ai_analyze_recycled_pattern (14 s timeout, fail-open)
-      pricing rotation (existing _app_stuck_count == 2 → "0", == 4 → "2")
-      halt/retry (existing ≤5 logic)
-```
-
----
-
-## Confirmed Working
-
-- `python3 -c "py_compile.compile('account_factory.py', doraise=True)"` — clean
-- `python3 dbmigrations.py` — Step 12 ran clean, table created
-- Bot restart: all 3 processes (supervisor, worker-1, worker-2) applied Step 12 cleanly
-
----
-
-## Previous Session Context (still relevant)
-
-- Confirmed via debug: UZ numbers genuinely recycled — different Layer 2 IPs all return SentCodeTypeApp
-- `_OFFICIAL_CLIENT_CREDS` includes Android api_id=6 (added previous session)
-- `pricing_option` auto-rotation: stuck_count==2→"0", ==4→"2" (added previous session)
-- `_suggest_alt_countries` includes 5sim.net / SMSBower hint (previous session)
-- Layer 2 breaks immediately on clean SentCodeTypeApp (previous session)
-
----
-
-## Known Gaps / Caveats
-
-- Contact check uses server datacenter IP (no proxy). Safe at low frequency (≤20/session). If factory sessions scale, route via sender account's proxy.
-- `_RECYCLED_PREFIX_MEM` is per-process — not shared across parallel workers. Each process independently learns and persists to SQLite; knowledge accumulates across restarts.
-- Layer 1 misses recycled numbers whose owners have "nobody can find me by phone" privacy (~40-60% false-negative rate). Those still fall through to Layer 2.
-- If entire SMSPool+Decodo UZ range is flagged by Telegram, the only fix is switching proxy provider or SMS provider (5sim.net, SMSBower).
+## Known non-issues
+- `artifacts/api-server: API Server` artifact workflow FAILED — real API is the `API Server` bash-workflow. Safe to ignore.
+- mockup-sandbox: PolishComplete/RefinedDepth/GroupsV2/WorkersV3/VideoTemplate.tsx have corrupted JSX — pre-existing, do not touch unless asked.
+- Telegram Bot 409 conflicts: normal when Replit spawns multiple supervisor instances.

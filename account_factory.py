@@ -74,6 +74,11 @@ _RECYCLED_COUNTRY_POOL: set[str] = set()
 # Avoids a DB round-trip inside the tight per-number retry loop.
 _RECYCLED_PREFIX_MEM: dict[str, int] = {}
 
+# ── SNSS: Configurable blacklist threshold ────────────────────────────────────
+# Minimum recycled-hit count before a prefix is blocked. Adjustable at runtime
+# via POST /api/factory/snss/config — no restart required.
+_SNSS_MIN_COUNT: int = 2
+
 # Phone prefix length stored in the blacklist (including the leading +).
 # 9 chars captures the carrier batch: e.g. "+99870704" for UZ SMSPool batches.
 _SNSS_PREFIX_LEN: int = 9
@@ -601,18 +606,21 @@ def _record_recycled_prefix(phone: str, country_id: str, pricing_option: str = "
 def _check_prefix_blacklist(
     phone: str,
     country_id: str,
-    min_count: int = 2,
+    min_count: int | None = None,
 ) -> tuple[bool, int, str]:
     """Check if a phone number's prefix is in the recycled blacklist.
 
     Returns (hit, count, prefix):
-        hit=True means this prefix has been seen ≥ min_count times as recycled —
+        hit=True means this prefix has been seen ≥ threshold times as recycled —
         the number should be cancelled immediately without connecting Telethon.
+
+    Uses _SNSS_MIN_COUNT global (adjustable at runtime) when min_count is None.
     """
+    threshold = min_count if min_count is not None else _SNSS_MIN_COUNT
     prefix = phone[:_SNSS_PREFIX_LEN]
     cid    = country_id.lower()
     count  = _RECYCLED_PREFIX_MEM.get(f"{prefix}:{cid}", 0)
-    return count >= min_count, count, prefix
+    return count >= threshold, count, prefix
 
 
 async def _check_registered_via_contact(phone: str) -> bool | None:
@@ -3546,3 +3554,106 @@ async def serve_avatar_image(gender: str, filename: str):
     media_types = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                    ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif"}
     return _Resp(content=bytes(data), media_type=media_types.get(ext, "image/jpeg"))
+
+
+# ── SNSS Management Routes ────────────────────────────────────────────────────
+
+@factory_router.get("/snss/stats")
+async def snss_stats():
+    """Return full SNSS prefix blacklist — stats + per-prefix rows."""
+    import sqlite3 as _sq3
+    try:
+        conn = _sq3.connect(DB_PATH, timeout=5)
+        conn.row_factory = _sq3.Row
+        rows = conn.execute(
+            "SELECT prefix, country_id, count, last_seen, pricing_options, example_phones "
+            "FROM recycled_prefix_cache ORDER BY count DESC, last_seen DESC"
+        ).fetchall()
+        conn.close()
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+    countries: set[str] = set()
+    total_hits = 0
+    prefixes = []
+    for row in rows:
+        cid = row["country_id"]
+        countries.add(cid)
+        total_hits += row["count"]
+        prefixes.append({
+            "prefix":          row["prefix"],
+            "country_id":      cid,
+            "count":           row["count"],
+            "last_seen":       row["last_seen"],
+            "pricing_options": json.loads(row["pricing_options"] or "[]"),
+            "example_phones":  json.loads(row["example_phones"]  or "[]"),
+        })
+
+    return JSONResponse({
+        "prefix_count":  len(prefixes),
+        "country_count": len(countries),
+        "countries":     sorted(countries),
+        "total_hits":    total_hits,
+        "min_count":     _SNSS_MIN_COUNT,
+        "prefixes":      prefixes,
+    })
+
+
+@factory_router.delete("/snss/prefix")
+async def snss_delete_prefix(prefix: str, country_id: str):
+    """Remove a single prefix from the blacklist (DB + in-memory)."""
+    global _RECYCLED_PREFIX_MEM
+    import sqlite3 as _sq3
+    cid = country_id.lower()
+    mem_key = f"{prefix}:{cid}"
+    _RECYCLED_PREFIX_MEM.pop(mem_key, None)
+    try:
+        conn = _sq3.connect(DB_PATH, timeout=5)
+        conn.execute(
+            "DELETE FROM recycled_prefix_cache WHERE prefix=? AND country_id=?",
+            (prefix, cid),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    return JSONResponse({"deleted": mem_key})
+
+
+@factory_router.post("/snss/clear")
+async def snss_clear():
+    """Remove every prefix from the blacklist (DB + in-memory)."""
+    global _RECYCLED_PREFIX_MEM
+    import sqlite3 as _sq3
+    try:
+        conn = _sq3.connect(DB_PATH, timeout=5)
+        n = conn.execute("SELECT COUNT(*) FROM recycled_prefix_cache").fetchone()[0]
+        conn.execute("DELETE FROM recycled_prefix_cache")
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    _RECYCLED_PREFIX_MEM.clear()
+    return JSONResponse({"cleared": n})
+
+
+@factory_router.get("/snss/config")
+async def snss_get_config():
+    """Return the current SNSS threshold setting."""
+    return JSONResponse({"min_count": _SNSS_MIN_COUNT})
+
+
+@factory_router.post("/snss/config")
+async def snss_set_config(request: Request):
+    """Update SNSS threshold at runtime. Body: {"min_count": N}"""
+    global _SNSS_MIN_COUNT
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    mc = payload.get("min_count")
+    if not isinstance(mc, int) or mc < 1 or mc > 50:
+        return JSONResponse({"error": "min_count must be an integer 1–50"}, status_code=400)
+    _SNSS_MIN_COUNT = mc
+    logger.info("[SNSS] threshold updated → %d", _SNSS_MIN_COUNT)
+    return JSONResponse({"min_count": _SNSS_MIN_COUNT})
