@@ -495,8 +495,32 @@ async def _generate_ai_profile(
         }
 
 
+_WKWEBVIEW_MIN_BYTES = 4096  # WKWebView (Telegram iOS) buffers chunks until this threshold
+
 def _sse(event: str, data: dict) -> str:
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+    """Build a padded SSE chunk.
+
+    WKWebView (used by Telegram iOS Mini App) internally buffers incoming
+    network data and only delivers it to JavaScript once the buffer reaches
+    ~4 KB.  Small SSE events (50–150 bytes) sit in that buffer for tens of
+    seconds before the UI ever sees them, making all 8 factory steps appear
+    frozen.  Padding every chunk to ≥ 4096 bytes forces an immediate flush.
+
+    We prepend a single SSE comment (`: <spaces>`) to reach the threshold.
+    SSE comments are stripped by the browser's EventSource parser and are
+    invisible to application code.
+    """
+    body = f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+    body_bytes = len(body.encode("utf-8"))
+    # comment overhead: ": " + spaces + "\n"  →  2 + pad + 1 = pad + 3
+    pad = max(0, _WKWEBVIEW_MIN_BYTES - body_bytes - 3)
+    if pad > 0:
+        return f": {' ' * pad}\n{body}"
+    return body
+
+
+# Pre-built padded keepalive comment (also needs to hit the 4 KB threshold)
+_KEEPALIVE_SSE = ": keepalive" + " " * max(0, _WKWEBVIEW_MIN_BYTES - len(": keepalive") - 2) + "\n\n"
 
 
 def _parse_proxy(proxy_string: str):
@@ -2428,7 +2452,7 @@ async def register_account(request: Request):
         # UI parser, but keeps the TCP connection alive through every proxy).
         # The first chunk is still yielded immediately so the client knows the
         # stream is live the instant the request completes.
-        yield ": keepalive\n\n"
+        yield _KEEPALIVE_SSE
 
         _queue: asyncio.Queue[str | None] = asyncio.Queue()
 
@@ -2453,7 +2477,7 @@ async def register_account(request: Request):
                     yield _item
                 except asyncio.TimeoutError:
                     # No event for 15 s — ping the CDN to keep the socket alive
-                    yield ": keepalive\n\n"
+                    yield _KEEPALIVE_SSE
         finally:
             _task.cancel()
             try:

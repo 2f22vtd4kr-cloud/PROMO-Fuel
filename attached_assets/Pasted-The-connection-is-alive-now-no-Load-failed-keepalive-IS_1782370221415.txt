@@ -1,0 +1,22 @@
+The connection is alive now (no "Load failed") — keepalive IS working. But no step events are reaching the UI. Two possibilities: 1) the preflight checks are hanging forever, or 2) events reach the frontend but SSE parsing is broken. Let me check both simultaneously:
+The connection stays alive (keepalive works) but Python logs show zero factory requests. This means the Express→Python proxy connects, gets the initial keepalive, but then _generate_inner() hangs forever without yielding. The culprit is the proxy pre-flight checks having no upper-bound timeout. Let me check:
+Wait — "zero Python logs" but UI shows "running" means Express is answering, not Python. The factoryRoutermight be intercepting /register. Let me check:
+Let me check if Python is even receiving requests by looking at ALL deployment logs (unfiltered) and simultaneously reading the frontend SSE parser:
+Zero account_factory logs despite Python being listed as running. This means the FastAPI process logs may go to a different stream, or the request path is broken. Let me check the startup script and the Python main entry point to understand the process structure:
+The API server start script only runs Node.js — no Python startup here. Let me find where the FastAPI (port 8083) is launched:
+The FastAPI runs as a subprocess.Popen — its logs go to a different stream than what the deployment monitor shows. Let me find the exact startup command and check if apiserver.py even contains the factory routes:
+Subprocess inherits stdout/stderr — logs should appear. So either apiserver.py doesn't mount the factory router, or it crashes silently. Let me check both:
+Good — apiserver.py does from account_factory import factory_router and includes it. Let me find the exact router decoration on register_account and check what prefix/path it uses:
+Route is correctly defined. The problem must be in the Express middleware stack — something before the proxy intercepts POST /api/factory/register. Let me read the full middleware ordering and the auth section:
+The rate limiter apiLimiter covers all /api/* — it could be throttling repeated attempts in prod. But more importantly, let me look at what the frontend does with the SSE response body — if the parser is broken, events arrive but nothing renders:
+The frontend parses event from the SSE event: field, not from p.type. I need to verify the actual _sse format Python sends:
+The _sse format is correct (event: X\ndata: {...}\n\n). The parser is correct. Now I need to understand whether events ARE reaching the client or being blocked mid-stream. Let me add a diagnostic event immediately after the keepalive to distinguish "transport works" from "generator hangs", AND find where runState("running") is set:
+setRunState("running") is set at line 1501 — before the fetch. So "running" state proves nothing about the SSE connection. Let me look at where line 1501 is, and also find error event handling in the frontend — if the generator crashes and sends an error event but the frontend parser misses it, that would explain all steps staying "waiting":
+Let me find the outer try/catch that handles fetch failures — if a TypeError propagates, we need to see what sets the UI state:
+I need to check two things in parallel: the rate limiter config (it applies to all /api/* including factory) and run a direct Python API test to see if requests even arrive:
+Both servers are up. Now let me test the actual SSE stream directly — send a real POST to Python and see if events flow:
+Python SSE works perfectly — events flow correctly through the direct call. The issue is in the Express proxy layer. Let me test the full Express path:
+Both layers work perfectly in dev — Python SSE works, Express proxy works. This is 100% a Telegram iOS Mini App (WKWebView) buffering issue. WKWebView doesn't deliver SSE chunks to JavaScript until its internal buffer fills (~4096 bytes). Our events are 50–150 bytes each — they sit in the WKWebView buffer for minutes until enough accumulate. Only the initial response headers get flushed immediately (hence "running" state appears).
+The fix: pad every SSE chunk to ≥ 4096 bytes with a leading comment, forcing WKWebView to flush immediately on each event:
+
+
