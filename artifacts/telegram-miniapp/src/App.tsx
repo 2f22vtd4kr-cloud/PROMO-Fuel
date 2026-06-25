@@ -359,7 +359,7 @@ function ManualChooserPanel({
             <span style={{ fontSize:30 }}>🏭</span>
             <div>
               <div style={{ fontSize:12, fontWeight:800, color:"#f59e0b", marginBottom:3 }}>{lang === "ua" ? "Фабрика акаунтів" : "Account Factory"}</div>
-              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>17 {lang === "ua" ? "сторінок" : "pages"}</div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>18 {lang === "ua" ? "сторінок" : "pages"}</div>
               <div style={{ fontSize:9, color:"rgba(245,158,11,0.55)", marginTop:4 }}>SMSPool · AI-вибір · Warmup · Proxy Store</div>
             </div>
           </button>

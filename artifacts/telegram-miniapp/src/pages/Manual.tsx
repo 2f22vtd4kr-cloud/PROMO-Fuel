@@ -95,7 +95,7 @@ function Slide1({ lang, onOpenAccountsGuide }: SL & { onOpenAccountsGuide?: () =
         {L(lang,"User Manual","Посібник користувача")}
       </div>
       <div style={{ fontSize:12, color:"rgba(255,255,255,0.38)", marginBottom:30 }}>
-        {L(lang,"Complete system reference · 31 pages","Повний опис системи · 31 сторінка")}
+        {L(lang,"Complete system reference · 34 pages","Повний опис системи · 34 сторінки")}
       </div>
       <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"center", marginBottom:24 }}>
         {topics.map(([ic,lb]) => (
@@ -1696,8 +1696,8 @@ function SlideNewFeatures({ lang }: SL) {
       icon: "🔍",
       title: L(lang,"Manual Slide Search","Пошук по слайдах довідника"),
       desc:  L(lang,
-        "Tap 🔍 in the top bar of this manual to search across all 33 slide titles and keywords. Tap a result to jump directly to that slide.",
-        "Натисніть 🔍 у верхній панелі довідника для пошуку по всіх 33 слайдах. Торкніться результату — одразу перейдете до слайда.",
+        "Tap 🔍 in the top bar of this manual to search across all 34 slide titles and keywords. Tap a result to jump directly to that slide.",
+        "Натисніть 🔍 у верхній панелі довідника для пошуку по всіх 34 слайдах. Торкніться результату — одразу перейдете до слайда.",
       ),
     },
     {
@@ -1778,6 +1778,14 @@ function SlideNewFeatures({ lang }: SL) {
       desc:  L(lang,
         "Tap the 🕐 clock icon in the AI Assistant header to open the action history log — a full audit trail of every approved and cancelled AI operation with timestamp, exact parameters, engine badge, and outcome.",
         "Натисніть 🕐 у заголовку AI Помічника, щоб відкрити журнал дій — повний аудит-лог кожної підтвердженої та скасованої операції AI з часом, параметрами, бейджем рушія та результатом.",
+      ),
+    },
+    {
+      icon: "🎯",
+      title: L(lang,"Max Attempts & Cost Estimator","Макс. спроб та оцінка вартості"),
+      desc:  L(lang,
+        "Account Factory now has a «Max Number Attempts» field (1–999, default 20) — how many SMSPool numbers to burn per account slot before giving up. A live cost estimator below shows estimated spend (maxAttempts × price × quantity) vs your SMSPool balance. Green = within budget. Red ⚠ = over budget — top up before launching.",
+        "Фабрика акаунтів тепер має поле «Макс. спроб номерів» (1–999, за замовчуванням 20) — скільки номерів SMSPool спалить на один слот акаунта. Оцінювач вартості нижче показує прогнозовані витрати (maxAttempts × ціна × кількість) відносно балансу SMSPool. Зелений = в рамках бюджету. Червоний ⚠ = перевищення — поповніть перед запуском.",
       ),
     },
   ];

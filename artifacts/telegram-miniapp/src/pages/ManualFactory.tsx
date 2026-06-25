@@ -330,7 +330,7 @@ function Slide6({ lang }: SL) {
 function Slide7({ lang }: SL) {
   return (
     <Shell>
-      <STitle icon="⚡" text={L(lang, "7-Step Pipeline", "7-кроковий конвеєр")} color={ACCENT} />
+      <STitle icon="⚡" text={L(lang, "8-Step Pipeline", "8-кроковий конвеєр")} color={ACCENT} />
       <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", marginBottom:14 }}>
         {L(lang, "All steps run automatically. Live progress shown in the stepper UI.", "Усі кроки виконуються автоматично. Живий прогрес відображається у степер-UI.")}
       </div>
@@ -347,8 +347,10 @@ function Slide7({ lang }: SL) {
           desc: L(lang, "Submit code to Telegram. Fresh number? Auto-generate name + sign_up()", "Надсилаємо код до Telegram. Свіжий номер? Автоматично генеруємо ім'я + sign_up()") },
         { n:6, icon:"🔒", en:"Set 2FA", ua:"Встановлення 2FA",
           desc: L(lang, "client.edit_2fa(new_password=...) immediately secures the account", "client.edit_2fa(new_password=...) — миттєво захищає акаунт") },
-        { n:7, icon:"💾", en:"Save & Persist", ua:"Збереження",
-          desc: L(lang, ".session file + .json metadata written to /sessions/ + DB row inserted", ".session файл + .json метадані записуються у /sessions/ + рядок вставляється у БД") },
+        { n:7, icon:"👤", en:"Profile Setup", ua:"Налаштування профілю",
+          desc: L(lang, "AI (Gemini) generates name + bio + picks avatar from pending_avatars/, or manual fields used if Manual mode selected. Avatar moved to used_avatars/ after apply.", "AI (Gemini) генерує ім'я + біо + вибирає аватар з pending_avatars/, або ручні поля якщо обраний ручний режим. Аватар переміщується до used_avatars/ після встановлення.") },
+        { n:8, icon:"💾", en:"Save & Add to CRM", ua:"Збереження в CRM",
+          desc: L(lang, ".session file + .json metadata written to /sessions/ + DB row inserted in sender_accounts", ".session файл + .json метадані записуються у /sessions/ + рядок вставляється у таблицю sender_accounts") },
       ].map(s => (
         <div key={s.n} style={{ display:"flex", gap:12, alignItems:"flex-start", marginBottom:10,
           background:GLASS, border:`1px solid ${BORDER}`, borderRadius:12, padding:"10px 13px" }}>
@@ -430,18 +432,18 @@ function Slide9({ lang }: SL) {
       <STitle icon="📦" text={L(lang, "Batch Mode", "Пакетний режим")} color={PURPLE} />
       <div style={{ fontSize:13, color:"rgba(255,255,255,0.6)", lineHeight:1.7, marginBottom:16 }}>
         {L(lang,
-          "Batch mode lets you register up to 10 accounts in a single session. Each account runs through the full 7-step pipeline sequentially with a 12-second cooldown between registrations.",
-          "Пакетний режим дозволяє зареєструвати до 10 акаунтів за одну сесію. Кожен акаунт проходить повний 7-кроковий конвеєр послідовно з 12-секундною паузою між реєстраціями."
+          "Batch mode lets you register up to 20 accounts in a single session. Each account runs through the full 8-step pipeline sequentially with a 12-second cooldown between registrations.",
+          "Пакетний режим дозволяє зареєструвати до 20 акаунтів за одну сесію. Кожен акаунт проходить повний 8-кроковий конвеєр послідовно з 12-секундною паузою між реєстраціями."
         )}
       </div>
       <div style={card(PURPLE)}>
         <div style={{ fontSize:12, fontWeight:700, color:PURPLE, marginBottom:8 }}>{L(lang, "How to use Batch Mode", "Як використовувати пакетний режим")}</div>
         <Step n={1} color={PURPLE} title={L(lang, "Set Quantity", "Встановіть кількість")}
-          desc={L(lang, "Use the + / − stepper to choose 1–10 accounts. Default is 1 (single mode).", "Використовуйте кнопки + / − для вибору 1–10 акаунтів. За замовчуванням 1 (одиночний режим).")} />
+          desc={L(lang, "Use the + / − stepper to choose 1–20 accounts. Default is 1 (single mode).", "Використовуйте кнопки + / − для вибору 1–20 акаунтів. За замовчуванням 1 (одиночний режим).")} />
         <Step n={2} color={PURPLE} title={L(lang, "Launch — one click", "Запуск — один клік")}
           desc={L(lang, `The button changes to "Launch Batch (N accounts)". Press it once and walk away.`, `Кнопка змінюється на "Запустити пакет (N акаунтів)". Натисніть один раз і займайтесь своїми справами.`)} />
         <Step n={3} color={PURPLE} title={L(lang, "Monitor progress", "Моніторинг прогресу")}
-          desc={L(lang, "A progress bar at the top shows Account N of M + ✓/✕ counters. The 7-step stepper resets for each account.", "Прогрес-бар зверху показує акаунт N з M + лічильники ✓/✕. 7-кроковий степер скидається для кожного акаунта.")} />
+          desc={L(lang, "A progress bar at the top shows Account N of M + ✓/✕ counters. The 8-step stepper resets for each account.", "Прогрес-бар зверху показує акаунт N з M + лічильники ✓/✕. 8-кроковий степер скидається для кожного акаунта.")} />
       </div>
       <Row icon="⏱" label={L(lang, "12s cooldown", "12с пауза")} color={ACCENT}
         desc={L(lang, "A countdown between registrations prevents flood-trigger on Telegram's anti-spam. Phones registered sequentially, not in parallel.", "Відлік між реєстраціями запобігає тригеру флуду в антиспамі Telegram. Телефони реєструються послідовно, не паралельно.")} />
@@ -863,13 +865,90 @@ function Slide17({ lang }: SL) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SLIDE 18 — Max Attempts & Cost Estimator
+// ═══════════════════════════════════════════════════════════════
+function Slide18({ lang }: SL) {
+  return (
+    <Shell>
+      <STitle icon="🎯" text={L(lang, "Max Attempts & Cost Estimator", "Макс. спроб та оцінка вартості")} color={ACCENT} />
+
+      <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", marginBottom:14, lineHeight:1.55 }}>
+        {L(lang,
+          "The «Max Number Attempts» field controls how many SMSPool numbers the factory will purchase and try before giving up on one account slot. The cost estimator shows your projected spend before you launch.",
+          "Поле «Макс. спроб номерів» контролює скільки номерів SMSPool фабрика купить і спробує перед тим як відмовитися від одного слоту акаунта. Оцінювач вартості показує прогнозовані витрати до запуску."
+        )}
+      </div>
+
+      <div style={card(ACCENT)}>
+        <div style={{ fontSize:12, fontWeight:800, color:ACCENT, marginBottom:10 }}>
+          {L(lang, "Max Number Attempts field", "Поле «Макс. спроб номерів»")}
+        </div>
+        {[
+          [L(lang,"Range","Діапазон"),        L(lang,"1 – 999 (default: 20)","1 – 999 (за замовчуванням: 20)")],
+          [L(lang,"Glow warning","Помаранчеве світіння"), L(lang,"Input border glows orange when value > 20 — signals aggressive spend","Рамка поля світиться помаранчевим при значенні > 20 — сигнал агресивних витрат")],
+          [L(lang,"Per-account limit","Ліміт на акаунт"), L(lang,"Each account in a batch gets its own full maxAttempts budget","Кожен акаунт у пакеті отримує власний повний бюджет maxAttempts")],
+        ].map(([k, v]) => (
+          <div key={k as string} style={{ display:"flex", gap:8, alignItems:"flex-start", marginBottom:8 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:ACCENT, minWidth:110 }}>{k as string}</div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", lineHeight:1.4 }}>{v as string}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={card(ACCENT)}>
+        <div style={{ fontSize:12, fontWeight:800, color:ACCENT, marginBottom:8 }}>
+          💰 {L(lang, "Cost Estimator Banner", "Банер оцінки вартості")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.65)", lineHeight:1.6, marginBottom:10 }}>
+          {L(lang,
+            "Displayed below the Max Attempts field, the estimator calculates in real time:",
+            "Відображається нижче поля Макс. спроб, оцінювач розраховує в реальному часі:"
+          )}
+        </div>
+        <code style={{ display:"block", fontSize:11, color:ACCENT, background:`${ACCENT}12`, border:`1px solid ${ACCENT}33`,
+          borderRadius:9, padding:"10px 13px", fontFamily:"monospace", marginBottom:10, lineHeight:1.8 }}>
+          {L(lang,
+            "estCost = maxAttempts × price × quantity",
+            "estCost = maxAttempts × ціна × кількість"
+          )}
+        </code>
+        {[
+          ["🟢", "#2de897", L(lang,"Within budget","В рамках бюджету"),  L(lang,"estCost ≤ SMSPool balance — green card, safe to launch","estCost ≤ баланс SMSPool — зелена картка, безпечно запускати")],
+          ["🔴", "#ff6b7a", L(lang,"Over budget","Перевищення бюджету"), L(lang,"estCost > SMSPool balance — red card with ⚠ warning, factory will stall mid-batch without topping up","estCost > баланс SMSPool — червона картка з ⚠, фабрика зупиниться в середині пакету без поповнення")],
+        ].map(([em, c, t, d]) => (
+          <div key={t as string} style={{ display:"flex", gap:10, alignItems:"flex-start", marginBottom:8 }}>
+            <span style={{ fontSize:16, flexShrink:0 }}>{em as string}</span>
+            <div>
+              <div style={{ fontSize:11, fontWeight:700, color:c as string, marginBottom:2 }}>{t as string}</div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.45)", lineHeight:1.4 }}>{d as string}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ ...card(PURPLE), marginTop:0 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:PURPLE, marginBottom:6 }}>
+          💡 {L(lang, "Strategy tip", "Порада")}
+        </div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.55)", lineHeight:1.55 }}>
+          {L(lang,
+            "Keep maxAttempts at 5–10 for high-freshness countries (Cambodia, Laos). Raise to 20–50 only for countries with known recycling issues. The AI Country Picker freshness score is your best guide.",
+            "Тримайте maxAttempts 5–10 для країн з високою свіжістю (Камбоджа, Лаос). Підвищуйте до 20–50 лише для країн із відомими проблемами повторних номерів. Оцінка свіжості AI-підбору країни — ваш найкращий орієнтир."
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // SLIDE REGISTRY + MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-const SLIDES = [Slide1, Slide2, Slide3, Slide4, Slide5, Slide6, Slide7, Slide8, Slide9, Slide10, Slide11, Slide12, Slide13, Slide14, Slide15, Slide16, Slide17];
-const TITLES_EN = ["Cover","What is it?","Prerequisites","SMSPool API","Decodo Proxy","API Credentials","7-Step Pipeline","Country Selection","Batch Mode","Sessions & Files","Error Handling","Warmup Modes","Best Practices","Proxy Store & Sessions","AI Country Picker","Session Stats Strip","AI Feedback Loop"];
-const TITLES_UA = ["Обкладинка","Що це?","Передумови","SMSPool API","Decodo Проксі","API Credentials","7-кроковий конвеєр","Вибір країни","Пакетний режим","Сесії та файли","Обробка помилок","Режими прогріву","Найкращі практики","Сховище проксі та сесії","AI-вибір країни","Стрічка статистики","AI зворотній зв'язок"];
-const KEYWORDS_EN = ["","automated registration telethon smspool proxy","prerequisites smspool decodo credentials","smspool api key purchase number service","decodo smartproxy socks5 residential mobile","telegram api id hash my.telegram.org","pipeline steps 7 telethon sign","country cambodia laos myanmar kazakhstan ukraine freshness ranking","batch mode quantity multiple accounts","session json metadata file storage","error ban timeout proxy network","warmup mode none all ask per account popup 48h","best practices warmup validate proxy rotate","proxy store save autofill session number increment continue last_session_num delete country","ai picker country freshness avg attempts ranking gemini data source badge community own estimate","session stats money spent counter dollar recycled skips current country total","ai feedback loop report freshness recycled fresh button badge factory_country_stats own data community 🔬 📊"];
-const KEYWORDS_UA = ["","автоматична реєстрація телетон смспул проксі","передумови смспул декодо credentials","смспул апі ключ купівля номер сервіс","декодо смартпроксі socks5 residential mobile","телеграм апі id hash my.telegram.org","конвеєр кроки 7 телетон вхід","країна камбоджа лаос м'янма казахстан україна свіжість рейтинг","пакетний режим кількість кілька акаунтів","сесія json метадані файл зберігання","помилка бан таймаут проксі мережа","режим прогріву без прогріву всі питати попап 48год","найкращі практики прогрів перевірка ротація","сховище проксі зберегти автозаповнення номер сесії інкремент продовжити last_session_num видалити країна","ai вибір країна свіжість середні спроби рейтинг gemini джерело даних спільнота наші оцінка","стрічка статистики гроші витрачено лічильник долар переробл. поточна країна всього","ai зворотній звязок звіт свіжість переробл. свіжі кнопка значок factory_country_stats наші дані спільнота 🔬 📊"];
+const SLIDES = [Slide1, Slide2, Slide3, Slide4, Slide5, Slide6, Slide7, Slide8, Slide9, Slide10, Slide11, Slide12, Slide13, Slide14, Slide15, Slide16, Slide17, Slide18];
+const TITLES_EN = ["Cover","What is it?","Prerequisites","SMSPool API","Decodo Proxy","API Credentials","8-Step Pipeline","Country Selection","Batch Mode","Sessions & Files","Error Handling","Warmup Modes","Best Practices","Proxy Store & Sessions","AI Country Picker","Session Stats Strip","AI Feedback Loop","Max Attempts & Cost Estimator"];
+const TITLES_UA = ["Обкладинка","Що це?","Передумови","SMSPool API","Decodo Проксі","API Credentials","8-кроковий конвеєр","Вибір країни","Пакетний режим","Сесії та файли","Обробка помилок","Режими прогріву","Найкращі практики","Сховище проксі та сесії","AI-вибір країни","Стрічка статистики","AI зворотній зв'язок","Макс. спроб та оцінка вартості"];
+const KEYWORDS_EN = ["","automated registration telethon smspool proxy","prerequisites smspool decodo credentials","smspool api key purchase number service","decodo smartproxy socks5 residential mobile","telegram api id hash my.telegram.org","pipeline steps 8 telethon sign profile avatar","country cambodia laos myanmar kazakhstan ukraine freshness ranking","batch mode quantity multiple accounts 20","session json metadata file storage","error ban timeout proxy network","warmup mode none all ask per account popup 48h","best practices warmup validate proxy rotate","proxy store save autofill session number increment continue last_session_num delete country","ai picker country freshness avg attempts ranking gemini data source badge community own estimate","session stats money spent counter dollar recycled skips current country total","ai feedback loop report freshness recycled fresh button badge factory_country_stats own data community 🔬 📊","max attempts cost estimator budget balance smspool price quantity orange glow red over budget green within"];
+const KEYWORDS_UA = ["","автоматична реєстрація телетон смспул проксі","передумови смспул декодо credentials","смспул апі ключ купівля номер сервіс","декодо смартпроксі socks5 residential mobile","телеграм апі id hash my.telegram.org","конвеєр кроки 8 телетон вхід профіль аватар","країна камбоджа лаос м'янма казахстан україна свіжість рейтинг","пакетний режим кількість кілька акаунтів 20","сесія json метадані файл зберігання","помилка бан таймаут проксі мережа","режим прогріву без прогріву всі питати попап 48год","найкращі практики прогрів перевірка ротація","сховище проксі зберегти автозаповнення номер сесії інкремент продовжити last_session_num видалити країна","ai вибір країна свіжість середні спроби рейтинг gemini джерело даних спільнота наші оцінка","стрічка статистики гроші витрачено лічильник долар переробл. поточна країна всього","ai зворотній звязок звіт свіжість переробл. свіжі кнопка значок factory_country_stats наші дані спільнота 🔬 📊","макс спроб оцінка вартості бюджет баланс смспул ціна кількість помаранчевий червоний перевищення зелений"];
 
 export function ManualFactoryPage({ onClose }: Props) {
   const { lang } = useI18n();

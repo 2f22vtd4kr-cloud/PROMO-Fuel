@@ -262,7 +262,7 @@ function Slide4({ lang }: SL) {
   const bulkSteps = lang === "ua" ? [
     { title:"Підготуйте ZIP-архів", desc:"Переконайтесь: кожна пара account.session + account.json присутня. .json повинен містити поле phone та two_factor_auth (якщо є 2FA)." },
     { title:"Підготуйте список проксі", desc:"Один рядок = один SOCKS5 проксі. Формат: socks5://user:pass@ip:port. Кількість може бути менша за кількість акаунтів — ротація автоматична." },
-    { title:"Відкрийте «Bulk Import»", desc:"Натисніть кнопку «📦 Bulk» у верхньому правому куті панелі Акаунти." },
+    { title:"Відкрийте «Bulk Import»", desc:"Натисніть ··· у верхній панелі Акаунти → виберіть «📦 Bulk Import»." },
     { title:"Завантажте ZIP та проксі", desc:"Перетягніть .zip у зону завантаження. Вставте список проксі у текстове поле нижче." },
     { title:"Натисніть «Виконати імпорт»", desc:"Python-бекенд розпакує архів, зчитає .json, прив'яже проксі, збереже .session-файли та запише акаунти у базу даних." },
     { title:"Перевірте результати", desc:"Панель покаже: знайдено сесій / збережено / пропущено / помилки. Імпортовані акаунти одразу з'являться у списку." },
@@ -270,7 +270,7 @@ function Slide4({ lang }: SL) {
   ] : [
     { title:"Prepare the ZIP archive", desc:"Ensure every account.session + account.json pair is present. The .json must contain phone and two_factor_auth (if 2FA is set)." },
     { title:"Prepare your proxy list", desc:"One line = one SOCKS5 proxy. Format: socks5://user:pass@ip:port. Fewer proxies than accounts is OK — rotation is automatic." },
-    { title:"Open «Bulk Import»", desc:"Tap the «📦 Bulk» button in the top-right corner of the Accounts panel." },
+    { title:"Open «Bulk Import»", desc:"Tap ··· in the Accounts toolbar → select «📦 Bulk Import»." },
     { title:"Upload ZIP + paste proxies", desc:"Drag your .zip into the upload zone. Paste the proxy list into the text field below it." },
     { title:"Tap «Execute Import»", desc:"The Python backend unzips the archive, reads .json files, assigns proxies, saves .session files to disk, and writes accounts to the database." },
     { title:"Check results", desc:"The panel shows: sessions found / saved / skipped / errors. Imported accounts appear in the list immediately." },
@@ -695,12 +695,12 @@ function Slide9({ lang }: SL) {
         {(lang === "ua" ? [
           "Платформа скидає sent_today о 00:00 UTC щодня",
           "Акаунти з near_limit (≥90% ліміту) позначаються — Campaign Engine їх пропускає",
-          "Функція 'Сброс' в Accounts вручну скидає лічильники",
+          "«Скид лічильників» у меню ··· вручну скидає лічильники",
           "Щоденний підсумок надсилається в Telegram о 9:00 UTC",
         ] : [
           "Platform resets sent_today at 00:00 UTC daily",
           "Accounts at near_limit (≥90% of quota) are flagged — Campaign Engine skips them",
-          "'Reset' button in Accounts manually resets counters",
+          "«Reset Counts» in the ··· overflow menu manually resets counters",
           "Daily digest fires to Telegram at 09:00 UTC",
         ]).map((item, i) => (
           <div key={i} style={{ display:"flex", gap:9, alignItems:"flex-start", marginBottom:7 }}>
@@ -716,8 +716,8 @@ function Slide9({ lang }: SL) {
         </div>
         <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", lineHeight:1.5 }}>
           {L(lang,
-            "In the Accounts tab, tap the 🌐 Proxy button in the toolbar to apply one proxy string to all accounts, only accounts without a proxy, or only proxy_failed accounts — in one tap.",
-            "У вкладці Акаунти натисніть 🌐 Проксі в панелі інструментів, щоб застосувати один рядок проксі до всіх акаунтів, тільки без проксі, або тільки до proxy_failed — одним дотиком."
+            "In the Accounts tab, tap ··· → 🌐 Bulk Proxy to apply one proxy string to all accounts, only accounts without a proxy, or only proxy_failed accounts — in one tap.",
+            "У вкладці Акаунти натисніть ··· → 🌐 Bulk Proxy, щоб застосувати один рядок проксі до всіх акаунтів, тільки без проксі, або тільки до proxy_failed — одним дотиком."
           )}
         </div>
       </div>
