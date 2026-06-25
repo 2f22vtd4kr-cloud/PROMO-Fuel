@@ -1,0 +1,20 @@
+[12:34:36.441] debug: {"message":"🔄 Proxy session → session-1 (global slot #1)"}
+[12:34:36.445] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[12:34:38.394] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[12:34:40.040] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:10000 · 🌍 Exit IP: 84.54.66.105","exit_ip":"84.54.66.105","is_datacenter":false}
+[12:34:40.040] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
+[12:34:40.951] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:10000 · 🌍 Exit IP: 84.54.66.105 · 🔗 Telethon-path IP: 84.54.66.105","exit_ip":"84.54.66.105","is_datacenter":false,"async_exit_ip":"84.54.66.105"}
+[12:34:40.951] geo_check: {"status":"running","target_cc":"UZ","exit_ip":"84.54.66.105"}
+[12:34:40.979] geo_check: {"status":"ok","exit_ip":"84.54.66.105","target_cc":"UZ","detected_cc":"UZ","detected_country":"Uzbekistan","org":"Uztelecom","match":true,"latency_ms":17,"message":"✅ Exit IP in Uzbekistan — matches target"}
+[12:34:40.979] preflight: {"status":"running","message":"📊 Checking 44 SMS success rate on SMSPool…"}
+[12:34:41.039] preflight: {"status":"done","message":"📊 44 success rate: N/A — proceeding"}
+[12:34:41.039] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool..."}
+[12:34:43.840] step: {"step":1,"status":"done","message":"📱 Number Acquired: +998707043108","cost":1.46}
+[12:34:43.850] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[12:34:43.850] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2040,\n    \"platform\": \"desktop\",\n    \"device_model\": \"Mac\",\n    \"system_version\": \"macOS 14.6.1\",\n    \"app_version\": \"10.9\",\n    \"lang_code\": \"en\",\n    \"system_lang_code\": \"en-US\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-1-country-uz:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[12:34:47.975] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:10000"}
+[12:34:47.976] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[12:34:49.668] debug: {"message":"{\n  \"📨 SEND_CODE_RESPONSE\": {\n    \"type\": \"SentCodeTypeApp\",\n    \"phone_code_hash\": \"1dc2f8c3…\",\n    \"timeout\": null,\n    \"next_type\": null,\n    \"via\": \"RawSendCodeRequest\"\n  }\n}"}
+[12:34:49.668] step: {"step":3,"status":"running","message":"📲 SentCodeTypeApp (next_type=None) — requesting SMS resend (ResendCode)…"}
+[12:34:49.953] step: {"step":3,"status":"error","message":"🚫 SendCodeUnavailable — code delivered to existing account's app; number confirmed recycled"}
+[12:34:50.150] sms_retry_prompt: {"country_id":"44","message":"🚫 44 pool is recycled — Telegram's SendCodeUnavailable confirms these numbers already have accounts. Switch to: Ukraine (UA), Philippines (PH), Georgia (GE), Bangladesh (BD), Kazakhstan (KZ), India (IN)."}

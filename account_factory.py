@@ -1802,27 +1802,33 @@ async def _registration_stream(
                             yield _sse("step", {"step": 3, "status": "running",
                                                 "message": f"📲 ResendCode still {_rc_type} — checking with official Telegram creds…"})
                     except SendCodeUnavailableError:
-                        # Hard recycled signal: Telegram says all delivery methods exhausted,
-                        # meaning the code was already delivered to the EXISTING account's
-                        # Telegram app.  No SMS fallback is possible.  Buying more numbers
-                        # from the same country will produce the same result — stop now.
-                        # Register at process level so future attempts to the same country
-                        # are blocked immediately without wasting balance.
-                        _app_stuck_count += 1
-                        _RECYCLED_COUNTRY_POOL.add(country_id.lower())
-                        yield _sse("step", {"step": 3, "status": "error",
-                                            "message": "🚫 SendCodeUnavailable — code delivered to existing account's app; number confirmed recycled"})
-                        await cancel_order()
-                        await safe_disconnect()
-                        yield _sse("sms_retry_prompt", {
-                            "country_id": country_id,
-                            "message": (
-                                f"🚫 {country_id.upper()} pool is recycled — Telegram's SendCodeUnavailable "
-                                "confirms these numbers already have accounts. "
-                                + _suggest_alt_countries(country_id)
-                            ),
-                        })
-                        return
+                        if _raw_next_type is None:
+                            # next_type=None means Telegram never declared a fallback
+                            # delivery method.  SendCodeUnavailable here just means
+                            # "nothing queued" — NOT that the number is recycled.
+                            # Fall through to Layer 2 (official creds check) which
+                            # does a fresh RawSendCodeRequest and gives a definitive answer.
+                            yield _sse("step", {"step": 3, "status": "running",
+                                                "message": "⚠️ ResendCode → SendCodeUnavailable (next_type=None, expected) — checking with official creds…"})
+                        else:
+                            # next_type was set → Telegram had declared a fallback but
+                            # now says all methods are exhausted.  Hard recycled signal:
+                            # code was delivered to the existing account's Telegram app.
+                            _app_stuck_count += 1
+                            _RECYCLED_COUNTRY_POOL.add(country_id.lower())
+                            yield _sse("step", {"step": 3, "status": "error",
+                                                "message": "🚫 SendCodeUnavailable — code delivered to existing account's app; number confirmed recycled"})
+                            await cancel_order()
+                            await safe_disconnect()
+                            yield _sse("sms_retry_prompt", {
+                                "country_id": country_id,
+                                "message": (
+                                    f"🚫 {country_id.upper()} pool is recycled — Telegram's SendCodeUnavailable "
+                                    "confirms these numbers already have accounts. "
+                                    + _suggest_alt_countries(country_id)
+                                ),
+                            })
+                            return
                     except Exception as _rc_ex:
                         # ResendCode failed (proxy hiccup, etc.) — proceed to official creds
                         yield _sse("step", {"step": 3, "status": "running",
