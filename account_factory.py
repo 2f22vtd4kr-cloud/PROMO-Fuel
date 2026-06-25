@@ -850,6 +850,33 @@ def _next_session_proxy(proxy_string: str) -> tuple[str, int]:
     return _re.sub(r"session-\d+", f"session-{n}", proxy_string, count=1), n
 
 
+def _rewrite_proxy_country(proxy_string: str, country_id: str) -> str:
+    """Rewrite the provider country-selector in a residential proxy username.
+
+    Many residential providers (Decodo/Smartproxy, Bright Data, IPRoyal, etc.)
+    embed the target country as `country-CC` inside the username, e.g.:
+        user-sp8eeeap0s-session-3-country-uz:pass@gate.decodo.com:7000
+
+    When registering a Ukrainian (+38x) or Philippine (+63x) number through a
+    proxy locked to `country-uz`, Telegram sees a geographic mismatch and
+    responds with SentCodeTypeApp (code sent to existing app) for every number,
+    even fresh ones — because the exit IP doesn't match the carrier's country.
+
+    Fix: replace `country-XX` with `country-{country_id}` so the residential
+    proxy exits in the same country as the phone number being registered.
+
+    Returns proxy_string unchanged if no `country-XX` pattern is found (e.g.
+    plain IP proxies or providers that use a different selector format).
+    """
+    if not proxy_string or not country_id:
+        return proxy_string
+    cc = country_id.lower().strip()
+    if len(cc) != 2:
+        return proxy_string
+    rewritten = _re.sub(r"country-[a-z]{2}", f"country-{cc}", proxy_string, flags=_re.IGNORECASE)
+    return rewritten
+
+
 async def _test_proxy_connection(proxy_string: str, timeout: float = 12.0) -> tuple[bool, str]:
     """
     Test a SOCKS5/SOCKS4 proxy by connecting to Telegram DC1 (149.154.167.91:443).
@@ -1102,6 +1129,14 @@ async def _registration_stream(
             proxy_string, _sn = _next_session_proxy(proxy_string)
             if _sn:
                 yield _sse("debug", {"message": f"🔄 Proxy session → session-{_sn} (global slot #{_sn})"})
+            # Rewrite country-XX in proxy username to match the registration
+            # country.  Exit IP must be in the same country as the phone number
+            # or Telegram returns SentCodeTypeApp for every number regardless
+            # of whether the number is fresh or recycled.
+            _rewritten = _rewrite_proxy_country(proxy_string, country_id)
+            if _rewritten != proxy_string:
+                yield _sse("debug", {"message": f"🌍 Proxy country rewritten → country-{country_id.lower()} (was {proxy_string.split('country-')[1][:2] if 'country-' in proxy_string else '??'})"})
+                proxy_string = _rewritten
 
         # ─── Preflight — Proxy health check ──────────────────────────────
         yield _sse("preflight", {
@@ -1492,6 +1527,7 @@ async def _registration_stream(
             await asyncio.sleep(random.uniform(1.2, 4.1))
 
             _banned = False
+            _raw_next_type = None  # populated by whichever send_code path runs
             try:
                 raw_result = await client(RawSendCodeRequest(
                     phone_number=phone,
@@ -1508,6 +1544,7 @@ async def _registration_stream(
                 ))
                 phone_code_hash = raw_result.phone_code_hash
                 code_type_name  = type(raw_result.type).__name__ if raw_result.type else "SentCodeTypeSms"
+                _raw_next_type  = getattr(raw_result, "next_type", None)  # None → no fallback
                 # ── TELEMETRY 2: send_code_request raw response ───────────
                 yield _sse("debug", {"message": json.dumps({
                     "📨 SEND_CODE_RESPONSE": {
@@ -1529,13 +1566,13 @@ async def _registration_stream(
                     fb = await client.send_code_request(phone)
                     phone_code_hash = fb.phone_code_hash
                     code_type_name  = type(fb.type).__name__ if fb.type else "Unknown"
+                    _raw_next_type  = getattr(fb, "next_type", None)
                     yield _sse("debug", {"message": json.dumps({
                         "📨 SEND_CODE_RESPONSE": {
                             "type": code_type_name,
                             "phone_code_hash": phone_code_hash[:8] + "…",
                             "timeout": getattr(fb, "timeout", None),
-                            "next_type": type(getattr(fb, "next_type", None)).__name__
-                                if getattr(fb, "next_type", None) else None,
+                            "next_type": type(_raw_next_type).__name__ if _raw_next_type else None,
                             "via": "send_code_request (fallback)",
                         }
                     }, ensure_ascii=False, indent=2)})
@@ -1607,54 +1644,67 @@ async def _registration_stream(
                 # Call on the still-connected original client (same api_id / session).
                 # Telegram often escalates App → SMS on resend for fresh numbers even
                 # when it uses App-first delivery as an anti-spam gate.
+                #
+                # SKIP when next_type=None: ResendCode asks Telegram to deliver via
+                # next_type.  If next_type is None there is no alternative delivery
+                # method and ResendCode will always return SendCodeUnavailable, which
+                # our catch block then (incorrectly) uses to flag the whole country
+                # pool as recycled.  Jump straight to Layer 2 (official creds check)
+                # instead — that path does its own fresh sendCode and isn't affected
+                # by the null next_type.
                 _resend_escalated = False
-                yield _sse("step", {"step": 3, "status": "running",
-                                    "message": f"📲 {code_type_name} — requesting SMS resend (ResendCode)…"})
-                try:
-                    _rc_result = await client(ResendCodeRequest(
-                        phone_number=phone,
-                        phone_code_hash=phone_code_hash,
-                    ))
-                    _rc_type = type(_rc_result.type).__name__ if _rc_result.type else code_type_name
-                    # Always update hash — Telegram issues a new hash on every resend
-                    phone_code_hash = _rc_result.phone_code_hash
-                    if not any(t in _rc_type for t in _non_sms):
-                        # Escalated to SMS (or other codeable type)!
-                        code_type_name = _rc_type
-                        _resend_escalated = True
-                        yield _sse("step", {"step": 3, "status": "done",
-                                            "message": f"✅ ResendCode escalated to {_rc_type} — polling SMS…"})
-                    else:
-                        # Still non-SMS → fall through to official creds check
-                        code_type_name = _rc_type
-                        yield _sse("step", {"step": 3, "status": "running",
-                                            "message": f"📲 ResendCode still {_rc_type} — checking with official Telegram creds…"})
-                except SendCodeUnavailableError:
-                    # Hard recycled signal: Telegram says all delivery methods exhausted,
-                    # meaning the code was already delivered to the EXISTING account's
-                    # Telegram app.  No SMS fallback is possible.  Buying more numbers
-                    # from the same country will produce the same result — stop now.
-                    # Register at process level so future attempts to the same country
-                    # are blocked immediately without wasting balance.
-                    _app_stuck_count += 1
-                    _RECYCLED_COUNTRY_POOL.add(country_id.lower())
-                    yield _sse("step", {"step": 3, "status": "error",
-                                        "message": "🚫 SendCodeUnavailable — code delivered to existing account's app; number confirmed recycled"})
-                    await cancel_order()
-                    await safe_disconnect()
-                    yield _sse("sms_retry_prompt", {
-                        "country_id": country_id,
-                        "message": (
-                            f"🚫 {country_id.upper()} pool is recycled — Telegram's SendCodeUnavailable "
-                            "confirms these numbers already have accounts. "
-                            + _suggest_alt_countries(country_id)
-                        ),
-                    })
-                    return
-                except Exception as _rc_ex:
-                    # ResendCode failed (proxy hiccup, etc.) — proceed to official creds
+                if _raw_next_type is None:
                     yield _sse("step", {"step": 3, "status": "running",
-                                        "message": f"⚠️ ResendCode failed ({type(_rc_ex).__name__}) — trying official creds…"})
+                                        "message": f"📲 {code_type_name} (next_type=None) — skipping ResendCode, trying official creds…"})
+                else:
+                    yield _sse("step", {"step": 3, "status": "running",
+                                        "message": f"📲 {code_type_name} — requesting SMS resend (ResendCode)…"})
+                if _raw_next_type is not None:
+                    try:
+                        _rc_result = await client(ResendCodeRequest(
+                            phone_number=phone,
+                            phone_code_hash=phone_code_hash,
+                        ))
+                        _rc_type = type(_rc_result.type).__name__ if _rc_result.type else code_type_name
+                        # Always update hash — Telegram issues a new hash on every resend
+                        phone_code_hash = _rc_result.phone_code_hash
+                        if not any(t in _rc_type for t in _non_sms):
+                            # Escalated to SMS (or other codeable type)!
+                            code_type_name = _rc_type
+                            _resend_escalated = True
+                            yield _sse("step", {"step": 3, "status": "done",
+                                                "message": f"✅ ResendCode escalated to {_rc_type} — polling SMS…"})
+                        else:
+                            # Still non-SMS → fall through to official creds check
+                            code_type_name = _rc_type
+                            yield _sse("step", {"step": 3, "status": "running",
+                                                "message": f"📲 ResendCode still {_rc_type} — checking with official Telegram creds…"})
+                    except SendCodeUnavailableError:
+                        # Hard recycled signal: Telegram says all delivery methods exhausted,
+                        # meaning the code was already delivered to the EXISTING account's
+                        # Telegram app.  No SMS fallback is possible.  Buying more numbers
+                        # from the same country will produce the same result — stop now.
+                        # Register at process level so future attempts to the same country
+                        # are blocked immediately without wasting balance.
+                        _app_stuck_count += 1
+                        _RECYCLED_COUNTRY_POOL.add(country_id.lower())
+                        yield _sse("step", {"step": 3, "status": "error",
+                                            "message": "🚫 SendCodeUnavailable — code delivered to existing account's app; number confirmed recycled"})
+                        await cancel_order()
+                        await safe_disconnect()
+                        yield _sse("sms_retry_prompt", {
+                            "country_id": country_id,
+                            "message": (
+                                f"🚫 {country_id.upper()} pool is recycled — Telegram's SendCodeUnavailable "
+                                "confirms these numbers already have accounts. "
+                                + _suggest_alt_countries(country_id)
+                            ),
+                        })
+                        return
+                    except Exception as _rc_ex:
+                        # ResendCode failed (proxy hiccup, etc.) — proceed to official creds
+                        yield _sse("step", {"step": 3, "status": "running",
+                                            "message": f"⚠️ ResendCode failed ({type(_rc_ex).__name__}) — trying official creds…"})
 
                 if _resend_escalated:
                     pass  # fall through to step 4 — SMS is on its way
