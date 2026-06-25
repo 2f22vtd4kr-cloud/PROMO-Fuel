@@ -4,6 +4,7 @@ import { useI18n } from "../lib/i18n";
 import { getStoredSecret } from "./LockScreen";
 import { FactoryDebugPanel, type DebugLogEntry } from "../components/FactoryDebugPanel";
 import { SnssPanel } from "../components/SnssPanel";
+import { CredStatsPanel } from "../components/CredStatsPanel";
 
 function authHeaders(): Record<string, string> {
   const s = getStoredSecret();
@@ -4910,6 +4911,9 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
 
       {/* ── SNSS prefix blacklist management ── */}
       <SnssPanel authHeaders={authHeaders} lang={lang} />
+
+      {/* ── Credential effectiveness stats ── */}
+      <CredStatsPanel authHeaders={authHeaders} lang={lang} />
 
       </div>
     </div>

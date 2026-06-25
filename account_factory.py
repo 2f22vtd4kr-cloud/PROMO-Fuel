@@ -83,6 +83,11 @@ _SNSS_MIN_COUNT: int = 1
 # 9 chars captures the carrier batch: e.g. "+99870704" for UZ SMSPool batches.
 _SNSS_PREFIX_LEN: int = 9
 
+# ── Credential effectiveness stats (in-memory, resets on restart) ─────────────
+# Tracks per api_id: sms_ok (Telegram sent SMS), app (recycled/blocked),
+# timeout (SMS never arrived in Step 4 window).  Used by the UI dashboard.
+_CRED_STATS: dict[int, dict[str, int]] = {}
+
 # Telegram service ID on SMSPool (verified: service 907 = Telegram)
 TELEGRAM_SERVICE_ID = "907"
 
@@ -559,6 +564,13 @@ try:
     _ensure_recycled_prefix_table()
 except Exception as _snss_init_err:
     logger.warning("[SNSS] prefix table init failed at import: %s", _snss_init_err)
+
+
+def _record_cred_stat(api_id: int, event: str) -> None:
+    """Increment a per-credential event counter. GIL makes dict ops thread-safe."""
+    if api_id not in _CRED_STATS:
+        _CRED_STATS[api_id] = {"sms_ok": 0, "app": 0, "timeout": 0}
+    _CRED_STATS[api_id][event] = _CRED_STATS[api_id].get(event, 0) + 1
 
 
 def _record_recycled_prefix(phone: str, country_id: str, pricing_option: str = "1") -> None:
@@ -2452,6 +2464,7 @@ async def _registration_stream(
                         # All credential strategies exhausted — number is confirmed recycled.
                         # Official Telegram Desktop also returning SentCodeTypeApp is definitive
                         # proof the number has an existing account.
+                        _record_cred_stat(_actual_api_id, "app")
                         _app_stuck_count += 1
                         await cancel_order()
                         await safe_disconnect()
@@ -2554,6 +2567,7 @@ async def _registration_stream(
                             })
                             return
 
+            _record_cred_stat(_actual_api_id, "sms_ok")
             yield _sse("step", {"step": 3, "status": "done",
                                 "message": f"✅ Code sent via {code_type_name} — polling SMSPool..."})
 
@@ -2701,6 +2715,7 @@ async def _registration_stream(
             # (Telegram accepts RawSendCodeRequest and returns SentCodeTypeSms but
             # never routes the SMS to the carrier).  Emit a diagnostic so the user
             # knows what is happening and that the next attempt will rotate api_id.
+            _record_cred_stat(_actual_api_id, "timeout")
             _sms_timeout_count += 1
             if _sms_timeout_count >= 2:
                 _nums_left_warn = MAX_NUM_RETRIES - _num_attempt - 1
@@ -3721,3 +3736,28 @@ async def snss_set_config(request: Request):
     _SNSS_MIN_COUNT = mc
     logger.info("[SNSS] threshold updated → %d", _SNSS_MIN_COUNT)
     return JSONResponse({"min_count": _SNSS_MIN_COUNT})
+
+
+# ── Credential Stats Routes ───────────────────────────────────────────────────
+
+_CRED_LABEL: dict[int, str] = {2040: "TG Desktop", 2496: "TG iOS", 6: "TG Android"}
+
+@factory_router.get("/cred-stats")
+async def get_cred_stats():
+    """Return per-api_id effectiveness counters for the current process lifetime."""
+    rows = []
+    for api_id, counts in sorted(_CRED_STATS.items(), key=lambda x: -sum(x[1].values())):
+        rows.append({
+            "api_id":  api_id,
+            "label":   _CRED_LABEL.get(api_id, f"Dev {api_id}"),
+            "sms_ok":  counts.get("sms_ok",  0),
+            "app":     counts.get("app",      0),
+            "timeout": counts.get("timeout",  0),
+        })
+    return JSONResponse(rows)
+
+@factory_router.post("/cred-stats/reset")
+async def reset_cred_stats():
+    """Clear all credential stats counters."""
+    _CRED_STATS.clear()
+    return JSONResponse({"ok": True})
