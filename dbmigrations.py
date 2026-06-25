@@ -718,6 +718,28 @@ def run_migrations(db_path: str = DB_PATH) -> None:  # noqa: C901 — long but l
     conn.commit()
     logger.info("[migrations] Step 11 — saved_proxies (proxy store) OK")
 
+    # ── Step 12: SNSS — Smart Number Screening System prefix cache ───────────
+    #
+    # Tracks recycled phone-number prefixes discovered by Account Factory so
+    # future registration attempts can skip numbers from known-recycled batches
+    # immediately after purchase (before any Telethon handshake).
+    # pricing_options and example_phones are JSON arrays for debugging.
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS recycled_prefix_cache (
+            prefix          TEXT    NOT NULL,
+            country_id      TEXT    NOT NULL,
+            count           INTEGER NOT NULL DEFAULT 1,
+            last_seen       REAL    NOT NULL,
+            pricing_options TEXT    NOT NULL DEFAULT '[]',
+            example_phones  TEXT    NOT NULL DEFAULT '[]',
+            PRIMARY KEY (prefix, country_id)
+        )
+    """)
+    _create_index(conn, "idx_recycled_prefix_country", "recycled_prefix_cache(country_id)")
+    conn.commit()
+    logger.info("[migrations] Step 12 — recycled_prefix_cache (SNSS) OK")
+
     # ── Done ─────────────────────────────────────────────────────────────────
 
     conn.close()

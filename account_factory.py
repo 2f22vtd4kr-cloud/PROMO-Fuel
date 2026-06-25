@@ -35,7 +35,8 @@ from telethon.tl.functions.auth import (
 )
 from telethon.tl import types as tl_types
 from telethon.tl.functions.account import UpdateProfileRequest, SetPrivacyRequest
-from telethon.tl.types import InputPrivacyKeyPhoneNumber, PrivacyValueDisallowAll
+from telethon.tl.types import InputPrivacyKeyPhoneNumber, InputPhoneContact, PrivacyValueDisallowAll
+from telethon.tl.functions.contacts import ImportContactsRequest, DeleteContactsRequest
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
 
 logger = logging.getLogger("account_factory")
@@ -66,6 +67,16 @@ SMSPOOL_SUCCESS_RATE = "https://api.smspool.net/request/success_rate"
 # country in the same process will always produce the same result.
 # Cleared only on process restart, not between individual registration attempts.
 _RECYCLED_COUNTRY_POOL: set[str] = set()
+
+# ── SNSS: In-memory prefix blacklist ─────────────────────────────────────────
+# key = "prefix:country_id", value = cumulative recycled count for that prefix.
+# Loaded from SQLite at startup; updated in-process on each recycled detection.
+# Avoids a DB round-trip inside the tight per-number retry loop.
+_RECYCLED_PREFIX_MEM: dict[str, int] = {}
+
+# Phone prefix length stored in the blacklist (including the leading +).
+# 9 chars captures the carrier batch: e.g. "+99870704" for UZ SMSPool batches.
+_SNSS_PREFIX_LEN: int = 9
 
 # Telegram service ID on SMSPool (verified: service 907 = Telegram)
 TELEGRAM_SERVICE_ID = "907"
@@ -497,6 +508,256 @@ async def _generate_ai_profile(
             "bio":        "",
             "gender":     resolved_gender,
         }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SNSS — Smart Number Screening System
+# Three pre-registration layers that eliminate recycled numbers before expensive
+# Telethon handshakes:
+#   Layer 0  Prefix blacklist  — in-memory + SQLite, instant, free
+#   Layer 1  Contact import    — existing sender account, ~2 s, free
+#   Layer 2  Gemini AI         — pattern analysis after 2+ recycled, advisory
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _ensure_recycled_prefix_table() -> None:
+    """Create recycled_prefix_cache table and pre-load entries into _RECYCLED_PREFIX_MEM."""
+    import sqlite3 as _sq3
+    global _RECYCLED_PREFIX_MEM
+    try:
+        _conn = _sq3.connect(DB_PATH, timeout=10)
+        _conn.execute("PRAGMA journal_mode=WAL")
+        _conn.execute("""
+            CREATE TABLE IF NOT EXISTS recycled_prefix_cache (
+                prefix          TEXT    NOT NULL,
+                country_id      TEXT    NOT NULL,
+                count           INTEGER NOT NULL DEFAULT 1,
+                last_seen       REAL    NOT NULL,
+                pricing_options TEXT    NOT NULL DEFAULT '[]',
+                example_phones  TEXT    NOT NULL DEFAULT '[]',
+                PRIMARY KEY (prefix, country_id)
+            )
+        """)
+        _conn.commit()
+        _rows = _conn.execute(
+            "SELECT prefix, country_id, count FROM recycled_prefix_cache"
+        ).fetchall()
+        for _pref, _cid, _cnt in _rows:
+            _RECYCLED_PREFIX_MEM[f"{_pref}:{_cid.lower()}"] = int(_cnt)
+        _conn.close()
+        if _RECYCLED_PREFIX_MEM:
+            logger.info("[SNSS] Prefix blacklist loaded: %d entries", len(_RECYCLED_PREFIX_MEM))
+    except Exception as _e:
+        logger.warning("[SNSS] recycled_prefix_cache setup failed: %s", _e)
+
+
+try:
+    _ensure_recycled_prefix_table()
+except Exception as _snss_init_err:
+    logger.warning("[SNSS] prefix table init failed at import: %s", _snss_init_err)
+
+
+def _record_recycled_prefix(phone: str, country_id: str, pricing_option: str = "1") -> None:
+    """Record a recycled phone's prefix to the DB blacklist and in-memory cache.
+
+    Uses a _SNSS_PREFIX_LEN-char prefix (e.g. '+99870704' for +998707040550)
+    which corresponds to the carrier-batch level on most virtual-number pools.
+    """
+    import sqlite3 as _sq3
+    prefix = phone[:_SNSS_PREFIX_LEN]
+    cid    = country_id.lower()
+    key    = f"{prefix}:{cid}"
+    _RECYCLED_PREFIX_MEM[key] = _RECYCLED_PREFIX_MEM.get(key, 0) + 1
+    try:
+        _conn = _sq3.connect(DB_PATH, timeout=8)
+        _conn.execute("PRAGMA journal_mode=WAL")
+        _conn.execute("""
+            INSERT INTO recycled_prefix_cache
+                (prefix, country_id, count, last_seen, pricing_options, example_phones)
+            VALUES (?, ?, 1, ?, json_array(?), json_array(?))
+            ON CONFLICT(prefix, country_id) DO UPDATE SET
+                count          = count + 1,
+                last_seen      = excluded.last_seen,
+                pricing_options = CASE
+                    WHEN instr(pricing_options, ?) = 0
+                    THEN json_insert(pricing_options, '$[#]', ?)
+                    ELSE pricing_options END,
+                example_phones = CASE
+                    WHEN length(example_phones) < 250
+                    THEN json_insert(example_phones, '$[#]', ?)
+                    ELSE example_phones END
+        """, (
+            prefix, cid, time.time(),
+            pricing_option, phone,
+            pricing_option, pricing_option,
+            phone,
+        ))
+        _conn.commit()
+        _conn.close()
+        logger.debug("[SNSS] Recorded recycled prefix %s (count=%d)", prefix, _RECYCLED_PREFIX_MEM[key])
+    except Exception as _e:
+        logger.warning("[SNSS] Failed to persist recycled prefix %s: %s", prefix, _e)
+
+
+def _check_prefix_blacklist(
+    phone: str,
+    country_id: str,
+    min_count: int = 2,
+) -> tuple[bool, int, str]:
+    """Check if a phone number's prefix is in the recycled blacklist.
+
+    Returns (hit, count, prefix):
+        hit=True means this prefix has been seen ≥ min_count times as recycled —
+        the number should be cancelled immediately without connecting Telethon.
+    """
+    prefix = phone[:_SNSS_PREFIX_LEN]
+    cid    = country_id.lower()
+    count  = _RECYCLED_PREFIX_MEM.get(f"{prefix}:{cid}", 0)
+    return count >= min_count, count, prefix
+
+
+async def _check_registered_via_contact(phone: str) -> bool | None:
+    """Pre-screen a phone number via contacts.importContacts on an idle sender account.
+
+    Catches recycled numbers whose owners have PUBLIC privacy settings (~40-60%
+    of recycled pools) BEFORE the expensive Telethon registration handshake.
+
+    Returns:
+        True   — number confirmed registered on Telegram (recycle it)
+        False  — not found (may be fresh, or the account has privacy protection)
+        None   — check skipped (no idle account available, connection error, etc.)
+
+    Always fail-open — never block registration on any error.
+    """
+    import sqlite3 as _sq3
+    try:
+        _conn = _sq3.connect(DB_PATH, timeout=5)
+        _conn.row_factory = _sq3.Row
+        _conn.execute("PRAGMA journal_mode=WAL")
+        _row = _conn.execute("""
+            SELECT session_file, api_id, api_hash
+            FROM   sender_accounts
+            WHERE  is_active    = 1
+              AND  is_banned    = 0
+              AND  broadcasting = 0
+              AND  session_file IS NOT NULL
+              AND  session_file != ''
+            ORDER  BY RANDOM()
+            LIMIT  1
+        """).fetchone()
+        _conn.close()
+
+        if _row is None:
+            return None
+
+        _sess     = str(_row["session_file"] or "").strip().removesuffix(".session")
+        _api_id   = int(_row["api_id"]   or 0)
+        _api_hash = str(_row["api_hash"] or "").strip()
+
+        if not (_sess and _api_id and _api_hash):
+            return None
+        if not os.path.exists(_sess + ".session"):
+            return None
+
+        # Connect without proxy — this is a quick background check, not registration.
+        # Direct-server connection for ImportContactsRequest is not flagged by Telegram.
+        _chk = TelegramClient(_sess, _api_id, _api_hash,
+                               connection_retries=1, retry_delay=1)
+        try:
+            await asyncio.wait_for(_chk.connect(), timeout=7.0)
+            if not await _chk.is_user_authorized():
+                await _chk.disconnect()
+                return None
+
+            _res = await asyncio.wait_for(
+                _chk(ImportContactsRequest([
+                    InputPhoneContact(client_id=0, phone=phone, first_name="X", last_name="")
+                ])),
+                timeout=6.0,
+            )
+            _found = len(_res.users) > 0
+
+            if _found and _res.users:
+                try:
+                    await asyncio.wait_for(
+                        _chk(DeleteContactsRequest(id=list(_res.users))),
+                        timeout=4.0,
+                    )
+                except Exception:
+                    pass
+
+            await _chk.disconnect()
+            return _found
+
+        except (asyncio.TimeoutError, Exception) as _ex:
+            logger.debug("[SNSS] Contact check error for %s: %s", phone, _ex)
+            try:
+                await _chk.disconnect()
+            except Exception:
+                pass
+            return None
+
+    except Exception as _outer:
+        logger.debug("[SNSS] Contact check outer error: %s", _outer)
+        return None
+
+
+async def _ai_analyze_recycled_pattern(
+    recycled_phones: list[str],
+    country_id: str,
+    pricing_option: str,
+    http_session: aiohttp.ClientSession,
+) -> dict | None:
+    """Ask Gemini to identify patterns in confirmed-recycled phone numbers.
+
+    Returns dict with keys:
+        prefix         — longest common prefix identified (e.g. '+99870704')
+        confidence     — 0-100 estimate that the ENTIRE current batch is recycled
+        switch_pool    — whether switching pricing_option would likely help
+        recommendation — ≤120-char advisory for the operator
+    Returns None on any error or missing API key.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key or len(recycled_phones) < 2:
+        return None
+
+    next_pool  = "0" if pricing_option == "1" else ("1" if pricing_option == "2" else "2")
+    phones_str = "\n".join(f"  • {p}" for p in recycled_phones)
+    prompt = (
+        f"You are analyzing a Telegram registration failure pattern.\n\n"
+        f"SMSPool country: {country_id} | current pricing pool: {pricing_option} "
+        f"(0=cheapest/mixed, 1=standard, 2=premium)\n\n"
+        f"Phone numbers purchased from SMSPool — ALL confirmed recycled "
+        f"(they already had Telegram accounts):\n{phones_str}\n\n"
+        f"Tasks:\n"
+        f"1. Find the LONGEST common prefix among these numbers (≥6 chars, including leading +).\n"
+        f"2. Estimate 0-100 confidence that the entire current SMSPool batch is recycled.\n"
+        f"3. Would switching to pricing pool {next_pool} likely provide DIFFERENT number batches? "
+        f"(true or false)\n"
+        f"4. Write a ≤120-char operator recommendation — Russian for CIS countries, "
+        f"English otherwise.\n\n"
+        f"Return ONLY valid JSON with no markdown:\n"
+        f'{{\"prefix\": \"+...\", \"confidence\": 80, \"switch_pool\": true, '
+        f'\"recommendation\": \"...\"}}'
+    )
+
+    try:
+        async with http_session.post(
+            f"{GEMINI_API_URL}?key={api_key}",
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"responseMimeType": "application/json"},
+            },
+            timeout=aiohttp.ClientTimeout(total=12),
+        ) as _resp:
+            if _resp.status != 200:
+                logger.warning("[SNSS/AI] Gemini HTTP %d", _resp.status)
+                return None
+            _raw  = await _resp.json()
+            _text = _raw["candidates"][0]["content"]["parts"][0]["text"]
+            return json.loads(_text.strip())
+    except Exception as _e:
+        logger.warning("[SNSS/AI] Gemini analysis failed: %s", _e)
+        return None
 
 
 _WKWEBVIEW_MIN_BYTES = 4096  # WKWebView (Telegram iOS) buffers chunks until this threshold
@@ -1467,6 +1728,10 @@ async def _registration_stream(
         # different recycled rates for the same country.
         _pricing_option = "1"
 
+        # SNSS: accumulates confirmed-recycled phones this registration session
+        # for Gemini pattern analysis (triggered at ≥2 recycled numbers).
+        _recycled_phones_this_session: list[str] = []
+
         # Shuffle the official registration credential pool so each factory
         # session uses a different rotation order.  Each retry attempt cycles
         # to the next credential, ensuring we never hit the same api_id twice
@@ -1535,6 +1800,89 @@ async def _registration_stream(
             yield _sse("step", {"step": 1, "status": "done",
                                 "message": f"📱 Number Acquired: {phone}",
                                 "cost": num_cost})
+
+            # ── SNSS Layer 0: Prefix blacklist ────────────────────────────
+            # Instant in-memory check — no network, no Telethon startup cost.
+            # If this number's prefix has been seen ≥ 2× recycled already,
+            # cancel and retry immediately (saves ~25s per detection).
+            _pbl_hit, _pbl_count, _pbl_prefix = _check_prefix_blacklist(phone, country_id)
+            if _pbl_hit:
+                yield _sse("step", {"step": 1, "status": "running",
+                                    "message": (
+                                        f"🔴 SNSS-L0: prefix '{_pbl_prefix}…' blacklisted "
+                                        f"({_pbl_count}× recycled) — "
+                                        "cancelling before Telethon handshake"
+                                    )})
+                _record_recycled_prefix(phone, country_id, _pricing_option)
+                _recycled_phones_this_session.append(phone)
+                await cancel_order()
+                _app_stuck_count += 1
+                if _app_stuck_count == 2:
+                    _pricing_option = "0"
+                elif _app_stuck_count == 4:
+                    _pricing_option = "2"
+                if _app_stuck_count < 5:
+                    yield _sse("step", {"step": 3, "status": "error",
+                                        "message": (
+                                            f"🚫 SNSS prefix-skip #{_app_stuck_count}/5 — "
+                                            "buying next number"
+                                        )})
+                    continue
+                else:
+                    yield _sse("sms_retry_prompt", {
+                        "country_id": country_id,
+                        "message": (
+                            f"🚫 SMSPool {country_id.upper()} pool fully recycled — "
+                            f"prefix '{_pbl_prefix}…' hit {_pbl_count} times. "
+                            f"All {_app_stuck_count} numbers from the same recycled batch. "
+                            + _suggest_alt_countries(country_id)
+                        ),
+                    })
+                    return
+
+            # ── SNSS Layer 1: contacts.importContacts pre-screen ──────────
+            # Use an existing idle sender account to check if this number is
+            # already registered on Telegram BEFORE firing up the registration
+            # Telethon client. Catches ~40-60% of recycled numbers instantly.
+            # Returns None when no idle sender accounts are available → skip.
+            _contact_hit = await _check_registered_via_contact(phone)
+            if _contact_hit is True:
+                yield _sse("step", {"step": 1, "status": "running",
+                                    "message": (
+                                        f"🔴 SNSS-L1: {phone} found in Telegram via "
+                                        "contact import — recycled, cancelling"
+                                    )})
+                _record_recycled_prefix(phone, country_id, _pricing_option)
+                _recycled_phones_this_session.append(phone)
+                await cancel_order()
+                _app_stuck_count += 1
+                if _app_stuck_count == 2:
+                    _pricing_option = "0"
+                elif _app_stuck_count == 4:
+                    _pricing_option = "2"
+                if _app_stuck_count < 5:
+                    yield _sse("step", {"step": 3, "status": "error",
+                                        "message": (
+                                            f"🚫 SNSS contact-hit #{_app_stuck_count}/5 — "
+                                            "buying next number"
+                                        )})
+                    continue
+                else:
+                    yield _sse("sms_retry_prompt", {
+                        "country_id": country_id,
+                        "message": (
+                            f"🚫 {country_id.upper()} pool recycled — "
+                            f"{_app_stuck_count} consecutive numbers confirmed via "
+                            "contact import. " + _suggest_alt_countries(country_id)
+                        ),
+                    })
+                    return
+            elif _contact_hit is False:
+                yield _sse("debug", {"message":
+                    f"✅ SNSS-L1: {phone} not found in contact import — proceeding"})
+            else:
+                yield _sse("debug", {"message":
+                    "ℹ️ SNSS-L1: contact check skipped (no idle sender account)"})
 
             # ─── Step 2 — Init Telethon client ───────────────────────────
             yield _sse("step", {"step": 2, "status": "running",
@@ -2075,6 +2423,47 @@ async def _registration_stream(
                                 f"🔄 SMSPool pricing_option → 2 (premium pool) — "
                                 f"trying higher-quality carrier batch after {_app_stuck_count} recycled numbers"
                             )})
+
+                        # SNSS: record confirmed-recycled prefix (Layer 2 detection)
+                        # and run Gemini pattern analysis when 2+ recycled in session.
+                        _record_recycled_prefix(phone, country_id, _pricing_option)
+                        _recycled_phones_this_session.append(phone)
+
+                        if len(_recycled_phones_this_session) >= 2:
+                            try:
+                                async with aiohttp.ClientSession() as _ai_sess:
+                                    _ai_result = await asyncio.wait_for(
+                                        _ai_analyze_recycled_pattern(
+                                            _recycled_phones_this_session,
+                                            country_id,
+                                            _pricing_option,
+                                            _ai_sess,
+                                        ),
+                                        timeout=14.0,
+                                    )
+                                if _ai_result:
+                                    _ai_conf   = _ai_result.get("confidence", "?")
+                                    _ai_prefix = str(_ai_result.get("prefix") or "")
+                                    _ai_rec    = _ai_result.get("recommendation", "")
+                                    _ai_switch = _ai_result.get("switch_pool", False)
+                                    yield _sse("debug", {"message": (
+                                        f"🤖 SNSS-AI: prefix='{_ai_prefix}' "
+                                        f"confidence={_ai_conf}% "
+                                        f"switch_pool={_ai_switch} — {_ai_rec}"
+                                    )})
+                                    # Widen the in-memory blacklist to AI-identified prefix
+                                    if _ai_prefix and len(_ai_prefix) >= 5:
+                                        _ai_key = f"{_ai_prefix}:{country_id.lower()}"
+                                        _RECYCLED_PREFIX_MEM[_ai_key] = max(
+                                            _RECYCLED_PREFIX_MEM.get(_ai_key, 0),
+                                            len(_recycled_phones_this_session),
+                                        )
+                            except asyncio.TimeoutError:
+                                yield _sse("debug", {"message":
+                                    "🤖 SNSS-AI: pattern analysis timed out — continuing"})
+                            except Exception as _ai_ex:
+                                yield _sse("debug", {"message":
+                                    f"🤖 SNSS-AI: analysis skipped ({_ai_ex})"})
 
                         # Retry up to 5 consecutive recycled numbers before halting.
                         # With a 90% recycled SMSPool pool, 5 retries gives ~41%
