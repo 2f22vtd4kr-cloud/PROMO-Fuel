@@ -39,6 +39,7 @@ style.textContent = `
   @keyframes liquidFloat{ 0%,100%{border-radius:62% 38% 54% 46%/46% 54% 38% 62%;} 33%{border-radius:46% 54% 38% 62%/62% 38% 54% 46%;} 66%{border-radius:54% 46% 62% 38%/38% 62% 46% 54%;} }
   @keyframes orbPulse   { 0%,100%{transform:scale(1);opacity:0.9;} 50%{transform:scale(1.15);opacity:1;} }
   @keyframes countUp    { from{transform:translateY(8px);opacity:0;} to{transform:translateY(0);opacity:1;} }
+  @keyframes geo-ping   { 0%{transform:scale(0.6);opacity:0.8;} 100%{transform:scale(2.0);opacity:0;} }
 
   /* ── Animation helpers ── */
   .fade-up   { animation: fadeUp  0.44s cubic-bezier(0.16,1,0.3,1) both; }

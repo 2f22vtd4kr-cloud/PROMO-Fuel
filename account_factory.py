@@ -1049,6 +1049,62 @@ async def _get_exit_ip_via_proxy(proxy_string: str, timeout: float = 10.0) -> tu
         return None, f"IP check failed: {str(exc)[:100]}", False
 
 
+async def _proxy_geo_check(
+    exit_ip: str,
+    target_cc: str,
+    timeout: float = 8.0,
+) -> dict:
+    """
+    Look up the country of `exit_ip` via ip-api.com (no proxy needed — it's a
+    plain internet lookup of an IP we already confirmed is residential).
+    Returns a dict:
+      detected_cc:      str   — 2-letter ISO code from ip-api ("UA", "PL", …)
+      detected_country: str   — human country name ("Ukraine", "Poland", …)
+      org:              str   — ISP / org string ("AS12345 Some ISP Ltd")
+      match:            bool  — detected_cc.lower() == target_cc.lower()
+      latency_ms:       int   — round-trip time to ip-api in ms
+      error:            str | None
+    """
+    import time as _time  # noqa: PLC0415
+    import requests as _req  # noqa: PLC0415
+
+    t0 = _time.monotonic()
+    try:
+        fields = "status,country,countryCode,org,query"
+        r = _req.get(
+            f"http://ip-api.com/json/{exit_ip}?fields={fields}",
+            timeout=timeout,
+        )
+        r.raise_for_status()
+        j = r.json()
+        latency_ms = int((_time.monotonic() - t0) * 1000)
+
+        if j.get("status") != "success":
+            return {
+                "detected_cc": "", "detected_country": "", "org": "",
+                "match": False, "latency_ms": latency_ms,
+                "error": f"ip-api returned status={j.get('status')}",
+            }
+
+        detected_cc = (j.get("countryCode") or "").upper()
+        match = detected_cc.lower() == target_cc.lower()
+        return {
+            "detected_cc":      detected_cc,
+            "detected_country": j.get("country", ""),
+            "org":              j.get("org", ""),
+            "match":            match,
+            "latency_ms":       latency_ms,
+            "error":            None,
+        }
+    except Exception as exc:
+        latency_ms = int((_time.monotonic() - t0) * 1000)
+        return {
+            "detected_cc": "", "detected_country": "", "org": "",
+            "match": False, "latency_ms": latency_ms,
+            "error": str(exc)[:120],
+        }
+
+
 async def _registration_stream(
     smspool_api_key: str,
     country_id: str,
@@ -1232,6 +1288,52 @@ async def _registration_stream(
                 "is_datacenter": False,
                 "async_exit_ip": async_ip,
             })
+
+        # ─── Geo check — verify exit IP is in the target country ─────────
+        # Use the confirmed residential IP (prefer asyncio path, fall back to
+        # requests path) and look up its country via ip-api.com.  A mismatch
+        # means the proxy provider doesn't have a residential node for the
+        # target country even after the country-rewrite — warn clearly so the
+        # operator can choose a different proxy pool, but don't block (the
+        # operator may intentionally use a neighboring country or know better).
+        _geo_ip = async_ip or exit_ip
+        if _geo_ip and proxy_string:
+            yield _sse("geo_check", {
+                "status":         "running",
+                "target_cc":      country_id.upper(),
+                "exit_ip":        _geo_ip,
+            })
+            _geo = await _proxy_geo_check(_geo_ip, country_id)
+            if _geo["error"]:
+                yield _sse("geo_check", {
+                    "status":         "error",
+                    "exit_ip":        _geo_ip,
+                    "target_cc":      country_id.upper(),
+                    "detected_cc":    "",
+                    "detected_country": "",
+                    "org":            "",
+                    "match":          False,
+                    "latency_ms":     _geo["latency_ms"],
+                    "message":        f"Geo lookup failed: {_geo['error']}",
+                })
+            else:
+                _geo_status = "ok" if _geo["match"] else "mismatch"
+                yield _sse("geo_check", {
+                    "status":           _geo_status,
+                    "exit_ip":          _geo_ip,
+                    "target_cc":        country_id.upper(),
+                    "detected_cc":      _geo["detected_cc"],
+                    "detected_country": _geo["detected_country"],
+                    "org":              _geo["org"],
+                    "match":            _geo["match"],
+                    "latency_ms":       _geo["latency_ms"],
+                    "message": (
+                        f"✅ Exit IP in {_geo['detected_country']} — matches target"
+                        if _geo["match"] else
+                        f"⚠️ Exit IP is in {_geo['detected_country']} ({_geo['detected_cc']}), "
+                        f"not {country_id.upper()} — provider may lack coverage for this country"
+                    ),
+                })
 
         # ─── python-socks guard ───────────────────────────────────────────
         # Telethon needs `python-socks[asyncio]` to actually route through a

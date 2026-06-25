@@ -199,6 +199,212 @@ function StepRow({ def, state, lang }: {
   );
 }
 
+// ── ccToFlag ─────────────────────────────────────────────────────────────────
+/** Convert a 2-letter ISO country code to a flag emoji. */
+function ccToFlag(cc: string): string {
+  if (!cc || cc.length !== 2) return "🌐";
+  const offset = 0x1F1E6 - "A".charCodeAt(0);
+  return Array.from(cc.toUpperCase())
+    .map(c => String.fromCodePoint(c.charCodeAt(0) + offset))
+    .join("");
+}
+
+// ── GeoCheckCard ──────────────────────────────────────────────────────────────
+interface GeoCheckProps {
+  status:          "running" | "ok" | "mismatch" | "error";
+  exitIp:          string;
+  targetCc:        string;
+  detectedCc:      string;
+  detectedCountry: string;
+  org:             string;
+  match:           boolean;
+  latencyMs:       number;
+  message:         string;
+  lang:            string;
+}
+
+function GeoCheckCard({
+  status, exitIp, targetCc, detectedCc, detectedCountry, org, latencyMs, lang,
+}: GeoCheckProps) {
+  const L = (en: string, ua: string) => lang === "ua" ? ua : en;
+
+  const MISMATCH = "#f97316"; // orange — warning, not fatal
+  const accentColor = status === "ok" ? GREEN : status === "mismatch" ? MISMATCH : status === "error" ? RED : ACCENT;
+  const bgAlpha     = status === "ok" ? `${GREEN}0c` : status === "mismatch" ? `${MISMATCH}0c` : status === "error" ? `${RED}0a` : `${ACCENT}08`;
+  const borderColor = status === "ok" ? `${GREEN}30` : status === "mismatch" ? `${MISMATCH}35` : status === "error" ? `${RED}28` : `${ACCENT}28`;
+
+  const targetFlag   = ccToFlag(targetCc);
+  const detectedFlag = ccToFlag(detectedCc);
+
+  return (
+    <div style={{
+      borderRadius: 14, padding: "12px 16px",
+      background: bgAlpha,
+      border: `1px solid ${borderColor}`,
+      transition: "all 0.35s ease",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+
+        {/* ── Left: animated radar icon or result badge ── */}
+        <div style={{
+          position: "relative", flexShrink: 0,
+          width: 36, height: 36,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          {status === "running" ? (
+            <>
+              {/* Three concentric ping rings */}
+              {[0, 1, 2].map(i => (
+                <div key={i} style={{
+                  position: "absolute",
+                  width: 36, height: 36, borderRadius: "50%",
+                  border: `1.5px solid ${ACCENT}`,
+                  opacity: 0,
+                  animation: `geo-ping 1.8s ease-out ${i * 0.6}s infinite`,
+                }} />
+              ))}
+              {/* Center dot */}
+              <div style={{
+                width: 10, height: 10, borderRadius: "50%",
+                background: ACCENT,
+                boxShadow: `0 0 8px ${ACCENT}88`,
+              }} />
+            </>
+          ) : (
+            <div style={{
+              width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+              background: `${accentColor}18`,
+              border: `1.5px solid ${accentColor}55`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 16,
+              boxShadow: status !== "error" ? `0 0 10px ${accentColor}28` : "none",
+            }}>
+              {status === "ok" ? "🛰️" : status === "mismatch" ? "⚠️" : "🚫"}
+            </div>
+          )}
+        </div>
+
+        {/* ── Center: label + details ── */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <span style={{
+              fontSize: 10, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase",
+              color: accentColor,
+            }}>
+              {L("Geo Verify", "Гео-перевірка")}
+            </span>
+            {/* Latency badge — shown once we have a result */}
+            {latencyMs > 0 && status !== "running" && (
+              <span style={{
+                fontSize: 10, fontVariantNumeric: "tabular-nums",
+                color: `${accentColor}bb`,
+                background: `${accentColor}14`,
+                border: `1px solid ${accentColor}22`,
+                borderRadius: 6, padding: "1px 7px", fontWeight: 700,
+              }}>
+                {latencyMs}ms
+              </span>
+            )}
+          </div>
+
+          {status === "running" ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", lineHeight: 1.4 }}>
+              {exitIp
+                ? <>{L("Looking up", "Шукаємо країну для") + " "}<span style={{ fontFamily: "monospace", color: ACCENT }}>{exitIp}</span>…</>
+                : L("Querying ip-api.com…", "Запит до ip-api.com…")
+              }
+            </div>
+          ) : (
+            <>
+              {/* Country match row */}
+              {detectedCc && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  {/* Detected country */}
+                  <span style={{
+                    fontSize: 13, lineHeight: 1,
+                    background: "rgba(255,255,255,0.06)", borderRadius: 6,
+                    padding: "3px 8px",
+                    border: `1px solid ${accentColor}22`,
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                  }}>
+                    <span>{detectedFlag}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.8)" }}>
+                      {detectedCountry || detectedCc}
+                    </span>
+                  </span>
+
+                  {/* Arrow + match/mismatch indicator */}
+                  <span style={{
+                    fontSize: 11, color: `${accentColor}99`,
+                    fontWeight: 700,
+                  }}>
+                    {status === "ok" ? "=" : "≠"}
+                  </span>
+
+                  {/* Target country */}
+                  <span style={{
+                    fontSize: 13, lineHeight: 1,
+                    background: status === "ok" ? `${GREEN}14` : `${MISMATCH}12`,
+                    borderRadius: 6, padding: "3px 8px",
+                    border: `1px solid ${status === "ok" ? `${GREEN}30` : `${MISMATCH}35`}`,
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                  }}>
+                    <span>{targetFlag}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: status === "ok" ? GREEN : MISMATCH }}>
+                      {targetCc}
+                    </span>
+                  </span>
+
+                  {/* Big tick / cross */}
+                  <span style={{
+                    fontSize: 13, fontWeight: 800,
+                    color: accentColor,
+                    textShadow: `0 0 8px ${accentColor}66`,
+                  }}>
+                    {status === "ok" ? "✓" : "✗"}
+                  </span>
+                </div>
+              )}
+
+              {/* ISP / org line */}
+              {org && (
+                <div style={{
+                  marginTop: 4, fontSize: 10,
+                  color: "rgba(160,180,230,0.45)",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>
+                  {org}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* ── Right: exit IP chip ── */}
+        {exitIp && status !== "running" && (
+          <div style={{
+            flexShrink: 0,
+            background: "rgba(0,0,0,0.3)",
+            border: `1px solid rgba(255,255,255,0.09)`,
+            borderRadius: 8, padding: "4px 10px",
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 1,
+          }}>
+            <span style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", letterSpacing: "0.05em" }}>
+              EXIT IP
+            </span>
+            <span style={{
+              fontFamily: "monospace", fontSize: 12, fontWeight: 700,
+              color: "rgba(200,220,255,0.85)", letterSpacing: "0.04em",
+            }}>
+              {exitIp}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RegHistoryPanel({ history, onClear, lang }: {
   history: RegHistoryEntry[];
   onClear: () => void;
@@ -1138,6 +1344,19 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [exitIp,          setExitIp]          = useState<string | null>(null);
   const [isDcIp,          setIsDcIp]          = useState<boolean>(false);
 
+  interface GeoCheckState {
+    status:           "running" | "ok" | "mismatch" | "error";
+    exitIp:           string;
+    targetCc:         string;
+    detectedCc:       string;
+    detectedCountry:  string;
+    org:              string;
+    match:            boolean;
+    latencyMs:        number;
+    message:          string;
+  }
+  const [geoCheck, setGeoCheck] = useState<GeoCheckState | null>(null);
+
   const [debugLog,        setDebugLog]        = useState<DebugLogEntry[]>([]);
 
   // Batch tracking
@@ -1511,6 +1730,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setSteps(initSteps());
     setPreflightStatus("idle");
     setPreflightMsg(null);
+    setGeoCheck(null);
 
     sessionStartedAt.current = Date.now();
     setSessionElapsedMs(null);
@@ -1600,6 +1820,18 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             setPreflightMsg(p.message as string ?? null);
             if (p.exit_ip) setExitIp(p.exit_ip as string);
             if (p.is_datacenter !== undefined) setIsDcIp(p.is_datacenter as boolean);
+          } else if (event === "geo_check") {
+            setGeoCheck({
+              status:          p.status as "running" | "ok" | "mismatch" | "error",
+              exitIp:          (p.exit_ip          as string) ?? "",
+              targetCc:        (p.target_cc        as string) ?? "",
+              detectedCc:      (p.detected_cc      as string) ?? "",
+              detectedCountry: (p.detected_country as string) ?? "",
+              org:             (p.org              as string) ?? "",
+              match:           (p.match            as boolean) ?? false,
+              latencyMs:       (p.latency_ms       as number) ?? 0,
+              message:         (p.message          as string) ?? "",
+            });
           } else if (event === "batch_reset") {
             setSteps(initSteps());
             setPollMsg(null);
@@ -1608,6 +1840,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             setPreflightMsg(null);
             setExitIp(null);
             setIsDcIp(false);
+            setGeoCheck(null);
           } else if (event === "batch_delay") {
             setBatchDelayMsg(p.message as string);
           } else if (event === "batch_done") {
@@ -1666,6 +1899,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             setSteps(initSteps());
             setPollMsg(null);
             setErrorMsg(null);
+            setGeoCheck(null);
             setPreflightStatus("running");
             setPreflightMsg(p.message as string ?? L("🔄 Auto-switching country…", "🔄 Авто-перемикання країни…"));
           } else if (event === "warmup_queued") {
@@ -4212,6 +4446,22 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   )}
                 </div>
               </div>
+            )}
+
+            {/* ── Geo check card ── */}
+            {geoCheck && (
+              <GeoCheckCard
+                status={geoCheck.status}
+                exitIp={geoCheck.exitIp}
+                targetCc={geoCheck.targetCc}
+                detectedCc={geoCheck.detectedCc}
+                detectedCountry={geoCheck.detectedCountry}
+                org={geoCheck.org}
+                match={geoCheck.match}
+                latencyMs={geoCheck.latencyMs}
+                message={geoCheck.message}
+                lang={lang}
+              />
             )}
 
             {/* Batch progress banner */}
