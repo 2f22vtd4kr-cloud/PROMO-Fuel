@@ -6,29 +6,29 @@ _Rewritten each session. Contains only current state — no history._
 
 ## What was done this session
 
-### Fix — Full ITU dialing-code → ISO alpha-2 mapping for proxy country rewrite
+### Fix — Proxy country rewrite: numeric SMSPool IDs must never trigger rewrite
 
-**Root cause:** SMSPool's `country_id` is a numeric ITU calling code (`"44"` = UK,
-`"380"` = Ukraine, `"63"` = Philippines). `_rewrite_proxy_country()` had a guard
-`if len(cc) != 2` but `"44"` passes (length 2), producing invalid `country-44` in the
-Decodo URL → SOCKS5 handshake rejected → "Connection closed unexpectedly".
+**Root cause (corrected understanding):**
+SMSPool's `country_id` is their own internal sequential numeric ID — NOT any ITU
+dialing code. e.g. SMSPool internal ID "44" = Uzbekistan (not UK). The rewrite
+`country-uz → country-gb` was incorrect in every case where the user selected a
+country from the SMSPool dropdown.
 
-**Backend fix (`account_factory.py` ~line 856):**
-- `_DIALCODE_TO_ISO` dict — ~150 countries, ITU numeric → ISO alpha-2
-- `_ISO_ALIAS` dict — non-standard SMSPool aliases (`"uk"` → `"gb"`)
-- `_normalize_country_to_iso(country_id)` — called inside `_rewrite_proxy_country()`
-  before the existing alpha/length guard
-- Debug SSE now shows `country-gb (was uz, input id=44)` for clarity
+**History of fixes this session:**
+1. First fix: added `not cc.isalpha()` guard — CORRECT, but then overridden.
+2. Second fix (wrong): added `_DIALCODE_TO_ISO` mapping treating SMSPool IDs as ITU
+   dialing codes — mapped "44" → "gb" (UK) when "44" is Uzbekistan in SMSPool.
+   Made things worse: `country-uz → country-gb` for an Uzbek proxy + Uzbek numbers.
+3. Final fix: removed `_DIALCODE_TO_ISO`, `_ISO_ALIAS`, `_normalize_country_to_iso`
+   entirely. Restored simple guard: `if len(cc) != 2 or not cc.isalpha(): skip`.
 
-**Frontend fix (`AccountFactory.tsx`):**
-- `proxyRewrite` state `{ from, to, inputId }` — set when debug SSE matches rewrite pattern
-- Regex parse: `/country-(\w+) \(was (\w+), input id=(\w+)\)/` on every `debug` event
-- Cleared on `batch_reset` and in the session reset function
-- **Proxy country rewrite badge** rendered between preflight banner and GeoCheckCard:
-  - Amber border/background, 🔀 icon
-  - Shows `country-uz → country-gb` in monospace chips + `(your id: 44)`
-  - Country flag emoji rendered from ISO code via regional-indicator Unicode trick
-  - Bilingual label (UA/EN)
+**Correct behaviour:**
+- SMSPool dropdown selection → numeric country_id → `not isalpha()` → skip rewrite
+  → proxy URL untouched (operator already set it correctly for the target country)
+- Custom country field (typed) → alpha-2 like "uz", "kz" → rewrite fires if the
+  proxy URL has a different `country-XX` selector
+
+**Files changed:** `account_factory.py` only (~line 856 `_rewrite_proxy_country`)
 
 ---
 
@@ -44,17 +44,12 @@ Decodo URL → SOCKS5 handshake rejected → "Connection closed unexpectedly".
 ## Key file locations
 
 - `account_factory.py`:
-  - `_DIALCODE_TO_ISO` (~line 861) — ITU → ISO table
-  - `_ISO_ALIAS` (~line 920) — SMSPool non-standard alias overrides
-  - `_normalize_country_to_iso()` (~line 926) — normalizer
-  - `_rewrite_proxy_country()` (~line 940) — calls normalizer first
-  - Debug SSE rewrite message (~line 1293)
-  - `_proxy_geo_check()` (~line 1150)
+  - `_rewrite_proxy_country()` (~line 856) — only fires for alpha-2 custom codes
+  - Debug SSE rewrite message (~line 1200)
+  - `_proxy_geo_check()` (~line 1060)
 - `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`:
-  - `proxyRewrite` state (~line 1363)
-  - `debug` SSE handler with regex parse (~line 1840)
-  - `batch_reset` clears `proxyRewrite` (~line 1853)
-  - Reset function clears `proxyRewrite` (~line 2012)
+  - `proxyRewrite` state (~line 1363) — badge shown when rewrite fires
+  - `debug` SSE handler + regex parse (~line 1840)
   - Proxy rewrite badge render (~line 4462)
   - `GeoCheckCard` component (~line 226)
 
@@ -62,5 +57,6 @@ Decodo URL → SOCKS5 handshake rejected → "Connection closed unexpectedly".
 
 ## Pending / watch items
 
-- `"7"` maps to `"ru"` — Russia and Kazakhstan share +7. Use custom `"kz"` for KZ exits.
+- Proxy rewrite badge in UI still parses the debug SSE message. Since numeric IDs
+  no longer trigger rewrites, the badge will only appear for custom alpha-2 typed codes.
 - `assets/pending_avatars/` empty on fresh import — must upload photos before AI mode.
