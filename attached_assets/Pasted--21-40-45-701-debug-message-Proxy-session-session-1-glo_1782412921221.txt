@@ -1,0 +1,34 @@
+[21:40:45.701] debug: {"message":"🔄 Proxy session → session-1 (global slot #1)"}
+[21:40:45.711] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[21:40:47.459] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[21:40:48.973] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:10000 · 🌍 Exit IP: 95.46.137.32","exit_ip":"95.46.137.32","is_datacenter":false}
+[21:40:49.759] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
+[21:40:49.776] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:10000 · 🌍 Exit IP: 95.46.137.32 · 🔗 Telethon-path IP: 95.46.137.32","exit_ip":"95.46.137.32","is_datacenter":false,"async_exit_ip":"95.46.137.32"}
+[21:40:49.792] geo_check: {"status":"running","target_cc":"KZ","exit_ip":"95.46.137.32"}
+[21:40:49.810] geo_check: {"status":"ok","exit_ip":"95.46.137.32","target_cc":"KZ","detected_cc":"KZ","detected_country":"Kazakhstan","org":"Kainar-Media Ltd","match":true,"latency_ms":24,"message":"✅ Exit IP in Kazakhstan — matches target"}
+[21:40:49.831] preflight: {"status":"running","message":"📊 Checking 7 SMS success rate on SMSPool…"}
+[21:40:49.856] preflight: {"status":"done","message":"📊 7 success rate: N/A — proceeding"}
+[21:40:49.862] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool..."}
+[21:40:50.836] step: {"step":1,"status":"done","message":"📱 Number Acquired: +77022588729","cost":2.24}
+[21:40:50.854] debug: {"message":"ℹ️ SNSS-L1: contact check skipped (no idle sender account)"}
+[21:40:50.854] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[21:40:54.163] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2496,\n    \"platform\": \"ios\",\n    \"device_model\": \"iPhone SE (3rd gen)\",\n    \"system_version\": \"17.4.1\",\n    \"app_version\": \"10.7.4\",\n    \"lang_code\": \"ru\",\n    \"system_lang_code\": \"ru-KZ\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-1-country-kz:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[21:40:54.174] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:10000"}
+[21:40:54.180] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[21:40:55.712] step: {"step":3,"status":"running","message":"🚫 Number pre-banned — cancelling and trying new number… (19 attempt(s) left)"}
+[21:40:55.913] debug: {"message":"🔄 Proxy session → session-2 (retry #1)"}
+[21:40:55.931] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool (attempt 2/20)..."}
+[21:40:56.834] step: {"step":1,"status":"done","message":"📱 Number Acquired: +77751699267","cost":2.24}
+[21:40:56.852] debug: {"message":"ℹ️ SNSS-L1: contact check skipped (no idle sender account)"}
+[21:40:56.871] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[21:40:56.877] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2496,\n    \"platform\": \"ios\",\n    \"device_model\": \"iPhone 17 Pro Max\",\n    \"system_version\": \"18.5\",\n    \"app_version\": \"11.6.2\",\n    \"lang_code\": \"ru\",\n    \"system_lang_code\": \"ru-KZ\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-2-country-kz:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[21:41:01.564] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:10000"}
+[21:41:04.913] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[21:41:04.925] debug: {"message":"{\n  \"📨 SEND_CODE_RESPONSE\": {\n    \"type\": \"SentCodeTypeApp\",\n    \"phone_code_hash\": \"ff7b0df4…\",\n    \"timeout\": null,\n    \"next_type\": null,\n    \"via\": \"RawSendCodeRequest\"\n  }\n}"}
+[21:41:05.362] step: {"step":3,"status":"running","message":"📲 SentCodeTypeApp (next_type=None) — requesting SMS resend (ResendCode)…"}
+[21:41:05.379] step: {"step":3,"status":"running","message":"🔴 SentCodeTypeApp + SendCodeUnavailable + next_type=None — definitive recycled, skipping Layer 2…"}
+[21:41:05.910] debug: {"message":"⚡ Layer 2 skipped — definitive recycled triple already confirmed"}
+[21:41:18.348] step: {"step":3,"status":"error","message":"🚫 Recycled number (#2/5) — ResendCode + all official credentials returned SentCodeTypeApp. Retrying with new number (2/20 budget used)…"}
+[21:41:18.370] debug: {"message":"🔄 Proxy session → session-3 (retry #2)"}
+[21:41:18.421] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool (attempt 3/20)..."}
+[21:41:18.431] error: {"message":"SMSPool purchase failed: Pool Charlie: Insufficient balance, the price is: 2.24 while you only have: 0.11Pool Mike: Insufficient balance, the price is: 2.41 while you only have: 0.11"}
