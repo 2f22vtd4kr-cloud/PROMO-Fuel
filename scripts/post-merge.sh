@@ -110,6 +110,72 @@ push_drizzle() {
   echo "[post-merge/drizzle] ✓ Done"
 }
 
+# ── 5. Schema drift check — warn about indexes in the DB not in Drizzle ─────
+# Any index on a Drizzle-managed table that isn't declared in lib/db/src/schema/
+# will generate a DROP INDEX on the next production deploy.  This check runs
+# after push_drizzle so the dev DB is current, then queries pg_indexes and
+# compares against the known set.  It never modifies anything — warn-only.
+#
+# HOW TO UPDATE: when you add a new index to lib/db/src/schema/index.ts,
+# also add its exact name to the KNOWN_INDEXES list below.
+check_schema_drift() {
+  if [ -z "$DATABASE_URL" ]; then
+    echo "[post-merge/drift] DATABASE_URL not set — skipping"
+    return 0
+  fi
+  if ! command -v psql &>/dev/null; then
+    echo "[post-merge/drift] psql not found — skipping"
+    return 0
+  fi
+
+  # Drizzle-managed tables in lib/db/src/schema/index.ts
+  MANAGED_TABLES="'saved_proxies','pf_db_snapshot','pf_session_files'"
+
+  # All non-PK indexes declared in the Drizzle schema.
+  # Keep this list in sync with lib/db/src/schema/index.ts.
+  KNOWN_INDEXES="idx_saved_proxies_country"
+
+  echo "[post-merge/drift] Checking for unmanaged PostgreSQL indexes..."
+
+  # Fetch all user-defined (non-system, non-PK) indexes on managed tables
+  FOUND=$(psql "$DATABASE_URL" -t -A -c \
+    "SELECT indexname FROM pg_indexes
+     WHERE tablename IN ($MANAGED_TABLES)
+       AND indexname NOT LIKE '%_pkey'
+     ORDER BY indexname;" 2>/dev/null)
+
+  if [ -z "$FOUND" ]; then
+    echo "[post-merge/drift] ✓ No user-defined indexes found (or DB unreachable)"
+    return 0
+  fi
+
+  UNMANAGED=()
+  while IFS= read -r idx; do
+    [ -z "$idx" ] && continue
+    if ! echo "$KNOWN_INDEXES" | grep -qw "$idx"; then
+      UNMANAGED+=("$idx")
+    fi
+  done <<< "$FOUND"
+
+  if [ ${#UNMANAGED[@]} -eq 0 ]; then
+    echo "[post-merge/drift] ✓ All indexes accounted for in Drizzle schema"
+    return 0
+  fi
+
+  echo ""
+  echo "╔══════════════════════════════════════════════════════════════════════╗"
+  echo "║  ⚠️  SCHEMA DRIFT: indexes exist in DB but NOT in Drizzle schema    ║"
+  echo "║  The next production deploy will DROP these indexes automatically.  ║"
+  echo "║  Fix: declare them in lib/db/src/schema/index.ts AND add their     ║"
+  echo "║  names to the KNOWN_INDEXES list in scripts/post-merge.sh          ║"
+  echo "╠══════════════════════════════════════════════════════════════════════╣"
+  for idx in "${UNMANAGED[@]}"; do
+    printf "║  %-68s║\n" "  $idx"
+  done
+  echo "╚══════════════════════════════════════════════════════════════════════╝"
+  echo ""
+}
+
 # ── Run pip and pnpm in parallel; compile sqlite3 after pnpm finishes ───────
 install_python &
 PY_PID=$!
@@ -126,6 +192,9 @@ push_drizzle &
 DRIZZLE_PID=$!
 
 wait $PY_PID $SQLITE_PID $DRIZZLE_PID
+
+# Drift check runs after drizzle push so the dev DB is fully current
+check_schema_drift
 
 echo ""
 echo "[post-merge] Writing sentinel..."
