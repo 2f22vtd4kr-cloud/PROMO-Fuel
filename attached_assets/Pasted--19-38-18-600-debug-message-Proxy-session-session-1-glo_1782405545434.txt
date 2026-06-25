@@ -1,0 +1,32 @@
+[19:38:18.600] debug: {"message":"🔄 Proxy session → session-1 (global slot #1)"}
+[19:38:18.600] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[19:38:20.973] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[19:38:21.880] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:10000 · 🌍 Exit IP: 84.54.86.63","exit_ip":"84.54.86.63","is_datacenter":false}
+[19:38:21.880] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
+[19:38:21.889] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:10000 · 🌍 Exit IP: 84.54.86.63 · 🔗 Telethon-path IP: 84.54.86.63","exit_ip":"84.54.86.63","is_datacenter":false,"async_exit_ip":"84.54.86.63"}
+[19:38:21.975] geo_check: {"status":"running","target_cc":"UZ","exit_ip":"84.54.86.63"}
+[19:38:21.975] geo_check: {"status":"ok","exit_ip":"84.54.86.63","target_cc":"UZ","detected_cc":"UZ","detected_country":"Uzbekistan","org":"","match":true,"latency_ms":26,"message":"✅ Exit IP in Uzbekistan — matches target"}
+[19:38:21.975] preflight: {"status":"running","message":"📊 Checking 44 SMS success rate on SMSPool…"}
+[19:38:28.098] preflight: {"status":"done","message":"📊 44 success rate: N/A — proceeding"}
+[19:38:28.098] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool..."}
+[19:38:28.098] step: {"step":1,"status":"done","message":"📱 Number Acquired: +998701646840","cost":1.46}
+[19:38:31.972] debug: {"message":"ℹ️ SNSS-L1: contact check skipped (no idle sender account)"}
+[19:38:31.972] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[19:38:31.972] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 30533575,\n    \"platform\": \"desktop\",\n    \"device_model\": \"PC 64bit\",\n    \"system_version\": \"Windows 11\",\n    \"app_version\": \"5.9.5\",\n    \"lang_code\": \"uz\",\n    \"system_lang_code\": \"uz-UZ\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-1-country-uz:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[19:38:35.085] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:10000"}
+[19:38:35.086] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[19:38:35.369] debug: {"message":"{\n  \"📨 SEND_CODE_RESPONSE\": {\n    \"type\": \"SentCodeTypeApp\",\n    \"phone_code_hash\": \"985750b4…\",\n    \"timeout\": null,\n    \"next_type\": null,\n    \"via\": \"RawSendCodeRequest\"\n  }\n}"}
+[19:38:35.370] step: {"step":3,"status":"running","message":"📲 SentCodeTypeApp (next_type=None) — requesting SMS resend (ResendCode)…"}
+[19:38:35.370] step: {"step":3,"status":"running","message":"🔴 SentCodeTypeApp + SendCodeUnavailable + next_type=None — definitive recycled, skipping Layer 2…"}
+[19:38:35.654] debug: {"message":"⚡ Layer 2 skipped — definitive recycled triple already confirmed"}
+[19:38:35.834] step: {"step":3,"status":"error","message":"🚫 Recycled number (#1/5) — ResendCode + all official credentials returned SentCodeTypeApp. Retrying with new number (1/20 budget used)…"}
+[19:38:35.835] debug: {"message":"🔄 Proxy session → session-2 (retry #1)"}
+[19:38:41.946] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool (attempt 2/20)..."}
+[19:38:46.249] step: {"step":1,"status":"done","message":"📱 Number Acquired: +998761478418","cost":1.46}
+[19:38:46.250] debug: {"message":"ℹ️ SNSS-L1: contact check skipped (no idle sender account)"}
+[19:38:46.250] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[19:38:46.250] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2496,\n    \"platform\": \"ios\",\n    \"device_model\": \"iPhone 17 Pro\",\n    \"system_version\": \"18.5\",\n    \"app_version\": \"11.6.2\",\n    \"lang_code\": \"uz\",\n    \"system_lang_code\": \"uz-UZ\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-2-country-uz:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[19:38:46.250] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:10000"}
+[19:38:49.650] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[19:38:49.650] step: {"step":3,"status":"error","message":"❌ Code request failed: The phone number is invalid (caused by SendCodeRequest)"}
+[19:38:50.218] error: {"message":"Failed to request code from Telegram: The phone number is invalid (caused by SendCodeRequest)"}

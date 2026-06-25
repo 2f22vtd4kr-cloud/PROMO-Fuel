@@ -26,6 +26,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from telethon import TelegramClient
 from telethon.errors import (
     PhoneNumberBannedError,
+    PhoneNumberInvalidError,
     PhoneNumberUnoccupiedError,
     SendCodeUnavailableError,
     SessionPasswordNeededError,
@@ -2102,6 +2103,16 @@ async def _registration_stream(
                 }, ensure_ascii=False, indent=2)})
             except PhoneNumberBannedError:
                 _banned = True
+            except PhoneNumberInvalidError:
+                # SMSPool sold a number that Telegram rejects as syntactically invalid.
+                # This is an SMSPool data-quality issue, not a factory-ending condition.
+                # Cancel the order and buy a fresh number instead of aborting.
+                yield _sse("step", {"step": 3, "status": "error",
+                                    "message": "⚠️ Telegram rejected this number as invalid (bad SMSPool number) — cancelling and buying another…"})
+                await cancel_order()
+                await safe_disconnect()
+                await asyncio.sleep(2)
+                continue   # ← retry loop: buy new number
             except Exception:
                 # Raw request failed — fall back to Telethon high-level send_code_request.
                 # This uses a different internal code path and sometimes succeeds when the
@@ -2122,6 +2133,14 @@ async def _registration_stream(
                     }, ensure_ascii=False, indent=2)})
                 except PhoneNumberBannedError:
                     _banned = True
+                except PhoneNumberInvalidError:
+                    # Same as the raw-path case above — bad number from SMSPool.
+                    yield _sse("step", {"step": 3, "status": "error",
+                                        "message": "⚠️ Telegram rejected this number as invalid (bad SMSPool number) — cancelling and buying another…"})
+                    await cancel_order()
+                    await safe_disconnect()
+                    await asyncio.sleep(2)
+                    continue   # ← retry loop: buy new number
                 except Exception as e2:
                     _e2_str = str(e2).lower()
                     # Classify the error: transient connection/proxy errors should retry
@@ -2246,15 +2265,21 @@ async def _registration_stream(
                     except SendCodeUnavailableError:
                         if _raw_next_type is None:
                             # SentCodeTypeApp + next_type=None + SendCodeUnavailable
-                            # is a DEFINITIVE recycled triple:
-                            #   • SentCodeTypeApp  = code routed to an existing account's app
-                            #   • next_type=None   = Telegram declared NO SMS fallback at all
-                            #   • SendCodeUnavailable = ResendCode confirmed zero delivery paths
-                            # A truly fresh (unregistered) number never produces this triple.
-                            # Layer 2 (official creds) always agrees and just wastes ~7s.
-                            _definitive_recycled = True
-                            yield _sse("step", {"step": 3, "status": "running",
-                                                "message": "🔴 SentCodeTypeApp + SendCodeUnavailable + next_type=None — definitive recycled, skipping Layer 2…"})
+                            # is a DEFINITIVE recycled triple — BUT only when an official
+                            # Telegram api_id (2040/2496/6) produced it.  A developer
+                            # api_id may always receive SentCodeTypeApp+SendCodeUnavailable
+                            # for fresh numbers simply because its app is not configured for
+                            # SMS fallback by Telegram's routing.  In that case L2 (official
+                            # creds) still needs to run to get a reliable verdict.
+                            _official_api_ids = {c[0] for c in _OFFICIAL_CLIENT_CREDS}
+                            if _actual_api_id in _official_api_ids:
+                                _definitive_recycled = True
+                                yield _sse("step", {"step": 3, "status": "running",
+                                                    "message": "🔴 SentCodeTypeApp + SendCodeUnavailable + next_type=None — definitive recycled, skipping Layer 2…"})
+                            else:
+                                # Dev api_id — not conclusive. Fall through to L2.
+                                yield _sse("step", {"step": 3, "status": "running",
+                                                    "message": f"🟡 SentCodeTypeApp + SendCodeUnavailable (dev api_id={_actual_api_id}) — checking official creds…"})
                         else:
                             # next_type was set → Telegram declared an SMS fallback but
                             # ResendCode says all delivery paths are now exhausted.
