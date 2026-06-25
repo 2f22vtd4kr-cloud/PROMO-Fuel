@@ -1638,6 +1638,9 @@ async def _registration_stream(
         # and Telegram sees both the primary request and the Layer 2 request as
         # coming from the same IP, which doesn't give us an independent verdict.
         _primary_exit_ip: str | None = async_ip or exit_ip
+        # Tracks the exit IP used by the LAST number attempt so the retry
+        # loop can warn when session rotation yields the same exit node.
+        _last_attempt_exit_ip: str | None = _primary_exit_ip
 
         _geo_ip = async_ip or exit_ip
         if _geo_ip and proxy_string:
@@ -1836,6 +1839,25 @@ async def _registration_stream(
                 proxy_string, _retry_sn = _next_session_proxy(proxy_string)
                 if _retry_sn:
                     yield _sse("debug", {"message": f"🔄 Proxy session → session-{_retry_sn} (retry #{_num_attempt})"})
+                # ── Exit-IP check: warn if Decodo gave us the same node again ──
+                # If the proxy provider only has 1 residential node for this country,
+                # every session rotation lands on the same exit IP.  Telegram then
+                # sees ALL number attempts from the same IP — if that IP is flagged
+                # for automation, every number returns SentCodeTypeApp even if the
+                # number itself is fresh.  Without this warning the operator cannot
+                # distinguish IP-flagging from a recycled pool.
+                _retry_exit_ip, _, _ = await _get_asyncio_exit_ip(proxy_string, timeout=6.0)
+                if _retry_exit_ip and _last_attempt_exit_ip and _retry_exit_ip == _last_attempt_exit_ip:
+                    yield _sse("debug", {"message": (
+                        f"⚠️ Retry exit IP = previous attempt IP ({_retry_exit_ip}) — "
+                        "proxy provider has only 1 residential node for this country; session rotation is ineffective. "
+                        "If ALL numbers fail, the IP may be flagged by Telegram, not just the pool being recycled. "
+                        "Try a different proxy provider or country."
+                    )})
+                elif _retry_exit_ip:
+                    yield _sse("debug", {"message": f"✅ Retry exit IP: {_retry_exit_ip} (fresh node, different from {_last_attempt_exit_ip})"})
+                if _retry_exit_ip:
+                    _last_attempt_exit_ip = _retry_exit_ip
 
             # ─── Step 1 — Purchase number ─────────────────────────────────
             _retry_label = f" (attempt {_num_attempt+1}/{MAX_NUM_RETRIES})" if _num_attempt else ""
