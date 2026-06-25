@@ -6,64 +6,56 @@ _Rewritten each session. Contains only current state — no history._
 
 ## What was built / fixed this session
 
-### Session Health Dashboard (`SessionHealthPanel`)
-- **New component**: `artifacts/telegram-miniapp/src/components/SessionHealthPanel.tsx`
-- Collapsible panel injected into **Accounts page** (after summary cards + problem badges, line ~1528)
-- `GET /api/accounts/session-health` → fast DB-only read (no Telethon) in `accounts.ts`
-- Health states: `active` 🟢 | `flood_wait` 🟡 | `banned` 🔴 | `session_invalid` 🔴 | `no_session` ⚪
+### SNSS — Pre-banned numbers now feed the prefix blacklist
 
-### SNSS Stats Panel (`SnssPanel`)
-- **New component**: `artifacts/telegram-miniapp/src/components/SnssPanel.tsx`
-- Injected into **AccountFactory overlay** below `<RegHistoryPanel>` (line ~4845)
-- Threshold slider + prefix table with unblock. Backend: 5 routes on `/api/factory/snss/*`
+**Root cause of the UZ failure (screenshots IMG_2523/2524, debug log 17:41–17:42):**
 
-### Account Factory — Backend recycled-detection fix (this session)
+All 3 UZ SMSPool numbers got `PhoneNumberBannedError` (pre-banned — Telegram itself had banned the numbers). The pre-banned code path (`if _banned:` block, ~line 2123) incremented `_banned_count` but:
+- **Never called `_record_recycled_prefix`** → SNSS prefix blacklist stayed empty
+- **Never incremented `_app_stuck_count`** → L0's abort threshold (`< 3`) never triggered
+- **Never rotated `_pricing_option`** → all 3 attempts pulled from the same SMSPool carrier batch
 
-**Root cause of UZ failure**: Every UZ SMSPool number returns
-`SentCodeTypeApp + next_type=None → ResendCode → SendCodeUnavailable`.
-This is a DEFINITIVE recycled signal but the old code then ran a **Layer 2 check**
-(different API credentials via a fresh proxy session) that ALWAYS agreed — wasting
-~7 seconds and keeping the SMSPool order open longer than necessary.
+Result: 3 × full Telethon connects (~10s each) before `sms_retry_prompt`. SNSS showed "0 blocked".
 
-**Three fixes applied to `account_factory.py`**:
+**Fix applied to `account_factory.py` (pre-banned handler, ~line 2123):**
 
-| # | What | Where | Effect |
-|---|------|--------|--------|
-| 1 | **Skip Layer 2 for definitive triple** | `~line 2204–2215` + `~line 2276–2281` | Saves ~7s per recycled UZ number |
-| 2 | **SNSS threshold 2 → 1** | `_SNSS_MIN_COUNT = 1` (line 83) | L0 prefix blacklist fires after 1st recycled hit instead of 2nd |
-| 3 | **L0 halt threshold 5 → 3** | L0 block `_app_stuck_count < 3` | Stops burning balance 2 attempts sooner |
+Added immediately after `_banned_count += 1`:
+1. `_app_stuck_count += 1` — unified counter so L0 abort threshold fires
+2. `_record_recycled_prefix(phone, country_id, _pricing_option)` — feeds SNSS
+3. `_recycled_phones_this_session.append(phone)` — feeds Gemini AI analysis
+4. Pricing pool rotation: `_app_stuck_count==2` → `"0"` (mixed), `_app_stuck_count==3` → `"2"` (premium)
+5. `_RECYCLED_COUNTRY_POOL.add(country_id.lower())` on `_banned_count >= 3` — flags country
 
-**Details of Fix 1** — new flag `_definitive_recycled`:
-- Initialized to `False` before the `_non_sms` gate
-- Set to `True` in the `SendCodeUnavailableError + next_type=None` catch branch
-- Layer 2 for loop now iterates over `_off_creds_filtered if not _definitive_recycled else []`
-- When True: emits `"⚡ Layer 2 skipped"` debug SSE and falls through to recycled handling
+**New flow for UZ with `_SNSS_MIN_COUNT=1` (already in code since last session):**
 
-**Expected new behaviour for UZ**:
-1. Buy number → prefix L0 check (pass on attempt 1, counts 0)
-2. Telethon init → `SentCodeTypeApp` → ResendCode → `SendCodeUnavailable + next_type=None`
-3. `_definitive_recycled = True` → emit "🔴 definitive recycled" → **skip 7s Layer 2**
-4. Record prefix, cancel, `_app_stuck_count += 1`
-5. Attempt 2: Buy number → L0 fires (count=1 ≥ threshold=1) → cancel instantly, no Telethon
-6. Attempt 3: L0 fires again → `_app_stuck_count = 3` → emit `sms_retry_prompt` with alternatives
-7. **Total time**: ~20s vs old ~70s. **Total spend**: ~$4.38 vs old ~$4.38 (same numbers bought)
-   — savings are time + UX clarity, money savings if SMSPool refunds cancelled orders
+| Attempt | Action | SNSS | `_app_stuck_count` | pricing |
+|---------|--------|------|-------------------|---------|
+| 1 | L0 miss → Telethon → banned → records prefix (count→1) | count=1 | 1 | "1" |
+| 2 | **L0 fires** (count=1 ≥ 1) → instant cancel | count=2 | 2 | rotates to "0" |
+| 3 | L0 fires → `_app_stuck_count=3 ≥ 3` → `sms_retry_prompt` | count=3 | 3 | — |
+
+If attempt-2 number has a DIFFERENT prefix (different carrier sub-batch), L0 misses and Telethon runs again — but attempt 3 uses pricing_option="0" (mixed pool), drawing from a different carrier batch that may have non-banned numbers.
+
+**Also preserved from last session (already in code):**
+- `_definitive_recycled` flag: `SentCodeTypeApp + next_type=None + SendCodeUnavailableError` → skips Layer 2 entirely (~7s saved per recycled number)
+- `_SNSS_MIN_COUNT = 1` (line ~83)
 
 ## Workflow status
+- **Telegram Bot**: RUNNING — Python FastAPI 8083 (`account_factory.py` fix is live)
 - **API Server** (port 8080): RUNNING
-- **Telegram Bot**: RUNNING — Python FastAPI 8083 (account_factory.py changes live)
 - **Telegram Mini App** (port 5000): RUNNING — Vite dev HMR
 
 ## Architecture reminders
 - Vite proxy: `/api/*` → `http://localhost:8080` (Node.js)
 - Node.js: `/api/factory/*` → Python FastAPI 8083 via `makePythonProxy`
 - `_SNSS_MIN_COUNT = 1` — process-global, resets on Python restart, adjustable via `/api/factory/snss/config`
-- `_definitive_recycled` is a per-attempt local variable (not global), correct scope
+- `_definitive_recycled` — per-attempt local variable (not global), correct scope
+- `_app_stuck_count` now counts BOTH pre-banned AND recycled numbers (unified "bad number" counter)
 
 ## Key files
 | File | Role |
 |------|------|
-| `account_factory.py` | Python FastAPI — SNSS + recycled detection (lines 83, 2167, 2204–2215, 2274–2281, 1827–1852) |
+| `account_factory.py` | Python FastAPI — pre-banned fix (~line 2123); SNSS + recycled detection |
 | `artifacts/api-server/src/routes/accounts.ts` | Node.js — `/accounts/session-health` |
 | `artifacts/telegram-miniapp/src/components/SnssPanel.tsx` | SNSS management UI |
 | `artifacts/telegram-miniapp/src/components/SessionHealthPanel.tsx` | Session health dashboard |
@@ -73,4 +65,4 @@ This is a DEFINITIVE recycled signal but the old code then ran a **Layer 2 check
 ## Known non-issues
 - `artifacts/api-server: API Server` artifact workflow FAILED — real API is the `API Server` bash-workflow. Safe to ignore.
 - mockup-sandbox: PolishComplete/RefinedDepth/GroupsV2/WorkersV3/VideoTemplate.tsx have corrupted JSX — pre-existing.
-- Telegram Bot 409 conflicts: normal for multi-instance Replit starts.
+- Telegram Bot 409 conflicts: normal for multi-instance Replit starts, self-resolves.

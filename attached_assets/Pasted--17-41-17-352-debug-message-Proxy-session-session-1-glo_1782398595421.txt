@@ -1,0 +1,36 @@
+[17:41:17.352] debug: {"message":"🔄 Proxy session → session-1 (global slot #1)"}
+[17:41:18.319] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[17:41:30.261] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[17:41:33.351] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:10000 · IP check failed: SOCKSHTTPSConnectionPool(host='api.ipify.org', port=443): Read timed out. (read timeout=10.0)","exit_ip":null,"is_datacenter":false}
+[17:41:33.351] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
+[17:41:33.351] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:10000 · IP check failed: SOCKSHTTPSConnectionPool(host='api.ipify.org', port=443): Read timed out. (read timeout=10.0) · ⚠️ Asyncio path: Asyncio proxy check failed: Host unreachable","exit_ip":null,"is_datacenter":false}
+[17:41:33.439] preflight: {"status":"running","message":"📊 Checking 44 SMS success rate on SMSPool…"}
+[17:41:33.443] preflight: {"status":"done","message":"📊 44 success rate: N/A — proceeding"}
+[17:41:35.747] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool..."}
+[17:41:35.762] step: {"step":1,"status":"done","message":"📱 Number Acquired: +998958807243","cost":1.46}
+[17:41:38.883] debug: {"message":"ℹ️ SNSS-L1: contact check skipped (no idle sender account)"}
+[17:41:38.883] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[17:41:38.883] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2496,\n    \"platform\": \"ios\",\n    \"device_model\": \"iPhone 15\",\n    \"system_version\": \"17.5.1\",\n    \"app_version\": \"10.8.0\",\n    \"lang_code\": \"uz\",\n    \"system_lang_code\": \"uz-UZ\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-1-country-uz:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[17:41:48.378] step: {"step":2,"status":"running","message":"⚠️ Connect attempt 1/3 failed (ProxyError: Host unreachable) — retrying in 4s…"}
+[17:41:48.381] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:10000"}
+[17:41:50.328] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[17:41:50.561] step: {"step":3,"status":"running","message":"🚫 Number pre-banned — cancelling and trying new number… (19 attempt(s) left)"}
+[17:41:50.562] debug: {"message":"🔄 Proxy session → session-2 (retry #1)"}
+[17:41:50.562] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool (attempt 2/20)..."}
+[17:41:52.882] step: {"step":1,"status":"done","message":"📱 Number Acquired: +998776812453","cost":1.46}
+[17:41:52.883] debug: {"message":"ℹ️ SNSS-L1: contact check skipped (no idle sender account)"}
+[17:41:52.883] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[17:41:52.883] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2496,\n    \"platform\": \"ios\",\n    \"device_model\": \"iPhone 16\",\n    \"system_version\": \"18.2.1\",\n    \"app_version\": \"11.3.0\",\n    \"lang_code\": \"uz\",\n    \"system_lang_code\": \"uz-UZ\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-2-country-uz:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[17:41:59.008] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:10000"}
+[17:41:59.010] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[17:41:59.010] step: {"step":3,"status":"running","message":"🚫 Number pre-banned — cancelling and trying new number… (18 attempt(s) left)"}
+[17:41:59.197] debug: {"message":"🔄 Proxy session → session-3 (retry #2)"}
+[17:42:01.360] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool (attempt 3/20)..."}
+[17:42:01.361] step: {"step":1,"status":"done","message":"📱 Number Acquired: +998959862801","cost":1.46}
+[17:42:01.361] debug: {"message":"ℹ️ SNSS-L1: contact check skipped (no idle sender account)"}
+[17:42:01.361] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[17:42:01.361] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2040,\n    \"platform\": \"desktop\",\n    \"device_model\": \"Mac\",\n    \"system_version\": \"macOS 15.3.1\",\n    \"app_version\": \"11.5\",\n    \"lang_code\": \"uz\",\n    \"system_lang_code\": \"uz-UZ\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-3-country-uz:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[17:42:04.705] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:10000"}
+[17:42:04.707] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[17:42:08.649] step: {"step":3,"status":"error","message":"🚫 3 consecutive pre-banned numbers — 44 pool is exhausted"}
+[17:42:09.122] sms_retry_prompt: {"country_id":"44","message":"🚫 3 consecutive pre-banned numbers from 44 — this country's pool is recycled/exhausted right now. Switch to: Ukraine (UA), Philippines (PH), Georgia (GE), Bangladesh (BD), Kazakhstan (KZ), India (IN). Or switch provider: 5sim.net → Telegram service (often 60-80% success rate for UZ/KZ/UA). SMSBower is another option."}

@@ -2119,10 +2119,28 @@ async def _registration_stream(
 
             if _banned:
                 _banned_count += 1
+                _app_stuck_count += 1  # unified "bad number" counter → feeds L0 abort threshold
+
+                # Record pre-banned prefix in SNSS so L0 kills it instantly on the next attempt.
+                # Without this, every subsequent attempt from the same carrier batch spins up a
+                # full Telethon client (~10s + $1.46) just to get PhoneNumberBannedError again.
+                _record_recycled_prefix(phone, country_id, _pricing_option)
+                _recycled_phones_this_session.append(phone)
+
+                # Rotate SMSPool pricing pool on pre-bans just like recycled numbers.
+                # Pre-banned batches tend to be pool-specific; trying pool 0 or 2 often
+                # draws from a different carrier batch with a lower ban rate.
+                if _app_stuck_count == 2:
+                    _pricing_option = "0"
+                    yield _sse("debug", {"message": "🔄 Pre-ban: pricing_option → 0 (mixed pool)"})
+                elif _app_stuck_count == 3:
+                    _pricing_option = "2"
+                    yield _sse("debug", {"message": "🔄 Pre-ban: pricing_option → 2 (premium pool)"})
+
                 _remaining_after = MAX_NUM_RETRIES - _num_attempt - 1
                 if _banned_count >= 3:
-                    # 3+ consecutive pre-bans → entire country pool is recycled.
-                    # Stop now — continuing just burns more SMSPool balance.
+                    # 3+ consecutive pre-bans → flag the country and stop.
+                    _RECYCLED_COUNTRY_POOL.add(country_id.lower())
                     yield _sse("step", {"step": 3, "status": "error",
                                         "message": f"🚫 {_banned_count} consecutive pre-banned numbers — {country_id.upper()} pool is exhausted"})
                     await cancel_order()
