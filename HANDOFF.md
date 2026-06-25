@@ -74,6 +74,14 @@ SendCodeUnavailable — number confirmed recycled   ← 0.285s later, WRONG
 - "44" = Uzbekistan in SMSPool's system.
 - Always extract ISO target from proxy URL (`country-XX`) when doing ISO-comparison with a numeric country_id.
 
+### Fix 5 — Layer 2 skips the api_id that the primary already tried
+
+`_OFFICIAL_CLIENT_CREDS` = [api_id 2040, api_id 2496]. When the primary credential was 2040 (the common case), Layer 2 was retrying 2040 first — same api_id that already returned `SentCodeTypeApp`, wasting ~8s (3s sleep + connect + RPC) before reaching the actually-new check (api_id 2496).
+
+Fix: build `_off_creds_filtered = [c for c in _OFFICIAL_CLIENT_CREDS if c[0] != _actual_api_id]` and iterate over that instead. If primary was 2040 → Layer 2 only tries 2496 (1 check). If primary was 2496 → only tries 2040. Fallback to full list if filter empties it.
+
+`account_factory.py` ~line 1853. Bot restarted.
+
 ---
 
 ## Decision log

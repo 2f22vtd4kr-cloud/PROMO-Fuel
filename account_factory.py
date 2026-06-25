@@ -1843,8 +1843,15 @@ async def _registration_stream(
                     # SentCodeTypeSms the number is fresh but our api_id was hitting
                     # Telegram's anti-spam gate.  If they also return SentCodeTypeApp the
                     # number is almost certainly recycled.
+                    #
+                    # Skip any official cred whose api_id matches what the primary already
+                    # used — re-testing the same api_id that just returned SentCodeTypeApp
+                    # is redundant and wastes ~8 seconds (3s proxy sleep + connect + RPC).
+                    _off_creds_filtered = [
+                        c for c in _OFFICIAL_CLIENT_CREDS if c[0] != _actual_api_id
+                    ] or _OFFICIAL_CLIENT_CREDS  # fallback: include all if somehow all match
                     _switched_to_official = False
-                    for _off_api_id, _off_api_hash, _off_dev, _off_sys, _off_app in _OFFICIAL_CLIENT_CREDS:
+                    for _off_api_id, _off_api_hash, _off_dev, _off_sys, _off_app in _off_creds_filtered:
                         await safe_disconnect()
                         # Wait for the proxy to close the previous SOCKS5 tunnel before
                         # opening a new one. Without this pause, Decodo (and most residential
