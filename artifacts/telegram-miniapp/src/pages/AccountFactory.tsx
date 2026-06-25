@@ -1357,6 +1357,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   }
   const [geoCheck, setGeoCheck] = useState<GeoCheckState | null>(null);
 
+  const [proxyRewrite, setProxyRewrite] = useState<{ from: string; to: string; inputId: string } | null>(null);
+
   const [debugLog,        setDebugLog]        = useState<DebugLogEntry[]>([]);
 
   // Batch tracking
@@ -1832,6 +1834,10 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               latencyMs:       (p.latency_ms       as number) ?? 0,
               message:         (p.message          as string) ?? "",
             });
+          } else if (event === "debug") {
+            const msg = (p.message as string) ?? "";
+            const m = msg.match(/country-(\w+) \(was (\w+), input id=(\w+)\)/);
+            if (m) setProxyRewrite({ to: m[1], from: m[2], inputId: m[3] });
           } else if (event === "batch_reset") {
             setSteps(initSteps());
             setPollMsg(null);
@@ -1841,6 +1847,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             setExitIp(null);
             setIsDcIp(false);
             setGeoCheck(null);
+            setProxyRewrite(null);
           } else if (event === "batch_delay") {
             setBatchDelayMsg(p.message as string);
           } else if (event === "batch_done") {
@@ -1999,6 +2006,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setPreflightMsg(null);
     setWarmupPrompt(null);
     setSmsRetryPrompt(null);
+    setProxyRewrite(null);
     setDebugLog([]);
     sessionStartedAt.current = null;
     setSessionElapsedMs(null);
@@ -4445,6 +4453,40 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* ── Proxy country rewrite badge ── */}
+            {proxyRewrite && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8,
+                background: "rgba(251,191,36,0.08)",
+                border: "1px solid rgba(251,191,36,0.28)",
+                borderRadius: 10, padding: "7px 12px",
+              }}>
+                <span style={{ fontSize: 18, lineHeight: 1 }}>🔀</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(251,191,36,0.85)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>
+                    {lang === "ua" ? "Країна проксі змінена автоматично" : "Proxy country auto-adjusted"}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{ fontFamily: "monospace", fontSize: 12, color: "rgba(255,255,255,0.45)", background: "rgba(0,0,0,0.25)", borderRadius: 5, padding: "1px 7px" }}>
+                      country-{proxyRewrite.from}
+                    </span>
+                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>→</span>
+                    <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, color: "#fbbf24", background: "rgba(251,191,36,0.12)", borderRadius: 5, padding: "1px 7px" }}>
+                      country-{proxyRewrite.to}
+                    </span>
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>
+                      ({lang === "ua" ? "ваш код" : "your id"}: {proxyRewrite.inputId})
+                    </span>
+                  </div>
+                </div>
+                <span style={{ fontSize: 22, lineHeight: 1 }}>
+                  {String.fromCodePoint(
+                    ...proxyRewrite.to.toUpperCase().split("").map(c => 0x1F1E6 + c.charCodeAt(0) - 65)
+                  )}
+                </span>
               </div>
             )}
 
