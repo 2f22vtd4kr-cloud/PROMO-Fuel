@@ -4,64 +4,73 @@ _Rewritten each session. Contains only current state — no history._
 
 ---
 
-## What was built this session
+## What was built / fixed this session
 
 ### Session Health Dashboard (`SessionHealthPanel`)
 - **New component**: `artifacts/telegram-miniapp/src/components/SessionHealthPanel.tsx`
 - Collapsible panel injected into **Accounts page** (after summary cards + problem badges, line ~1528)
-- Lazy-loads on first expand — no fetch until user opens it
-- `GET /api/accounts/session-health` → fast DB-only read (no Telethon) added to `accounts.ts`
-- Health classification: `active` 🟢 | `flood_wait` 🟡 | `banned` 🔴 | `session_invalid` 🔴 | `no_session` ⚪
-- Per-account "check" button + "Validate All" + "Recheck problems" → `POST /api/accounts/validate-sessions`
-- Shows: name, phone, health badge, quota bar (sent_today/daily_limit), last_used_at, flood countdown, validate result inline
+- `GET /api/accounts/session-health` → fast DB-only read (no Telethon) in `accounts.ts`
+- Health states: `active` 🟢 | `flood_wait` 🟡 | `banned` 🔴 | `session_invalid` 🔴 | `no_session` ⚪
 
 ### SNSS Stats Panel (`SnssPanel`)
 - **New component**: `artifacts/telegram-miniapp/src/components/SnssPanel.tsx`
 - Injected into **AccountFactory overlay** below `<RegHistoryPanel>` (line ~4845)
-- 4 stat chips: Blocked prefixes, Countries, Total hits, Threshold
-- **Threshold slider** (1–10) with save → `POST /api/factory/snss/config` (updates `_SNSS_MIN_COUNT` in-process, no restart)
-- Prefix table: monospace prefix, country flag, hit count (color-coded by severity), last-seen, per-row unblock ✕
-- Clear-all button; all mutations sync both DB and `_RECYCLED_PREFIX_MEM` atomically
+- Threshold slider + prefix table with unblock. Backend: 5 routes on `/api/factory/snss/*`
 
-### Backend additions
+### Account Factory — Backend recycled-detection fix (this session)
 
-#### `account_factory.py`
-- `_SNSS_MIN_COUNT: int = 2` global added after `_RECYCLED_PREFIX_MEM`
-- `_check_prefix_blacklist(min_count: int | None = None)` — uses `_SNSS_MIN_COUNT` as default (was hardcoded 2)
-- 5 new routes on `factory_router` (all proxied via Node.js → Python 8083):
-  - `GET  /api/factory/snss/stats` — full prefix list + aggregate counts
-  - `DELETE /api/factory/snss/prefix?prefix=&country_id=` — unblock single prefix
-  - `POST /api/factory/snss/clear` — wipe entire blacklist
-  - `GET  /api/factory/snss/config` — read current threshold
-  - `POST /api/factory/snss/config` — set `_SNSS_MIN_COUNT` at runtime
+**Root cause of UZ failure**: Every UZ SMSPool number returns
+`SentCodeTypeApp + next_type=None → ResendCode → SendCodeUnavailable`.
+This is a DEFINITIVE recycled signal but the old code then ran a **Layer 2 check**
+(different API credentials via a fresh proxy session) that ALWAYS agreed — wasting
+~7 seconds and keeping the SMSPool order open longer than necessary.
 
-#### `artifacts/api-server/src/routes/accounts.ts`
-- `GET /api/accounts/session-health` — DB-only health read; maps account fields → `health` string
+**Three fixes applied to `account_factory.py`**:
+
+| # | What | Where | Effect |
+|---|------|--------|--------|
+| 1 | **Skip Layer 2 for definitive triple** | `~line 2204–2215` + `~line 2276–2281` | Saves ~7s per recycled UZ number |
+| 2 | **SNSS threshold 2 → 1** | `_SNSS_MIN_COUNT = 1` (line 83) | L0 prefix blacklist fires after 1st recycled hit instead of 2nd |
+| 3 | **L0 halt threshold 5 → 3** | L0 block `_app_stuck_count < 3` | Stops burning balance 2 attempts sooner |
+
+**Details of Fix 1** — new flag `_definitive_recycled`:
+- Initialized to `False` before the `_non_sms` gate
+- Set to `True` in the `SendCodeUnavailableError + next_type=None` catch branch
+- Layer 2 for loop now iterates over `_off_creds_filtered if not _definitive_recycled else []`
+- When True: emits `"⚡ Layer 2 skipped"` debug SSE and falls through to recycled handling
+
+**Expected new behaviour for UZ**:
+1. Buy number → prefix L0 check (pass on attempt 1, counts 0)
+2. Telethon init → `SentCodeTypeApp` → ResendCode → `SendCodeUnavailable + next_type=None`
+3. `_definitive_recycled = True` → emit "🔴 definitive recycled" → **skip 7s Layer 2**
+4. Record prefix, cancel, `_app_stuck_count += 1`
+5. Attempt 2: Buy number → L0 fires (count=1 ≥ threshold=1) → cancel instantly, no Telethon
+6. Attempt 3: L0 fires again → `_app_stuck_count = 3` → emit `sms_retry_prompt` with alternatives
+7. **Total time**: ~20s vs old ~70s. **Total spend**: ~$4.38 vs old ~$4.38 (same numbers bought)
+   — savings are time + UX clarity, money savings if SMSPool refunds cancelled orders
 
 ## Workflow status
-- **API Server** (port 8080): RUNNING — Express + Python proxy
-- **Telegram Bot**: RUNNING — polling (409 conflicts normal for multi-instance)
-- **Telegram Mini App** (port 5000): RUNNING — Vite dev HMR active
-- `artifacts/api-server: API Server` artifact workflow: FAILED — not used by main app, ignore
+- **API Server** (port 8080): RUNNING
+- **Telegram Bot**: RUNNING — Python FastAPI 8083 (account_factory.py changes live)
+- **Telegram Mini App** (port 5000): RUNNING — Vite dev HMR
 
 ## Architecture reminders
 - Vite proxy: `/api/*` → `http://localhost:8080` (Node.js)
-- Node.js: `/api/factory/*` → Python FastAPI 8083 via `makePythonProxy`; `/api/accounts/*` handled natively
-- `SessionHealthPanel` imports `getStoredSecret` from LockScreen for Bearer auth
-- `SnssPanel` receives `authHeaders` function prop from AccountFactory
-- `_SNSS_MIN_COUNT` is process-global — resets to 2 on Python restart (not persisted to DB; by design)
+- Node.js: `/api/factory/*` → Python FastAPI 8083 via `makePythonProxy`
+- `_SNSS_MIN_COUNT = 1` — process-global, resets on Python restart, adjustable via `/api/factory/snss/config`
+- `_definitive_recycled` is a per-attempt local variable (not global), correct scope
 
 ## Key files
 | File | Role |
 |------|------|
-| `account_factory.py` | Python FastAPI — SNSS routes + blacklist logic (lines 80–84, 609–626, 3562–3652) |
-| `artifacts/api-server/src/routes/accounts.ts` | Node.js — `/accounts/session-health` route (line ~530) |
-| `artifacts/telegram-miniapp/src/components/SnssPanel.tsx` | SNSS management UI (new) |
-| `artifacts/telegram-miniapp/src/components/SessionHealthPanel.tsx` | Session health dashboard (new) |
-| `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx` | Imports + mounts `<SnssPanel>` |
-| `artifacts/telegram-miniapp/src/pages/Accounts.tsx` | Imports + mounts `<SessionHealthPanel>` |
+| `account_factory.py` | Python FastAPI — SNSS + recycled detection (lines 83, 2167, 2204–2215, 2274–2281, 1827–1852) |
+| `artifacts/api-server/src/routes/accounts.ts` | Node.js — `/accounts/session-health` |
+| `artifacts/telegram-miniapp/src/components/SnssPanel.tsx` | SNSS management UI |
+| `artifacts/telegram-miniapp/src/components/SessionHealthPanel.tsx` | Session health dashboard |
+| `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx` | Hosts `<SnssPanel>` |
+| `artifacts/telegram-miniapp/src/pages/Accounts.tsx` | Hosts `<SessionHealthPanel>` |
 
 ## Known non-issues
 - `artifacts/api-server: API Server` artifact workflow FAILED — real API is the `API Server` bash-workflow. Safe to ignore.
-- mockup-sandbox: PolishComplete/RefinedDepth/GroupsV2/WorkersV3/VideoTemplate.tsx have corrupted JSX — pre-existing, do not touch unless asked.
-- Telegram Bot 409 conflicts: normal when Replit spawns multiple supervisor instances.
+- mockup-sandbox: PolishComplete/RefinedDepth/GroupsV2/WorkersV3/VideoTemplate.tsx have corrupted JSX — pre-existing.
+- Telegram Bot 409 conflicts: normal for multi-instance Replit starts.

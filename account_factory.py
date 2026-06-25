@@ -77,7 +77,7 @@ _RECYCLED_PREFIX_MEM: dict[str, int] = {}
 # ── SNSS: Configurable blacklist threshold ────────────────────────────────────
 # Minimum recycled-hit count before a prefix is blocked. Adjustable at runtime
 # via POST /api/factory/snss/config — no restart required.
-_SNSS_MIN_COUNT: int = 2
+_SNSS_MIN_COUNT: int = 1
 
 # Phone prefix length stored in the blacklist (including the leading +).
 # 9 chars captures the carrier batch: e.g. "+99870704" for UZ SMSPool batches.
@@ -1827,12 +1827,12 @@ async def _registration_stream(
                 _app_stuck_count += 1
                 if _app_stuck_count == 2:
                     _pricing_option = "0"
-                elif _app_stuck_count == 4:
+                elif _app_stuck_count == 3:
                     _pricing_option = "2"
-                if _app_stuck_count < 5:
+                if _app_stuck_count < 3:
                     yield _sse("step", {"step": 3, "status": "error",
                                         "message": (
-                                            f"🚫 SNSS prefix-skip #{_app_stuck_count}/5 — "
+                                            f"🚫 SNSS prefix-skip #{_app_stuck_count}/3 — "
                                             "buying next number"
                                         )})
                     continue
@@ -2145,17 +2145,23 @@ async def _registration_stream(
             # ── Non-SMS delivery gate ─────────────────────────────────────────
             # SentCodeTypeApp/Flash/Firebase means Telegram wants to deliver via app.
             #
-            # Strategy (3-layer):
+            # Strategy (2-layer after fix):
             # 1. ResendCodeRequest on the SAME connected client → escalates to SMS for
             #    fresh numbers on carriers that use App-first delivery as an anti-spam
             #    measure (e.g. Vietnamobile 056x).  For recycled numbers ResendCode may
             #    also return SentCodeTypeSms, but the SMS goes to the real owner's SIM
             #    and never appears in SMSPool → detected as timeout in step 4.
-            # 2. Official creds check (api_id=2040 / 2496) → only run when ResendCode
-            #    still returns a non-SMS type; distinguishes unknown-api_id anti-spam
-            #    from genuine recycled numbers for most carriers.
-            # 3. If all strategies return non-SMS → confirmed recycled → stop.
+            # 2. Official creds check (api_id=2040 / 2496) → ONLY run when ResendCode
+            #    returned a non-SMS type but next_type was declared (Telegram had planned
+            #    a fallback).  When next_type=None + SendCodeUnavailable we already have
+            #    a DEFINITIVE recycled signal and skip Layer 2 entirely (saves ~7s).
+            #
+            # Definitive recycled triple:
+            #   SentCodeTypeApp + next_type=None + ResendCode→SendCodeUnavailable
+            #   A fresh (unregistered) number CANNOT produce this combination because
+            #   Telegram only sends SentCodeTypeApp when an existing account is present.
             _non_sms = ("App", "Flash", "Firebase", "MissedCall")
+            _definitive_recycled = False  # set True → skip Layer 2 entirely
             if any(t in code_type_name for t in _non_sms):
                 # ── Layer 1: ResendCodeRequest ────────────────────────────────────
                 # Call on the still-connected original client (same api_id / session).
@@ -2194,13 +2200,16 @@ async def _registration_stream(
                                                 "message": f"📲 ResendCode still {_rc_type} — checking with official Telegram creds…"})
                     except SendCodeUnavailableError:
                         if _raw_next_type is None:
-                            # next_type=None means Telegram never declared a fallback
-                            # delivery method.  SendCodeUnavailable here just means
-                            # "nothing queued" — NOT that the number is recycled.
-                            # Fall through to Layer 2 (official creds check) which
-                            # does a fresh RawSendCodeRequest and gives a definitive answer.
+                            # SentCodeTypeApp + next_type=None + SendCodeUnavailable
+                            # is a DEFINITIVE recycled triple:
+                            #   • SentCodeTypeApp  = code routed to an existing account's app
+                            #   • next_type=None   = Telegram declared NO SMS fallback at all
+                            #   • SendCodeUnavailable = ResendCode confirmed zero delivery paths
+                            # A truly fresh (unregistered) number never produces this triple.
+                            # Layer 2 (official creds) always agrees and just wastes ~7s.
+                            _definitive_recycled = True
                             yield _sse("step", {"step": 3, "status": "running",
-                                                "message": "⚠️ ResendCode → SendCodeUnavailable (next_type=None, expected) — checking with official creds…"})
+                                                "message": "🔴 SentCodeTypeApp + SendCodeUnavailable + next_type=None — definitive recycled, skipping Layer 2…"})
                         else:
                             # next_type was set → Telegram had declared a fallback but
                             # now says all methods are exhausted.  Hard recycled signal:
@@ -2261,7 +2270,12 @@ async def _registration_stream(
                     ] or _OFFICIAL_CLIENT_CREDS  # fallback: include all if somehow all match
                     _switched_to_official = False
                     _l2_same_ip = False   # set True if Layer 2 exit IP = primary exit IP
-                    for _off_api_id, _off_api_hash, _off_dev, _off_sys, _off_app in _off_creds_filtered:
+                    if _definitive_recycled:
+                        yield _sse("debug", {"message":
+                            "⚡ Layer 2 skipped — definitive recycled triple already confirmed"})
+                    for _off_api_id, _off_api_hash, _off_dev, _off_sys, _off_app in (
+                        _off_creds_filtered if not _definitive_recycled else []
+                    ):
                         await safe_disconnect()
                         # Wait for the proxy to close the previous SOCKS5 tunnel before
                         # opening a new one. Without this pause, Decodo (and most residential
