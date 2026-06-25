@@ -6,15 +6,26 @@ _Rewritten each session. Contains only current state — no history._
 
 ## What was done this session
 
-### Fix — `_rewrite_proxy_country` numeric code guard
-`_rewrite_proxy_country()` in `account_factory.py` (~line 877) had a guard
-`if len(cc) != 2: return proxy_string` — but numeric dialing codes like `"44"` (UK)
-are also 2 chars and passed the guard, producing `country-44` in the Decodo URL which
-is invalid (Decodo expects ISO alpha-2 like `country-gb`). The proxy then rejected the
-SOCKS5 handshake → "Socket error: Connection closed unexpectedly".
+### Fix — Full ITU dialing-code → ISO alpha-2 mapping for proxy country rewrite
 
-**Fix**: added `or not cc.isalpha()` so any non-alphabetic country_id skips the rewrite.
-The proxy URL is now left unchanged when `country_id` is a numeric dialing code.
+**Root cause:** SMSPool's `country_id` is a numeric ITU calling code (e.g. `"44"` for UK,
+`"380"` for Ukraine, `"63"` for Philippines). `_rewrite_proxy_country()` had a guard
+`if len(cc) != 2` but `"44"` passes (length 2), producing invalid `country-44` in the
+Decodo URL → SOCKS5 handshake rejected → "Connection closed unexpectedly".
+
+**Fix (two parts):**
+
+1. Added `_DIALCODE_TO_ISO` dict (~150 countries) + `_normalize_country_to_iso(country_id)`
+   in `account_factory.py` (~line 856). Converts numeric codes to ISO alpha-2 before rewrite:
+   - `"44"` → `"gb"`, `"380"` → `"ua"`, `"63"` → `"ph"`, `"998"` → `"uz"`, etc.
+   - Also handles SMSPool alias `"uk"` → `"gb"`.
+   - Falls through unchanged for already-valid codes (`"uz"`, `"kz"`, `"ph"`).
+
+2. `_rewrite_proxy_country()` now calls `_normalize_country_to_iso()` first, then applies
+   the existing `len != 2 or not isalpha()` guard on the normalized result.
+   Debug SSE now shows `country-gb (was uz, input id=44)` for clarity.
+
+**Coverage:** All countries SMSPool supports + full CIS/MENA/APAC/Africa table.
 
 ---
 
@@ -30,24 +41,21 @@ The proxy URL is now left unchanged when `country_id` is a numeric dialing code.
 ## Key file locations
 
 - `account_factory.py`:
-  - `_rewrite_proxy_country()` (~line 853) ← fixed this session
-  - `_proxy_geo_check()` (~line 1055)
-  - `_raw_next_type` init + capture (~line 1533, 1549, 1572)
-  - Skip-ResendCode when `_raw_next_type is None` (~line 1659–1665)
-  - Geo check call in `_registration_stream` after asyncio gate (~line 1295–1339)
+  - `_DIALCODE_TO_ISO` dict (~line 861) — ITU code → ISO alpha-2 table
+  - `_ISO_ALIAS` dict (~line 920) — SMSPool non-standard alias overrides
+  - `_normalize_country_to_iso()` (~line 926) — normalizer called by rewrite
+  - `_rewrite_proxy_country()` (~line 940) — uses normalizer, then guards
+  - Debug SSE rewrite message (~line 1293) — shows resolved ISO + input id
+  - `_proxy_geo_check()` (~line 1150) — verifies exit IP country via ip-api.com
 - `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`:
-  - `ccToFlag()` helper (~line 205)
-  - `GeoCheckCard` component (~line 215–355)
-  - `geoCheck` state (~line 1144)
-  - `geo_check` SSE handler + batch_reset/auto_switching resets
-  - Render: after preflight banner, before batch progress banner
-- `artifacts/telegram-miniapp/src/main.tsx` line 45: `@keyframes geo-ping`
+  - `GeoCheckCard` component (~line 215) — visual geo verification card
+  - `geo_check` SSE handler — updates GeoCheckCard state
 
 ---
 
 ## Pending / watch items
 
-- If `country_id` is alphabetic (e.g. "uz", "kz") the rewrite still works as intended.
-- If a future SMSPool country is a 2-letter non-alpha code, the guard is correct to skip.
-- `assets/pending_avatars/` empty on fresh import — user must upload photos before
-  AI mode can assign avatars.
+- `"7"` maps to `"ru"` — Russia and Kazakhstan share +7. Decodo `country-ru` will
+  get Russian exit nodes even for KZ numbers. If KZ registration is needed, operator
+  should either use `"kz"` as custom country or a KZ-specific proxy.
+- `assets/pending_avatars/` empty on fresh import — must upload photos before AI mode.

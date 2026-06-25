@@ -850,6 +850,100 @@ def _next_session_proxy(proxy_string: str) -> tuple[str, int]:
     return _re.sub(r"session-\d+", f"session-{n}", proxy_string, count=1), n
 
 
+# ── ITU calling-code → ISO 3166-1 alpha-2 mapping ────────────────────────────
+# SMSPool's country "ID" field is the numeric ITU calling code (e.g. "44" = UK).
+# Residential proxy providers (Decodo, Bright Data, IPRoyal, …) expect the
+# ISO alpha-2 code in the country selector (e.g. country-gb).
+# This table covers every country SMSPool lists + the main CIS/MENA/APAC markets.
+_DIALCODE_TO_ISO: dict[str, str] = {
+    # North America / Caribbean
+    "1": "us", "1242": "bs", "1246": "bb", "1264": "ai", "1268": "ag",
+    "1284": "vg", "1340": "vi", "1345": "ky", "1441": "bm", "1473": "gd",
+    "1649": "tc", "1664": "ms", "1670": "mp", "1671": "gu", "1684": "as",
+    "1721": "sx", "1758": "lc", "1767": "dm", "1784": "vc", "1787": "pr",
+    "1809": "do", "1868": "tt", "1869": "kn", "1876": "jm", "1939": "pr",
+    # Europe
+    "7": "ru",   "20": "eg",  "27": "za",  "30": "gr",  "31": "nl",
+    "32": "be",  "33": "fr",  "34": "es",  "36": "hu",  "39": "it",
+    "40": "ro",  "41": "ch",  "43": "at",  "44": "gb",  "45": "dk",
+    "46": "se",  "47": "no",  "48": "pl",  "49": "de",
+    "350": "gi", "351": "pt", "352": "lu", "353": "ie", "354": "is",
+    "355": "al", "356": "mt", "357": "cy", "358": "fi", "359": "bg",
+    "370": "lt", "371": "lv", "372": "ee", "373": "md", "374": "am",
+    "375": "by", "376": "ad", "377": "mc", "378": "sm", "380": "ua",
+    "381": "rs", "382": "me", "385": "hr", "386": "si", "387": "ba",
+    "389": "mk", "420": "cz", "421": "sk", "423": "li",
+    # Latin America
+    "51": "pe",  "52": "mx",  "53": "cu",  "54": "ar",  "55": "br",
+    "56": "cl",  "57": "co",  "58": "ve",
+    "500": "fk", "501": "bz", "502": "gt", "503": "sv", "504": "hn",
+    "505": "ni", "506": "cr", "507": "pa", "508": "pm", "509": "ht",
+    "590": "gp", "591": "bo", "592": "gy", "593": "ec", "594": "gf",
+    "595": "py", "596": "mq", "597": "sr", "598": "uy", "599": "cw",
+    # Asia-Pacific
+    "60": "my",  "61": "au",  "62": "id",  "63": "ph",  "64": "nz",
+    "65": "sg",  "66": "th",
+    "81": "jp",  "82": "kr",  "84": "vn",  "86": "cn",
+    "670": "tl", "672": "nf", "673": "bn", "674": "nr", "675": "pg",
+    "676": "to", "677": "sb", "678": "vu", "679": "fj", "680": "pw",
+    "681": "wf", "682": "ck", "683": "nu", "685": "ws", "686": "ki",
+    "687": "nc", "688": "tv", "689": "pf", "690": "tk", "691": "fm",
+    "692": "mh", "850": "kp", "852": "hk", "853": "mo", "855": "kh",
+    "856": "la", "880": "bd", "886": "tw",
+    # South Asia / Middle East
+    "90": "tr",  "91": "in",  "92": "pk",  "93": "af",  "94": "lk",
+    "95": "mm",  "98": "ir",
+    "960": "mv", "961": "lb", "962": "jo", "963": "sy", "964": "iq",
+    "965": "kw", "966": "sa", "967": "ye", "968": "om", "970": "ps",
+    "971": "ae", "972": "il", "973": "bh", "974": "qa", "975": "bt",
+    "976": "mn", "977": "np",
+    # Central Asia / Caucasus
+    "992": "tj", "993": "tm", "994": "az", "995": "ge", "996": "kg",
+    "998": "uz",
+    # Africa
+    "212": "ma", "213": "dz", "216": "tn", "218": "ly", "220": "gm",
+    "221": "sn", "222": "mr", "223": "ml", "224": "gn", "225": "ci",
+    "226": "bf", "227": "ne", "228": "tg", "229": "bj", "230": "mu",
+    "231": "lr", "232": "sl", "233": "gh", "234": "ng", "235": "td",
+    "236": "cf", "237": "cm", "238": "cv", "239": "st", "240": "gq",
+    "241": "ga", "242": "cg", "243": "cd", "244": "ao", "245": "gw",
+    "248": "sc", "249": "sd", "250": "rw", "251": "et", "252": "so",
+    "253": "dj", "254": "ke", "255": "tz", "256": "ug", "257": "bi",
+    "258": "mz", "260": "zm", "261": "mg", "263": "zw", "264": "na",
+    "265": "mw", "266": "ls", "267": "bw", "268": "sz", "269": "km",
+    "291": "er", "297": "aw", "298": "fo", "299": "gl",
+}
+
+# Non-standard / SMSPool-specific aliases that are NOT valid ISO alpha-2
+_ISO_ALIAS: dict[str, str] = {
+    "uk": "gb",   # SMSPool sometimes uses "uk" for United Kingdom
+    "en": "gb",   # occasionally "en"
+    "ua": "ua",   # already correct, no-op
+}
+
+
+def _normalize_country_to_iso(country_id: str) -> str:
+    """Convert any country_id format to an ISO 3166-1 alpha-2 code.
+
+    Handles:
+      - Numeric ITU calling codes  ("44" → "gb", "380" → "ua", "63" → "ph")
+      - SMSPool non-standard alpha codes  ("uk" → "gb")
+      - Already-correct ISO codes  ("uz" → "uz")
+
+    Returns the original string unchanged if no mapping is found, so callers
+    can still apply their own guards.
+    """
+    raw = country_id.strip().lower()
+    # 1. Numeric dialing code → ISO
+    if raw.isdigit():
+        return _DIALCODE_TO_ISO.get(raw, raw)
+    # 2. Known alias → ISO
+    if raw in _ISO_ALIAS:
+        return _ISO_ALIAS[raw]
+    # 3. Already ISO (or unknown — leave as-is)
+    return raw
+
+
 def _rewrite_proxy_country(proxy_string: str, country_id: str) -> str:
     """Rewrite the provider country-selector in a residential proxy username.
 
@@ -862,15 +956,17 @@ def _rewrite_proxy_country(proxy_string: str, country_id: str) -> str:
     responds with SentCodeTypeApp (code sent to existing app) for every number,
     even fresh ones — because the exit IP doesn't match the carrier's country.
 
-    Fix: replace `country-XX` with `country-{country_id}` so the residential
-    proxy exits in the same country as the phone number being registered.
+    Fix: replace `country-XX` with `country-{iso}` so the residential proxy
+    exits in the same country as the phone number being registered.
+    Numeric calling codes (SMSPool format) are automatically converted to
+    ISO alpha-2 via _normalize_country_to_iso() before the rewrite.
 
     Returns proxy_string unchanged if no `country-XX` pattern is found (e.g.
     plain IP proxies or providers that use a different selector format).
     """
     if not proxy_string or not country_id:
         return proxy_string
-    cc = country_id.lower().strip()
+    cc = _normalize_country_to_iso(country_id)
     if len(cc) != 2 or not cc.isalpha():
         return proxy_string
     rewritten = _re.sub(r"country-[a-z]{2}", f"country-{cc}", proxy_string, flags=_re.IGNORECASE)
@@ -1191,7 +1287,9 @@ async def _registration_stream(
             # of whether the number is fresh or recycled.
             _rewritten = _rewrite_proxy_country(proxy_string, country_id)
             if _rewritten != proxy_string:
-                yield _sse("debug", {"message": f"🌍 Proxy country rewritten → country-{country_id.lower()} (was {proxy_string.split('country-')[1][:2] if 'country-' in proxy_string else '??'})"})
+                _iso_cc = _normalize_country_to_iso(country_id)
+                _was_cc = proxy_string.split('country-')[1][:2] if 'country-' in proxy_string else '??'
+                yield _sse("debug", {"message": f"🌍 Proxy country rewritten → country-{_iso_cc} (was {_was_cc}, input id={country_id})"})
                 proxy_string = _rewritten
 
         # ─── Preflight — Proxy health check ──────────────────────────────
