@@ -1760,17 +1760,28 @@ async def _registration_stream(
         _reg_pool: list[tuple] = _REGISTRATION_CREDS.copy()
         random.shuffle(_reg_pool)
 
-        # Prepend the operator's own developer api_id (TELETHON_API_ID) as the
-        # FIRST credential in the rotation when it differs from the official pool.
-        # Developer keys from my.telegram.org are unique to the operator and have
-        # NOT been shadow-blocked by Telegram for mass-registration — making them
-        # the best first try for SMS delivery.  Official 2040/2496 follow as
-        # fallbacks if Telegram rejects the developer key for registration.
+        # Append the operator's own developer api_id (TELETHON_API_ID) as the
+        # LAST credential in the rotation when it differs from the official pool.
+        #
+        # Why last, not first:
+        #   A developer api_id is linked to the operator's own Telegram account.
+        #   Telegram routes SendCode requests from it to the operator's installed
+        #   Telegram app → SentCodeTypeApp for EVERY number, fresh or recycled.
+        #   This makes it useless for detecting number freshness (primary or ResendCode)
+        #   and adds ~10s overhead per attempt before L2 can give a real verdict.
+        #
+        #   Official api_ids (2040 Desktop / 2496 iOS / 6 Android) are NOT linked
+        #   to any account — Telegram routes their SendCode to SMS for fresh numbers.
+        #   ResendCode on an official api_id can also escalate App→SMS on certain
+        #   carriers (UZ, KZ, IN).  The dev api_id can never do this.
+        #
+        #   The dev api_id IS still useful as a last resort if all official ids are
+        #   shadow-blocked for this operator (rare), so we keep it in the pool at end.
         _dev_api_id   = api_id    # passed from TELETHON_API_ID env var
         _dev_api_hash = api_hash
         _official_ids = {c[0] for c in _REGISTRATION_CREDS}  # {2040, 2496, 6}
         if _dev_api_id and _dev_api_id not in _official_ids:
-            _reg_pool.insert(0, (
+            _reg_pool.append((
                 _dev_api_id, _dev_api_hash,
                 "PC 64bit", "Windows 11", "5.9.5", "desktop",
             ))
@@ -2232,17 +2243,23 @@ async def _registration_stream(
                 # Telegram often escalates App → SMS on resend for fresh numbers even
                 # when it uses App-first delivery as an anti-spam gate.
                 #
-                # Always attempt ResendCode regardless of next_type.
-                # next_type=None does NOT mean ResendCode is impossible — it just means
-                # Telegram didn't declare a fallback type up front.  ResendCode can
-                # still escalate to SentCodeTypeSms on fresh numbers (observed on UZ,
-                # KZ, IN carriers).  SendCodeUnavailableError (truly recycled) is
-                # handled correctly in the catch block below.
+                # ResendCode can escalate App→SMS on fresh numbers (observed on UZ, KZ, IN
+                # carriers) — but ONLY when issued from an official Telegram api_id (2040/2496/6).
+                # A developer api_id always gets SentCodeTypeApp/SendCodeUnavailable from
+                # ResendCode because Telegram routes codes to the developer's own installed app,
+                # not the carrier.  Calling ResendCode from a dev api_id wastes ~1-2s and
+                # always produces SendCodeUnavailable — skip straight to L2 instead.
+                _official_api_ids_set = {c[0] for c in _OFFICIAL_CLIENT_CREDS}
+                _is_official_primary = _actual_api_id in _official_api_ids_set
                 _resend_escalated = False
                 _next_type_label = "(next_type=None) " if _raw_next_type is None else ""
-                yield _sse("step", {"step": 3, "status": "running",
-                                    "message": f"📲 {code_type_name} {_next_type_label}— requesting SMS resend (ResendCode)…"})
-                if True:
+                if _is_official_primary:
+                    yield _sse("step", {"step": 3, "status": "running",
+                                        "message": f"📲 {code_type_name} {_next_type_label}— requesting SMS resend (ResendCode)…"})
+                else:
+                    yield _sse("step", {"step": 3, "status": "running",
+                                        "message": f"📲 {code_type_name} via dev api_id — skipping ResendCode, going straight to official creds…"})
+                if _is_official_primary:
                     try:
                         _rc_result = await client(ResendCodeRequest(
                             phone_number=phone,

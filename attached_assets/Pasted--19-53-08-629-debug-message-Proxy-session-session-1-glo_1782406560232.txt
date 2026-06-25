@@ -1,0 +1,28 @@
+[19:53:08.629] debug: {"message":"🔄 Proxy session → session-1 (global slot #1)"}
+[19:53:08.629] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[19:53:09.403] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[19:53:10.762] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:10000 · 🌍 Exit IP: 84.54.72.136","exit_ip":"84.54.72.136","is_datacenter":false}
+[19:53:10.762] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
+[19:53:11.565] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:10000 · 🌍 Exit IP: 84.54.72.136 · 🔗 Telethon-path IP: 84.54.72.136","exit_ip":"84.54.72.136","is_datacenter":false,"async_exit_ip":"84.54.72.136"}
+[19:53:11.565] geo_check: {"status":"running","target_cc":"UZ","exit_ip":"84.54.72.136"}
+[19:53:11.565] geo_check: {"status":"ok","exit_ip":"84.54.72.136","target_cc":"UZ","detected_cc":"UZ","detected_country":"Uzbekistan","org":"Uztelecom","match":true,"latency_ms":25,"message":"✅ Exit IP in Uzbekistan — matches target"}
+[19:53:11.565] preflight: {"status":"running","message":"📊 Checking 44 SMS success rate on SMSPool…"}
+[19:53:11.632] preflight: {"status":"done","message":"📊 44 success rate: N/A — proceeding"}
+[19:53:11.632] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool..."}
+[19:53:18.238] step: {"step":1,"status":"done","message":"📱 Number Acquired: +998702155277","cost":1.46}
+[19:53:18.239] debug: {"message":"ℹ️ SNSS-L1: contact check skipped (no idle sender account)"}
+[19:53:18.239] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[19:53:18.255] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 30533575,\n    \"platform\": \"desktop\",\n    \"device_model\": \"PC 64bit\",\n    \"system_version\": \"Windows 11\",\n    \"app_version\": \"5.9.5\",\n    \"lang_code\": \"uz\",\n    \"system_lang_code\": \"uz-UZ\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-1-country-uz:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[19:53:21.566] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:10000"}
+[19:53:21.567] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[19:53:23.879] debug: {"message":"{\n  \"📨 SEND_CODE_RESPONSE\": {\n    \"type\": \"SentCodeTypeApp\",\n    \"phone_code_hash\": \"7a6401f7…\",\n    \"timeout\": null,\n    \"next_type\": null,\n    \"via\": \"RawSendCodeRequest\"\n  }\n}"}
+[19:53:23.886] step: {"step":3,"status":"running","message":"📲 SentCodeTypeApp (next_type=None) — requesting SMS resend (ResendCode)…"}
+[19:53:24.096] step: {"step":3,"status":"running","message":"🟡 SentCodeTypeApp + SendCodeUnavailable (dev api_id=30533575) — checking official creds…"}
+[19:53:29.400] debug: {"message":"🔄 Layer 2 proxy → session-2 (fresh exit node for official creds check)"}
+[19:53:30.048] debug: {"message":"✅ Layer 2 exit IP: 84.54.86.14 (different from primary 84.54.72.136) — independent verdict"}
+[19:53:30.049] debug: {"message":"{\n  \"🔍 LAYER2_INIT\": {\n    \"api_id\": 2040,\n    \"device_model\": \"PC 64bit\",\n    \"system_version\": \"Windows 11\",\n    \"app_version\": \"5.9.5\",\n    \"lang_code\": \"uz\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-2-country-uz:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[19:53:36.438] step: {"step":3,"status":"running","message":"🔴 Official creds (api_id=2040) also got SentCodeTypeApp — number is recycled"}
+[19:53:36.577] step: {"step":3,"status":"error","message":"🚫 Recycled number (#1/5) — ResendCode + all official credentials returned SentCodeTypeApp. Retrying with new number (1/20 budget used)…"}
+[19:53:36.578] debug: {"message":"🔄 Proxy session → session-3 (retry #1)"}
+[19:53:36.578] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool (attempt 2/20)..."}
+[19:53:36.670] error: {"message":"SMSPool purchase failed: Pool Mike: Insufficient balance, the price is: 1.45 while you only have: 0.21Pool Charlie: Insufficient balance, the price is: 1.46 while you only have: 0.21"}
