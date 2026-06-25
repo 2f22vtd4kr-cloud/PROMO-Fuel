@@ -6,67 +6,41 @@ _Rewritten each session. Contains only current state — no history._
 
 ## What was built / fixed this session
 
-### Fix 1 — SNSS: Pre-banned numbers now feed prefix blacklist
+### Fix — SNSS-L0 abort threshold too tight (premature sms_retry_prompt)
 
-**Root cause**: `PhoneNumberBannedError` (pre-banned) path never called `_record_recycled_prefix`, so L0 stayed empty and every attempt burned a full Telethon connect.
+**Root cause**: `_app_stuck_count` is a unified counter shared across all "bad number" detection layers (pre-ban, L0 prefix skip, L1 contact hit, Step 3 SentCodeTypeApp recycled). The L0 path used `< 3` as its abort threshold while Step 3 used `< 5`. A single pre-banned number (stuck=1) + one Step 3 recycled (stuck=2) + one L0 prefix hit (stuck=3) was enough to fire `sms_retry_prompt` after only 3 attempts — stopping the factory far too early and wasting the remaining 17-number budget.
 
-**Fix** (`account_factory.py`, pre-banned handler ~line 2123):
-- `_app_stuck_count += 1` — feeds L0 abort threshold (`< 3`)
-- `_record_recycled_prefix(phone, country_id, _pricing_option)` — feeds SNSS blacklist
-- `_recycled_phones_this_session.append(phone)` — feeds Gemini AI analysis
-- Pricing pool rotation: `_app_stuck_count==2` → `"0"` (mixed), `_app_stuck_count==3` → `"2"` (premium)
-- `_RECYCLED_COUNTRY_POOL.add(country_id.lower())` on `_banned_count >= 3`
+**Observed sequence** from debug log:
+1. +998994430713 → `PhoneNumberBannedError` → stuck=1, prefix recorded in SNSS
+2. +998776629240 → `SentCodeTypeApp + SendCodeUnavailable + next_type=None` → stuck=2
+3. +998994433847 → **L0 fires** on prefix from attempt 1 → stuck=3 → `_app_stuck_count < 3` is False → `sms_retry_prompt` + return ← **premature**
 
-**New flow with `_SNSS_MIN_COUNT=1`** (already in code since previous session):
-- Attempt 1: Telethon → pre-banned → records prefix (count→1), stuck=1 → continue
-- Attempt 2: **L0 fires** (count ≥ 1) → instant cancel, no Telethon, pool rotates to "0" → continue
-- Attempt 3: **L0 fires** → stuck=3 ≥ 3 → `sms_retry_prompt`
+**Fix** (`account_factory.py`, L0 SNSS block ~line 1832):
+- `_app_stuck_count == 3 → pricing_option "2"` changed to `_app_stuck_count == 4` (matches Step 3 rotation schedule)
+- `_app_stuck_count < 3` changed to `_app_stuck_count < 5` (consistent with Step 3 threshold)
+- Progress display updated: `#N/3` → `#N/5`
 
----
-
-### Fix 2 — Avatar pool: broken preview + duplicates
-
-**Root cause (broken image)**: Uploaded images were stored as 170-byte truncated JPEGs — just the JFIF header, no pixel data. Upload had no minimum-size validation.
-
-**Root cause (duplicates)**: Filename was `{timestamp}_{i}{ext}` — same file uploaded in two sessions gets two different timestamps → two DB rows. `INSERT OR IGNORE` deduplicates by filename, not content.
-
-**Fixes**:
-
-*Python `upload_avatars` endpoint (~line 3487 `account_factory.py`)*:
-1. **Minimum size guard**: reject files `< 2000 bytes` — logs a warning, skips the file, returns `skipped_too_small` count in response
-2. **Content-hash dedup**: `safe_name = sha256(content)[:20] + ext` — same bytes → same filename → `INSERT OR IGNORE` skips silently. No cross-session duplicates ever.
-
-*Frontend `AccountFactory.tsx` (AI mode avatar pool)*:
-1. Added `stagingFiles: File[]` + `stagingPreviews: string[]` states
-2. File input now populates staging (generates data-URL previews via FileReader) instead of immediately uploading
-3. Staging area shows thumbnails + "✓ Зберегти" + "Очистити" buttons
-4. If preview looks broken/wrong, user can clear before committing to server
-
-*DB cleanup*: Deleted 2 existing broken 170-byte entries from `avatar_pool` table.
+**Why L0 should be more lenient**: L0 costs ~0s (no Telethon startup, no SMS purchase — just a memory check). Step 3 costs ~25s + $1.46 per attempt. There's no reason to abort sooner at the cheaper detection layer.
 
 ---
 
 ## Workflow status
-- **Telegram Bot**: RUNNING — Python FastAPI 8083, both fixes live
-- **API Server** (port 8080): RUNNING
-- **Telegram Mini App** (port 5000): RUNNING — Vite HMR, staging preview UI active
+- **Telegram Bot**: RUNNING — Python FastAPI 8083, fix live
+- **Telegram Mini App** (port 5000): RUNNING — Vite HMR
+- `better-sqlite3` native binary: rebuilt for Node 20 (v115 ABI) — was stale at v137 ABI from a different Node build
 
 ## Architecture reminders
+- `_app_stuck_count`: unified bad-number counter; abort thresholds must match across all layers (L0/L1/Step3 all now use `< 5`)
 - Vite proxy: `/api/*` → Node.js 8080 → Python FastAPI 8083
 - `_SNSS_MIN_COUNT = 1` — in-memory, resets on Python restart, adjustable via `/api/factory/snss/config`
-- `_app_stuck_count` now unified: counts pre-banned + recycled + L0 hits (all "bad number" types)
-- Avatar pool is DB-only (`avatar_pool` table in campaigns.db) — no filesystem files, `_ensure_avatar_pool_table()` migrates any legacy filesystem files on first call
+- Avatar pool: DB-only (`avatar_pool` table), no filesystem files
 
 ## Key files
 | File | Role |
 |------|------|
-| `account_factory.py` | Pre-banned SNSS fix (~line 2123); avatar upload dedup+validation (~line 3487) |
-| `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx` | Staging preview UI (states ~line 1090, upload section ~line 4108) |
-| `artifacts/api-server/src/routes/factory.ts` | Node.js proxies for avatar-image/list/delete/upload |
-| `artifacts/telegram-miniapp/src/components/SnssPanel.tsx` | SNSS management UI |
-| `artifacts/telegram-miniapp/src/components/SessionHealthPanel.tsx` | Session health dashboard |
+| `account_factory.py` ~line 1827 | L0 abort threshold fix (pool rotation + `< 5` guard) |
 
 ## Known non-issues
 - mockup-sandbox: PolishComplete/RefinedDepth/GroupsV2/WorkersV3/VideoTemplate.tsx have corrupted JSX — pre-existing, don't fix.
-- Telegram Bot 409 conflicts on startup: normal for multi-instance starts, self-resolves.
-- `artifacts/api-server: API Server` artifact workflow FAILED — real API is the `API Server` bash-workflow. Safe to ignore.
+- Telegram Bot 409 conflicts on startup: normal for multi-instance starts, self-resolves in ~30s.
+- `artifacts/api-server: API Server` artifact workflow — not the main API; safe to ignore if it fails.

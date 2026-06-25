@@ -1827,12 +1827,12 @@ async def _registration_stream(
                 _app_stuck_count += 1
                 if _app_stuck_count == 2:
                     _pricing_option = "0"
-                elif _app_stuck_count == 3:
+                elif _app_stuck_count == 4:
                     _pricing_option = "2"
-                if _app_stuck_count < 3:
+                if _app_stuck_count < 5:
                     yield _sse("step", {"step": 3, "status": "error",
                                         "message": (
-                                            f"🚫 SNSS prefix-skip #{_app_stuck_count}/3 — "
+                                            f"🚫 SNSS prefix-skip #{_app_stuck_count}/5 — "
                                             "buying next number"
                                         )})
                     continue
