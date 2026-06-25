@@ -5,6 +5,7 @@ import {
   integer,
   timestamp,
   customType,
+  index,
 } from "drizzle-orm/pg-core";
 
 const bytea = customType<{ data: Buffer }>({
@@ -24,7 +25,9 @@ export const savedProxies = pgTable("saved_proxies", {
   lastSessionNum: integer("last_session_num").notNull().default(0),
   createdAt:      timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:      timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("idx_saved_proxies_country").on(t.countryCode),
+]);
 
 /**
  * SQLite snapshot — managed by db_sync.py
