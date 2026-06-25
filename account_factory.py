@@ -1771,21 +1771,17 @@ async def _registration_stream(
                 # Telegram often escalates App → SMS on resend for fresh numbers even
                 # when it uses App-first delivery as an anti-spam gate.
                 #
-                # SKIP when next_type=None: ResendCode asks Telegram to deliver via
-                # next_type.  If next_type is None there is no alternative delivery
-                # method and ResendCode will always return SendCodeUnavailable, which
-                # our catch block then (incorrectly) uses to flag the whole country
-                # pool as recycled.  Jump straight to Layer 2 (official creds check)
-                # instead — that path does its own fresh sendCode and isn't affected
-                # by the null next_type.
+                # Always attempt ResendCode regardless of next_type.
+                # next_type=None does NOT mean ResendCode is impossible — it just means
+                # Telegram didn't declare a fallback type up front.  ResendCode can
+                # still escalate to SentCodeTypeSms on fresh numbers (observed on UZ,
+                # KZ, IN carriers).  SendCodeUnavailableError (truly recycled) is
+                # handled correctly in the catch block below.
                 _resend_escalated = False
-                if _raw_next_type is None:
-                    yield _sse("step", {"step": 3, "status": "running",
-                                        "message": f"📲 {code_type_name} (next_type=None) — skipping ResendCode, trying official creds…"})
-                else:
-                    yield _sse("step", {"step": 3, "status": "running",
-                                        "message": f"📲 {code_type_name} — requesting SMS resend (ResendCode)…"})
-                if _raw_next_type is not None:
+                _next_type_label = "(next_type=None) " if _raw_next_type is None else ""
+                yield _sse("step", {"step": 3, "status": "running",
+                                    "message": f"📲 {code_type_name} {_next_type_label}— requesting SMS resend (ResendCode)…"})
+                if True:
                     try:
                         _rc_result = await client(ResendCodeRequest(
                             phone_number=phone,
@@ -1938,27 +1934,41 @@ async def _registration_stream(
                     else:
                         # All credential strategies exhausted — number is confirmed recycled.
                         # Official Telegram Desktop also returning SentCodeTypeApp is definitive
-                        # proof the number has an existing account. Stop immediately: further
-                        # purchases from the same country will waste balance on the same result.
+                        # proof the number has an existing account.
                         _app_stuck_count += 1
-                        yield _sse("step", {"step": 3, "status": "error",
-                                            "message": (
-                                                f"🚫 Recycled number confirmed — ResendCode + all official "
-                                                f"credentials returned {code_type_name}. "
-                                                "This country's pool has existing accounts. Switch country."
-                                            )})
                         await cancel_order()
                         await safe_disconnect()
-                        yield _sse("sms_retry_prompt", {
-                            "country_id": country_id,
-                            "message": (
-                                f"🚫 Number pool is recycled — SMSPool's {country_id} numbers already have "
-                                "Telegram accounts. ResendCode + official Telegram Desktop creds all returned "
-                                "SentCodeTypeApp. "
-                                + _suggest_alt_countries(country_id)
-                            ),
-                        })
-                        return
+
+                        if _app_stuck_count < 2:
+                            # First recycled number — could be a one-off bad number in the pool.
+                            # Cancel and retry with a fresh number before flagging the country.
+                            yield _sse("step", {"step": 3, "status": "error",
+                                                "message": (
+                                                    f"🚫 Recycled number (#{_app_stuck_count}) — ResendCode + all official "
+                                                    f"credentials returned {code_type_name}. "
+                                                    "Cancelling and retrying with new number…"
+                                                )})
+                            continue
+                        else:
+                            # 2+ consecutive recycled numbers — flag the pool and stop.
+                            # Buying more numbers from the same country will waste balance.
+                            _RECYCLED_COUNTRY_POOL.add(country_id.lower())
+                            yield _sse("step", {"step": 3, "status": "error",
+                                                "message": (
+                                                    f"🚫 Recycled pool confirmed ({_app_stuck_count} numbers) — "
+                                                    f"ResendCode + all official credentials returned {code_type_name}. "
+                                                    "This country's pool has existing accounts. Switch country."
+                                                )})
+                            yield _sse("sms_retry_prompt", {
+                                "country_id": country_id,
+                                "message": (
+                                    f"🚫 Number pool is recycled — SMSPool's {country_id} numbers already have "
+                                    f"Telegram accounts ({_app_stuck_count} confirmed). "
+                                    "ResendCode + official Telegram Desktop creds all returned SentCodeTypeApp. "
+                                    + _suggest_alt_countries(country_id)
+                                ),
+                            })
+                            return
 
             yield _sse("step", {"step": 3, "status": "done",
                                 "message": f"✅ Code sent via {code_type_name} — polling SMSPool..."})
