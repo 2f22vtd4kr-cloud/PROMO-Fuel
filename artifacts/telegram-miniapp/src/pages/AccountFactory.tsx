@@ -1066,6 +1066,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     reason: "timeout" | "recycled" | "low_rate";
     message: string;
   } | null>(null);
+  const [smsRetryMinimized, setSmsRetryMinimized] = useState(false);
   // Countries for which user chose "keep trying" — skip recycled popup next time
   const suppressRecycledRef = useRef<Set<string>>(new Set());
   // When user explicitly clicks "Keep Going" on recycled popup, force the backend
@@ -1945,6 +1946,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               if (isHardRecycled) {
                 suppressRecycledRef.current.delete(effectiveCountryKey);
               }
+              setSmsRetryMinimized(false);
               setSmsRetryPrompt({
                 reason:  isLowRate ? "low_rate" : isRecycled ? "recycled" : "timeout",
                 message: msg,
@@ -2085,6 +2087,39 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
         const isLowRate  = smsRetryPrompt.reason === "low_rate";
         const accentColor = isRecycled || isLowRate ? "rgba(255,200,50,0.45)" : "rgba(255,107,122,0.4)";
         const glowColor   = isRecycled || isLowRate ? "rgba(255,200,50,0.15)" : "rgba(255,107,122,0.2)";
+        const pillColor   = isRecycled || isLowRate ? "#ffc832" : "#ff6b7a";
+        const pillEmoji   = isRecycled ? "♻️" : isLowRate ? "📉" : "📵";
+        const pillLabel   = isRecycled
+          ? L("Recycled pool — tap to decide", "Перероблений пул — торкніться")
+          : isLowRate
+            ? L("Low rate — tap to decide", "Низький рейтинг — торкніться")
+            : L("SMS timeout — tap to decide", "Час SMS — торкніться");
+
+        if (smsRetryMinimized) {
+          return (
+            <div
+              onClick={() => setSmsRetryMinimized(false)}
+              style={{
+                position: "fixed", bottom: "calc(env(safe-area-inset-bottom,0px) + 72px)",
+                left: "50%", transform: "translateX(-50%)",
+                zIndex: 999, cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 8,
+                background: "rgba(12,15,26,0.96)",
+                border: `1px solid ${accentColor}`,
+                borderRadius: 50, padding: "10px 18px",
+                boxShadow: `0 0 24px ${glowColor}, 0 4px 20px rgba(0,0,0,0.6)`,
+                animation: "pf-pulse 2s ease-in-out infinite",
+              }}
+            >
+              <span style={{ fontSize: 18 }}>{pillEmoji}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: pillColor, whiteSpace: "nowrap" }}>
+                {pillLabel}
+              </span>
+              <span style={{ fontSize: 16, color: "rgba(255,255,255,0.5)" }}>↑</span>
+            </div>
+          );
+        }
+
         return (
           <div style={{
             position: "fixed", inset: 0, zIndex: 999,
@@ -2098,8 +2133,23 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               border: `1px solid ${accentColor}`,
               borderRadius: 22, padding: "28px 24px", maxWidth: 360, width: "100%",
               boxShadow: `0 0 56px ${glowColor}`,
-              flexShrink: 0,
+              flexShrink: 0, position: "relative",
             }}>
+              {/* Minimize button */}
+              <button
+                onClick={() => setSmsRetryMinimized(true)}
+                title={L("Minimize", "Згорнути")}
+                style={{
+                  position: "absolute", top: 14, right: 14,
+                  width: 32, height: 32, borderRadius: 50,
+                  background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)",
+                  color: "rgba(255,255,255,0.5)", fontSize: 18, lineHeight: "30px",
+                  textAlign: "center", cursor: "pointer", display: "flex",
+                  alignItems: "center", justifyContent: "center",
+                }}
+              >
+                <span style={{ display: "block", width: 14, height: 2, borderRadius: 2, background: "rgba(255,255,255,0.55)" }} />
+              </button>
               <div style={{ fontSize: 44, textAlign: "center", marginBottom: 14 }}>
                 {isRecycled ? "♻️" : isLowRate ? "📉" : "📵"}
               </div>
