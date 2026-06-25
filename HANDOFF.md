@@ -6,45 +6,45 @@ _Rewritten each session. Contains only current state — no history._
 
 ## What was done this session
 
-### Account Factory "all steps waiting" — Root cause found and fixed
+### Account Factory — All fixes + UX enhancements
 
-The factory SSE stream died silently before yielding a single event. Four compounding bugs:
+**Bug 1 — Python `UnboundLocalError` (primary root cause of "all steps waiting")**
+`force_country = False` inside `generate()` made it a local variable, crashing before a single SSE event was emitted. Fix: split into `generate()` + `_generate_inner()`; use `_force_country` local copy inside the inner generator.
 
-**Bug 1 — Python `UnboundLocalError` (primary root cause)**
-Inside `generate()` (the async generator passed to `StreamingResponse`), the line
-`force_country = False` appeared at the bottom of the while-loop body. Python's compile-time
-scoping treats ANY variable that is assigned anywhere in a function as local throughout that
-function. So the earlier `force_country=force_country` keyword-argument read (passed to
-`_registration_stream`) raised `UnboundLocalError` before a single SSE event was yielded.
-FastAPI had already sent `200 OK + Content-Type: text/event-stream`, so the client received
-an HTTP 200 with an empty body. Frontend stayed frozen in "running" state with all 8 steps
-at "waiting" because `runState` was set before the fetch and never cleared.
+**Bug 2 — Silent exception swallowing**
+`generate()` now wraps `_generate_inner()` in `try/except Exception` and yields an `error` SSE event so the user sees the message instead of a frozen screen.
 
-Fix: split `generate()` into two nested generators: a thin `generate()` that yields a
-keepalive and wraps the real work in try/except, and `_generate_inner()` that contains
-the actual batch loop. Inside `_generate_inner()`, renamed to `_force_country = force_country`
-at the top (local copy, safe to re-assign) and use `_force_country` everywhere, removing
-the scoping conflict entirely.
+**Bug 3 — No keepalive chunk**
+`generate()` yields `": keepalive\n\n"` as its first chunk before any network work, forcing CDN to flush headers immediately.
 
-**Bug 2 — Silent exception swallowing in the async generator**
-Any exception escaping the generator after headers were sent produced an empty body.
-Fix: `generate()` now wraps `_generate_inner()` in `try/except Exception` and yields an
-`error` SSE event with the exception message so the user sees what went wrong.
+**Bug 4 — Node.js proxy swallowing SSE chunks**
+Replaced `proxyRes.pipe(res)` with a manual `data` event handler that calls `res.write(chunk)` + `res.socket?.uncork()` after each chunk. `sock.setTimeout(0)` prevents idle-timeout on long registrations.
 
-**Bug 3 — No immediate keepalive chunk**
-Fix: `generate()` yields `": keepalive\n\n"` as its very first chunk (before doing any
-network work) to force Replit's CDN to transmit the response headers + first byte immediately.
+**Bug 5 — Frontend stuck in "running"**
+Added `receivedTerminal` bool. If the stream closes without a terminal event → shows `"⚠️ Поток закрито без відповіді від сервера"` and sets `runState("error")`.
 
-**Bug 4 — Node.js proxy using `pipe()` for SSE**
-`proxyRes.pipe(res)` relied on OS-level TCP coalescing. In Replit production CDN, small
-chunks could sit in the kernel buffer. Fix: replaced with a manual `data` event handler
-that calls `res.write(chunk)` then `res.socket?.uncork()` after each chunk, and sets
-`sock.setTimeout(0)` to prevent idle-timeout on long registrations.
+### Step timing display
+Each `StepRow` shows a live ticking badge (100ms interval, accent color) while running → frozen green/red badge with elapsed time when done/error. `StepState.startedAt`+`elapsedMs`; `updateStep` auto-stamps the transition.
 
-**Bug 5 — Frontend "frozen running" state**
-If the stream ended with no terminal event, `runState` was stuck at "running" forever.
-Fix: added `receivedTerminal` bool. After the reader loop exits, if still false, shows
-`"⚠️ Поток закрито без відповіді від сервера"` and sets `runState("error")`.
+### Session summary strip
+Stats Strip appears as soon as registration starts. Shows live total session time (1s tick, `sessionLiveMs`), `$X.XX витрачено` (SMSPool cost), and recycled-skip counts. Freezes in green/muted when done/error. `sessionStartedAt` ref stamped in `launch()`, `sessionElapsedMs` frozen in terminal event handlers.
+
+### Registration history log (current session)
+Collapsible `RegHistoryPanel` at the bottom of the Account Factory page. Persists up to 100 entries in `localStorage("pf_reg_history")`. Each entry stores: status (done/error), phone, country, duration, SMSPool cost, error message, timestamp.
+
+- Green dot → successful registration with phone number + country + time
+- Red dot → failed registration with truncated error message
+- Right side: frozen `fmtMs(durationMs)` + `$cost` (yellow, only when > 0)
+- "Clear" button removes all entries from state + localStorage
+- Collapse/expand chevron, "History N" header with count pill
+
+Implementation details:
+- `RegHistoryEntry` interface at top of file
+- `regHistory` state initialized from localStorage (lazy init)
+- `addToHistory` useCallback — prepends to state + syncs localStorage
+- `localCostAccumulated` local var in `launch()` tracks cost without stale closure (avoids reading React state mid-async)
+- `complete` event: saves `{ status:"done", phone, country: countryId, durationMs: completeElapsed, cost: localCostAccumulated }`
+- `error` event: saves `{ status:"error", errorMsg, country: countryId, durationMs: errorElapsed, cost: localCostAccumulated }`
 
 ---
 
@@ -52,26 +52,23 @@ Fix: added `receivedTerminal` bool. After the reader loop exits, if still false,
 
 - **Telegram Bot**: RUNNING (supervisor + workers + FastAPI on 8083)
 - **API Server**: RUNNING (Express on 8080, dist rebuilt)
-- **Telegram Mini App**: RUNNING on port 5000 (dist rebuilt)
+- **Telegram Mini App**: RUNNING on port 5000 (dist rebuilt — `index-CployFxM.js`)
 - **DB**: campaigns.db current
 
 ---
 
-### Step Timing Display + Session Summary Row
-
-**Step timing**: Each step shows a live ticking badge (100ms, accent color) while running → frozen green/red badge showing time taken when done/error. `StepState.startedAt`+`elapsedMs`; `updateStep` auto-stamps; `StepRow` has `useState`+`useEffect` interval.
-
-**Session summary strip**: The Session Stats Strip now appears as soon as registration starts (condition: `runState !== "idle" || ...`). Shows:
-- Live ticking session total (1s interval, `sessionLiveMs` state driven by `useEffect` on `runState`) in accent/green/muted color depending on outcome
-- `·` divider → `$0.18 spent` (SMSPool cost)
-- `·` divider → recycled skip counts (existing)
-`sessionStartedAt` ref stamped in `launch()`; `sessionElapsedMs` state frozen in `complete`/`batch_done`/`error` handlers; both cleared in `reset()`.
-
 ## Key file locations
 
-- `account_factory.py` — `generate()` + `_generate_inner()` at ~line 2419; `_force_country` fix at ~line 2451
-- `artifacts/api-server/src/app.ts` — SSE proxy manual write+uncork at ~line 149
-- `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx` — `StepRow` with timing at ~line 102; `updateStep` at ~line 1311; `receivedTerminal` guard at ~line 1380
+- `account_factory.py` — `generate()` + `_generate_inner()` fix; `_force_country` rename
+- `artifacts/api-server/src/app.ts` — SSE proxy manual write+uncork
+- `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx`:
+  - `RegHistoryEntry` interface (~line 62)
+  - `RegHistoryPanel` component (~line 205)
+  - `regHistory` state + `addToHistory` callback (~line 1479)
+  - `localCostAccumulated` in `launch()` (~line 1502)
+  - `complete` handler with `addToHistory` call (~line 1656)
+  - `error` handler with `addToHistory` call (~line 1718)
+  - `<RegHistoryPanel />` render at page bottom (~line 4492)
 
 ---
 

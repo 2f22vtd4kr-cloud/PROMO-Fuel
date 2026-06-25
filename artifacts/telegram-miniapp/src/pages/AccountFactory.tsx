@@ -1473,6 +1473,20 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     }));
   }, []);
 
+  const [regHistory, setRegHistory] = useState<RegHistoryEntry[]>(() => {
+    try { return JSON.parse(localStorage.getItem("pf_reg_history") ?? "[]") as RegHistoryEntry[]; }
+    catch { return []; }
+  });
+
+  const addToHistory = useCallback((entry: Omit<RegHistoryEntry, "id" | "ts">) => {
+    const newEntry: RegHistoryEntry = { ...entry, id: Date.now(), ts: Date.now() };
+    setRegHistory(prev => {
+      const next = [newEntry, ...prev].slice(0, 100);
+      try { localStorage.setItem("pf_reg_history", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
   const selectedCountryLabel = COUNTRIES.find(c => c.code === country)?.label ?? country;
 
   async function launch() {
@@ -1481,6 +1495,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
       setErrorMsg(L("Fill in all required fields.", "Заповніть усі обов'язкові поля."));
       return;
     }
+
+    let localCostAccumulated = 0;
 
     setRunState("running");
     setErrorMsg(null);
@@ -1630,12 +1646,15 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             // Accumulate SMSPool cost when a number is purchased
             if (p.step === 1 && p.status === "done" && typeof p.cost === "number" && p.cost > 0) {
               setTotalSpent(prev => prev + (p.cost as number));
+              localCostAccumulated += (p.cost as number);
             }
           } else if (event === "poll") {
             setPollMsg(p.message as string);
           } else if (event === "complete") {
             receivedTerminal = true;
-            setSessionElapsedMs(Date.now() - (sessionStartedAt.current ?? Date.now()));
+            const completeElapsed = Date.now() - (sessionStartedAt.current ?? Date.now());
+            setSessionElapsedMs(completeElapsed);
+            addToHistory({ status: "done", phone: p.phone as string, country: countryId, durationMs: completeElapsed, cost: localCostAccumulated });
             setDonePhones(prev => [...prev, p.phone as string]);
             if (quantity === 1) {
               setRunState("done");
@@ -1695,7 +1714,9 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             }
           } else if (event === "error") {
             receivedTerminal = true;
-            setSessionElapsedMs(Date.now() - (sessionStartedAt.current ?? Date.now()));
+            const errorElapsed = Date.now() - (sessionStartedAt.current ?? Date.now());
+            setSessionElapsedMs(errorElapsed);
+            addToHistory({ status: "error", errorMsg: p.message as string, country: countryId, durationMs: errorElapsed, cost: localCostAccumulated });
             setErrorMsg(p.message as string);
             if (quantity === 1) {
               setRunState("error");
@@ -4464,6 +4485,16 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             </div>
           </>
         )}
+
+      {/* ── Registration history ── */}
+      <RegHistoryPanel
+        history={regHistory}
+        lang={lang}
+        onClear={() => {
+          setRegHistory([]);
+          try { localStorage.removeItem("pf_reg_history"); } catch {}
+        }}
+      />
       </div>
     </div>
   );
