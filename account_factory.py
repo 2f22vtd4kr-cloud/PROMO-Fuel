@@ -1308,6 +1308,13 @@ async def _registration_stream(
         # from the proxy URL itself (country-uz → "uz") so the comparison is
         # always ISO-vs-ISO.  If we can't determine a target cc, we still run
         # the geo lookup but mark it as informational only (match=True).
+        # Store the confirmed residential exit IP so Layer 2 can compare —
+        # if Decodo has only one UZ residential node, all session numbers will
+        # share the same exit IP.  In that case the session rotation is cosmetic
+        # and Telegram sees both the primary request and the Layer 2 request as
+        # coming from the same IP, which doesn't give us an independent verdict.
+        _primary_exit_ip: str | None = async_ip or exit_ip
+
         _geo_ip = async_ip or exit_ip
         if _geo_ip and proxy_string:
             _raw_cc = country_id.strip()
@@ -1434,7 +1441,9 @@ async def _registration_stream(
         # ─── Steps 1–4 retry loop ─────────────────────────────────────────
         # If a purchased number fails (SentCodeTypeApp / SMS timeout), automatically
         # cancel it, buy a fresh number and retry — up to MAX_NUM_RETRIES times.
-        MAX_NUM_RETRIES = 5
+        # 20 retries: at a 90% recycled rate this gives ~87% chance of finding
+        # at least one fresh number; at 95% recycled rate ~64%.
+        MAX_NUM_RETRIES = 20
         code: str | None = None
         raw_num: str = ""
         _app_stuck_count    = 0
@@ -1879,6 +1888,7 @@ async def _registration_stream(
                         c for c in _OFFICIAL_CLIENT_CREDS if c[0] != _actual_api_id
                     ] or _OFFICIAL_CLIENT_CREDS  # fallback: include all if somehow all match
                     _switched_to_official = False
+                    _l2_same_ip = False   # set True if Layer 2 exit IP = primary exit IP
                     for _off_api_id, _off_api_hash, _off_dev, _off_sys, _off_app in _off_creds_filtered:
                         await safe_disconnect()
                         # Wait for the proxy to close the previous SOCKS5 tunnel before
@@ -1898,6 +1908,28 @@ async def _registration_stream(
                             if _off_sn:
                                 yield _sse("debug", {"message": f"🔄 Layer 2 proxy → session-{_off_sn} (fresh exit node for official creds check)"})
                         _off_proxy_tuple = _parse_proxy(_off_proxy_string) if _off_proxy_string else None
+
+                        # ── Check Layer 2 exit IP ──────────────────────────────────────
+                        # If Decodo has only 1 UZ residential node, ALL session numbers
+                        # resolve to the same exit IP.  Telegram then sees both the
+                        # primary request and Layer 2 as the same "client" — if that IP
+                        # is flagged for automation, EVERY number gets SentCodeTypeApp
+                        # regardless of whether it's fresh.  Log a clear warning so the
+                        # operator can distinguish IP-flagging from pool recycling.
+                        _l2_same_ip = False
+                        if _off_proxy_string:
+                            _l2_exit_ip, _, _ = await _get_asyncio_exit_ip(_off_proxy_string, timeout=8.0)
+                            if _l2_exit_ip and _primary_exit_ip and _l2_exit_ip == _primary_exit_ip:
+                                _l2_same_ip = True
+                                yield _sse("debug", {"message": (
+                                    f"⚠️ Layer 2 exit IP = primary exit IP ({_l2_exit_ip}) — "
+                                    "Decodo has only 1 UZ residential node; session rotation is ineffective. "
+                                    "If ALL numbers fail, the issue may be this IP flagged by Telegram, "
+                                    "not the numbers being recycled. Try a different proxy provider."
+                                )})
+                            elif _l2_exit_ip:
+                                yield _sse("debug", {"message": f"✅ Layer 2 exit IP: {_l2_exit_ip} (different from primary {_primary_exit_ip}) — independent verdict"})
+
                         # Wipe ALL session artefacts before new client (same path reused)
                         for _ext in (".session", ".session-journal", ".session-wal", ".session-shm"):
                             try:
@@ -1940,6 +1972,11 @@ async def _registration_stream(
                                 if client.is_connected():
                                     await client.disconnect()
                                 await client.connect()
+                                # Human-like pause — a real device takes 1-3s to
+                                # open the app and navigate to the phone-entry screen.
+                                # Sending auth.sendCode immediately after connect()
+                                # is a bot fingerprint even with official api_ids.
+                                await asyncio.sleep(random.uniform(1.2, 3.0))
                                 _off_result = await client(RawSendCodeRequest(
                                     phone_number=phone,
                                     api_id=_off_api_id,
@@ -2002,25 +2039,35 @@ async def _registration_stream(
                         await cancel_order()
                         await safe_disconnect()
 
-                        if _app_stuck_count < 2:
-                            # First recycled number — could be a one-off bad number in the pool.
-                            # Cancel and retry with a fresh number before flagging the country.
+                        # Retry up to 5 consecutive recycled numbers before halting.
+                        # With a 90% recycled SMSPool pool, 5 retries gives ~41%
+                        # chance of finding a fresh number in those 5 attempts.
+                        # With a 95% recycled pool, 5 retries → 23% chance.
+                        # Raise the threshold instead of halting after 2 to avoid
+                        # false-positive "switch country" verdicts on high-recycled
+                        # but not 100%-recycled pools.
+                        if _app_stuck_count < 5:
                             yield _sse("step", {"step": 3, "status": "error",
                                                 "message": (
-                                                    f"🚫 Recycled number (#{_app_stuck_count}) — ResendCode + all official "
+                                                    f"🚫 Recycled number (#{_app_stuck_count}/5) — ResendCode + all official "
                                                     f"credentials returned {code_type_name}. "
-                                                    "Cancelling and retrying with new number…"
+                                                    f"Retrying with new number ({_app_stuck_count}/{MAX_NUM_RETRIES} budget used)…"
                                                 )})
                             continue
                         else:
-                            # 2+ consecutive recycled numbers — flag the pool and stop.
-                            # Buying more numbers from the same country will waste balance.
+                            # 5+ consecutive recycled numbers — flag the pool and stop.
                             _RECYCLED_COUNTRY_POOL.add(country_id.lower())
+                            # Detect same-exit-IP scenario and tailor the message
+                            _ip_flag_hint = (
+                                " Note: Layer 2 exit IP matched primary — your proxy IP may be flagged "
+                                "by Telegram for automation. Try a different proxy provider before switching country."
+                            ) if _l2_same_ip else ""
                             yield _sse("step", {"step": 3, "status": "error",
                                                 "message": (
                                                     f"🚫 Recycled pool confirmed ({_app_stuck_count} numbers) — "
                                                     f"ResendCode + all official credentials returned {code_type_name}. "
                                                     "This country's pool has existing accounts. Switch country."
+                                                    + _ip_flag_hint
                                                 )})
                             yield _sse("sms_retry_prompt", {
                                 "country_id": country_id,
