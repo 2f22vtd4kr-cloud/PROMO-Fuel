@@ -3483,8 +3483,13 @@ async def get_avatar_counts():
 
 @factory_router.post("/upload-avatars")
 async def upload_avatars(request: Request):
-    """Save base64-encoded images into the avatar_pool table in campaigns.db."""
+    """Save base64-encoded images into the avatar_pool table in campaigns.db.
+
+    Deduplicates by content-hash — uploading the same bytes twice is a no-op.
+    Rejects images smaller than 2 KB (truncated/corrupt uploads from Telegram WebView).
+    """
     import base64 as _b64
+    import hashlib as _hashlib
     try:
         body = await request.json()
     except Exception:
@@ -3496,8 +3501,9 @@ async def upload_avatars(request: Request):
 
     _ensure_avatar_pool_table()
     saved = 0
+    skipped_too_small = 0
     async with aiosqlite.connect(DB_PATH) as conn:
-        for i, file_item in enumerate(body.get("files", [])):
+        for file_item in body.get("files", []):
             name = str(file_item.get("name", "file.jpg"))
             data_b64 = str(file_item.get("data", ""))
             ext = os.path.splitext(name)[1].lower()
@@ -3507,7 +3513,20 @@ async def upload_avatars(request: Request):
                 content = _b64.b64decode(data_b64)
             except Exception:
                 continue
-            safe_name = f"{int(time.time() * 1000)}_{i}{ext}"
+            # Reject truncated / corrupt uploads.
+            # A real photo is always ≥ 2 KB; anything smaller is a broken JPEG
+            # header, a Telegram WebView thumbnail artifact, or a corrupt transfer.
+            if len(content) < 2000:
+                skipped_too_small += 1
+                logger.warning(
+                    "[AvatarPool] Rejected upload '%s': only %d bytes (need ≥ 2KB)",
+                    name, len(content),
+                )
+                continue
+            # Content-hash dedup: same bytes → same filename → INSERT OR IGNORE skips.
+            # This prevents duplicates across sessions without needing a separate hash column.
+            content_hash = _hashlib.sha256(content).hexdigest()[:20]
+            safe_name = f"{content_hash}{ext}"
             try:
                 await conn.execute(
                     "INSERT OR IGNORE INTO avatar_pool(gender, filename, data, ext) VALUES (?,?,?,?)",
@@ -3520,7 +3539,12 @@ async def upload_avatars(request: Request):
         await conn.execute("PRAGMA wal_checkpoint(FULL)")
         counts = await _avatar_db_counts_async(conn)
 
-    return JSONResponse({"saved": saved, "gender": gender_val, "counts": counts})
+    return JSONResponse({
+        "saved": saved,
+        "skipped_too_small": skipped_too_small,
+        "gender": gender_val,
+        "counts": counts,
+    })
 
 
 @factory_router.get("/avatar-list")

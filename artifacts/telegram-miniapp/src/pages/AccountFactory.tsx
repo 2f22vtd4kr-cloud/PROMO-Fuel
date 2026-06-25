@@ -1084,6 +1084,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [avatarFiles,        setAvatarFiles]        = useState<string[]>([]);
   const [showAvatarBrowser,  setShowAvatarBrowser]  = useState(false);
   const [deletingAvatar,     setDeletingAvatar]     = useState<string | null>(null);
+  const [stagingFiles,       setStagingFiles]       = useState<File[]>([]);
+  const [stagingPreviews,    setStagingPreviews]    = useState<string[]>([]);
   const [profFirstName,      setProfFirstName]      = useState("");
   const [profLastName,       setProfLastName]       = useState("");
   const [profBio,            setProfBio]            = useState("");
@@ -4101,30 +4103,97 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     </div>
 
                     {showAvatarUpload && (
-                      <label style={{
-                        display: "flex", alignItems: "center", gap: 8,
-                        background: "rgba(255,255,255,0.03)",
-                        border: "1.5px dashed rgba(96,165,250,0.3)",
-                        borderRadius: 9, padding: "8px 12px", cursor: "pointer",
-                        fontSize: 11, color: isUploadingAvatars ? "#60a5fa" : "rgba(255,255,255,0.4)",
-                        marginBottom: 6,
-                      }}>
-                        <span style={{ fontSize: 16 }}>{isUploadingAvatars ? "⏳" : "+"}</span>
-                        {isUploadingAvatars
-                          ? L("Uploading…", "Завантаження…")
-                          : L("Select photos to add…", "Обрати фото…")}
-                        <input
-                          type="file" accept="image/*" multiple style={{ display: "none" }}
-                          disabled={isUploadingAvatars}
-                          onChange={async e => {
-                            const files = Array.from(e.target.files ?? []);
-                            if (!files.length) return;
-                            e.target.value = "";
-                            await uploadAvatars(files);
-                            setShowAvatarUpload(false);
-                          }}
-                        />
-                      </label>
+                      <div style={{ marginBottom: 6 }}>
+                        {/* Staging area — previews before server commit */}
+                        {stagingPreviews.length > 0 && (
+                          <div style={{
+                            background: "rgba(96,165,250,0.06)",
+                            border: "1px solid rgba(96,165,250,0.25)",
+                            borderRadius: 9, padding: "8px 8px 6px", marginBottom: 6,
+                          }}>
+                            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 6 }}>
+                              {L("Preview — looks correct?", "Перегляд — виглядає правильно?")}
+                            </div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                              {stagingPreviews.map((src, i) => (
+                                <div key={i} style={{ position: "relative" }}>
+                                  <img src={src} alt="" style={{
+                                    width: 56, height: 56, borderRadius: 8, objectFit: "cover",
+                                    border: "1.5px solid rgba(96,165,250,0.5)",
+                                    background: "rgba(0,0,0,0.3)",
+                                  }} />
+                                  <button onClick={() => {
+                                    setStagingFiles(prev => prev.filter((_, j) => j !== i));
+                                    setStagingPreviews(prev => prev.filter((_, j) => j !== i));
+                                  }} style={{
+                                    position: "absolute", top: -4, right: -4,
+                                    width: 15, height: 15, borderRadius: "50%",
+                                    background: "rgba(239,68,68,0.9)", border: "none",
+                                    cursor: "pointer", fontSize: 7, color: "#fff",
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                  }}>✕</button>
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <button
+                                disabled={isUploadingAvatars}
+                                onClick={async () => {
+                                  if (!stagingFiles.length) return;
+                                  await uploadAvatars(stagingFiles);
+                                  setStagingFiles([]);
+                                  setStagingPreviews([]);
+                                  setShowAvatarUpload(false);
+                                }}
+                                style={{
+                                  flex: 1, padding: "6px 10px", borderRadius: 7, border: "none",
+                                  background: isUploadingAvatars ? "rgba(96,165,250,0.3)" : "rgba(96,165,250,0.8)",
+                                  color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer",
+                                }}>
+                                {isUploadingAvatars ? "⏳ " + L("Uploading…", "Завантаження…") : "✓ " + L("Upload", "Зберегти")}
+                              </button>
+                              <button
+                                onClick={() => { setStagingFiles([]); setStagingPreviews([]); }}
+                                style={{
+                                  padding: "6px 10px", borderRadius: 7, border: "none",
+                                  background: "rgba(255,255,255,0.07)",
+                                  color: "rgba(255,255,255,0.5)", fontSize: 11, cursor: "pointer",
+                                }}>
+                                {L("Clear", "Очистити")}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {/* File picker */}
+                        <label style={{
+                          display: "flex", alignItems: "center", gap: 8,
+                          background: "rgba(255,255,255,0.03)",
+                          border: "1.5px dashed rgba(96,165,250,0.3)",
+                          borderRadius: 9, padding: "8px 12px", cursor: "pointer",
+                          fontSize: 11, color: "rgba(255,255,255,0.4)",
+                        }}>
+                          <span style={{ fontSize: 16 }}>+</span>
+                          {L("Select photos…", "Обрати фото…")}
+                          <input
+                            type="file" accept="image/*" multiple style={{ display: "none" }}
+                            disabled={isUploadingAvatars}
+                            onChange={e => {
+                              const files = Array.from(e.target.files ?? []);
+                              if (!files.length) return;
+                              e.target.value = "";
+                              void Promise.all(files.map(f => new Promise<string>(resolve => {
+                                const reader = new FileReader();
+                                reader.onload = ev => resolve(ev.target?.result as string ?? "");
+                                reader.onerror = () => resolve("");
+                                reader.readAsDataURL(f);
+                              }))).then(previews => {
+                                setStagingFiles(prev => [...prev, ...files]);
+                                setStagingPreviews(prev => [...prev, ...previews.filter(Boolean)]);
+                              });
+                            }}
+                          />
+                        </label>
+                      </div>
                     )}
 
                     {showAvatarBrowser && (
