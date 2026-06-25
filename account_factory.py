@@ -78,7 +78,7 @@ _RECYCLED_PREFIX_MEM: dict[str, int] = {}
 # ── SNSS: Configurable blacklist threshold ────────────────────────────────────
 # Minimum recycled-hit count before a prefix is blocked. Adjustable at runtime
 # via POST /api/factory/snss/config — no restart required.
-_SNSS_MIN_COUNT: int = 1
+_SNSS_MIN_COUNT: int = 2
 
 # Phone prefix length stored in the blacklist (including the leading +).
 # 9 chars captures the carrier batch: e.g. "+99870704" for UZ SMSPool batches.
@@ -1884,18 +1884,20 @@ async def _registration_stream(
             # cancel and retry immediately (saves ~25s per detection).
             _pbl_hit, _pbl_count, _pbl_prefix = _check_prefix_blacklist(phone, country_id)
             if _pbl_hit:
-                yield _sse("step", {"step": 1, "status": "running",
+                yield _sse("step", {"step": 1, "status": "error",
                                     "message": (
                                         f"🔴 SNSS-L0: prefix '{_pbl_prefix}…' blacklisted "
                                         f"({_pbl_count}× recycled) — "
                                         "cancelling before Telethon handshake"
                                     )})
-                _record_recycled_prefix(phone, country_id, _pricing_option)
+                # Do NOT call _record_recycled_prefix here — the prefix is
+                # already confirmed-bad; re-recording inflates the count on
+                # every L0-fire and poisons the cache unnecessarily.
                 _recycled_phones_this_session.append(phone)
                 await cancel_order()
                 _app_stuck_count += 1
                 if _app_stuck_count < 3:
-                    yield _sse("step", {"step": 3, "status": "error",
+                    yield _sse("step", {"step": 1, "status": "error",
                                         "message": (
                                             f"🚫 SNSS prefix-skip #{_app_stuck_count}/3 — "
                                             "buying next number"
@@ -1930,7 +1932,7 @@ async def _registration_stream(
                 await cancel_order()
                 _app_stuck_count += 1
                 if _app_stuck_count < 5:
-                    yield _sse("step", {"step": 3, "status": "error",
+                    yield _sse("step", {"step": 1, "status": "error",
                                         "message": (
                                             f"🚫 SNSS contact-hit #{_app_stuck_count}/5 — "
                                             "buying next number"
@@ -2616,6 +2618,14 @@ async def _registration_stream(
             # ─── Step 4 — Poll for SMS code ──────────────────────────────
             yield _sse("step", {"step": 4, "status": "running",
                                 "message": "💬 Waiting for Telegram SMS verification code (Timeout in 120s)..."})
+
+            # CRITICAL: must be initialised here (inside the per-number retry
+            # loop) so every fresh number attempt starts with code=None.
+            # Without this, `if code:` at the end of the while-loop raises
+            # NameError when /request/active returns a list that doesn't
+            # contain our order — the except-block catches it and
+            # silently skips /sms/check, so codes are NEVER found.
+            code: str | None = None
 
             _deadline    = time.time() + 120
 
