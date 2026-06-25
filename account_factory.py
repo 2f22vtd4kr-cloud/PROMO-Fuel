@@ -1297,22 +1297,41 @@ async def _registration_stream(
         # Use the confirmed residential IP (prefer asyncio path, fall back to
         # requests path) and look up its country via ip-api.com.  A mismatch
         # means the proxy provider doesn't have a residential node for the
-        # target country even after the country-rewrite — warn clearly so the
-        # operator can choose a different proxy pool, but don't block (the
-        # operator may intentionally use a neighboring country or know better).
+        # target country — warn clearly so the operator can choose a different
+        # proxy pool, but don't block (the operator may intentionally use a
+        # neighboring country or know better).
+        #
+        # IMPORTANT: SMSPool's country_id is their own internal numeric ID
+        # (e.g. "44" = Uzbekistan in SMSPool's numbering — NOT the UK dialing
+        # code). A numeric country_id cannot be compared to an ISO alpha-2
+        # country code from ip-api.  In that case we extract the target country
+        # from the proxy URL itself (country-uz → "uz") so the comparison is
+        # always ISO-vs-ISO.  If we can't determine a target cc, we still run
+        # the geo lookup but mark it as informational only (match=True).
         _geo_ip = async_ip or exit_ip
         if _geo_ip and proxy_string:
+            _raw_cc = country_id.strip()
+            if _raw_cc.isdigit():
+                # Numeric SMSPool ID — extract target from proxy URL
+                _proxy_cc_m = _re.search(r"country-([a-z]{2})", proxy_string, _re.IGNORECASE)
+                _geo_target_cc = _proxy_cc_m.group(1).upper() if _proxy_cc_m else ""
+            else:
+                _geo_target_cc = _raw_cc.upper()
             yield _sse("geo_check", {
                 "status":         "running",
-                "target_cc":      country_id.upper(),
+                "target_cc":      _geo_target_cc or country_id.upper(),
                 "exit_ip":        _geo_ip,
             })
-            _geo = await _proxy_geo_check(_geo_ip, country_id)
+            _geo = await _proxy_geo_check(_geo_ip, _geo_target_cc if _geo_target_cc else "XX")
+            # If we had no target (numeric ID + no country-XX in proxy), treat
+            # as informational: always show info, never flag as mismatch.
+            if not _geo_target_cc:
+                _geo["match"] = True
             if _geo["error"]:
                 yield _sse("geo_check", {
                     "status":         "error",
                     "exit_ip":        _geo_ip,
-                    "target_cc":      country_id.upper(),
+                    "target_cc":      _geo_target_cc or country_id.upper(),
                     "detected_cc":    "",
                     "detected_country": "",
                     "org":            "",
@@ -1322,10 +1341,11 @@ async def _registration_stream(
                 })
             else:
                 _geo_status = "ok" if _geo["match"] else "mismatch"
+                _display_target = _geo_target_cc or country_id.upper()
                 yield _sse("geo_check", {
                     "status":           _geo_status,
                     "exit_ip":          _geo_ip,
-                    "target_cc":        country_id.upper(),
+                    "target_cc":        _display_target,
                     "detected_cc":      _geo["detected_cc"],
                     "detected_country": _geo["detected_country"],
                     "org":              _geo["org"],
@@ -1335,7 +1355,7 @@ async def _registration_stream(
                         f"✅ Exit IP in {_geo['detected_country']} — matches target"
                         if _geo["match"] else
                         f"⚠️ Exit IP is in {_geo['detected_country']} ({_geo['detected_cc']}), "
-                        f"not {country_id.upper()} — provider may lack coverage for this country"
+                        f"not {_display_target} — provider may lack coverage for this country"
                     ),
                 })
 

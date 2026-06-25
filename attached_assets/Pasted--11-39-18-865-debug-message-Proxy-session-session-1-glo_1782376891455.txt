@@ -1,0 +1,27 @@
+[11:39:18.865] debug: {"message":"🔄 Proxy session → session-1 (global slot #1)"}
+[11:39:18.868] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[11:39:19.588] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[11:39:21.218] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:10000 · 🌍 Exit IP: 84.54.80.56","exit_ip":"84.54.80.56","is_datacenter":false}
+[11:39:21.231] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
+[11:39:22.097] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:10000 · 🌍 Exit IP: 84.54.80.56 · 🔗 Telethon-path IP: 84.54.80.56","exit_ip":"84.54.80.56","is_datacenter":false,"async_exit_ip":"84.54.80.56"}
+[11:39:22.103] geo_check: {"status":"running","target_cc":"44","exit_ip":"84.54.80.56"}
+[11:39:22.103] geo_check: {"status":"mismatch","exit_ip":"84.54.80.56","target_cc":"44","detected_cc":"UZ","detected_country":"Uzbekistan","org":"","match":false,"latency_ms":26,"message":"⚠️ Exit IP is in Uzbekistan (UZ), not 44 — provider may lack coverage for this country"}
+[11:39:22.103] preflight: {"status":"running","message":"📊 Checking 44 SMS success rate on SMSPool…"}
+[11:39:22.173] preflight: {"status":"done","message":"📊 44 success rate: N/A — proceeding"}
+[11:39:22.177] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool..."}
+[11:39:23.499] step: {"step":1,"status":"done","message":"📱 Number Acquired: +998701902112","cost":1.46}
+[11:39:23.515] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[11:39:23.515] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2040,\n    \"platform\": \"desktop\",\n    \"device_model\": \"PC 64bit\",\n    \"system_version\": \"Windows 11\",\n    \"app_version\": \"5.8.1\",\n    \"lang_code\": \"en\",\n    \"system_lang_code\": \"en-US\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-1-country-uz:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[11:39:27.617] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:10000"}
+[11:39:27.618] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[11:39:30.770] debug: {"message":"{\n  \"📨 SEND_CODE_RESPONSE\": {\n    \"type\": \"SentCodeTypeApp\",\n    \"phone_code_hash\": \"a57e75f5…\",\n    \"timeout\": null,\n    \"next_type\": null,\n    \"via\": \"RawSendCodeRequest\"\n  }\n}"}
+[11:39:30.771] step: {"step":3,"status":"running","message":"📲 SentCodeTypeApp (next_type=None) — skipping ResendCode, trying official creds…"}
+[11:39:37.493] step: {"step":3,"status":"running","message":"🔴 Official creds (api_id=2040) also got SentCodeTypeApp — number is recycled"}
+[11:39:44.659] step: {"step":3,"status":"running","message":"🔴 Official creds (api_id=2496) also got SentCodeTypeApp — number is recycled"}
+[11:39:44.660] step: {"step":3,"status":"error","message":"🚫 Recycled number confirmed — ResendCode + all official credentials returned SentCodeTypeApp. This country's pool has existing accounts. Switch country."}
+[11:39:44.866] sms_retry_prompt: {"country_id":"44","message":"🚫 Number pool is recycled — SMSPool's 44 numbers already have Telegram accounts. ResendCode + official Telegram Desktop creds all returned SentCodeTypeApp. Switch to: Ukraine (UA), Philippines (PH), Georgia (GE), Bangladesh (BD), Kazakhstan (KZ), India (IN)."}
+[11:39:47.265] debug: {"message":"🔄 Proxy session → session-2 (global slot #2)"}
+[11:39:47.265] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[11:39:47.974] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[11:39:49.365] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:10000 · 🌍 Exit IP: 213.230.76.206","exit_ip":"213.230.76.206","is_datacenter":false}
+[11:39:49.365] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
