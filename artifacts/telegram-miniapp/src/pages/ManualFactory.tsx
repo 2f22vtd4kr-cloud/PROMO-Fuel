@@ -410,7 +410,7 @@ function Slide8({ lang }: SL) {
           <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:3, flexShrink:0 }}>
             <div style={{ background:`${c.color}18`, border:`1px solid ${c.color}44`, borderRadius:6,
               padding:"2px 7px", fontSize:11, color:c.color, fontWeight:700 }}>{c.fresh}%</div>
-            <div style={{ fontSize:9, color:"rgba(255,255,255,0.28)" }}>≈{c.avg} {L("att.","спроб")}</div>
+            <div style={{ fontSize:9, color:"rgba(255,255,255,0.28)" }}>≈{c.avg} {L(lang, "att.","спроб")}</div>
           </div>
         </div>
       ))}

@@ -60011,7 +60011,7 @@ app.use("/api/factory", makePythonProxy("/api/factory"));
 if (API_SECRET) {
   app.use("/api", (req, res, next) => {
     const p = req.path;
-    if (p === "/auth" || p.startsWith("/twa") || p === "/health" || p.startsWith("/proxy-store")) return next();
+    if (p === "/auth" || p.startsWith("/twa") || p === "/health" || p.startsWith("/proxy-store") || p.includes("/avatar-image/")) return next();
     const auth = req.headers.authorization ?? "";
     if (auth !== `Bearer ${API_SECRET}`) {
       return void res.status(401).json({ error: "Unauthorized" });

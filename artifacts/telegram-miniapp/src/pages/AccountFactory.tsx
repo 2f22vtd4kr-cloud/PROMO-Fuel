@@ -1087,6 +1087,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [deletingAvatar,     setDeletingAvatar]     = useState<string | null>(null);
   const [stagingFiles,       setStagingFiles]       = useState<File[]>([]);
   const [stagingPreviews,    setStagingPreviews]    = useState<string[]>([]);
+  const [uploadGender,       setUploadGender]       = useState<"male" | "female">("male");
   const [profFirstName,      setProfFirstName]      = useState("");
   const [profLastName,       setProfLastName]       = useState("");
   const [profBio,            setProfBio]            = useState("");
@@ -1183,7 +1184,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void fetchStock(); }, []);
 
-  const uploadAvatars = useCallback(async (files: File[]) => {
+  const uploadAvatars = useCallback(async (files: File[], gender: "male" | "female") => {
     setIsUploadingAvatars(true);
     try {
       const b64Files = await Promise.all(files.map(f =>
@@ -1201,7 +1202,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
       const r = await fetch("/api/factory/upload-avatars", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ gender: "male", files: b64Files }),
+        body: JSON.stringify({ gender, files: b64Files }),
       });
       if (r.ok) {
         const data = await r.json() as { saved?: number; counts?: { male?: number; female?: number } };
@@ -4141,7 +4142,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                                 disabled={isUploadingAvatars}
                                 onClick={async () => {
                                   if (!stagingFiles.length) return;
-                                  await uploadAvatars(stagingFiles);
+                                  await uploadAvatars(stagingFiles, uploadGender);
                                   setStagingFiles([]);
                                   setStagingPreviews([]);
                                   setShowAvatarUpload(false);
@@ -4165,16 +4166,42 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                             </div>
                           </div>
                         )}
+                        {/* Gender toggle for upload */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                            {L("Gender:", "Стать:")}
+                          </span>
+                          {(["male", "female"] as const).map(g => (
+                            <button key={g} onClick={() => setUploadGender(g)} style={{
+                              padding: "3px 10px", borderRadius: 6, fontSize: 10, fontWeight: 700,
+                              cursor: "pointer", border: "1px solid",
+                              background: uploadGender === g
+                                ? (g === "male" ? "rgba(96,165,250,0.22)" : "rgba(244,114,182,0.22)")
+                                : "rgba(255,255,255,0.04)",
+                              borderColor: uploadGender === g
+                                ? (g === "male" ? "#60a5fa99" : "#f472b699")
+                                : "rgba(255,255,255,0.1)",
+                              color: uploadGender === g
+                                ? (g === "male" ? "#93c5fd" : "#f9a8d4")
+                                : "rgba(255,255,255,0.3)",
+                            }}>
+                              {g === "male" ? `♂ ${L("Male", "Чоловіч.")}` : `♀ ${L("Female", "Жіноч.")}`}
+                            </button>
+                          ))}
+                        </div>
+
                         {/* File picker */}
                         <label style={{
                           display: "flex", alignItems: "center", gap: 8,
                           background: "rgba(255,255,255,0.03)",
-                          border: "1.5px dashed rgba(96,165,250,0.3)",
+                          border: `1.5px dashed ${uploadGender === "male" ? "rgba(96,165,250,0.35)" : "rgba(244,114,182,0.35)"}`,
                           borderRadius: 9, padding: "8px 12px", cursor: "pointer",
                           fontSize: 11, color: "rgba(255,255,255,0.4)",
                         }}>
                           <span style={{ fontSize: 16 }}>+</span>
-                          {L("Select photos…", "Обрати фото…")}
+                          {uploadGender === "male"
+                            ? `♂ ${L("Select male photos…", "Обрати фото (♂)…")}`
+                            : `♀ ${L("Select female photos…", "Обрати фото (♀)…")}`}
                           <input
                             type="file" accept="image/*" multiple style={{ display: "none" }}
                             disabled={isUploadingAvatars}
@@ -4202,48 +4229,71 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                         background: "rgba(255,255,255,0.03)",
                         border: "1px solid rgba(96,165,250,0.2)",
                         borderRadius: 9, padding: 8, marginBottom: 4,
+                        display: "flex", flexDirection: "column", gap: 10,
                       }}>
                         {avatarFiles.length === 0 ? (
                           <div style={{ fontSize: 10, color: "rgba(255,255,255,0.28)", textAlign: "center", padding: "8px 0" }}>
                             {L("Loading…", "Завантаження…")}
                           </div>
                         ) : (
-                          <div style={{
-                            display: "grid",
-                            gridTemplateColumns: "repeat(auto-fill, minmax(60px, 1fr))",
-                            gap: 6,
-                          }}>
-                            {avatarFiles.map(prefixed => {
-                              const sep = prefixed.indexOf(":");
-                              const g = sep > -1 ? prefixed.slice(0, sep) : "male";
-                              const fname = sep > -1 ? prefixed.slice(sep + 1) : prefixed;
+                          <>
+                            {(["male", "female"] as const).map(g => {
+                              const gFiles = avatarFiles.filter(p => p.startsWith(`${g}:`));
+                              if (gFiles.length === 0) return null;
                               return (
-                                <div key={prefixed} style={{ position: "relative", aspectRatio: "1", borderRadius: 7, overflow: "hidden",
-                                  border: "1px solid rgba(96,165,250,0.2)", background: "rgba(0,0,0,0.3)" }}>
-                                  <img
-                                    src={`/api/factory/avatar-image/${g}/${encodeURIComponent(fname)}`}
-                                    alt={fname}
-                                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                                  />
-                                  <button
-                                    disabled={deletingAvatar === prefixed}
-                                    onClick={() => void handleDeleteAvatar(prefixed)}
-                                    style={{
-                                      position: "absolute", top: 2, right: 2,
-                                      background: "rgba(239,68,68,0.85)",
-                                      border: "none", borderRadius: 4,
-                                      width: 18, height: 18,
-                                      display: "flex", alignItems: "center", justifyContent: "center",
-                                      cursor: "pointer", fontSize: 9, color: "#fff", fontWeight: 700,
-                                      opacity: deletingAvatar === prefixed ? 0.5 : 1,
-                                    }}
-                                  >
-                                    {deletingAvatar === prefixed ? "…" : "✕"}
-                                  </button>
+                                <div key={g}>
+                                  <div style={{
+                                    fontSize: 9, fontWeight: 700,
+                                    color: g === "male" ? "#60a5fa" : "#f472b6",
+                                    letterSpacing: "0.08em", textTransform: "uppercase",
+                                    marginBottom: 5,
+                                  }}>
+                                    {g === "male" ? `♂ ${L("Male", "Чоловічі")}` : `♀ ${L("Female", "Жіночі")}`}
+                                    <span style={{ fontWeight: 400, color: "rgba(255,255,255,0.28)", marginLeft: 4 }}>
+                                      ({gFiles.length})
+                                    </span>
+                                  </div>
+                                  <div style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "repeat(auto-fill, minmax(60px, 1fr))",
+                                    gap: 6,
+                                  }}>
+                                    {gFiles.map(prefixed => {
+                                      const fname = prefixed.slice(g.length + 1);
+                                      return (
+                                        <div key={prefixed} style={{
+                                          position: "relative", aspectRatio: "1", borderRadius: 7, overflow: "hidden",
+                                          border: `1px solid ${g === "male" ? "rgba(96,165,250,0.25)" : "rgba(244,114,182,0.25)"}`,
+                                          background: "rgba(0,0,0,0.3)",
+                                        }}>
+                                          <img
+                                            src={`/api/factory/avatar-image/${g}/${encodeURIComponent(fname)}`}
+                                            alt={fname}
+                                            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                                          />
+                                          <button
+                                            disabled={deletingAvatar === prefixed}
+                                            onClick={() => void handleDeleteAvatar(prefixed)}
+                                            style={{
+                                              position: "absolute", top: 2, right: 2,
+                                              background: "rgba(239,68,68,0.85)",
+                                              border: "none", borderRadius: 4,
+                                              width: 18, height: 18,
+                                              display: "flex", alignItems: "center", justifyContent: "center",
+                                              cursor: "pointer", fontSize: 9, color: "#fff", fontWeight: 700,
+                                              opacity: deletingAvatar === prefixed ? 0.5 : 1,
+                                            }}
+                                          >
+                                            {deletingAvatar === prefixed ? "…" : "✕"}
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
                               );
                             })}
-                          </div>
+                          </>
                         )}
                       </div>
                     )}
@@ -4756,7 +4806,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             </div>
 
             {/* ── Session Stats Strip ──────────────────────────────────────── */}
-            {(runState !== "idle" || totalSpent > 0 || Object.keys(recycledSkips).length > 0) && (() => {
+            {((runState === "running" || runState === "done" || runState === "error") || totalSpent > 0 || Object.keys(recycledSkips).length > 0) && (() => {
               const effectiveKey = country === "custom" ? customCountry.trim() : country;
               const skipCount  = recycledSkips[effectiveKey] ?? 0;
               const totalSkips = Object.values(recycledSkips).reduce((a, b) => a + b, 0);
