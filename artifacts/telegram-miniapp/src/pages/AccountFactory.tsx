@@ -928,6 +928,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [apiId,         setApiId]         = useState("");
   const [apiHash,       setApiHash]       = useState("");
   const [quantity,        setQuantity]        = useState(1);
+  const [maxAttempts,     setMaxAttempts]     = useState(20);
   const [sessionPrefix,   setSessionPrefix]   = useState("session");
   const [sessionStartNum, setSessionStartNum] = useState(1);
   const [showCountry,     setShowCountry]     = useState(false);
@@ -1769,6 +1770,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
           proxy_string: proxy,
           two_factor_password: twoFa,
           quantity,
+          max_attempts: maxAttempts,
           ...(sessionPrefix ? { session_prefix: sessionPrefix, session_start_num: sessionStartNum } : {}),
           ...(apiId   ? { api_id: parseInt(apiId) }   : {}),
           ...(apiHash ? { api_hash: apiHash }           : {}),
@@ -3927,7 +3929,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   </span>
                 </div>
                 <button
-                  onClick={() => setQuantity(q => Math.min(10, q + 1))}
+                  onClick={() => setQuantity(q => Math.min(20, q + 1))}
                   style={{
                     width: 40, height: 40, borderRadius: 12, background: GLASS2,
                     border: `1px solid ${BORDER2}`, cursor: "pointer",
@@ -3946,6 +3948,44 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   )}
                 </div>
               )}
+            </div>
+
+            {/* Max number attempts per account */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.45)",
+                letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>
+                {L("Max Number Attempts", "Макс. спроб номерів")}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <input
+                  type="number"
+                  min={1}
+                  max={999}
+                  value={maxAttempts}
+                  onChange={e => {
+                    const v = parseInt(e.target.value);
+                    if (!isNaN(v)) setMaxAttempts(Math.min(999, Math.max(1, v)));
+                  }}
+                  style={{
+                    flex: 1, height: 42, borderRadius: 12,
+                    background: GLASS2,
+                    border: `1px solid ${maxAttempts > 20 ? "rgba(251,146,60,0.55)" : BORDER2}`,
+                    color: maxAttempts > 20 ? "rgba(251,146,60,1)" : "rgba(255,255,255,0.85)",
+                    fontSize: 18, fontWeight: 800, textAlign: "center",
+                    outline: "none", boxShadow: maxAttempts > 20 ? "0 0 16px rgba(251,146,60,0.2)" : "none",
+                    transition: "all 0.2s",
+                  }}
+                />
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>
+                  {L("/ 999 max", "/ макс 999")}
+                </div>
+              </div>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 6, lineHeight: 1.4 }}>
+                {L(
+                  "How many SMSPool numbers to try before giving up on one account. Higher = better odds with cheap recycled pools (e.g. ID, PH).",
+                  "Скільки номерів SMSPool пробувати на один акаунт. Більше = вища ймовірність успіху в дешевих пулах (напр. ID, PH)."
+                )}
+              </div>
             </div>
 
             {/* Session Name Increment */}

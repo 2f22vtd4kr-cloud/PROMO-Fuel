@@ -1447,6 +1447,7 @@ async def _registration_stream(
     session_name: str = "",
     gender: str = "random",
     force_country: bool = False,
+    max_attempts: int = 20,
 ):
     """Async generator yielding SSE chunks for the full 8-step pipeline."""
     os.makedirs(SESSION_DIR, exist_ok=True)
@@ -1764,9 +1765,8 @@ async def _registration_stream(
         # ─── Steps 1–4 retry loop ─────────────────────────────────────────
         # If a purchased number fails (SentCodeTypeApp / SMS timeout), automatically
         # cancel it, buy a fresh number and retry — up to MAX_NUM_RETRIES times.
-        # 20 retries: at a 90% recycled rate this gives ~87% chance of finding
-        # at least one fresh number; at 95% recycled rate ~64%.
-        MAX_NUM_RETRIES = 20
+        # Configurable via max_attempts param (1–999, default 20).
+        MAX_NUM_RETRIES = max(1, min(max_attempts, 999))
         code: str | None = None
         raw_num: str = ""
         _app_stuck_count    = 0
@@ -3223,7 +3223,8 @@ async def register_account(request: Request):
     country_id          = str(body.get("country_id", "")).strip()
     proxy_string        = str(body.get("proxy_string", "")).strip()
     two_factor_password = str(body.get("two_factor_password", "")).strip()
-    quantity            = min(max(int(body.get("quantity", 1) or 1), 1), 10)
+    quantity            = min(max(int(body.get("quantity", 1) or 1), 1), 20)
+    max_attempts        = min(max(int(body.get("max_attempts", 20) or 20), 1), 999)
     _wm_raw             = str(body.get("warmup_mode", "all")).strip().lower()
     warmup_mode         = _wm_raw if _wm_raw in ("none", "all", "ask") else "all"
     session_prefix      = str(body.get("session_prefix", "")).strip()
@@ -3378,6 +3379,7 @@ async def register_account(request: Request):
                     computed_session_name,
                     gender=gender,
                     force_country=_force_country,
+                    max_attempts=max_attempts,
                 ):
                     yield chunk
                     if '"complete"' in chunk:
