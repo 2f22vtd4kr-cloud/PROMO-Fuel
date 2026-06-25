@@ -871,7 +871,7 @@ def _rewrite_proxy_country(proxy_string: str, country_id: str) -> str:
     if not proxy_string or not country_id:
         return proxy_string
     cc = country_id.lower().strip()
-    if len(cc) != 2:
+    if len(cc) != 2 or not cc.isalpha():
         return proxy_string
     rewritten = _re.sub(r"country-[a-z]{2}", f"country-{cc}", proxy_string, flags=_re.IGNORECASE)
     return rewritten

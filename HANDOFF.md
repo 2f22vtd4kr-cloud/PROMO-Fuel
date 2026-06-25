@@ -6,41 +6,21 @@ _Rewritten each session. Contains only current state — no history._
 
 ## What was done this session
 
-### Fix 1 — WKWebView SSE buffering (iOS Telegram Mini App)
-Padded every SSE chunk to ≥ 4096 bytes via `_sse()` + `_KEEPALIVE_SSE` in `account_factory.py`.
+### Fix — `_rewrite_proxy_country` numeric code guard
+`_rewrite_proxy_country()` in `account_factory.py` (~line 877) had a guard
+`if len(cc) != 2: return proxy_string` — but numeric dialing codes like `"44"` (UK)
+are also 2 chars and passed the guard, producing `country-44` in the Decodo URL which
+is invalid (Decodo expects ISO alpha-2 like `country-gb`). The proxy then rejected the
+SOCKS5 handshake → "Socket error: Connection closed unexpectedly".
 
-### Fix 2 — Proxy country geo-mismatch causing SentCodeTypeApp
-`_rewrite_proxy_country(proxy_string, country_id)` rewrites `country-XX` in proxy
-username to match the target registration country. Called after `_next_session_proxy()`
-in `_registration_stream()`. Debug SSE event confirms the rewrite.
-
-### Fix 3 — False-positive recycled pool from next_type=None
-When `sendCode` returns `SentCodeTypeApp` with `next_type=None`, skip `ResendCode`
-(which always returns `SendCodeUnavailable` in this case) and jump directly to Layer 2
-(official creds check). `_raw_next_type` stored from both send paths.
-
-### Feature — Proxy Geo Verify card (UI + backend)
-`_proxy_geo_check(exit_ip, target_cc)` added to `account_factory.py`:
-- Queries `ip-api.com` (direct, no proxy needed) with the confirmed residential exit IP
-- Returns detected_cc, country name, ISP/org, match bool, latency_ms
-- Emits `geo_check` SSE event: status=running → ok / mismatch / error
-
-`GeoCheckCard` component added to `AccountFactory.tsx`:
-- **Running**: three concentric radar-ping rings animating outward from a glowing center dot (amber)
-- **OK (match)**: green glow, detected flag = target flag with "✓", ISP name, latency badge
-- **Mismatch**: orange glow, detected flag ≠ target flag with "✗", warns operator but doesn't block
-- **Error**: red glow, shows error message
-- Exit IP shown in monospace chip on the right
-- Country flags built from ISO code via regional-indicator Unicode offset trick
-- `geo-ping` keyframe added to `src/main.tsx`
-- State: `geoCheck` (reset on batch_reset / auto_switching / new run)
-- Rendered between the preflight banner and the batch progress banner
+**Fix**: added `or not cc.isalpha()` so any non-alphabetic country_id skips the rewrite.
+The proxy URL is now left unchanged when `country_id` is a numeric dialing code.
 
 ---
 
 ## Current system state
 
-- **Telegram Bot**: RUNNING (supervisor + workers + FastAPI on 8083, all fixes live)
+- **Telegram Bot**: RUNNING (supervisor + workers + FastAPI on 8083)
 - **API Server**: RUNNING (Express on 8080)
 - **Telegram Mini App**: RUNNING on port 5000
 - **DB**: campaigns.db current
@@ -50,8 +30,8 @@ When `sendCode` returns `SentCodeTypeApp` with `next_type=None`, skip `ResendCod
 ## Key file locations
 
 - `account_factory.py`:
-  - `_rewrite_proxy_country()` (~line 856)
-  - `_proxy_geo_check()` (~line 1055) ← NEW
+  - `_rewrite_proxy_country()` (~line 853) ← fixed this session
+  - `_proxy_geo_check()` (~line 1055)
   - `_raw_next_type` init + capture (~line 1533, 1549, 1572)
   - Skip-ResendCode when `_raw_next_type is None` (~line 1659–1665)
   - Geo check call in `_registration_stream` after asyncio gate (~line 1295–1339)
@@ -67,8 +47,7 @@ When `sendCode` returns `SentCodeTypeApp` with `next_type=None`, skip `ResendCod
 
 ## Pending / watch items
 
-- If mismatch shows up: the proxy provider doesn't have residential nodes for the
-  target country. The operator should switch to a proxy pool that covers it or use
-  a neighboring country accepted by the carrier.
+- If `country_id` is alphabetic (e.g. "uz", "kz") the rewrite still works as intended.
+- If a future SMSPool country is a 2-letter non-alpha code, the guard is correct to skip.
 - `assets/pending_avatars/` empty on fresh import — user must upload photos before
   AI mode can assign avatars.
