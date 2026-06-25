@@ -25,3 +25,16 @@ requests
 telegram
 telethon
 uvicorn[standard]
+aiohttp
+aiosqlite
+fastapi
+filelock
+psycopg2-binary
+pydantic
+PySocks
+python-multipart
+python-socks[asyncio]
+python-telegram-bot
+requests
+telethon
+uvicorn[standard]
