@@ -2414,18 +2414,52 @@ async def register_account(request: Request):
     MAX_AUTO_SWITCHES = 3
 
     async def generate():
-        # Immediate keepalive comment — forces the very first chunk through any
-        # proxy/CDN buffer so the client knows the stream is live before we do
-        # any network work.  SSE comment lines (": ...") are ignored by parsers.
+        # ── Keepalive-injecting wrapper ──────────────────────────────────────
+        # Problem: the preflight network checks (_test_proxy_connection,
+        # _get_exit_ip_via_proxy, _get_asyncio_exit_ip) can block the generator
+        # for 15-75 seconds before yielding the first step event.  Replit's
+        # production CDN silently drops SSE connections that send no data for
+        # ~60 s (even with X-Accel-Buffering: no), causing Safari to throw
+        # "TypeError: Load failed" and all 8 steps to stay "waiting".
+        #
+        # Fix: run _generate_inner() in a background asyncio.Task.  The outer
+        # generator pulls items from a shared queue with a 15-second timeout;
+        # on timeout it emits a ": keepalive" SSE comment (invisible to the
+        # UI parser, but keeps the TCP connection alive through every proxy).
+        # The first chunk is still yielded immediately so the client knows the
+        # stream is live the instant the request completes.
         yield ": keepalive\n\n"
 
+        _queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+        async def _producer() -> None:
+            try:
+                async for _chunk in _generate_inner():
+                    await _queue.put(_chunk)
+            except Exception as _e:
+                await _queue.put(_sse("error", {
+                    "message": f"⛔ Internal error in registration stream: {str(_e)[:300]}"
+                }))
+            finally:
+                await _queue.put(None)   # EOF sentinel
+
+        _task = asyncio.create_task(_producer())
         try:
-            async for _chunk in _generate_inner():
-                yield _chunk
-        except Exception as _gen_exc:
-            yield _sse("error", {
-                "message": f"⛔ Internal error in registration stream: {str(_gen_exc)[:300]}"
-            })
+            while True:
+                try:
+                    _item = await asyncio.wait_for(_queue.get(), timeout=15.0)
+                    if _item is None:
+                        break          # generator finished cleanly
+                    yield _item
+                except asyncio.TimeoutError:
+                    # No event for 15 s — ping the CDN to keep the socket alive
+                    yield ": keepalive\n\n"
+        finally:
+            _task.cancel()
+            try:
+                await _task
+            except (asyncio.CancelledError, Exception):
+                pass
 
     async def _generate_inner():
         if quantity > 1:
