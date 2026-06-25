@@ -26,8 +26,11 @@ fi
 
 # ── Slow path: install ───────────────────────────────────────
 echo "[ensure-node-deps] vite not found — running pnpm install..."
-pnpm install --frozen-lockfile --silent 2>&1 | tail -5 || \
-  pnpm install --no-frozen-lockfile --silent 2>&1 | tail -5 || true
+# --ignore-scripts prevents node-gyp from running for better-sqlite3.
+# Node-gyp picks up pnpm's bundled Node 24 headers but the runtime is Node 20,
+# causing a fatal version mismatch. ensure-sqlite3.sh handles the native build.
+pnpm install --frozen-lockfile --ignore-scripts --silent 2>&1 | tail -5 || \
+  pnpm install --no-frozen-lockfile --ignore-scripts --silent 2>&1 | tail -5 || true
 
 if [ ! -f "$VITE_JS" ]; then
   echo ""

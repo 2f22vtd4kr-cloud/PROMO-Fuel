@@ -44,8 +44,12 @@ install_python() {
 install_node() {
   echo "[post-merge/node] pnpm install..."
   cd "$WORKSPACE"
-  pnpm install --frozen-lockfile --silent 2>&1 | tail -3 || \
-    pnpm install --no-frozen-lockfile --silent 2>&1 | tail -3 || true
+  # --ignore-scripts prevents node-gyp from running for better-sqlite3.
+  # Node-gyp picks up pnpm's bundled Node 24 headers but the runtime is Node 20,
+  # causing a fatal version mismatch. compile_sqlite() below uses gcc directly
+  # against the correct Node 20 headers and handles the native build correctly.
+  pnpm install --frozen-lockfile --ignore-scripts --silent 2>&1 | tail -3 || \
+    pnpm install --no-frozen-lockfile --ignore-scripts --silent 2>&1 | tail -3 || true
   echo "[post-merge/node] ✓ Done"
 }
 
