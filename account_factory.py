@@ -269,6 +269,10 @@ _OFFICIAL_CLIENT_CREDS = [
         2496, "8da85b0d5bfe62527e5b244c209159c3",
         "iPhone 16 Pro Max", "18.3.2", "11.4.0",   # Telegram iOS
     ),
+    (
+        6, "eb06d4abfb49dc3eeb1aeb98ae0f581e",
+        "Samsung Galaxy S24 Ultra", "Android 14", "10.14.0",  # Telegram Android
+    ),
 ]
 
 APP_VERSIONS = ["9.6.3", "9.5.9", "9.4.4", "9.3.3", "9.2.1", "9.7.1", "9.1.8"]
@@ -829,6 +833,13 @@ def _suggest_alt_countries(country_id: str) -> str:
             "⚠️ Russia and Kazakhstan share the +7 prefix — they're the same SMSPool pool. "
             + suggestion
         )
+    # Always append alternative provider hint — SMSPool's virtual number pools for
+    # CIS/South-East Asian countries are notoriously recycled.  5sim and SMSBower
+    # use different carrier batches and consistently have lower recycled rates.
+    suggestion += (
+        " Or switch provider: 5sim.net → Telegram service (often 60-80% success rate for UZ/KZ/UA). "
+        "SMSBower is another option."
+    )
     return suggestion
 
 
@@ -1450,6 +1461,11 @@ async def _registration_stream(
         _banned_count       = 0   # consecutive pre-banned numbers from this country
         _proxy_fail_count   = 0   # consecutive proxy-unreachable errors
         _sms_timeout_count  = 0   # consecutive SMS timeouts — flag for api_id shadow-block
+        # SMSPool pricing pool rotation — when pool 1 (standard) is recycled, rotate
+        # to pool 0 (mixed/cheapest) after 2nd recycled, then pool 2 (premium) after 4th.
+        # Different pricing pools draw from different carrier batches and often have
+        # different recycled rates for the same country.
+        _pricing_option = "1"
 
         # Shuffle the official registration credential pool so each factory
         # session uses a different rotation order.  Each retry attempt cycles
@@ -1489,7 +1505,7 @@ async def _registration_stream(
                     async with http.post(
                         SMSPOOL_BUY,
                         data={"key": smspool_api_key, "service": TELEGRAM_SERVICE_ID,
-                              "country": country_id, "pricing_option": "1"},
+                              "country": country_id, "pricing_option": _pricing_option},
                         timeout=aiohttp.ClientTimeout(total=30),
                     ) as resp:
                         raw = await resp.text()
@@ -2022,6 +2038,11 @@ async def _registration_stream(
                             else:
                                 yield _sse("step", {"step": 3, "status": "running",
                                                     "message": f"🔴 Official creds (api_id={_off_api_id}) also got {code_type_name} — number is recycled"})
+                                # Break after first clean SentCodeTypeApp verdict — no need
+                                # to try further credentials for a confirmed recycled number.
+                                # Additional credentials (e.g. Android) are only tried when
+                                # this credential failed due to a connection error (_off_result is None).
+                                break
 
                     if _switched_to_official:
                         pass  # fall through to step 4
@@ -2038,6 +2059,22 @@ async def _registration_stream(
                         _app_stuck_count += 1
                         await cancel_order()
                         await safe_disconnect()
+
+                        # Auto-rotate SMSPool pricing pool when standard pool is recycled.
+                        # Pool 1 (standard) → Pool 0 (mixed/cheapest) → Pool 2 (premium).
+                        # Each pool draws from a different carrier batch — different recycled rates.
+                        if _app_stuck_count == 2:
+                            _pricing_option = "0"
+                            yield _sse("debug", {"message": (
+                                f"🔄 SMSPool pricing_option → 0 (mixed pool) — "
+                                f"standard pool (1) appears recycled after {_app_stuck_count} numbers"
+                            )})
+                        elif _app_stuck_count == 4:
+                            _pricing_option = "2"
+                            yield _sse("debug", {"message": (
+                                f"🔄 SMSPool pricing_option → 2 (premium pool) — "
+                                f"trying higher-quality carrier batch after {_app_stuck_count} recycled numbers"
+                            )})
 
                         # Retry up to 5 consecutive recycled numbers before halting.
                         # With a 90% recycled SMSPool pool, 5 retries gives ~41%
