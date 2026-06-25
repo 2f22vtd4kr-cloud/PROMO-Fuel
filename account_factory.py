@@ -1747,6 +1747,21 @@ async def _registration_stream(
         _reg_pool: list[tuple] = _REGISTRATION_CREDS.copy()
         random.shuffle(_reg_pool)
 
+        # Prepend the operator's own developer api_id (TELETHON_API_ID) as the
+        # FIRST credential in the rotation when it differs from the official pool.
+        # Developer keys from my.telegram.org are unique to the operator and have
+        # NOT been shadow-blocked by Telegram for mass-registration — making them
+        # the best first try for SMS delivery.  Official 2040/2496 follow as
+        # fallbacks if Telegram rejects the developer key for registration.
+        _dev_api_id   = api_id    # passed from TELETHON_API_ID env var
+        _dev_api_hash = api_hash
+        _official_ids = {c[0] for c in _REGISTRATION_CREDS}  # {2040, 2496, 6}
+        if _dev_api_id and _dev_api_id not in _official_ids:
+            _reg_pool.insert(0, (
+                _dev_api_id, _dev_api_hash,
+                "PC 64bit", "Windows 11", "5.9.5", "desktop",
+            ))
+
         # Track which api_id / api_hash / device profile were ACTUALLY used for the
         # successful registration.  Updated each time we switch credentials.  Saved
         # to DB so groupbroadcaster can reconnect with the correct credential pair.
@@ -1827,12 +1842,12 @@ async def _registration_stream(
                 _app_stuck_count += 1
                 if _app_stuck_count == 2:
                     _pricing_option = "0"
-                elif _app_stuck_count == 4:
+                elif _app_stuck_count == 3:
                     _pricing_option = "2"
-                if _app_stuck_count < 5:
+                if _app_stuck_count < 3:
                     yield _sse("step", {"step": 3, "status": "error",
                                         "message": (
-                                            f"🚫 SNSS prefix-skip #{_app_stuck_count}/5 — "
+                                            f"🚫 SNSS prefix-skip #{_app_stuck_count}/3 — "
                                             "buying next number"
                                         )})
                     continue
@@ -2229,24 +2244,17 @@ async def _registration_stream(
                             yield _sse("step", {"step": 3, "status": "running",
                                                 "message": "🔴 SentCodeTypeApp + SendCodeUnavailable + next_type=None — definitive recycled, skipping Layer 2…"})
                         else:
-                            # next_type was set → Telegram had declared a fallback but
-                            # now says all methods are exhausted.  Hard recycled signal:
-                            # code was delivered to the existing account's Telegram app.
-                            _app_stuck_count += 1
-                            _RECYCLED_COUNTRY_POOL.add(country_id.lower())
-                            yield _sse("step", {"step": 3, "status": "error",
-                                                "message": "🚫 SendCodeUnavailable — code delivered to existing account's app; number confirmed recycled"})
-                            await cancel_order()
-                            await safe_disconnect()
-                            yield _sse("sms_retry_prompt", {
-                                "country_id": country_id,
-                                "message": (
-                                    f"🚫 {country_id.upper()} pool is recycled — Telegram's SendCodeUnavailable "
-                                    "confirms these numbers already have accounts. "
-                                    + _suggest_alt_countries(country_id)
-                                ),
-                            })
-                            return
+                            # next_type was set → Telegram declared an SMS fallback but
+                            # ResendCode says all delivery paths are now exhausted.
+                            # This means the initial code went to the existing account's app.
+                            # Treat identically to the definitive-recycled path: mark the
+                            # number bad, record the prefix for SNSS, and let the retry loop
+                            # decide when to stop.  One number does NOT confirm the whole
+                            # country pool is recycled — only after N consecutive hits does
+                            # the loop exit with sms_retry_prompt.
+                            _definitive_recycled = True
+                            yield _sse("step", {"step": 3, "status": "running",
+                                                "message": "🔴 SendCodeUnavailable + next_type declared — code sent to existing app; number recycled, trying next…"})
                     except Exception as _rc_ex:
                         # ResendCode failed (proxy hiccup, etc.) — proceed to official creds
                         yield _sse("step", {"step": 3, "status": "running",
