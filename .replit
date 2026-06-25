@@ -26,10 +26,6 @@ args = "Telegram Bot"
 task = "workflow.run"
 args = "Telegram Mini App"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "API Server"
-
 [[workflows.workflow]]
 name = "Telegram Bot"
 author = "agent"
@@ -52,18 +48,6 @@ outputType = "webview"
 task = "shell.exec"
 args = "bash /home/runner/workspace/scripts/ensure-node-deps.sh && cd /home/runner/workspace/artifacts/telegram-miniapp && node node_modules/vite/bin/vite.js --config vite.config.ts --host 0.0.0.0"
 waitForPort = 5000
-
-[[workflows.workflow]]
-name = "API Server"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "bash /home/runner/workspace/scripts/start-api.sh"
-waitForPort = 8080
-
-[workflows.workflow.metadata]
-outputType = "console"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"

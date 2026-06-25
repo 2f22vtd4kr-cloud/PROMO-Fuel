@@ -56111,6 +56111,31 @@ router6.post("/accounts/validate-sessions", (req, res) => {
     res.status(500).json({ error: child.stderr?.trim() || "Parse error" });
   }
 });
+router6.get("/accounts/session-health", (_req, res) => {
+  try {
+    const db = getDb4(true);
+    const rows = db.prepare(
+      "SELECT id, phone, label, username, status, session_file, is_active, is_banned, flood_wait_until, daily_limit, sent_today, sent_total, last_used_at FROM sender_accounts ORDER BY created_at DESC"
+    ).all();
+    db.close();
+    const now = Date.now();
+    const results = rows.map((a) => {
+      const floodUntil = a.flood_wait_until ? new Date(a.flood_wait_until).getTime() : 0;
+      let health;
+      if (a.is_banned) health = "banned";
+      else if (floodUntil > now) health = "flood_wait";
+      else if (!a.session_file) health = "no_session";
+      else if (a.status === "session_invalid") health = "session_invalid";
+      else if (a.is_active && (a.status === "idle" || a.status === "authorized")) health = "active";
+      else if (a.status === "active" || a.status === "authorized") health = "active";
+      else health = a.status ?? "unknown";
+      return { ...a, health };
+    });
+    res.json({ results });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
 router6.get("/accounts/sends-today", (_req, res) => {
   try {
     const db = getDb4(true);
