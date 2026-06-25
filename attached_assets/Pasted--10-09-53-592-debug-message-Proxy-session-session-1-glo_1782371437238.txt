@@ -1,0 +1,43 @@
+[10:09:53.592] debug: {"message":"🔄 Proxy session → session-1 (global slot #1)"}
+[10:09:54.282] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[10:09:55.491] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[10:09:55.491] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 84.54.66.23","exit_ip":"84.54.66.23","is_datacenter":false}
+[10:09:55.491] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
+[10:09:56.309] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 84.54.66.23 · 🔗 Telethon-path IP: 84.54.66.23","exit_ip":"84.54.66.23","is_datacenter":false,"async_exit_ip":"84.54.66.23"}
+[10:09:56.309] preflight: {"status":"running","message":"📊 Checking 44 SMS success rate on SMSPool…"}
+[10:09:57.724] preflight: {"status":"done","message":"📊 44 success rate: N/A — proceeding"}
+[10:09:57.724] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool..."}
+[10:09:57.735] step: {"step":1,"status":"done","message":"📱 Number Acquired: +998701904674","cost":1.46}
+[10:10:00.828] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[10:10:00.828] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2496,\n    \"platform\": \"ios\",\n    \"device_model\": \"iPhone 15 Pro Max\",\n    \"system_version\": \"17.6.1\",\n    \"app_version\": \"10.9.1\",\n    \"lang_code\": \"en\",\n    \"system_lang_code\": \"en-US\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5h://user-sp8eeeap0s-session-1-country-uz:ra+H1whT5aLqxkH0q2@gate.decodo.com:7000\"\n  }\n}"}
+[10:10:04.679] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:7000"}
+[10:10:04.682] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[10:10:04.942] debug: {"message":"{\n  \"📨 SEND_CODE_RESPONSE\": {\n    \"type\": \"SentCodeTypeApp\",\n    \"phone_code_hash\": \"c9b89c55…\",\n    \"timeout\": null,\n    \"next_type\": null,\n    \"via\": \"RawSendCodeRequest\"\n  }\n}"}
+[10:10:04.944] step: {"step":3,"status":"running","message":"📲 SentCodeTypeApp — requesting SMS resend (ResendCode)…"}
+[10:10:04.944] step: {"step":3,"status":"error","message":"🚫 SendCodeUnavailable — code delivered to existing account's app; number confirmed recycled"}
+[10:10:05.320] sms_retry_prompt: {"country_id":"44","message":"🚫 44 pool is recycled — Telegram's SendCodeUnavailable confirms these numbers already have accounts. Switch to: Ukraine (UA), Philippines (PH), Georgia (GE), Bangladesh (BD), Kazakhstan (KZ), India (IN)."}
+[10:10:10.156] debug: {"message":"🔄 Proxy session → session-2 (global slot #2)"}
+[10:10:10.156] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[10:10:12.081] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[10:10:12.090] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 31.148.166.211","exit_ip":"31.148.166.211","is_datacenter":false}
+[10:10:12.842] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
+[10:10:12.878] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 31.148.166.211 · 🔗 Telethon-path IP: 31.148.166.211","exit_ip":"31.148.166.211","is_datacenter":false,"async_exit_ip":"31.148.166.211"}
+[10:10:12.878] preflight: {"status":"running","message":"📊 Checking 44 SMS success rate on SMSPool…"}
+[10:10:14.281] preflight: {"status":"done","message":"📊 44 success rate: N/A — proceeding"}
+[10:10:14.281] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool..."}
+[10:10:17.681] step: {"step":1,"status":"done","message":"📱 Number Acquired: +998707040291","cost":1.46}
+[10:10:17.682] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[10:10:17.682] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2040,\n    \"platform\": \"desktop\",\n    \"device_model\": \"Mac\",\n    \"system_version\": \"macOS 15.3.1\",\n    \"app_version\": \"11.5\",\n    \"lang_code\": \"en\",\n    \"system_lang_code\": \"en-US\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5h://user-sp8eeeap0s-session-2-country-uz:ra+H1whT5aLqxkH0q2@gate.decodo.com:7000\"\n  }\n}"}
+[10:10:20.681] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:7000"}
+[10:10:20.682] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[10:10:20.952] debug: {"message":"{\n  \"📨 SEND_CODE_RESPONSE\": {\n    \"type\": \"SentCodeTypeApp\",\n    \"phone_code_hash\": \"a69ec04b…\",\n    \"timeout\": null,\n    \"next_type\": null,\n    \"via\": \"RawSendCodeRequest\"\n  }\n}"}
+[10:10:20.953] step: {"step":3,"status":"running","message":"📲 SentCodeTypeApp — requesting SMS resend (ResendCode)…"}
+[10:10:20.958] step: {"step":3,"status":"error","message":"🚫 SendCodeUnavailable — code delivered to existing account's app; number confirmed recycled"}
+[10:10:21.316] sms_retry_prompt: {"country_id":"44","message":"🚫 44 pool is recycled — Telegram's SendCodeUnavailable confirms these numbers already have accounts. Switch to: Ukraine (UA), Philippines (PH), Georgia (GE), Bangladesh (BD), Kazakhstan (KZ), India (IN)."}
+[10:10:25.044] debug: {"message":"🔄 Proxy session → session-3 (global slot #3)"}
+[10:10:25.044] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[10:10:26.641] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[10:10:27.364] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 84.54.84.90","exit_ip":"84.54.84.90","is_datacenter":false}
+[10:10:27.364] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
+[10:10:27.454] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:7000 · 🌍 Exit IP: 84.54.84.90 · 🔗 Telethon-path IP: 84.54.84.90","exit_ip":"84.54.84.90","is_datacenter":false,"async_exit_ip":"84.54.84.90"}
+[10:10:27.454] preflight: {"status":"running","message":"📊 Checking 44 SMS success rate on SMSPool…"}
