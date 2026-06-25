@@ -1536,7 +1536,17 @@ async def _registration_stream(
             # Country-aware locale: a Ukrainian number with lang_code="en" is an
             # immediate bot fingerprint.  Desktop/iOS creds still get locale since
             # Telegram users in those countries use localised apps.
+            #
+            # SMSPool uses numeric internal IDs (e.g. "44" = Uzbekistan).
+            # These never match ISO-keyed _COUNTRY_LANG_MAP entries → everyone
+            # falls through to ("en", "en-US") — a bot fingerprint.
+            # Fix: when country_id is numeric, extract the 2-letter ISO code from
+            # the proxy URL's country-XX selector (already validated by geo-check).
             _cid_lower = country_id.lower()
+            if _cid_lower.isdigit() and proxy_string:
+                _iso_m = _re.search(r"country-([a-z]{2})", proxy_string, _re.IGNORECASE)
+                if _iso_m:
+                    _cid_lower = _iso_m.group(1).lower()
             _reg_lang, _reg_sys_lang = _COUNTRY_LANG_MAP.get(_cid_lower, ("en", "en-US"))
 
             digits        = raw_num
@@ -1847,6 +1857,24 @@ async def _registration_stream(
                     # Skip any official cred whose api_id matches what the primary already
                     # used — re-testing the same api_id that just returned SentCodeTypeApp
                     # is redundant and wastes ~8 seconds (3s proxy sleep + connect + RPC).
+
+                    # ── CRITICAL: Cancel the pending code session before Layer 2 ──
+                    # The primary client's RawSendCodeRequest (and subsequent ResendCode)
+                    # left an active code session on Telegram's server for this phone.
+                    # If we issue a fresh RawSendCodeRequest from Layer 2 while that session
+                    # is still "warm", Telegram may reuse its routing decision (SentCodeTypeApp)
+                    # even for a fresh number — producing a false "recycled" diagnosis.
+                    # CancelCodeRequest explicitly closes the session so Layer 2 gets a
+                    # clean, independent routing evaluation.
+                    if client and phone_code_hash:
+                        try:
+                            await client(CancelCodeRequest(
+                                phone_number=phone,
+                                phone_code_hash=phone_code_hash,
+                            ))
+                        except Exception:
+                            pass  # best-effort; Layer 2 still runs even if cancel fails
+
                     _off_creds_filtered = [
                         c for c in _OFFICIAL_CLIENT_CREDS if c[0] != _actual_api_id
                     ] or _OFFICIAL_CLIENT_CREDS  # fallback: include all if somehow all match
@@ -1857,8 +1885,20 @@ async def _registration_stream(
                         # opening a new one. Without this pause, Decodo (and most residential
                         # proxy providers) reject the second connection immediately with ProxyError
                         # because the first tunnel is still being torn down on their end.
-                        await asyncio.sleep(3)
-                        # Wipe ALL session artefacts (including WAL/SHM) before new client
+                        # 5 s (up from 3 s) also gives Telegram's server more time to settle
+                        # after CancelCodeRequest before Layer 2 issues a new RawSendCodeRequest.
+                        await asyncio.sleep(5)
+                        # Rotate to a fresh proxy session (new exit node) so Telegram
+                        # doesn't see a second RawSendCodeRequest for the same phone
+                        # from the same IP within seconds — that pattern triggers
+                        # anti-spam routing independent of account status.
+                        _off_proxy_string = proxy_string
+                        if proxy_string:
+                            _off_proxy_string, _off_sn = _next_session_proxy(proxy_string)
+                            if _off_sn:
+                                yield _sse("debug", {"message": f"🔄 Layer 2 proxy → session-{_off_sn} (fresh exit node for official creds check)"})
+                        _off_proxy_tuple = _parse_proxy(_off_proxy_string) if _off_proxy_string else None
+                        # Wipe ALL session artefacts before new client (same path reused)
                         for _ext in (".session", ".session-journal", ".session-wal", ".session-shm"):
                             try:
                                 os.remove(session_path + _ext)
@@ -1866,13 +1906,23 @@ async def _registration_stream(
                                 pass
                         _off_client = TelegramClient(
                             session_path, _off_api_id, _off_api_hash,
-                            proxy=proxy_tuple,
+                            proxy=_off_proxy_tuple,
                             device_model=_off_dev,      # ← platform-correct profile
                             system_version=_off_sys,    # ← must match api_id's platform
                             app_version=_off_app,       # ← actual app version, not Android
-                            lang_code="en",
-                            system_lang_code="en-US",
+                            lang_code=_reg_lang,        # ← country-aware locale (e.g. "uz" not "en")
+                            system_lang_code=_reg_sys_lang,  # ← must match phone country
                         )
+                        yield _sse("debug", {"message": json.dumps({
+                            "🔍 LAYER2_INIT": {
+                                "api_id": _off_api_id,
+                                "device_model": _off_dev,
+                                "system_version": _off_sys,
+                                "app_version": _off_app,
+                                "lang_code": _reg_lang,
+                                "proxy": _off_proxy_string or None,
+                            }
+                        }, ensure_ascii=False, indent=2)})
                         # Track which credentials we switched to — DB save must use
                         # these so groupbroadcaster can reconnect with the same api_id
                         # and matching device profile.
