@@ -3986,6 +3986,68 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   "Скільки номерів SMSPool пробувати на один акаунт. Більше = вища ймовірність успіху в дешевих пулах (напр. ID, PH)."
                 )}
               </div>
+              {(() => {
+                const pricePerNum = svcStock.price;
+                if (!pricePerNum || pricePerNum <= 0) return null;
+                const estCost = maxAttempts * pricePerNum * quantity;
+                const bal = balanceData?.balance ?? null;
+                const overBudget = bal !== null && estCost > bal;
+                const withinBudget = bal !== null && estCost <= bal;
+                return (
+                  <div style={{
+                    marginTop: 10,
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                    background: overBudget
+                      ? "rgba(239,68,68,0.08)"
+                      : withinBudget
+                        ? "rgba(34,197,94,0.07)"
+                        : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${overBudget ? "rgba(239,68,68,0.35)" : withinBudget ? "rgba(34,197,94,0.3)" : "rgba(255,255,255,0.09)"}`,
+                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+                    transition: "all 0.25s",
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase",
+                        color: overBudget ? "#f87171" : withinBudget ? "#4ade80" : "rgba(255,255,255,0.35)",
+                        marginBottom: 2 }}>
+                        {L("Max spend", "Макс. витрата")}
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 800,
+                        color: overBudget ? "#f87171" : withinBudget ? "#4ade80" : "rgba(255,255,255,0.7)" }}>
+                        ${estCost.toFixed(2)}
+                        <span style={{ fontWeight: 400, fontSize: 10, marginLeft: 5,
+                          color: overBudget ? "rgba(248,113,113,0.65)" : "rgba(255,255,255,0.3)" }}>
+                          {maxAttempts} × ${pricePerNum.toFixed(2)} × {quantity} {L("acct", "акт")}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      {bal !== null ? (
+                        <>
+                          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase",
+                            color: overBudget ? "#f87171" : "#4ade80", marginBottom: 2 }}>
+                            {L("Balance", "Баланс")}
+                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 800,
+                            color: overBudget ? "#f87171" : "#4ade80" }}>
+                            ${bal.toFixed(2)}
+                            {overBudget && (
+                              <span style={{ fontSize: 10, fontWeight: 400, marginLeft: 4, color: "rgba(248,113,113,0.7)" }}>
+                                {L("⚠ short", "⚠ не вистачає")}
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", lineHeight: 1.4 }}>
+                          {L("Check balance\nabove to compare", "Перевір баланс\nвище для порівняння")}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Session Name Increment */}

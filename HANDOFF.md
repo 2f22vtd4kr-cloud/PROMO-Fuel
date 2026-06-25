@@ -19,7 +19,8 @@ _Rewritten each session. Contains only current state — no history._
 - `account_factory.py` — `_registration_stream`: added `max_attempts: int = 20` param; `MAX_NUM_RETRIES = max(1, min(max_attempts, 999))` replaces hardcoded 20
 - `account_factory.py` — `register_account`: parses `max_attempts` from body (clamp 1–999, default 20); also raised `quantity` server-side cap 10→20
 - `account_factory.py` — `_generate_inner`: passes `max_attempts=max_attempts` through to `_registration_stream`
-- `AccountFactory.tsx`: `maxAttempts` state (default 20); added "Макс. спроб номерів" number input (1–999, orange glow when >20, hint explains use-case for cheap ID/PH pools); quantity stepper max raised 10→20; `max_attempts: maxAttempts` added to fetch body
+- `AccountFactory.tsx`: `maxAttempts` state (default 20); added "Макс. спроб номерів" number input (1–999, orange glow when >20); quantity stepper max raised 10→20; `max_attempts: maxAttempts` added to fetch body
+- `AccountFactory.tsx` — cost estimator banner below the max attempts input: computes `estCost = maxAttempts × svcStock.price × quantity`; compares against `balanceData.balance` — red card + "⚠ не вистачає" when over budget, green when within budget, neutral grey when balance not yet fetched. Renders only when `svcStock.price > 0` (i.e. country selected and stock loaded).
 
 **Log message now reflects real config:** "attempt 2/999" when set to 999.
 
