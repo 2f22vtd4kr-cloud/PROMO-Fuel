@@ -767,6 +767,18 @@ def run_migrations(db_path: str = DB_PATH) -> None:  # noqa: C901 — long but l
     conn.commit()
     logger.info("[migrations] Step 13 — account metadata + settings table OK")
 
+    # ── Step 14: account_phone in pending_verifications + last_used_at index ─
+    #
+    # Adds the sender's phone number directly to each captcha record so the
+    # operator dashboard can display it without a JOIN.  Also adds an index on
+    # last_used_at for efficient "recently active" queries.
+
+    _add_col(conn, "pending_verifications", "account_phone", "TEXT NOT NULL DEFAULT ''")
+    _create_index(conn, "idx_pending_verif_phone",    "pending_verifications(account_phone)")
+    _create_index(conn, "idx_sender_accounts_last_used", "sender_accounts(last_used_at)")
+    conn.commit()
+    logger.info("[migrations] Step 14 — account_phone + last_used_at index OK")
+
     # ── Done ─────────────────────────────────────────────────────────────
 
     conn.close()

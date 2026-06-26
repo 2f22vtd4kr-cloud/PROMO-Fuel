@@ -203,6 +203,10 @@ export interface SenderAccount {
   warmup_target?: number;
   warmup_started_at?: string;
   warmup_completed_at?: string;
+  tags?: string;
+  health_score?: number;
+  fingerprint_data?: string;
+  current_proxy_index?: number;
 }
 
 export interface WorkerHeartbeat {

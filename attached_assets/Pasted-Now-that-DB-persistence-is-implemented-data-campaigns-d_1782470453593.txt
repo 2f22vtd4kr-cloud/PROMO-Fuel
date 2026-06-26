@@ -1,0 +1,32 @@
+Now that DB persistence is implemented (data/campaigns.db survives republishes with backups), update PROMO-Fuel for production-grade multi-account management matching Multilogin/Gologin capabilities, with strong focus on manual captcha control:
+
+1. Create lib/account_manager.py:
+   - AccountManager class with methods: load_client(account_id), get_all_accounts(status_filter), batch_join(groups, account_ids, stagger_seconds=30-120), health_check(account_id), warmup_account(account_id)
+   - Integrate tightly with supervisor.py, task_queue.py and campaign_db.py
+
+2. Enhance DB (additive migrations only, leveraging the new persistence):
+   - Ensure accounts table exists with columns: id, phone, session_path, proxy_json, status (warmup/active/banned/etc), health_score, fingerprint_data, tags, last_used, created_at
+   - Add indexes on status and last_used
+   - Update campaign_db.py accordingly
+
+3. Enhance verification_listener.py and groupbroadcaster.py:
+   - On captcha/join-request events, forward full context (group, account_phone, captcha_message, tagging info) to Mini App
+   - Support staggered multi-account joins with configurable delays
+
+4. Mini App (artifacts/telegram-miniapp/):
+   - New / enhanced "Accounts" dashboard: list with status, health, tags/folders, bulk actions, proxy binding
+   - "Pending Captchas" view: real-time list of captchas with account context, manual solve buttons that call backend
+   - Real-time updates via polling + new WebSocket endpoint in apiserver.py
+   - Manual solve flow that triggers AccountManager to complete the join
+
+5. Add Warmup scheduler + Proxy rotator in utils/ or new lib/
+   - Use existing fingerprints/proxies from account_factory.py
+   - Gradual warmup logic (7-14 days recommended patterns)
+
+6. Dashboard enhancements:
+   - Account health stats, success rates, bulk operations, filters/tags/folders
+   - Integration with existing campaign and analytics views
+
+Ensure Replit supervisor.py can reliably handle multiple concurrent async Telethon clients.
+Prioritize isolation (per-account proxy + fingerprint), manual captcha override, and human-like pacing.
+Test incrementally with 5-10 accounts first. Verify data persistence after republishes.

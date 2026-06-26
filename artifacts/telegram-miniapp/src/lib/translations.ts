@@ -413,6 +413,10 @@ const en = {
     snapshot: "Snapshot:",
     queueTitle: "Task queue",
     lockedBy: "busy",
+    backupDb: "DB Backup",
+    backupHint: "Saves to PostgreSQL + downloads file",
+    backupBtn: "Download",
+    backupSuccess: "✓ Download started",
   },
   editor: {
     title: "New Campaign",
@@ -982,6 +986,10 @@ const ua: typeof en = {
     snapshot: "Знімок:",
     queueTitle: "Черга завдань",
     lockedBy: "зайнятий",
+    backupDb: "Резервна копія БД",
+    backupHint: "Збереження до PostgreSQL + скачування файлу",
+    backupBtn: "Скачати",
+    backupSuccess: "✓ Скачування розпочато",
   },
   editor: {
     title: "Нова розсилка",

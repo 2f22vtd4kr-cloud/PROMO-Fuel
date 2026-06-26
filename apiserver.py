@@ -45,7 +45,7 @@ from typing import Any
 import sqlite3
 
 import aiosqlite
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Security
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
@@ -1000,6 +1000,99 @@ async def trigger_vacuum() -> dict:
         "databases":   results_v,
         "total_ms":    total_ms,
         "message":     f"VACUUM complete on {len(results_v)} database(s) in {total_ms}ms",
+    }
+
+
+@admin_router.post("/accounts/batch-join")
+async def batch_join_groups(request: Request) -> dict:
+    """
+    Join one or more Telegram groups/channels using a set of sender accounts,
+    with configurable human-paced stagger delays between each join.
+
+    Request body (JSON)::
+
+        {
+            "groups":           ["@chat_one", "@chat_two"],
+            "account_ids":      [1, 3, 7],
+            "min_stagger_secs": 30,
+            "max_stagger_secs": 120,
+            "dry_run":          false
+        }
+
+    Returns a summary with per-(account, group) results.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    groups      = body.get("groups", [])
+    account_ids = body.get("account_ids", [])
+    min_stagger = int(body.get("min_stagger_secs", 30))
+    max_stagger = int(body.get("max_stagger_secs", 120))
+    dry_run     = bool(body.get("dry_run", False))
+
+    if not groups:
+        raise HTTPException(status_code=400, detail="groups list is required")
+    if not account_ids:
+        raise HTTPException(status_code=400, detail="account_ids list is required")
+    if min_stagger > max_stagger:
+        min_stagger, max_stagger = max_stagger, min_stagger
+
+    try:
+        from lib.account_manager import get_manager
+        am = get_manager()
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail=f"AccountManager unavailable: {exc}")
+
+    summary = await am.batch_join(
+        groups=groups,
+        account_ids=account_ids,
+        stagger_seconds=(min_stagger, max_stagger),
+        dry_run=dry_run,
+    )
+    return summary
+
+
+@admin_router.post("/accounts/health-check")
+async def health_check_accounts(request: Request) -> dict:
+    """
+    Validate sessions for a list of accounts (or all idle accounts).
+
+    Request body (JSON)::
+
+        {
+            "account_ids": [1, 2, 3],   // omit to check all idle accounts
+            "concurrency": 3
+        }
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    account_ids: list[int] | None = body.get("account_ids")
+    concurrency: int              = int(body.get("concurrency", 3))
+
+    try:
+        from lib.account_manager import get_manager
+        am = get_manager()
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail=f"AccountManager unavailable: {exc}")
+
+    if account_ids:
+        results = await asyncio.gather(*[am.health_check(aid) for aid in account_ids])
+        results = list(results)
+    else:
+        results = await am.health_check_all(status_filter=None, concurrency=concurrency)
+
+    ok_count     = sum(1 for r in results if r.get("ok"))
+    failed_count = len(results) - ok_count
+    return {
+        "total":   len(results),
+        "ok":      ok_count,
+        "failed":  failed_count,
+        "results": results,
     }
 
 

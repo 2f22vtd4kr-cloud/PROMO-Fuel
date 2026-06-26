@@ -147,6 +147,19 @@ def _db() -> sqlite3.Connection:
     return conn
 
 
+def _lookup_phone(account_id: int) -> str:
+    """Return the phone number for an account, or empty string on failure."""
+    try:
+        conn = _db()
+        row  = conn.execute(
+            "SELECT phone FROM sender_accounts WHERE id = ?", (account_id,)
+        ).fetchone()
+        conn.close()
+        return row[0] if row else ""
+    except Exception:
+        return ""
+
+
 def _save_verification(
     account_id: int,
     group_username: str,
@@ -155,17 +168,20 @@ def _save_verification(
     captcha_text: str,
     buttons_json: Optional[str],
     captcha_type: str,
+    account_phone: str = "",
 ) -> None:
+    if not account_phone:
+        account_phone = _lookup_phone(account_id)
     try:
         conn = _db()
         conn.execute(
             """
             INSERT INTO pending_verifications
-              (account_id, group_username, group_title, bot_message_id,
+              (account_id, account_phone, group_username, group_title, bot_message_id,
                captcha_text, buttons_json, captcha_type, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
             """,
-            (account_id, group_username, group_title, bot_message_id,
+            (account_id, account_phone, group_username, group_title, bot_message_id,
              captcha_text, buttons_json, captcha_type),
         )
         conn.commit()

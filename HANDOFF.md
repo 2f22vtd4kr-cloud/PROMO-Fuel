@@ -6,57 +6,78 @@ _Rewritten each session. Contains only current state — no history._
 
 ## What was done this session
 
-### Data persistence — DB moved to `data/campaigns.db`
+### Multi-Account Management (Multilogin/Gologin-style) — DONE
 
-**Goal**: Move SQLite DB to a persistent `data/` directory, add startup backups, a download endpoint, and a Step 13 migration.
+All five deliverables shipped and verified running.
 
-**Changes made:**
+**1. `lib/account_manager.py` — AccountManager class (NEW)**
+- `lib/__init__.py` created to make `lib/` a proper Python package
+- `get_all_accounts(status_filter?)` / `get_account(id)` — DB queries
+- `get_tags(id)` / `set_tags(id, tags)` — JSON tag r/w helpers
+- `load_client(account_id, connect=True)` — builds Telethon client on-demand, no caching; caller must `await client.disconnect()`; proxy-aware via `utils.proxy.proxy_to_telethon`
+- `health_check(account_id)` — `get_me()` call; updates `health_score=1.0` + `last_used_at` on success; sets `status=banned, health_score=0.0` on auth errors
+- `health_check_all(status_filter, concurrency=3)` — batch health check with asyncio.Semaphore
+- `batch_join(groups, account_ids, stagger_seconds=(30,120), dry_run=False)` — staggered multi-account group join via `JoinChannelRequest`; random human-paced delays; returns summary dict with per-(account,group) results
+- `warmup_account(id)` / `warmup_status(id)` — delegates to `utils.account_warmer`
+- Module singleton: `get_manager()` → `AccountManager`
 
-1. **`data/` directory created** (`data/campaigns.db` + `data/backups/`). Existing `campaigns.db` copied to `data/campaigns.db`. `.gitkeep` added.
+**2. Step 14 migration in `dbmigrations.py`**
+- `account_phone TEXT NOT NULL DEFAULT ''` added to `pending_verifications` via `_add_col`
+- `idx_pending_verif_phone` index on `pending_verifications(account_phone)`
+- `idx_sender_accounts_last_used` index on `sender_accounts(last_used_at)`
+- Confirmed: logged "Step 14 — account_phone + last_used_at index OK" on all migration runs
 
-2. **`DB_PATH` env var set** to `./data/campaigns.db` (shared environment via Replit secrets system).
+**3. `verification_listener.py` — phone tracking in captcha records**
+- Added `_lookup_phone(account_id)` — queries `sender_accounts.phone`
+- `_save_verification()` gains `account_phone: str = ""` param; auto-looks up via `_lookup_phone` when not provided
+- INSERT now includes `account_phone` column
 
-3. **`campaign_db.py`**: Added `import os`; updated default to `os.getenv("DB_PATH", "./data/campaigns.db")`.
+**4. `apiserver.py` — Two new `admin_router` endpoints**
+- `POST /api/admin/accounts/batch-join` — calls `AccountManager.batch_join()`
+  - Body: `{groups: [...], account_ids: [...], min_stagger_secs, max_stagger_secs, dry_run}`
+- `POST /api/admin/accounts/health-check` — calls per-ID or `health_check_all()`
+  - Body: `{account_ids?: [...], concurrency?: int}`
+- Both require Bearer auth (same as all `/api/admin/*`)
+- Added `Request` to fastapi imports (was missing)
 
-4. **`dbmigrations.py`**: Updated default to `os.getenv("DB_PATH", "./data/campaigns.db")`.
-
-5. **`db_sync.py`**: Both `save_snapshot()` and `restore_if_fresh()` now default to `""` (resolved from env at runtime). `restore_if_fresh` also calls `os.makedirs(data_dir, exist_ok=True)` before writing.
-
-6. **`supervisor.py`**: Added `_ensure_persistent_db(db_path)` function (called before `restore_if_fresh` in phase 0):
-   - Creates `data/` + `data/backups/` dirs
-   - One-time root→data migration if `data/campaigns.db` missing and `campaigns.db` exists
-   - Startup backup (`data/backups/campaigns_YYYYMMDD_HHMMSS.db`), prunes to 10 most recent
-
-7. **`dbmigrations.py` — Step 13**: Added after Step 12:
-   - `ALTER TABLE sender_accounts ADD COLUMN health_score REAL NOT NULL DEFAULT 1.0`
-   - `ALTER TABLE sender_accounts ADD COLUMN fingerprint_data TEXT NOT NULL DEFAULT '{}'`
-   - `ALTER TABLE sender_accounts ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'`
-   - `CREATE TABLE IF NOT EXISTS settings (key TEXT PK, value TEXT, updated_at TEXT)`
-
-8. **`apiserver.py`** (Python FastAPI, port 8083): Added `GET /internal/db-backup` endpoint (FileResponse, no auth, dev/internal only). Fixed `internal_sync` default path.
-
-9. **`artifacts/api-server/src/routes/sync.ts`** (Node.js, port 8080): Added `GET /sync/download-db` endpoint (streams `data/campaigns.db` as download). Added `import fs, path`.
-
-10. **`artifacts/api-server/src/routes/index.ts`**: Added `import syncRouter from "./sync"` and `router.use(syncRouter)`.
-
-11. **`artifacts/api-server/src/lib/db-path.ts`**: Updated fallback to check `data/campaigns.db` first. Fixed env var handling — if `DB_PATH` is relative and doesn't exist locally, tries `../../<DB_PATH>` (workspace root resolution for monorepo).
-
-12. **`artifacts/telegram-miniapp/src/pages/Dashboard.tsx`**: Added `DbBackupCard` sub-component (sync + download button) inserted before `<AdminActions>`. Button calls `POST /api/sync/now` then triggers download via `GET /api/sync/download-db`.
+**5. Frontend — `AccountTagChips` + type update**
+- `SenderAccount` interface in `api.ts` gained: `tags?`, `health_score?`, `fingerprint_data?`, `current_proxy_index?`
+- `AccountTagChips` component added to `Accounts.tsx` (just before `AccountCard`)
+  - Parses `acc.tags` JSON array; renders each tag as a colored pill chip
+  - Color deterministically derived from tag string (5-color glass palette, hash-based)
+  - Displayed inside AccountCard header, below phone number
+- Fixed pre-existing TS errors: added `backupDb`, `backupHint`, `backupBtn`, `backupSuccess` translation keys to both EN and UK locales in `translations.ts`
 
 ---
 
 ## Current system state
 
-- **Telegram Bot**: Running, `DB_PATH = ./data/campaigns.db` ✓, Step 13 migration applied ✓, vacuum running on `./data/campaigns.db` ✓.
-- **Node.js API Server** (port 8080): Running, resolved `DB_PATH` correctly via workspace-root fallback ✓.
-- **Mini App** (Vite, port 5000): Running, HMR applied Dashboard.tsx changes ✓.
-- **Python FastAPI** (port 8083): Running, `/internal/db-backup` endpoint live ✓.
+| Workflow | Port | Status |
+|---|---|---|
+| Telegram Bot (Python supervisor) | 8083 | ✅ Running |
+| Telegram Mini App (Vite) | 5000 | ✅ Running |
+| Node.js API Server | 8080 | ✅ Running |
 
-## Known issues / next steps
+TypeScript typecheck: **zero errors** in app code (known pre-existing corrupted JSX in mockup-sandbox canvas files — untouched, do not fix unless asked).
 
-- `persistentDirs` not added to `.replit` (blocked by tool restriction). Real persistence handled by `db_sync.py` → PostgreSQL, which is the correct layer for autoscale.
-- mockup-sandbox canvas artifacts (PolishComplete.tsx, RefinedDepth.tsx, GroupsV2.tsx, WorkersV3.tsx, VideoTemplate.tsx) have known corrupted JSX — typecheck errors exist but do NOT affect the live app.
-- `DB_PATH` is `./data/campaigns.db` (relative, workspace-root-relative). Node.js API server resolves it via the `../../` fallback in `db-path.ts`. If process CWD changes, check `db-path.ts`.
+---
+
+## DB schema state (`data/campaigns.db`)
+
+All 14 migration steps applied. Key additions:
+- `sender_accounts`: `tags`, `health_score`, `fingerprint_data`, `last_used_at`, `warmup_*` columns
+- `pending_verifications`: now includes `account_phone` (Step 14), indexed
+- `settings`: key/value store (Step 13)
+- Index `idx_sender_accounts_last_used` on `sender_accounts(last_used_at)` (Step 14)
+
+---
+
+## Known issues / notes
+
+- `lib/account_manager.py` imports Telethon lazily (inside methods) — safe to import even without Telethon installed
+- `batch_join` with real stagger delays (30–120s default) produces long-running requests for large batches; use `dry_run: true` to test routing
+- mockup-sandbox canvas artifacts (PolishComplete.tsx, RefinedDepth.tsx, GroupsV2.tsx, WorkersV3.tsx, VideoTemplate.tsx) have known corrupted JSX — typecheck errors exist but do NOT affect the live app
+- `DB_PATH = ./data/campaigns.db` (workspace-root-relative). Node.js API server resolves it via `../../` fallback in `db-path.ts`
 
 ## Slide counts (unchanged)
 

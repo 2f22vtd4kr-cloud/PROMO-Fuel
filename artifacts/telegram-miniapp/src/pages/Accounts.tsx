@@ -503,6 +503,48 @@ function ProxyPingBadge({ accountId, proxy, externalResult }: {
   );
 }
 
+// ── Account tag chips ─────────────────────────────────────────────────────────
+
+const TAG_COLORS = [
+  { bg: "rgba(107,168,229,0.18)", border: "rgba(107,168,229,0.4)", text: "#6ba8e5" },
+  { bg: "rgba(196,174,255,0.18)", border: "rgba(196,174,255,0.4)", text: "#c4aeff" },
+  { bg: "rgba(45,232,151,0.15)",  border: "rgba(45,232,151,0.38)", text: "#2de897" },
+  { bg: "rgba(255,201,70,0.15)",  border: "rgba(255,201,70,0.38)", text: "#ffc946" },
+  { bg: "rgba(255,107,122,0.15)", border: "rgba(255,107,122,0.38)", text: "#ff6b7a" },
+];
+
+function tagColor(tag: string) {
+  let h = 0;
+  for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) >>> 0;
+  return TAG_COLORS[h % TAG_COLORS.length];
+}
+
+function AccountTagChips({ tags }: { tags?: string }) {
+  if (!tags) return null;
+  let list: string[] = [];
+  try { list = JSON.parse(tags); } catch { return null; }
+  if (!Array.isArray(list) || list.length === 0) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 3 }}>
+      {list.map(tag => {
+        const c = tagColor(tag);
+        return (
+          <span key={tag} style={{
+            fontSize: 8, fontWeight: 700, color: c.text,
+            background: c.bg, border: `1px solid ${c.border}`,
+            borderRadius: 20, padding: "1px 5px", letterSpacing: 0.2,
+            whiteSpace: "nowrap",
+          }}>
+            {tag}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Account card ──────────────────────────────────────────────────────────────
+
 function AccountCard({ acc, onRefresh, pingResult }: { acc: SenderAccount; onRefresh: () => void; pingResult?: ProxyResult }) {
   const { t, lang } = useI18n();
   const [expanded,      setExpanded]      = useState(false);
@@ -589,6 +631,7 @@ function AccountCard({ acc, onRefresh, pingResult }: { acc: SenderAccount; onRef
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: TG.text }}>{acc.label || `${t.nav.accounts} ${acc.id}`}</div>
             <div style={{ fontSize: 10, color: TG.muted }}>{acc.phone}</div>
+            <AccountTagChips tags={acc.tags} />
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
