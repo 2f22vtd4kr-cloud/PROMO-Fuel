@@ -1,5 +1,7 @@
 import { Router } from "express";
 import http from "http";
+import fs from "fs";
+import path from "path";
 import { getPgPool } from "../lib/pg-pool";
 
 const router = Router();
@@ -33,6 +35,19 @@ router.post("/sync/now", async (_req, res) => {
   } catch (e) {
     res.json({ ok: false, error: String(e) });
   }
+});
+
+router.get("/sync/download-db", (_req, res) => {
+  const dbPath = process.env["DB_PATH"] ?? path.resolve(process.cwd(), "data/campaigns.db");
+  if (!fs.existsSync(dbPath)) {
+    res.status(404).json({ ok: false, error: "Database file not found" });
+    return;
+  }
+  const stamp    = new Date().toISOString().replace(/[^0-9]/g, "").slice(0, 15);
+  const filename = `campaigns_${stamp}.db`;
+  res.setHeader("Content-Type", "application/octet-stream");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  fs.createReadStream(dbPath).pipe(res);
 });
 
 export default router;

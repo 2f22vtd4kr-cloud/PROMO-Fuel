@@ -102,3 +102,4 @@ packages = ["libxcrypt", "openssl"]
 
 [userenv.shared]
 PORT = "8080"
+DB_PATH = "./data/campaigns.db"

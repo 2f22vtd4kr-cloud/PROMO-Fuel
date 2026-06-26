@@ -1,9 +1,10 @@
 import aiosqlite
 import json
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-DB_PATH = "campaigns.db"
+DB_PATH = os.getenv("DB_PATH", "./data/campaigns.db")
 
 
 @asynccontextmanager

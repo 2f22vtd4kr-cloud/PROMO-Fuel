@@ -679,6 +679,53 @@ class EnvState:
         logger.info("─" * 60)
 
 
+# ── Phase 0: Persistent data directory setup ─────────────────────────────────
+
+def _ensure_persistent_db(db_path: str) -> None:
+    """Create data/ + data/backups/ dirs, migrate root DB if needed, take startup backup."""
+    import shutil
+
+    db_file    = os.path.abspath(db_path)
+    data_dir   = os.path.dirname(db_file)
+    backup_dir = os.path.join(data_dir, "backups")
+
+    os.makedirs(data_dir,   exist_ok=True)
+    os.makedirs(backup_dir, exist_ok=True)
+
+    # One-time migration: if data/campaigns.db doesn't exist yet but the legacy
+    # root-level campaigns.db does, copy it over so no data is lost.
+    root_db = os.path.normpath(os.path.join(data_dir, "..", "campaigns.db"))
+    if not os.path.exists(db_file) and os.path.exists(root_db):
+        try:
+            shutil.copy2(root_db, db_file)
+            logger.info("[ensure_db] ✓ Migrated campaigns.db → %s", db_file)
+        except Exception as exc:
+            logger.warning("[ensure_db] Root→data migration failed: %s", exc)
+
+    # Startup backup — taken before migrations, so the pre-migration state is
+    # preserved even if something goes wrong with an additive schema change.
+    if os.path.exists(db_file):
+        try:
+            stamp       = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            backup_path = os.path.join(backup_dir, f"campaigns_{stamp}.db")
+            shutil.copy2(db_file, backup_path)
+            logger.info("[ensure_db] ✓ Startup backup → %s", backup_path)
+
+            # Prune: keep only the 10 most recent backups
+            all_backups = sorted(
+                [f for f in os.listdir(backup_dir)
+                 if f.startswith("campaigns_") and f.endswith(".db")],
+                reverse=True,
+            )
+            for old in all_backups[10:]:
+                try:
+                    os.remove(os.path.join(backup_dir, old))
+                except Exception:
+                    pass
+        except Exception as exc:
+            logger.warning("[ensure_db] Startup backup failed (non-fatal): %s", exc)
+
+
 # ── Phase 0: DB migrations ────────────────────────────────────────────────────
 
 def _run_migrations(db_path: str) -> None:
@@ -1002,6 +1049,9 @@ def run(args: argparse.Namespace) -> None:  # noqa: C901
     # (campaign_db, task_queue, etc.) pick them up consistently.
     os.environ["DB_PATH"]         = env_state.db_path
     os.environ["API_SERVER_PORT"] = str(env_state.api_port)
+
+    # ── Ensure data/ directory, migrate root DB if needed, startup backup ──
+    _ensure_persistent_db(env_state.db_path)
 
     # ── PG restore — must run BEFORE migrations so the schema is created
     #    against the restored data, not an empty DB.

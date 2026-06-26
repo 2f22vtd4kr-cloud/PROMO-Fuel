@@ -52,6 +52,60 @@ function parseProxies(raw?: string | null): string[] {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
+function DbBackupCard() {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [msg,  setMsg]  = useState<string | null>(null);
+
+  const handleBackup = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await fetch("/api/sync/now", { method: "POST" });
+    } catch {
+      // fail-open: attempt download even if sync fails
+    }
+    const a    = document.createElement("a");
+    a.href     = "/api/sync/download-db";
+    a.download = "";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setMsg(t.dashboard.backupSuccess ?? "✓ Скачування розпочато");
+    setBusy(false);
+    setTimeout(() => setMsg(null), 4000);
+  };
+
+  return (
+    <GlassCard style={{ padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--tg-text, #e8eaed)" }}>💾 {t.dashboard.backupDb ?? "Резервна копія БД"}</div>
+        <div style={{ fontSize: 9, color: "var(--tg-hint, #7c8db0)", marginTop: 2 }}>
+          {msg ?? (t.dashboard.backupHint ?? "Збереження до PostgreSQL + скачування файлу")}
+        </div>
+      </div>
+      <button
+        onClick={handleBackup}
+        disabled={busy}
+        style={{
+          background: busy ? "rgba(107,168,229,0.12)" : "rgba(107,168,229,0.18)",
+          border: "1px solid rgba(107,168,229,0.35)",
+          borderRadius: 20,
+          color: "#6ba8e5",
+          fontSize: 10,
+          fontWeight: 700,
+          padding: "5px 14px",
+          cursor: busy ? "default" : "pointer",
+          flexShrink: 0,
+          transition: "all 0.2s",
+        }}
+      >
+        {busy ? "…" : (t.dashboard.backupBtn ?? "Скачати")}
+      </button>
+    </GlassCard>
+  );
+}
+
 function SseDot({ connected }: { connected: boolean }) {
   const c = connected ? "#2de897" : "#ffc946";
   return (
@@ -541,6 +595,9 @@ export function DashboardPage() {
                   </GlassCard>
                 </div>
               )}
+
+              {/* ── Database backup ───────────────────────────────────── */}
+              <DbBackupCard />
 
               {/* ── Admin actions ─────────────────────────────────────── */}
               <AdminActions onAction={load} />

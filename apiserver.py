@@ -1015,11 +1015,26 @@ async def internal_sync() -> dict:
     """Trigger an immediate PostgreSQL snapshot of campaigns.db + session files."""
     try:
         import db_sync
-        db_path = os.getenv("DB_PATH", "campaigns.db")
+        db_path = os.getenv("DB_PATH", "./data/campaigns.db")
         db_sync.save_snapshot(db_path)
         return {"ok": True}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+
+@app.get("/internal/db-backup")
+async def db_backup():
+    """Download campaigns.db as a binary file. No auth — internal/dev use only."""
+    from fastapi.responses import FileResponse
+    db_path = os.getenv("DB_PATH", "./data/campaigns.db")
+    if not os.path.exists(db_path):
+        raise HTTPException(status_code=404, detail="Database file not found")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return FileResponse(
+        db_path,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="campaigns_{stamp}.db"'},
+    )
 
 
 # ── Verifications router ──────────────────────────────────────────────────────

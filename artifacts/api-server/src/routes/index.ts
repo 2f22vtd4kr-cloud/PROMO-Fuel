@@ -12,6 +12,7 @@ import groupCampaignsRouter from "./group-campaigns";
 import workersRouter        from "./workers";
 import aiRouter             from "./ai";
 import proxyStoreRouter     from "./proxy-store";
+import syncRouter           from "./sync";
 
 const router: IRouter = Router();
 
@@ -29,6 +30,7 @@ router.use(uploadRouter);
 router.use(workersRouter);
 router.use(aiRouter);
 router.use(proxyStoreRouter);
+router.use(syncRouter);
 
 // ── TWA aliases — same handlers, accessible under /twa/* for Mini App ──
 router.use("/twa", campaignsRouter);

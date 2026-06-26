@@ -32,7 +32,7 @@ from typing import Sequence
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.getenv("DB_PATH", "campaigns.db")
+DB_PATH = os.getenv("DB_PATH", "./data/campaigns.db")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Connection factory — THREE mandatory pragmas on every connection
@@ -740,7 +740,34 @@ def run_migrations(db_path: str = DB_PATH) -> None:  # noqa: C901 — long but l
     conn.commit()
     logger.info("[migrations] Step 12 — recycled_prefix_cache (SNSS) OK")
 
-    # ── Done ─────────────────────────────────────────────────────────────────
+    # ── Step 13: Extended account metadata + settings table ──────────────
+    #
+    # Adds optional metadata columns to sender_accounts for health tracking
+    # and a generic key-value settings table for app configuration.
+    # All ALTER TABLE statements are wrapped in try/except so re-running is safe.
+
+    for col_sql in [
+        "ALTER TABLE sender_accounts ADD COLUMN health_score REAL NOT NULL DEFAULT 1.0",
+        "ALTER TABLE sender_accounts ADD COLUMN fingerprint_data TEXT NOT NULL DEFAULT '{}'",
+        "ALTER TABLE sender_accounts ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'",
+    ]:
+        try:
+            conn.execute(col_sql)
+        except Exception:
+            pass  # column already exists — skip silently
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS settings (
+            key        TEXT PRIMARY KEY,
+            value      TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    _create_index(conn, "idx_settings_key", "settings(key)")
+    conn.commit()
+    logger.info("[migrations] Step 13 — account metadata + settings table OK")
+
+    # ── Done ─────────────────────────────────────────────────────────────
 
     conn.close()
     logger.info("[migrations] Done.")

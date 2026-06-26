@@ -68,8 +68,10 @@ def _is_fresh(db_path: str) -> bool:
 
 # ── Snapshot save ─────────────────────────────────────────────────────────────
 
-def save_snapshot(db_path: str = "campaigns.db", sessions_dir: str = "sessions") -> None:
+def save_snapshot(db_path: str = "", sessions_dir: str = "sessions") -> None:
     """Gzip campaigns.db + all session files and upsert into PostgreSQL."""
+    if not db_path:
+        db_path = os.environ.get("DB_PATH", "./data/campaigns.db")
     try:
         conn = _get_conn()
         _ensure_tables(conn)
@@ -124,11 +126,15 @@ def save_snapshot(db_path: str = "campaigns.db", sessions_dir: str = "sessions")
 
 # ── Restore on fresh start ────────────────────────────────────────────────────
 
-def restore_if_fresh(db_path: str = "campaigns.db", sessions_dir: str = "sessions") -> bool:
+def restore_if_fresh(db_path: str = "", sessions_dir: str = "sessions") -> bool:
     """
     If the local DB is empty AND PostgreSQL has a snapshot, restore it.
     Returns True if a restore was performed.
     """
+    if not db_path:
+        db_path = os.environ.get("DB_PATH", "./data/campaigns.db")
+    # Ensure the parent directory exists before trying to write the restored DB
+    os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
     try:
         conn = _get_conn()
         _ensure_tables(conn)
