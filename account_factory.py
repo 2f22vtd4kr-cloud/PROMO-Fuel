@@ -1776,11 +1776,12 @@ async def _registration_stream(
         _banned_count       = 0   # consecutive pre-banned numbers from this country
         _proxy_fail_count   = 0   # consecutive proxy-unreachable errors
         _sms_timeout_count  = 0   # consecutive SMS timeouts — flag for api_id shadow-block
-        # SMSPool pricing pool rotation — when pool 1 (standard) is recycled, rotate
-        # to pool 0 (mixed/cheapest) after 2nd recycled, then pool 2 (premium) after 4th.
-        # Different pricing pools draw from different carrier batches and often have
-        # different recycled rates for the same country.
-        _pricing_option = "1"
+        # SMSPool pricing pool rotation — SNSS-AI auto-switches when it fires
+        # switch_pool=True at ≥90% confidence.  Rotation order: 1 (standard) →
+        # 0 (cheapest/mixed) → 2 (premium).  Different pools draw from different
+        # carrier batches so a dead Pool 1 often has live numbers in Pool 0.
+        _pricing_option  = "1"
+        _pool_rotations  = 0   # max 2 rotations per session (1→0→2)
 
         # SNSS: accumulates confirmed-recycled phones this registration session
         # for Gemini pattern analysis (triggered at ≥2 recycled numbers).
@@ -2232,8 +2233,6 @@ async def _registration_stream(
                 _record_recycled_prefix(phone, country_id, _pricing_option)
                 _recycled_phones_this_session.append(phone)
 
-                # Always keep pricing_option=1 (highest success rate) — rotation removed.
-
                 _remaining_after = MAX_NUM_RETRIES - _num_attempt - 1
                 if _banned_count >= 3:
                     # 3+ consecutive pre-bans → flag the country and stop.
@@ -2552,8 +2551,6 @@ async def _registration_stream(
                         await cancel_order()
                         await safe_disconnect()
 
-                        # Always keep pricing_option=1 (highest success rate) — rotation removed.
-
                         # SNSS: record confirmed-recycled prefix (Layer 2 detection)
                         # and run Gemini pattern analysis when 2+ recycled in session.
                         _record_recycled_prefix(phone, country_id, _pricing_option)
@@ -2581,6 +2578,25 @@ async def _registration_stream(
                                         f"confidence={_ai_conf}% "
                                         f"switch_pool={_ai_switch} — {_ai_rec}"
                                     )})
+                                    # Auto pool-switch: act on the AI signal immediately
+                                    # instead of just logging it.  Rotation order: 1→0→2.
+                                    # Pool 0 (cheapest/mixed) draws from different carrier
+                                    # batches than Pool 1 (standard) — a dead standard pool
+                                    # often has live numbers in the mixed pool.
+                                    _conf_val = _ai_conf if isinstance(_ai_conf, (int, float)) else 0
+                                    if _ai_switch and _conf_val >= 90 and _pool_rotations < 2:
+                                        _next_pool = (
+                                            "0" if _pricing_option == "1"
+                                            else ("2" if _pricing_option == "0" else "1")
+                                        )
+                                        _pool_rotations  += 1
+                                        _pricing_option   = _next_pool
+                                        yield _sse("step", {"step": 1, "status": "running",
+                                                            "message": (
+                                                                f"🔀 SNSS-AI pool-switch → Pool {_next_pool} "
+                                                                f"(confidence {_conf_val}% — "
+                                                                f"Pool {_next_pool} draws from a different carrier batch)"
+                                                            )})
                                     # Widen the in-memory blacklist to AI-identified prefix
                                     if _ai_prefix and len(_ai_prefix) >= 5:
                                         _ai_key = f"{_ai_prefix}:{country_id.lower()}"

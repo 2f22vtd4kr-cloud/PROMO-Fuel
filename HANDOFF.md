@@ -6,40 +6,18 @@ _Rewritten each session. Contains only current state — no history._
 
 ## What was done this session
 
-### 1. Multi-Account Management — DONE
+### 1. SNSS-AI automatic pool-switching — IMPLEMENTED
 
-**`lib/account_manager.py`** — AccountManager class with `load_client`, `health_check`, `health_check_all`, `batch_join` (staggered), `warmup_account`, `get_tags`/`set_tags`, `get_manager()` singleton.
+**Problem diagnosed from factory logs:** SMSPool Vietnam Pool 1 was 100% recycled. The SNSS-AI was correctly firing `switch_pool=True` at 95–100% confidence from attempt #2 onward, but the factory was ignoring the signal and burning the full 20-number budget on the same dead pool.
 
-**Step 14 migration** — `account_phone TEXT` on `pending_verifications` + `idx_sender_accounts_last_used` index.
+**Fix in `account_factory.py`:**
+- Added `_pool_rotations = 0` counter (max 2 rotations per session)
+- After the SNSS-AI logs its result, if `switch_pool=True` and `confidence ≥ 90` and `_pool_rotations < 2`, the factory now **immediately rotates `_pricing_option`** to the next pool
+- Rotation order: **1 (standard) → 0 (cheapest/mixed) → 2 (premium)**
+- Emits a `step` SSE event: `🔀 SNSS-AI pool-switch → Pool 0 (confidence 95% — Pool 0 draws from a different carrier batch)`
+- Removed two stale "Always keep pricing_option=1 — rotation removed." comments
 
-**`verification_listener.py`** — `_save_verification()` now auto-looks up and stores `account_phone`.
-
-**`apiserver.py`** — `POST /api/admin/accounts/batch-join` and `POST /api/admin/accounts/health-check`.
-
-**Frontend** — `AccountTagChips` component in `Accounts.tsx`; `SenderAccount` extended with `tags?/health_score?/fingerprint_data?/current_proxy_index?`; missing `backupDb/Hint/Btn/Success` translation keys added to EN+UK locales.
-
----
-
-### 2. Account Factory retry budget — FIXED
-
-All three abort checks (`_app_stuck_count`) were hardcoded (`< 3`, `< 5`, `< 5`) instead of `< MAX_NUM_RETRIES`. "Budget used" counter showed recycled-only count instead of total attempts. Both fixed; with `max_attempts=20` the factory now tries all 20 numbers before showing "switch country" popup.
-
----
-
-### 3. Pool quality indicator — ADDED
-
-**Backend (`account_factory.py`):** Emits new `pool_quality` SSE event `{"bad": N, "total": M}` immediately before every retry `continue` (prefix-skip L0, contact-hit L1, pre-banned, confirmed recycled). Does NOT emit on final abort (handled by `sms_retry_prompt`).
-
-**Frontend (`AccountFactory.tsx`):**
-- `poolQuality: {bad, total} | null` state — resets to `null` on every `launch()`
-- Handles `pool_quality` SSE: updates state in place (no log line, no append)
-- Renders a single compact strip inside the steps card (between step rows and poll-msg footer):
-  - Thin 3px animated progress bar (bad/total as %)
-  - Color: green < 30% bad, yellow 30–60%, red ≥ 60%
-  - `"Pool" label | ▓▓░░░░ | 3/6 ❌ 50%`
-  - Invisible when quality is null (fresh start or successful run)
-
-No new log entries. The strip silently replaces itself on every bad number — never grows.
+**Effect on the logged run:** Would have switched to Pool 0 at attempt #3 (after the 2nd recycled number triggered the AI at 95%), saving ~17 wasted number purchases and ~$6.46 in SMSPool costs.
 
 ---
 
@@ -59,14 +37,15 @@ TypeScript typecheck: zero errors (known pre-existing corrupted JSX in mockup-sa
 
 ## DB schema (`data/campaigns.db`)
 
-All 14 migration steps applied. `sender_accounts` has tags/health_score/fingerprint_data/last_used_at/warmup_*; `pending_verifications` has `account_phone` (Step 14); `settings` key/value store (Step 13).
+All 14 migration steps applied. No schema changes this session.
 
 ---
 
 ## Known notes
 
 - `_banned_count >= 3` abort intentionally left hardcoded (3 consecutive pre-bans = carrier pool signal, not budget issue).
-- `lib/account_manager.py` imports Telethon lazily — safe to import anywhere.
+- SNSS-AI pool rotation caps at 2 rotations per session (1→0→2). If Pool 2 is also dead the factory exhausts its budget and shows the switch-country prompt as before.
+- Pool rotation only triggers via SNSS-AI (`confidence ≥ 90`). Pre-ban path does not trigger rotation (pre-bans already abort at 3 consecutive hits).
 - `DB_PATH = ./data/campaigns.db` (workspace-root-relative); Node.js resolves via `../../` fallback in `db-path.ts`.
 
 ## Slide counts (unchanged)
