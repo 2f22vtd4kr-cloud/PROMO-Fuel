@@ -1348,6 +1348,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [steps,           setSteps]           = useState<StepState[]>(initSteps());
   const [errorMsg,        setErrorMsg]        = useState<string | null>(null);
   const [pollMsg,         setPollMsg]         = useState<string | null>(null);
+  const [poolQuality,     setPoolQuality]     = useState<{ bad: number; total: number } | null>(null);
   const [preflightStatus, setPreflightStatus] = useState<"idle"|"running"|"done"|"error">("idle");
   const [preflightMsg,    setPreflightMsg]    = useState<string | null>(null);
   const [exitIp,          setExitIp]          = useState<string | null>(null);
@@ -1744,6 +1745,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setDonePhones([]);
     setBatchDone(false);
     setPollMsg(null);
+    setPoolQuality(null);
     setBatchDelayMsg(null);
     setBatchTotal(0);
     setBatchCurrent(0);
@@ -1897,6 +1899,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                 })
                 .catch(() => {});
             }
+          } else if (event === "pool_quality") {
+            setPoolQuality({ bad: p.bad as number, total: p.total as number });
           } else if (event === "step") {
             const stepIdx = (p.step as number) - 1;
             updateStep(stepIdx, {
@@ -4969,6 +4973,32 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                 {STEP_DEFS.map((def, i) => (
                   <StepRow key={def.id} def={def} state={steps[i]!} lang={lang} />
                 ))}
+                {poolQuality && poolQuality.total > 0 && (() => {
+                  const pct = Math.round(poolQuality.bad / poolQuality.total * 100);
+                  const barColor = pct < 30 ? "#2de897" : pct < 60 ? "#ffc946" : "#ff6b7a";
+                  return (
+                    <div style={{
+                      margin: "6px 4px 2px",
+                      padding: "6px 10px",
+                      background: `${barColor}0d`,
+                      border: `1px solid ${barColor}28`,
+                      borderRadius: 10,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}>
+                      <span style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", flexShrink: 0, letterSpacing: "0.04em", textTransform: "uppercase", fontWeight: 600 }}>
+                        {L("Pool", "Пул")}
+                      </span>
+                      <div style={{ flex: 1, height: 3, background: "rgba(255,255,255,0.07)", borderRadius: 2, overflow: "hidden" }}>
+                        <div style={{ width: `${pct}%`, height: "100%", background: barColor, borderRadius: 2, transition: "width 0.5s ease" }} />
+                      </div>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: barColor, flexShrink: 0 }}>
+                        {poolQuality.bad}/{poolQuality.total} ❌ {pct}%
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
               {pollMsg && !batchDelayMsg && (
                 <div style={{

@@ -1924,6 +1924,7 @@ async def _registration_stream(
                                             f"🚫 SNSS prefix-skip #{_app_stuck_count}/{MAX_NUM_RETRIES} — "
                                             f"buying next number ({_num_attempt + 1}/{MAX_NUM_RETRIES} budget used)"
                                         )})
+                    yield _sse("pool_quality", {"bad": _app_stuck_count, "total": _num_attempt + 1})
                     continue
                 else:
                     yield _sse("sms_retry_prompt", {
@@ -1959,6 +1960,7 @@ async def _registration_stream(
                                             f"🚫 SNSS contact-hit #{_app_stuck_count}/{MAX_NUM_RETRIES} — "
                                             f"buying next number ({_num_attempt + 1}/{MAX_NUM_RETRIES} budget used)"
                                         )})
+                    yield _sse("pool_quality", {"bad": _app_stuck_count, "total": _num_attempt + 1})
                     continue
                 else:
                     yield _sse("sms_retry_prompt", {
@@ -2251,6 +2253,7 @@ async def _registration_stream(
                     return
                 yield _sse("step", {"step": 3, "status": "running",
                                     "message": f"🚫 Number pre-banned — cancelling and trying new number… ({_remaining_after} attempt(s) left)"})
+                yield _sse("pool_quality", {"bad": _app_stuck_count, "total": _num_attempt + 1})
                 await cancel_order()
                 await safe_disconnect()
                 continue  # auto-retry with new number
@@ -2605,6 +2608,7 @@ async def _registration_stream(
                                                     f"credentials returned {code_type_name}. "
                                                     f"Retrying with new number ({_num_attempt + 1}/{MAX_NUM_RETRIES} budget used)…"
                                                 )})
+                            yield _sse("pool_quality", {"bad": _app_stuck_count, "total": _num_attempt + 1})
                             continue
                         else:
                             # All MAX_NUM_RETRIES attempts exhausted — flag the pool and stop.
