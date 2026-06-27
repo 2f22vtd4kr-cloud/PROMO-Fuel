@@ -1918,11 +1918,11 @@ async def _registration_stream(
                 _recycled_phones_this_session.append(phone)
                 await cancel_order()
                 _app_stuck_count += 1
-                if _app_stuck_count < 3:
+                if _app_stuck_count < MAX_NUM_RETRIES:
                     yield _sse("step", {"step": 1, "status": "error",
                                         "message": (
-                                            f"🚫 SNSS prefix-skip #{_app_stuck_count}/3 — "
-                                            "buying next number"
+                                            f"🚫 SNSS prefix-skip #{_app_stuck_count}/{MAX_NUM_RETRIES} — "
+                                            f"buying next number ({_num_attempt + 1}/{MAX_NUM_RETRIES} budget used)"
                                         )})
                     continue
                 else:
@@ -1931,7 +1931,7 @@ async def _registration_stream(
                         "message": (
                             f"🚫 SMSPool {country_id.upper()} pool fully recycled — "
                             f"prefix '{_pbl_prefix}…' hit {_pbl_count} times. "
-                            f"All {_app_stuck_count} numbers from the same recycled batch. "
+                            f"All {_app_stuck_count}/{MAX_NUM_RETRIES} numbers from the same recycled batch. "
                             + _suggest_alt_countries(country_id)
                         ),
                     })
@@ -1953,11 +1953,11 @@ async def _registration_stream(
                 _recycled_phones_this_session.append(phone)
                 await cancel_order()
                 _app_stuck_count += 1
-                if _app_stuck_count < 5:
+                if _app_stuck_count < MAX_NUM_RETRIES:
                     yield _sse("step", {"step": 1, "status": "error",
                                         "message": (
-                                            f"🚫 SNSS contact-hit #{_app_stuck_count}/5 — "
-                                            "buying next number"
+                                            f"🚫 SNSS contact-hit #{_app_stuck_count}/{MAX_NUM_RETRIES} — "
+                                            f"buying next number ({_num_attempt + 1}/{MAX_NUM_RETRIES} budget used)"
                                         )})
                     continue
                 else:
@@ -1965,7 +1965,7 @@ async def _registration_stream(
                         "country_id": country_id,
                         "message": (
                             f"🚫 {country_id.upper()} pool recycled — "
-                            f"{_app_stuck_count} consecutive numbers confirmed via "
+                            f"{_app_stuck_count}/{MAX_NUM_RETRIES} consecutive numbers confirmed via "
                             "contact import. " + _suggest_alt_countries(country_id)
                         ),
                     })
@@ -2592,23 +2592,22 @@ async def _registration_stream(
                                 yield _sse("debug", {"message":
                                     f"🤖 SNSS-AI: analysis skipped ({_ai_ex})"})
 
-                        # Retry up to 5 consecutive recycled numbers before halting.
-                        # With a 90% recycled SMSPool pool, 5 retries gives ~41%
-                        # chance of finding a fresh number in those 5 attempts.
-                        # With a 95% recycled pool, 5 retries → 23% chance.
-                        # Raise the threshold instead of halting after 2 to avoid
-                        # false-positive "switch country" verdicts on high-recycled
-                        # but not 100%-recycled pools.
-                        if _app_stuck_count < 5:
+                        # Retry up to MAX_NUM_RETRIES consecutive bad numbers before halting.
+                        # MAX_NUM_RETRIES is set from the user-configured max_attempts param
+                        # (default 20).  All three abort checks (prefix-skip, contact-hit,
+                        # confirmed-recycled) share _app_stuck_count and the same threshold
+                        # so the "switch country" popup never fires before the full budget
+                        # is exhausted, regardless of which detection layer triggered.
+                        if _app_stuck_count < MAX_NUM_RETRIES:
                             yield _sse("step", {"step": 3, "status": "error",
                                                 "message": (
-                                                    f"🚫 Recycled number (#{_app_stuck_count}/5) — ResendCode + all official "
+                                                    f"🚫 Recycled number (#{_app_stuck_count}/{MAX_NUM_RETRIES}) — ResendCode + all official "
                                                     f"credentials returned {code_type_name}. "
-                                                    f"Retrying with new number ({_app_stuck_count}/{MAX_NUM_RETRIES} budget used)…"
+                                                    f"Retrying with new number ({_num_attempt + 1}/{MAX_NUM_RETRIES} budget used)…"
                                                 )})
                             continue
                         else:
-                            # 5+ consecutive recycled numbers — flag the pool and stop.
+                            # All MAX_NUM_RETRIES attempts exhausted — flag the pool and stop.
                             _RECYCLED_COUNTRY_POOL.add(country_id.lower())
                             # Detect same-exit-IP scenario and tailor the message
                             _ip_flag_hint = (

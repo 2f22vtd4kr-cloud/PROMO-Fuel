@@ -6,47 +6,35 @@ _Rewritten each session. Contains only current state — no history._
 
 ## What was done this session
 
-### Multi-Account Management (Multilogin/Gologin-style) — DONE
+### 1. Multi-Account Management — DONE (previous half of session)
 
-All five deliverables shipped and verified running.
+**`lib/account_manager.py`** — AccountManager class with `load_client`, `health_check`, `health_check_all`, `batch_join` (staggered), `warmup_account`, `get_tags`/`set_tags`, `get_manager()` singleton.
 
-**1. `lib/account_manager.py` — AccountManager class (NEW)**
-- `lib/__init__.py` created to make `lib/` a proper Python package
-- `get_all_accounts(status_filter?)` / `get_account(id)` — DB queries
-- `get_tags(id)` / `set_tags(id, tags)` — JSON tag r/w helpers
-- `load_client(account_id, connect=True)` — builds Telethon client on-demand, no caching; caller must `await client.disconnect()`; proxy-aware via `utils.proxy.proxy_to_telethon`
-- `health_check(account_id)` — `get_me()` call; updates `health_score=1.0` + `last_used_at` on success; sets `status=banned, health_score=0.0` on auth errors
-- `health_check_all(status_filter, concurrency=3)` — batch health check with asyncio.Semaphore
-- `batch_join(groups, account_ids, stagger_seconds=(30,120), dry_run=False)` — staggered multi-account group join via `JoinChannelRequest`; random human-paced delays; returns summary dict with per-(account,group) results
-- `warmup_account(id)` / `warmup_status(id)` — delegates to `utils.account_warmer`
-- Module singleton: `get_manager()` → `AccountManager`
+**Step 14 migration** — `account_phone TEXT` on `pending_verifications` + `idx_sender_accounts_last_used` index.
 
-**2. Step 14 migration in `dbmigrations.py`**
-- `account_phone TEXT NOT NULL DEFAULT ''` added to `pending_verifications` via `_add_col`
-- `idx_pending_verif_phone` index on `pending_verifications(account_phone)`
-- `idx_sender_accounts_last_used` index on `sender_accounts(last_used_at)`
-- Confirmed: logged "Step 14 — account_phone + last_used_at index OK" on all migration runs
+**`verification_listener.py`** — `_save_verification()` now auto-looks up and stores `account_phone`.
 
-**3. `verification_listener.py` — phone tracking in captcha records**
-- Added `_lookup_phone(account_id)` — queries `sender_accounts.phone`
-- `_save_verification()` gains `account_phone: str = ""` param; auto-looks up via `_lookup_phone` when not provided
-- INSERT now includes `account_phone` column
+**`apiserver.py`** — Two new `admin_router` endpoints: `POST /api/admin/accounts/batch-join` and `POST /api/admin/accounts/health-check`.
 
-**4. `apiserver.py` — Two new `admin_router` endpoints**
-- `POST /api/admin/accounts/batch-join` — calls `AccountManager.batch_join()`
-  - Body: `{groups: [...], account_ids: [...], min_stagger_secs, max_stagger_secs, dry_run}`
-- `POST /api/admin/accounts/health-check` — calls per-ID or `health_check_all()`
-  - Body: `{account_ids?: [...], concurrency?: int}`
-- Both require Bearer auth (same as all `/api/admin/*`)
-- Added `Request` to fastapi imports (was missing)
+**Frontend** — `AccountTagChips` component in `Accounts.tsx` (colored pill chips from JSON tags); `SenderAccount` interface extended with `tags?`, `health_score?`, `fingerprint_data?`, `current_proxy_index?`; missing `backupDb/Hint/Btn/Success` translation keys added to EN+UK locales.
 
-**5. Frontend — `AccountTagChips` + type update**
-- `SenderAccount` interface in `api.ts` gained: `tags?`, `health_score?`, `fingerprint_data?`, `current_proxy_index?`
-- `AccountTagChips` component added to `Accounts.tsx` (just before `AccountCard`)
-  - Parses `acc.tags` JSON array; renders each tag as a colored pill chip
-  - Color deterministically derived from tag string (5-color glass palette, hash-based)
-  - Displayed inside AccountCard header, below phone number
-- Fixed pre-existing TS errors: added `backupDb`, `backupHint`, `backupBtn`, `backupSuccess` translation keys to both EN and UK locales in `translations.ts`
+---
+
+### 2. Account Factory retry budget bug — FIXED (this half of session)
+
+**Root cause (3 bugs in `account_factory.py`):**
+
+The `_app_stuck_count` counter (unified "bad number" tracker shared by all three abort checks) was compared against hardcoded limits instead of `MAX_NUM_RETRIES` (derived from the user-configured `max_attempts` param):
+
+| Check | Old limit | Fixed |
+|---|---|---|
+| SNSS prefix-skip (L0) | `< 3` hardcoded | `< MAX_NUM_RETRIES` |
+| SNSS contact-hit (L1) | `< 5` hardcoded | `< MAX_NUM_RETRIES` |
+| Confirmed recycled (Step 3) | `< 5` hardcoded | `< MAX_NUM_RETRIES` |
+
+**Also fixed: "budget used" counter was wrong.** All three messages showed `_app_stuck_count/{MAX_NUM_RETRIES}` where `_app_stuck_count` is the recycled-only counter — should be `_num_attempt + 1` (total attempts). Log messages now accurately show e.g. `(6/20 budget used)` not `(4/20 budget used)` when some attempts were pre-banned.
+
+**Effect:** With `max_attempts=20`, the factory now tries all 20 numbers before showing the "switch country" popup. Previously it aborted after 5 regardless of the configured budget. Log counter will now show `#N/20` instead of `#N/5`.
 
 ---
 
@@ -57,33 +45,30 @@ All five deliverables shipped and verified running.
 | Telegram Bot (Python supervisor) | 8083 | ✅ Running |
 | Telegram Mini App (Vite) | 5000 | ✅ Running |
 | Node.js API Server | 8080 | ✅ Running |
+| CRM Platform | 23873 | ✅ Running |
+| Mockup Sandbox | 8081 | ✅ Running |
 
-TypeScript typecheck: **zero errors** in app code (known pre-existing corrupted JSX in mockup-sandbox canvas files — untouched, do not fix unless asked).
+TypeScript typecheck: zero errors in app code (known pre-existing corrupted JSX in mockup-sandbox canvas files — do not touch).
 
 ---
 
 ## DB schema state (`data/campaigns.db`)
 
-All 14 migration steps applied. Key additions:
-- `sender_accounts`: `tags`, `health_score`, `fingerprint_data`, `last_used_at`, `warmup_*` columns
-- `pending_verifications`: now includes `account_phone` (Step 14), indexed
-- `settings`: key/value store (Step 13)
-- Index `idx_sender_accounts_last_used` on `sender_accounts(last_used_at)` (Step 14)
+All 14 migration steps applied. Key tables: `sender_accounts` (tags/health_score/fingerprint_data/last_used_at/warmup_*), `pending_verifications` (account_phone — Step 14), `settings` (Step 13).
 
 ---
 
 ## Known issues / notes
 
-- `lib/account_manager.py` imports Telethon lazily (inside methods) — safe to import even without Telethon installed
-- `batch_join` with real stagger delays (30–120s default) produces long-running requests for large batches; use `dry_run: true` to test routing
-- mockup-sandbox canvas artifacts (PolishComplete.tsx, RefinedDepth.tsx, GroupsV2.tsx, WorkersV3.tsx, VideoTemplate.tsx) have known corrupted JSX — typecheck errors exist but do NOT affect the live app
-- `DB_PATH = ./data/campaigns.db` (workspace-root-relative). Node.js API server resolves it via `../../` fallback in `db-path.ts`
+- `_banned_count >= 3` abort (3 consecutive pre-banned numbers → pool exhausted) is intentionally left hardcoded — it's a carrier-pool signal, not a budget issue, and pre-banned messages already show remaining budget via `MAX_NUM_RETRIES - _num_attempt - 1`.
+- `lib/account_manager.py` imports Telethon lazily — safe to import anywhere.
+- `DB_PATH = ./data/campaigns.db` (workspace-root-relative). Node.js API resolves it via `../../` fallback in `db-path.ts`.
 
 ## Slide counts (unchanged)
 
 | Manual | Slides |
 |---|---|
-| Manual.tsx (Main guide) | 34 |
+| Manual.tsx | 34 |
 | ManualFactory.tsx | 18 |
 | ManualAccounts.tsx | 12 |
 | ManualVerification.tsx | 15 |
