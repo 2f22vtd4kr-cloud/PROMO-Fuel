@@ -2345,10 +2345,10 @@ async def _registration_stream(
                                                     f"✅ Reconnect succeeded — code sent ({code_type_name}) "
                                                     f"[{_tunnel_recover_count}/{_tunnel_drop_count} drops recovered]"
                                                 )})
-                        except Exception as _re:
+                        except Exception as _reconnect_exc:
                             yield _sse("step", {"step": 3, "status": "running",
                                                 "message": (
-                                                    f"🔄 Reconnect also failed ({type(_re).__name__}) "
+                                                    f"🔄 Reconnect also failed ({type(_reconnect_exc).__name__}) "
                                                     "— cancelling number, buying fresh…"
                                                 )})
                         if not _reconnect_ok:

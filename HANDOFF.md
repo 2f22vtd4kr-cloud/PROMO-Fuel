@@ -19,7 +19,15 @@ When Telethon disconnects mid-send_code (MTProto tunnel drop):
 
 Both layers instrument `_tunnel_drop_count` / `_tunnel_recover_count` session counters and emit `proxy_health` SSE on fatal drops. **Confirmed working (2/2 drops recovered in production log).**
 
-### 3. Proxy dead-peer rotation at Step 2 connect (THIS SESSION)
+### 3. `UnboundLocalError: _re` crash fix (THIS SESSION)
+
+**Root cause:** `except Exception as _re:` in the Layer 3 reconnect handler (line ~2348) named the caught exception `_re` — the same name as the module-level `import re as _re`. Python's scoping rules make any variable assigned anywhere in a function local to that **entire** function scope. So every `_re.search()`/`_re.sub()` call earlier in the generator (preflight, SNSS checks) became `UnboundLocalError` at runtime.
+
+**Symptom in log:** Registration crashed with `"Unexpected error: cannot access local variable '_re' where it is not associated with a value"` right after the preflight asyncio check — before buying any number.
+
+**Fix:** Renamed the exception variable to `_reconnect_exc` throughout that except block.
+
+### 4. Proxy dead-peer rotation at Step 2 connect
 
 **Root cause:** Decodo residential proxy pins `session-N` to one specific residential peer. When that peer goes offline, `client.connect()` raises `ProxyError: Host unreachable`. The old code retried the same dead peer 3× with 4s sleeps (up to 24s wasted, still fails).
 
