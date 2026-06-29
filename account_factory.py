@@ -2039,10 +2039,11 @@ async def _registration_stream(
                 app_version=app_version,
                 lang_code=_reg_lang,
                 system_lang_code=_reg_sys_lang,
-                # Explicit retry/timeout params — defaults are too conservative for
-                # residential proxies which can have higher initial latency.
-                connection_retries=5,
-                retry_delay=2,
+                # Fail fast so our own reconnect logic (below) reacts in <3s.
+                # connection_retries=5 + retry_delay=2 would silently spin 10s
+                # before surfacing "Cannot send requests while disconnected".
+                connection_retries=1,
+                retry_delay=1,
             )
 
             # ── TELEMETRY 1: Telethon client init dump ────────────────────
@@ -2131,6 +2132,26 @@ async def _registration_stream(
             # immediately after connect() is a strong bot fingerprint.
             await asyncio.sleep(random.uniform(1.2, 4.1))
 
+            # ── Pre-flight: MTProto liveness check ───────────────────────────
+            # Decodo residential SOCKS5 tunnels can silently drop within seconds
+            # of establishment (short idle TTL on peer-side).  Check BEFORE the
+            # RPC so we can fast-reconnect without cancelling the purchased number.
+            if not client.is_connected():
+                yield _sse("debug", {"message": "⚡ MTProto dropped during delay — fast reconnect…"})
+                try:
+                    await asyncio.wait_for(client.connect(), timeout=8.0)
+                    yield _sse("debug", {"message": "✅ Fast reconnect succeeded"})
+                except Exception as _pre_err:
+                    yield _sse("step", {"step": 3, "status": "running",
+                                        "message": (
+                                            f"🔄 Pre-flight reconnect failed ({type(_pre_err).__name__}) "
+                                            "— cancelling number, buying fresh…"
+                                        )})
+                    await cancel_order()
+                    await safe_disconnect()
+                    await asyncio.sleep(2)
+                    continue
+
             _banned = False
             _raw_next_type = None  # populated by whichever send_code path runs
             try:
@@ -2203,25 +2224,69 @@ async def _registration_stream(
                     continue   # ← retry loop: buy new number
                 except Exception as e2:
                     _e2_str = str(e2).lower()
-                    # Classify the error: transient connection/proxy errors should retry
-                    # with a fresh number; permanent errors (auth, flood) should abort.
+                    # Classify the error: transient connection/proxy errors should retry;
+                    # permanent errors (auth, flood) should abort.
                     _is_transient = any(x in _e2_str for x in (
                         "disconnected", "not connected", "connection",
                         "timeout", "proxy", "network", "eof",
                     ))
                     yield _sse("step", {"step": 3, "status": "error",
                                         "message": f"❌ Code request failed: {e2}"})
-                    await cancel_order()
-                    await safe_disconnect()
                     if _is_transient and _num_attempt < MAX_NUM_RETRIES - 1:
-                        # Transient connectivity issue — cancel this number, wait, buy another.
-                        # Do NOT abort the whole factory; a fresh number + reconnect usually works.
+                        # Transient tunnel drop — attempt ONE reconnect on the SAME purchased
+                        # number before cancelling it.  The number itself is valid; only the
+                        # SOCKS5 tunnel died.  Cancelling immediately wastes $0.38 + a budget
+                        # slot.  Most Decodo drops recover within 3-5s on a fresh connect().
+                        yield _sse("step", {"step": 3, "status": "running",
+                                            "message": "🔄 Connection dropped — reconnecting on same number…"})
+                        _reconnect_ok = False
+                        try:
+                            await asyncio.wait_for(client.connect(), timeout=8.0)
+                            _rc = await asyncio.wait_for(
+                                client(RawSendCodeRequest(
+                                    phone_number=phone,
+                                    api_id=_actual_api_id,
+                                    api_hash=_actual_api_hash,
+                                    settings=tl_types.CodeSettings(
+                                        allow_flashcall=False,
+                                        allow_missed_call=False,
+                                        allow_firebase=False,
+                                        allow_app_hash=False,
+                                        current_number=False,
+                                        unknown_number=True,
+                                    ),
+                                )),
+                                timeout=14.0,
+                            )
+                            phone_code_hash = _rc.phone_code_hash
+                            code_type_name  = type(_rc.type).__name__ if _rc.type else "SentCodeTypeSms"
+                            _raw_next_type  = getattr(_rc, "next_type", None)
+                            _reconnect_ok   = True
+                            yield _sse("step", {"step": 3, "status": "running",
+                                                "message": f"✅ Reconnect succeeded — code sent ({code_type_name})"})
+                        except Exception as _re:
+                            yield _sse("step", {"step": 3, "status": "running",
+                                                "message": (
+                                                    f"🔄 Reconnect also failed ({type(_re).__name__}) "
+                                                    "— cancelling number, buying fresh…"
+                                                )})
+                        if not _reconnect_ok:
+                            await cancel_order()
+                            await safe_disconnect()
+                            await asyncio.sleep(3)
+                            continue   # ← buy fresh number
+                        # Reconnect succeeded — fall through to normal post-send_code logic
+                    else:
+                        await cancel_order()
+                        await safe_disconnect()
+                        if not _is_transient:
+                            yield _sse("error", {"message": f"Failed to request code from Telegram: {e2}"})
+                            return
+                        # Transient but budget exhausted — still cancel and loop to surface the prompt
                         yield _sse("step", {"step": 3, "status": "running",
                                             "message": "🔄 Connection dropped — cancelling number, retrying with fresh one…"})
                         await asyncio.sleep(4)
-                        continue   # ← retry loop: buy new number
-                    yield _sse("error", {"message": f"Failed to request code from Telegram: {e2}"})
-                    return
+                        continue
 
             if _banned:
                 _banned_count += 1
