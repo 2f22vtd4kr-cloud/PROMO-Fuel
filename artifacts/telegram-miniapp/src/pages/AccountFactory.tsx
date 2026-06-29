@@ -2049,11 +2049,26 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             // SMS timeout, recycled-number failure, or pre-buy low success rate
             const msg  = (p.message as string | undefined) ?? "";
             if (autoLoopRef.current && !autoLoopStopRef.current) {
-              // Auto-Loop: silently retry all failure types — no popups, no country switches
-              setRunState("idle");
-              setPollMsg(null);
-              setBatchDelayMsg(null);
-              void launch();
+              // Auto-Loop: detect permanently-flagged pools — can't retry, must stop
+              const isPoolFlagged = msg.includes("pool flagged as recycled") || msg.includes("SendCodeUnavailable");
+              if (isPoolFlagged) {
+                // Country is permanently recycled in Python's _RECYCLED_COUNTRY_POOL —
+                // retrying will just spin forever. Stop the loop and surface the error.
+                autoLoopStopRef.current = true;
+                setSmsRetryMinimized(false);
+                setSmsRetryPrompt({ reason: "recycled", message: msg });
+                setRunState("error");
+                setPollMsg(null);
+                setBatchDelayMsg(null);
+              } else {
+                // Soft failure (SMS timeout, low rate, etc.) — wait 5s then retry
+                setRunState("idle");
+                setPollMsg(null);
+                setBatchDelayMsg(null);
+                setTimeout(() => {
+                  if (!autoLoopStopRef.current) void launch();
+                }, 5000);
+              }
             } else {
               // Low success rate: backend sends p.success_rate (number).
               // Never auto-suppress this — the rate won't change until SMSPool improves.
@@ -2095,10 +2110,12 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             setSessionElapsedMs(errorElapsed);
             addToHistory({ status: "error", errorMsg: p.message as string, country: countryId, durationMs: errorElapsed, cost: localCostAccumulated });
             if (autoLoopRef.current && !autoLoopStopRef.current) {
-              // Auto-Loop: silently retry on generic errors
+              // Auto-Loop: silently retry on generic errors — 5s delay to prevent hot loops
               setRunState("idle");
               setPollMsg(null);
-              void launch();
+              setTimeout(() => {
+                if (!autoLoopStopRef.current) void launch();
+              }, 5000);
             } else {
               setErrorMsg(p.message as string);
               if (quantity === 1) {
