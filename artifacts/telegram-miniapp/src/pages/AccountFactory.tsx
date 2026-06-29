@@ -1386,6 +1386,19 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [sessionElapsedMs, setSessionElapsedMs] = useState<number | null>(null);
   const [sessionLiveMs,    setSessionLiveMs]    = useState(0);
 
+  // Auto-Loop mode — keeps re-launching until target count reached or Stop pressed
+  const [autoLoop,            setAutoLoop]            = useState(false);
+  const [autoLoopTarget,      setAutoLoopTarget]      = useState(10);
+  const [autoLoopCompleted,   setAutoLoopCompleted]   = useState(0);
+  const [autoLoopBalanceWait, setAutoLoopBalanceWait] = useState(false);
+  const [autoLoopWaitSecs,    setAutoLoopWaitSecs]    = useState(0);
+
+  const autoLoopRef          = useRef(false);
+  const autoLoopTargetRef    = useRef(10);
+  const autoLoopCompletedRef = useRef(0);
+  const autoLoopStopRef      = useRef(false);
+  const autoLoopWaitTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Live session-level clock — ticks every second while registration is running
   useEffect(() => {
     if (runState !== "running" || !sessionStartedAt.current) { setSessionLiveMs(0); return; }
@@ -1732,12 +1745,49 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
 
   const selectedCountryLabel = COUNTRIES.find(c => c.code === country)?.label ?? country;
 
+  function startBalanceWait() {
+    const WAIT_SECS = 5 * 60;
+    let secsLeft = WAIT_SECS;
+    setAutoLoopWaitSecs(secsLeft);
+    if (autoLoopWaitTimerRef.current) clearInterval(autoLoopWaitTimerRef.current);
+    autoLoopWaitTimerRef.current = setInterval(async () => {
+      if (autoLoopStopRef.current) {
+        clearInterval(autoLoopWaitTimerRef.current!);
+        autoLoopWaitTimerRef.current = null;
+        setAutoLoopBalanceWait(false);
+        return;
+      }
+      secsLeft--;
+      setAutoLoopWaitSecs(secsLeft);
+      if (secsLeft <= 0) {
+        clearInterval(autoLoopWaitTimerRef.current!);
+        autoLoopWaitTimerRef.current = null;
+        try {
+          const resp = await fetch("/api/factory/balance", { headers: authHeaders() });
+          const json = await resp.json() as { balance?: number | null; error?: string };
+          if (autoLoopStopRef.current) { setAutoLoopBalanceWait(false); return; }
+          if (!json.error && (json.balance ?? 0) > 0.5) {
+            setAutoLoopBalanceWait(false);
+            void launch();
+          } else {
+            startBalanceWait();
+          }
+        } catch {
+          if (!autoLoopStopRef.current) startBalanceWait();
+        }
+      }
+    }, 1000);
+  }
+
   async function launch() {
     const countryId = country === "custom" ? customCountry.trim() : country;
     if ((!serverHasKey && !smsKey) || !countryId || !proxy || !twoFa) {
       setErrorMsg(L("Fill in all required fields.", "Заповніть усі обов'язкові поля."));
       return;
     }
+    autoLoopStopRef.current = false;
+    autoLoopRef.current = autoLoop;
+    autoLoopTargetRef.current = autoLoopTarget;
 
     let localCostAccumulated = 0;
 
@@ -1882,7 +1932,6 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             setBatchSucceeded(doneSucceeded);
             setBatchFailed(p.failed as number);
             setBatchDone(true);
-            setRunState("done");
             setBatchDelayMsg(null);
             // Auto-update proxy store session number so next batch continues from the right number
             if (selectedProxyStoreId && sessionPrefix && doneSucceeded > 0) {
@@ -1899,6 +1948,19 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   ));
                 })
                 .catch(() => {});
+            }
+            if (autoLoopRef.current && !autoLoopStopRef.current) {
+              const newCompleted = autoLoopCompletedRef.current + doneSucceeded;
+              autoLoopCompletedRef.current = newCompleted;
+              setAutoLoopCompleted(newCompleted);
+              if (newCompleted >= autoLoopTargetRef.current) {
+                setRunState("done");
+              } else {
+                setRunState("idle");
+                void launch();
+              }
+            } else {
+              setRunState("done");
             }
           } else if (event === "pool_quality") {
             setPoolQuality({ bad: p.bad as number, total: p.total as number });
@@ -1923,9 +1985,25 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             addToHistory({ status: "done", phone: p.phone as string, country: countryId, durationMs: completeElapsed, cost: localCostAccumulated });
             setDonePhones(prev => [...prev, p.phone as string]);
             if (quantity === 1) {
-              setRunState("done");
-              setPollMsg(null);
-              setBatchDelayMsg(null);
+              if (autoLoopRef.current && !autoLoopStopRef.current) {
+                const newCompleted = autoLoopCompletedRef.current + 1;
+                autoLoopCompletedRef.current = newCompleted;
+                setAutoLoopCompleted(newCompleted);
+                if (newCompleted >= autoLoopTargetRef.current) {
+                  setRunState("done");
+                  setPollMsg(null);
+                  setBatchDelayMsg(null);
+                } else {
+                  setRunState("idle");
+                  setPollMsg(null);
+                  setBatchDelayMsg(null);
+                  void launch();
+                }
+              } else {
+                setRunState("done");
+                setPollMsg(null);
+                setBatchDelayMsg(null);
+              }
             }
           } else if (event === "auto_switching") {
             // Backend automatically switched to a new country+proxy — reset steps and show status
@@ -1948,61 +2026,85 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             const balElapsed = Date.now() - (sessionStartedAt.current ?? Date.now());
             setSessionElapsedMs(balElapsed);
             addToHistory({ status: "error", errorMsg: p.message as string, country: countryId, durationMs: balElapsed, cost: localCostAccumulated });
-            setErrorMsg(p.message as string);
-            setBalanceLow({
-              balance: typeof p.balance === "number" ? p.balance : null,
-              needed:  typeof p.needed  === "number" ? p.needed  : null,
-              url:     (p.top_up_url as string) || "https://smspool.net/pricing",
-            });
-            setRunState("error");
-            setPollMsg(null);
-            setBatchDelayMsg(null);
+            if (autoLoopRef.current && !autoLoopStopRef.current) {
+              // Auto-Loop: don't show error — wait 5 min then re-check balance and retry
+              setAutoLoopBalanceWait(true);
+              setRunState("idle");
+              setPollMsg(null);
+              setBatchDelayMsg(null);
+              startBalanceWait();
+            } else {
+              setErrorMsg(p.message as string);
+              setBalanceLow({
+                balance: typeof p.balance === "number" ? p.balance : null,
+                needed:  typeof p.needed  === "number" ? p.needed  : null,
+                url:     (p.top_up_url as string) || "https://smspool.net/pricing",
+              });
+              setRunState("error");
+              setPollMsg(null);
+              setBatchDelayMsg(null);
+            }
           } else if (event === "sms_retry_prompt") {
             receivedTerminal = true;
             // SMS timeout, recycled-number failure, or pre-buy low success rate
             const msg  = (p.message as string | undefined) ?? "";
-            // Low success rate: backend sends p.success_rate (number).
-            // Never auto-suppress this — the rate won't change until SMSPool improves.
-            const isLowRate = typeof p.success_rate === "number";
-            const isRecycled = !isLowRate && (msg.includes("SentCodeTypeApp") || msg.includes("recycled"));
-            // Hard recycled = SendCodeUnavailable: Telegram definitively confirms these
-            // numbers already have accounts. No fresh number from this country will work.
-            // Never auto-retry even if the user previously clicked "Keep Going".
-            const isHardRecycled = msg.includes("SendCodeUnavailable");
-            // Determine effective country key for suppression check
-            const effectiveCountryKey = country === "custom" ? customCountry.trim() : country;
-            if (isRecycled && !isHardRecycled && suppressRecycledRef.current.has(effectiveCountryKey)) {
-              // Soft signal + user already chose "keep trying" — auto-retry silently
-              setRecycledSkips(prev => ({ ...prev, [effectiveCountryKey]: (prev[effectiveCountryKey] ?? 0) + 1 }));
+            if (autoLoopRef.current && !autoLoopStopRef.current) {
+              // Auto-Loop: silently retry all failure types — no popups, no country switches
               setRunState("idle");
               setPollMsg(null);
               setBatchDelayMsg(null);
               void launch();
             } else {
-              // Hard recycled (SendCodeUnavailable), low rate, or first-time recycled:
-              // always show the prompt so the user can switch countries.
-              // Also clear the suppress entry so this country won't auto-retry next time.
-              if (isHardRecycled) {
-                suppressRecycledRef.current.delete(effectiveCountryKey);
+              // Low success rate: backend sends p.success_rate (number).
+              // Never auto-suppress this — the rate won't change until SMSPool improves.
+              const isLowRate = typeof p.success_rate === "number";
+              const isRecycled = !isLowRate && (msg.includes("SentCodeTypeApp") || msg.includes("recycled"));
+              // Hard recycled = SendCodeUnavailable: Telegram definitively confirms these
+              // numbers already have accounts. No fresh number from this country will work.
+              // Never auto-retry even if the user previously clicked "Keep Going".
+              const isHardRecycled = msg.includes("SendCodeUnavailable");
+              // Determine effective country key for suppression check
+              const effectiveCountryKey = country === "custom" ? customCountry.trim() : country;
+              if (isRecycled && !isHardRecycled && suppressRecycledRef.current.has(effectiveCountryKey)) {
+                // Soft signal + user already chose "keep trying" — auto-retry silently
+                setRecycledSkips(prev => ({ ...prev, [effectiveCountryKey]: (prev[effectiveCountryKey] ?? 0) + 1 }));
+                setRunState("idle");
+                setPollMsg(null);
+                setBatchDelayMsg(null);
+                void launch();
+              } else {
+                // Hard recycled (SendCodeUnavailable), low rate, or first-time recycled:
+                // always show the prompt so the user can switch countries.
+                // Also clear the suppress entry so this country won't auto-retry next time.
+                if (isHardRecycled) {
+                  suppressRecycledRef.current.delete(effectiveCountryKey);
+                }
+                setSmsRetryMinimized(false);
+                setSmsRetryPrompt({
+                  reason:  isLowRate ? "low_rate" : isRecycled ? "recycled" : "timeout",
+                  message: msg,
+                });
+                setRunState("error");
+                setPollMsg(null);
+                setBatchDelayMsg(null);
               }
-              setSmsRetryMinimized(false);
-              setSmsRetryPrompt({
-                reason:  isLowRate ? "low_rate" : isRecycled ? "recycled" : "timeout",
-                message: msg,
-              });
-              setRunState("error");
-              setPollMsg(null);
-              setBatchDelayMsg(null);
             }
           } else if (event === "error") {
             receivedTerminal = true;
             const errorElapsed = Date.now() - (sessionStartedAt.current ?? Date.now());
             setSessionElapsedMs(errorElapsed);
             addToHistory({ status: "error", errorMsg: p.message as string, country: countryId, durationMs: errorElapsed, cost: localCostAccumulated });
-            setErrorMsg(p.message as string);
-            if (quantity === 1) {
-              setRunState("error");
+            if (autoLoopRef.current && !autoLoopStopRef.current) {
+              // Auto-Loop: silently retry on generic errors
+              setRunState("idle");
               setPollMsg(null);
+              void launch();
+            } else {
+              setErrorMsg(p.message as string);
+              if (quantity === 1) {
+                setRunState("error");
+                setPollMsg(null);
+              }
             }
           }
         }
@@ -2024,6 +2126,13 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   }
 
   function abort() {
+    autoLoopStopRef.current = true;
+    autoLoopRef.current = false;
+    if (autoLoopWaitTimerRef.current) {
+      clearInterval(autoLoopWaitTimerRef.current);
+      autoLoopWaitTimerRef.current = null;
+    }
+    setAutoLoopBalanceWait(false);
     abortRef.current?.abort();
     setRunState("idle");
     setSteps(initSteps());
@@ -2035,6 +2144,14 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   }
 
   function reset() {
+    autoLoopStopRef.current = false;
+    autoLoopCompletedRef.current = 0;
+    setAutoLoopCompleted(0);
+    setAutoLoopBalanceWait(false);
+    if (autoLoopWaitTimerRef.current) {
+      clearInterval(autoLoopWaitTimerRef.current);
+      autoLoopWaitTimerRef.current = null;
+    }
     setRunState("idle");
     setErrorMsg(null);
     setDonePhones([]);
@@ -3971,6 +4088,106 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               )}
             </div>
 
+            {/* ─── Auto-Loop ─────────────────────────────────────────────── */}
+            <div style={{
+              background: autoLoop ? "rgba(34,197,94,0.07)" : "rgba(255,255,255,0.03)",
+              border: `1px solid ${autoLoop ? "rgba(34,197,94,0.3)" : "rgba(255,255,255,0.09)"}`,
+              borderRadius: 14, padding: "14px 16px",
+              transition: "all 0.25s",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: autoLoop ? 14 : 0 }}>
+                <div style={{ fontSize: 20 }}>🔁</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: autoLoop ? "#4ade80" : "rgba(255,255,255,0.65)" }}>
+                    {L("Auto-Loop", "Авто-Цикл")}
+                  </div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginTop: 1, lineHeight: 1.4 }}>
+                    {autoLoop
+                      ? L("Runs until target count is reached. No popups.", "Працює до досягнення цілі. Без вікон.")
+                      : L("Enable to loop until a target account count is reached", "Увімкни для безперервного циклу до цілі")}
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    const next = !autoLoop;
+                    setAutoLoop(next);
+                    autoLoopRef.current = next;
+                    if (!next) {
+                      autoLoopStopRef.current = false;
+                    }
+                  }}
+                  style={{
+                    flexShrink: 0,
+                    width: 46, height: 26,
+                    borderRadius: 13,
+                    background: autoLoop ? "rgba(34,197,94,0.35)" : "rgba(255,255,255,0.1)",
+                    border: `1px solid ${autoLoop ? "rgba(34,197,94,0.6)" : "rgba(255,255,255,0.2)"}`,
+                    cursor: "pointer", position: "relative",
+                    transition: "all 0.2s",
+                  }}
+                >
+                  <div style={{
+                    position: "absolute", top: 3,
+                    left: autoLoop ? 22 : 3,
+                    width: 18, height: 18, borderRadius: 9,
+                    background: autoLoop ? "#4ade80" : "rgba(255,255,255,0.45)",
+                    transition: "left 0.2s, background 0.2s",
+                    boxShadow: autoLoop ? "0 0 8px rgba(34,197,94,0.5)" : "none",
+                  }} />
+                </button>
+              </div>
+              {autoLoop && (
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.4)",
+                    letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>
+                    {L("Target accounts", "Ціль акаунтів")}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <button
+                      onClick={() => { const v = Math.max(1, autoLoopTarget - 1); setAutoLoopTarget(v); autoLoopTargetRef.current = v; }}
+                      style={{
+                        width: 40, height: 40, borderRadius: 12, background: "rgba(34,197,94,0.1)",
+                        border: "1px solid rgba(34,197,94,0.25)", cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        color: "#4ade80",
+                      }}
+                    >
+                      <Minus size={14} />
+                    </button>
+                    <div style={{
+                      flex: 1, textAlign: "center",
+                      background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.35)",
+                      borderRadius: 12, padding: "10px",
+                      fontSize: 18, fontWeight: 800, color: "#4ade80",
+                      boxShadow: "0 0 16px rgba(34,197,94,0.15)",
+                    }}>
+                      {autoLoopTarget}
+                      <span style={{ fontSize: 11, fontWeight: 400, color: "rgba(74,222,128,0.5)", marginLeft: 6 }}>
+                        {L("accounts", "акаунтів")}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => { const v = autoLoopTarget + 1; setAutoLoopTarget(v); autoLoopTargetRef.current = v; }}
+                      style={{
+                        width: 40, height: 40, borderRadius: 12, background: "rgba(34,197,94,0.1)",
+                        border: "1px solid rgba(34,197,94,0.25)", cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        color: "#4ade80",
+                      }}
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 10, color: "rgba(34,197,94,0.5)", marginTop: 8, lineHeight: 1.5 }}>
+                    {L(
+                      "Auto-retries on SMS failures and recycled numbers. On low balance — waits 5 min then re-checks.",
+                      "Авто-повтор при помилках SMS та перероблених номерах. При низькому балансі — чекає 5 хв та перевіряє знову."
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Max number attempts per account */}
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.45)",
@@ -4872,6 +5089,76 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                 message={geoCheck.message}
                 lang={lang}
               />
+            )}
+
+            {/* Auto-Loop progress banner */}
+            {autoLoop && (runState === "running" || autoLoopBalanceWait || autoLoopCompleted > 0) && (
+              <div style={{
+                background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.3)",
+                borderRadius: 14, padding: "12px 16px",
+                display: "flex", alignItems: "center", gap: 12,
+              }}>
+                <div style={{ fontSize: 22 }}>🔁</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#4ade80" }}>
+                      {L("Auto-Loop", "Авто-Цикл")}
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: "#4ade80" }}>
+                      {autoLoopCompleted} / {autoLoopTarget}
+                    </div>
+                  </div>
+                  <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.08)" }}>
+                    <div style={{
+                      height: "100%", borderRadius: 2,
+                      background: "linear-gradient(90deg, #22c55e, #4ade80)",
+                      width: `${Math.min(100, (autoLoopCompleted / autoLoopTarget) * 100)}%`,
+                      transition: "width 0.4s ease",
+                    }} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Balance-wait card (Auto-Loop mode only) */}
+            {autoLoopBalanceWait && (
+              <div style={{
+                background: "rgba(255,180,50,0.07)", border: "1px solid rgba(255,180,50,0.35)",
+                borderRadius: 14, padding: "14px 16px",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                  <div style={{ fontSize: 22 }}>💰</div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,190,60,0.95)" }}>
+                      {L("Balance Too Low — Auto-Loop Waiting", "Недостатній баланс — Авто-Цикл чекає")}
+                    </div>
+                    <div style={{ fontSize: 10, color: "rgba(255,200,100,0.6)", marginTop: 2 }}>
+                      {L("Will retry automatically when balance is sufficient", "Автоматично повториться, коли баланс поповниться")}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ fontSize: 11, color: "rgba(255,200,100,0.7)" }}>
+                    {L("Next check in", "Наступна перевірка через")}{" "}
+                    <span style={{ fontWeight: 700, color: "rgba(255,200,60,0.95)", fontFamily: "monospace" }}>
+                      {Math.floor(autoLoopWaitSecs / 60)}:{String(autoLoopWaitSecs % 60).padStart(2, "0")}
+                    </span>
+                  </div>
+                  <a
+                    href="https://smspool.net/pricing"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      background: "rgba(255,180,50,0.18)", border: "1px solid rgba(255,180,50,0.45)",
+                      borderRadius: 8, padding: "5px 14px",
+                      fontSize: 11, fontWeight: 700, color: "rgba(255,200,80,0.95)",
+                      textDecoration: "none",
+                    }}
+                  >
+                    {L("Top Up →", "Поповнити →")}
+                  </a>
+                </div>
+              </div>
             )}
 
             {/* Batch progress banner */}
