@@ -8,40 +8,59 @@ _Rewritten each session. Contains only current state — no history._
 
 ### 1. SNSS-AI automatic pool-switching
 
-When SNSS-AI fires `switch_pool=True` at ≥90% confidence, the factory now rotates `_pricing_option` immediately. Rotation: **1 → 0 → 2**, capped at 2 per session.
+When SNSS-AI fires `switch_pool=True` at ≥90% confidence, the factory rotates `_pricing_option` immediately. Rotation: **1 → 0 → 2**, capped at 2 per session.
 
-### 2. "Connection dropped" three-layer fix
+### 2. "Connection dropped" three-layer fix (Step 3)
 
-**Root cause:** Decodo residential SOCKS5 tunnels silently drop during the human-like delay (1.2–4.1s) between `connect()` and `send_code_request()`. Old code: `connection_retries=5 × retry_delay=2` spun 10s silently then cancelled the purchased number ($0.38 wasted).
+When Telethon disconnects mid-send_code (MTProto tunnel drop):
 
-**Layer 1 — Fail fast:** `connection_retries=1, retry_delay=1` — Telethon surfaces error in <2s.
+- **Layer 2 — Pre-flight liveness check:** `client.is_connected()` after the human-delay. If false, fast reconnect (8s timeout) without cancelling the number.
+- **Layer 3 — Reconnect on same number:** On `"Cannot send requests while disconnected"` exception, attempt one reconnect + retry `RawSendCodeRequest` on the same phone before cancelling the number.
 
-**Layer 2 — Pre-flight liveness check:** `client.is_connected()` called after the delay. If false, fast reconnect (8s timeout) without cancelling the number.
+Both layers instrument `_tunnel_drop_count` / `_tunnel_recover_count` session counters and emit `proxy_health` SSE on fatal drops. **Confirmed working (2/2 drops recovered in production log).**
 
-**Layer 3 — Reconnect on same number:** On transient exception, attempt one reconnect + retry `RawSendCodeRequest` on the same phone before cancelling. Budget slot only consumed if reconnect also fails.
+### 3. Proxy dead-peer rotation at Step 2 connect (THIS SESSION)
 
-**Confirmed working in log:** Session 4 — "ProxyError: Host unreachable" on connect attempt 1, retried, then "Cannot send requests while disconnected" on step 3, Layer 3 reconnected successfully → `SentCodeTypeApp` received on same number without cancelling it.
+**Root cause:** Decodo residential proxy pins `session-N` to one specific residential peer. When that peer goes offline, `client.connect()` raises `ProxyError: Host unreachable`. The old code retried the same dead peer 3× with 4s sleeps (up to 24s wasted, still fails).
 
-### 3. Proxy stability monitoring
+**Fix (account_factory.py, connect retry loop):**
+- On `"unreachable"` / `"refused"` / `"no route"` error, immediately call `_next_session_proxy()` to rotate to a fresh `session-(N+1)` (different residential peer)
+- Recreate `TelegramClient` in-place with the new proxy tuple — the proxy is baked into the client at init time
+- Sleep reduced from 4s → 2s (we're already switching peers, no need to wait)
+- Message now says `"rotating proxy → session-N…"` instead of generic "retrying in 4s"
+- Non-dead-peer errors (transient network, DNS, etc.) still use the 2s retry without rotating
 
-- Added `_tunnel_drop_count` and `_tunnel_recover_count` session counters
-- Debug SSE messages now include `(drop #N this session)` and `(N/M drops recovered)`
-- `proxy_health` SSE event emitted when a reconnect fails with `drops/recovered/fatal` counts
-- Both reconnect paths (pre-flight Layer 2 + exception Layer 3) instrument the counters
+**Expected log before fix:**
+```
+⚠️ Connect attempt 1/3 failed (ProxyError: Host unreachable) — retrying in 4s…
+⚠️ Connect attempt 2/3 failed (ProxyError: Host unreachable) — retrying in 4s…
+📡 Proxy tunnel established...       ← third attempt finally gets a living peer
+```
+Total: ~8-17s spinning on a dead peer before success.
+
+**Expected log after fix:**
+```
+⚠️ Connect attempt 1/3 failed (dead peer) — rotating proxy → session-N…
+📡 Proxy tunnel established...       ← immediately gets a fresh peer
+```
+Total: ~2s.
 
 ### 4. SMSPool balance_low event
 
-When purchase fails with "Insufficient balance", the server now:
-- Parses the exact current balance and minimum price from the error string (regex on "you only have: X.XX" and "price is: X.XX")
-- Emits a structured `balance_low` SSE event with `{balance, needed, top_up_url}`
-- Previously emitted generic `error` event
+When purchase fails with "Insufficient balance":
+- Parses exact balance and price from error string (regex)
+- Emits structured `balance_low` SSE `{balance, needed, top_up_url}`
+- UI: amber "💰 Balance Too Low" banner + "Top Up (need $X.XX more)" button → smspool.net/pricing
 
-**UI changes (AccountFactory.tsx):**
-- New `balanceLow` state holds `{balance, needed, url}`
-- Error banner changes to amber theme when `balanceLow` is set
-- "💰 Balance Too Low" title instead of "Registration Failed"
-- "Top Up (need $X.XX more)" amber button linking to smspool.net/pricing
-- `stop()` and `reset()` both clear `balanceLow`
+---
+
+## Log analysis from production run (12:06–12:11)
+
+**Run 1 (sessions 1–5):** VN pool exhausted — 1 recycled, 2 pre-banned, 1 recycled (SNSS-AI pool-switch at 95%), 1 pre-banned → "3 consecutive pre-banned" abort. Expected behaviour.
+
+**Run 2 (sessions 6–14):** Same VN pool. Sessions 6, 12, 13 hit `Host unreachable` at connect (1–2 failures each before success — old retry code). Sessions 10, 13 hit `"Cannot send requests while disconnected"` → Layer 3 recovered both (2/2). Balance hit $0.03 at session 14 → `balance_low` fired correctly.
+
+**Root cause of failed run:** VN SMSPool pool is 100% recycled/pre-banned that day. Not proxy code.
 
 ---
 

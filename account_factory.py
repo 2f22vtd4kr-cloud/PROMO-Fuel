@@ -2096,18 +2096,47 @@ async def _registration_stream(
                     _connect_ok = True
                     break
                 except Exception as _ce:
-                    _ce_str = str(_ce)
+                    _ce_str  = str(_ce)
+                    _ce_low  = _ce_str.lower()
                     if _conn_try < 2:
-                        yield _sse("step", {"step": 2, "status": "running",
-                                            "message": (
-                                                f"⚠️ Connect attempt {_conn_try+1}/3 failed "
-                                                f"({type(_ce).__name__}: {_ce_str[:60]}) — retrying in 4s…"
-                                            )})
                         try:
                             await client.disconnect()
                         except Exception:
                             pass
-                        await asyncio.sleep(4)
+                        # Dead-peer detection: "Host unreachable" / "Connection refused"
+                        # means the residential node Decodo pinned to this session-N is
+                        # offline.  Retrying the same session-N is pointless — it stays
+                        # mapped to the same offline peer until the session expires.
+                        # Rotate immediately to session-(N+1) and recreate the client.
+                        _dead_peer = any(x in _ce_low for x in (
+                            "unreachable", "refused", "no route",
+                        ))
+                        if _dead_peer and proxy_string:
+                            proxy_string, _new_sn = _next_session_proxy(proxy_string)
+                            proxy_tuple = _parse_proxy(proxy_string)
+                            client = TelegramClient(
+                                session_path, _reg_api_id, _reg_api_hash,
+                                proxy=proxy_tuple,
+                                device_model=device_model,
+                                system_version=system_version,
+                                app_version=app_version,
+                                lang_code=_reg_lang,
+                                system_lang_code=_reg_sys_lang,
+                                connection_retries=1,
+                                retry_delay=1,
+                            )
+                            yield _sse("step", {"step": 2, "status": "running",
+                                                "message": (
+                                                    f"⚠️ Connect attempt {_conn_try+1}/3 failed "
+                                                    f"(dead peer) — rotating proxy → session-{_new_sn}…"
+                                                )})
+                        else:
+                            yield _sse("step", {"step": 2, "status": "running",
+                                                "message": (
+                                                    f"⚠️ Connect attempt {_conn_try+1}/3 failed "
+                                                    f"({type(_ce).__name__}: {_ce_str[:60]}) — retrying in 2s…"
+                                                )})
+                        await asyncio.sleep(2)
                     else:
                         yield _sse("step", {"step": 2, "status": "error",
                                             "message": f"❌ Proxy connection failed: {_ce_str[:80]}"})
