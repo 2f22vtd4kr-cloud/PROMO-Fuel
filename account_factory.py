@@ -1772,10 +1772,12 @@ async def _registration_stream(
         MAX_NUM_RETRIES = max(1, min(max_attempts, 999))
         code: str | None = None
         raw_num: str = ""
-        _app_stuck_count    = 0
-        _banned_count       = 0   # consecutive pre-banned numbers from this country
-        _proxy_fail_count   = 0   # consecutive proxy-unreachable errors
-        _sms_timeout_count  = 0   # consecutive SMS timeouts — flag for api_id shadow-block
+        _app_stuck_count      = 0
+        _banned_count         = 0   # consecutive pre-banned numbers from this country
+        _proxy_fail_count     = 0   # consecutive proxy-unreachable errors
+        _sms_timeout_count    = 0   # consecutive SMS timeouts — flag for api_id shadow-block
+        _tunnel_drop_count    = 0   # SOCKS5 tunnel drops detected mid-attempt
+        _tunnel_recover_count = 0   # drops that recovered via reconnect (number NOT cancelled)
         # SMSPool pricing pool rotation — SNSS-AI auto-switches when it fires
         # switch_pool=True at ≥90% confidence.  Rotation order: 1 (standard) →
         # 0 (cheapest/mixed) → 2 (premium).  Different pools draw from different
@@ -1885,9 +1887,30 @@ async def _registration_stream(
                 return
 
             if not result.get("success") and "number" not in result:
-                yield _sse("error", {
-                    "message": f"SMSPool purchase failed: {_strip_html(result.get('message') or str(result))}"
-                })
+                _raw_msg = _strip_html(result.get("message") or str(result))
+                _msg_lc  = _raw_msg.lower()
+                if "insufficient balance" in _msg_lc:
+                    # Parse exact balance + price so the UI can show a targeted top-up prompt.
+                    # Error format: "Pool X: the price is: 0.38 while you only have: 0.37"
+                    _bal_m    = re.search(r"you only have[:\s]+(\d+\.?\d*)", _raw_msg, re.IGNORECASE)
+                    _price_m  = re.search(r"price is[:\s]+(\d+\.?\d*)",      _raw_msg, re.IGNORECASE)
+                    _cur_bal  = float(_bal_m.group(1))   if _bal_m   else None
+                    _min_price = float(_price_m.group(1)) if _price_m else None
+                    _bal_msg  = (
+                        f"💰 SMSPool balance too low — you have ${_cur_bal:.2f} "
+                        f"but the cheapest available pool costs ${_min_price:.2f}. "
+                        "Top up at smspool.net to continue."
+                        if _cur_bal is not None and _min_price is not None
+                        else "💰 SMSPool balance insufficient — top up your account to continue."
+                    )
+                    yield _sse("balance_low", {
+                        "balance":    _cur_bal,
+                        "needed":     _min_price,
+                        "message":    _bal_msg,
+                        "top_up_url": "https://smspool.net/pricing",
+                    })
+                else:
+                    yield _sse("error", {"message": f"SMSPool purchase failed: {_raw_msg}"})
                 return
 
             # SMSPool purchase returns order_id (e.g. "ECKU5XM9")
@@ -2137,16 +2160,37 @@ async def _registration_stream(
             # of establishment (short idle TTL on peer-side).  Check BEFORE the
             # RPC so we can fast-reconnect without cancelling the purchased number.
             if not client.is_connected():
-                yield _sse("debug", {"message": "⚡ MTProto dropped during delay — fast reconnect…"})
+                _tunnel_drop_count += 1
+                yield _sse("debug", {"message": (
+                    f"⚡ MTProto dropped during delay — fast reconnect… "
+                    f"(session drop #{_tunnel_drop_count})"
+                )})
+                _pre_reconnect_ok = False
                 try:
                     await asyncio.wait_for(client.connect(), timeout=8.0)
-                    yield _sse("debug", {"message": "✅ Fast reconnect succeeded"})
+                    _tunnel_recover_count += 1
+                    _pre_reconnect_ok = True
+                    yield _sse("debug", {"message": (
+                        f"✅ Fast reconnect succeeded "
+                        f"({_tunnel_recover_count}/{_tunnel_drop_count} drops recovered this session)"
+                    )})
                 except Exception as _pre_err:
                     yield _sse("step", {"step": 3, "status": "running",
                                         "message": (
                                             f"🔄 Pre-flight reconnect failed ({type(_pre_err).__name__}) "
                                             "— cancelling number, buying fresh…"
                                         )})
+                if not _pre_reconnect_ok:
+                    yield _sse("proxy_health", {
+                        "drops":     _tunnel_drop_count,
+                        "recovered": _tunnel_recover_count,
+                        "fatal":     _tunnel_drop_count - _tunnel_recover_count,
+                        "message": (
+                            f"🔌 Proxy: {_tunnel_drop_count} drop(s) — "
+                            f"{_tunnel_recover_count} recovered, "
+                            f"{_tunnel_drop_count - _tunnel_recover_count} fatal (number wasted)"
+                        ),
+                    })
                     await cancel_order()
                     await safe_disconnect()
                     await asyncio.sleep(2)
@@ -2237,8 +2281,12 @@ async def _registration_stream(
                         # number before cancelling it.  The number itself is valid; only the
                         # SOCKS5 tunnel died.  Cancelling immediately wastes $0.38 + a budget
                         # slot.  Most Decodo drops recover within 3-5s on a fresh connect().
+                        _tunnel_drop_count += 1
                         yield _sse("step", {"step": 3, "status": "running",
-                                            "message": "🔄 Connection dropped — reconnecting on same number…"})
+                                            "message": (
+                                                f"🔄 Connection dropped — reconnecting on same number… "
+                                                f"(drop #{_tunnel_drop_count} this session)"
+                                            )})
                         _reconnect_ok = False
                         try:
                             await asyncio.wait_for(client.connect(), timeout=8.0)
@@ -2262,8 +2310,12 @@ async def _registration_stream(
                             code_type_name  = type(_rc.type).__name__ if _rc.type else "SentCodeTypeSms"
                             _raw_next_type  = getattr(_rc, "next_type", None)
                             _reconnect_ok   = True
+                            _tunnel_recover_count += 1
                             yield _sse("step", {"step": 3, "status": "running",
-                                                "message": f"✅ Reconnect succeeded — code sent ({code_type_name})"})
+                                                "message": (
+                                                    f"✅ Reconnect succeeded — code sent ({code_type_name}) "
+                                                    f"[{_tunnel_recover_count}/{_tunnel_drop_count} drops recovered]"
+                                                )})
                         except Exception as _re:
                             yield _sse("step", {"step": 3, "status": "running",
                                                 "message": (
@@ -2271,6 +2323,16 @@ async def _registration_stream(
                                                     "— cancelling number, buying fresh…"
                                                 )})
                         if not _reconnect_ok:
+                            yield _sse("proxy_health", {
+                                "drops":     _tunnel_drop_count,
+                                "recovered": _tunnel_recover_count,
+                                "fatal":     _tunnel_drop_count - _tunnel_recover_count,
+                                "message": (
+                                    f"🔌 Proxy: {_tunnel_drop_count} drop(s) — "
+                                    f"{_tunnel_recover_count} recovered, "
+                                    f"{_tunnel_drop_count - _tunnel_recover_count} fatal (number wasted)"
+                                ),
+                            })
                             await cancel_order()
                             await safe_disconnect()
                             await asyncio.sleep(3)

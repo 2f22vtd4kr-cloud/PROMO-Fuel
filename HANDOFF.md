@@ -6,38 +6,42 @@ _Rewritten each session. Contains only current state — no history._
 
 ## What was done this session
 
-### 1. SNSS-AI automatic pool-switching — IMPLEMENTED
+### 1. SNSS-AI automatic pool-switching
 
-**Problem:** SMSPool VN Pool 1 was 100% recycled. SNSS-AI was firing `switch_pool=True` at 95% confidence from attempt #2 but was being ignored.
+When SNSS-AI fires `switch_pool=True` at ≥90% confidence, the factory now rotates `_pricing_option` immediately. Rotation: **1 → 0 → 2**, capped at 2 per session.
 
-**Fix in `account_factory.py`:**
-- Added `_pool_rotations = 0` counter (max 2 per session)
-- After SNSS-AI logs `switch_pool=True` + `confidence ≥ 90`, factory immediately rotates `_pricing_option`
-- Rotation order: **1 → 0 → 2**
-- Emits: `🔀 SNSS-AI pool-switch → Pool X (confidence Y% — ...)` SSE
+### 2. "Connection dropped" three-layer fix
 
-### 2. "Connection dropped" fixes — IMPLEMENTED
+**Root cause:** Decodo residential SOCKS5 tunnels silently drop during the human-like delay (1.2–4.1s) between `connect()` and `send_code_request()`. Old code: `connection_retries=5 × retry_delay=2` spun 10s silently then cancelled the purchased number ($0.38 wasted).
 
-**Root cause diagnosed from logs (sessions 14, 19, 20, 22):**
+**Layer 1 — Fail fast:** `connection_retries=1, retry_delay=1` — Telethon surfaces error in <2s.
 
-The error "Cannot send requests while disconnected" was caused by Decodo residential SOCKS5 tunnels silently closing during the 1.2–4.1s human-like delay inserted between `connect()` and `send_code_request()`. When the tunnel dropped, Telethon's `connection_retries=5 × retry_delay=2` silently spun for up to 10s before surfacing the error. The code then cancelled the purchased number ($0.38 each) even though the number itself was valid.
+**Layer 2 — Pre-flight liveness check:** `client.is_connected()` called after the delay. If false, fast reconnect (8s timeout) without cancelling the number.
 
-**Three-layer fix:**
+**Layer 3 — Reconnect on same number:** On transient exception, attempt one reconnect + retry `RawSendCodeRequest` on the same phone before cancelling. Budget slot only consumed if reconnect also fails.
 
-**Layer 1 — Fail fast (`connection_retries=1, retry_delay=1`):**
-- Changed from `connection_retries=5, retry_delay=2` → `connection_retries=1, retry_delay=1`
-- Telethon now surfaces the error in <2s instead of spinning silently for up to 10s
-- Our explicit reconnect logic (below) handles recovery
+**Confirmed working in log:** Session 4 — "ProxyError: Host unreachable" on connect attempt 1, retried, then "Cannot send requests while disconnected" on step 3, Layer 3 reconnected successfully → `SentCodeTypeApp` received on same number without cancelling it.
 
-**Layer 2 — Pre-flight MTProto liveness check:**
-- Added `client.is_connected()` check immediately after the human-like delay, before the `RawSendCodeRequest` call
-- If already disconnected: fast `client.connect()` with 8s timeout — recover without cancelling the number
-- Only cancels and buys fresh if the reconnect itself fails
+### 3. Proxy stability monitoring
 
-**Layer 3 — Reconnect on same number before cancelling:**
-- In the `except Exception as e2` block (fallback send_code path), instead of immediately `cancel_order()`, attempt ONE reconnect + retry `RawSendCodeRequest` on the same purchased number
-- Only cancels and advances the budget counter if the reconnect also fails
-- Saves ~$0.38 and one budget slot per recovered drop
+- Added `_tunnel_drop_count` and `_tunnel_recover_count` session counters
+- Debug SSE messages now include `(drop #N this session)` and `(N/M drops recovered)`
+- `proxy_health` SSE event emitted when a reconnect fails with `drops/recovered/fatal` counts
+- Both reconnect paths (pre-flight Layer 2 + exception Layer 3) instrument the counters
+
+### 4. SMSPool balance_low event
+
+When purchase fails with "Insufficient balance", the server now:
+- Parses the exact current balance and minimum price from the error string (regex on "you only have: X.XX" and "price is: X.XX")
+- Emits a structured `balance_low` SSE event with `{balance, needed, top_up_url}`
+- Previously emitted generic `error` event
+
+**UI changes (AccountFactory.tsx):**
+- New `balanceLow` state holds `{balance, needed, url}`
+- Error banner changes to amber theme when `balanceLow` is set
+- "💰 Balance Too Low" title instead of "Registration Failed"
+- "Top Up (need $X.XX more)" amber button linking to smspool.net/pricing
+- `stop()` and `reset()` both clear `balanceLow`
 
 ---
 
@@ -51,21 +55,13 @@ The error "Cannot send requests while disconnected" was caused by Decodo residen
 | CRM Platform | 23873 | ✅ Running |
 | Mockup Sandbox | 8081 | ✅ Running |
 
-TypeScript typecheck: zero errors (known pre-existing corrupted JSX in mockup-sandbox canvas files — do not touch).
-
----
-
-## DB schema (`data/campaigns.db`)
-
-All 14 migration steps applied. No schema changes this session.
-
 ---
 
 ## Known notes
 
-- Pool rotation caps at 2 rotations per session (1→0→2). After Pool 2, factory exhausts budget and shows switch-country prompt.
-- `_banned_count >= 3` abort (3 consecutive pre-bans) is intentionally hardcoded — that's a carrier pool signal, not a proxy issue.
-- `DB_PATH = ./data/campaigns.db` (workspace-root-relative); Node.js resolves via `../../` fallback in `db-path.ts`.
+- Pool rotation caps at 2 per session (1→0→2). After Pool 2, factory exhausts budget and shows switch-country prompt.
+- `_banned_count >= 3` abort is intentional — 3 consecutive pre-bans = carrier pool signal.
+- `DB_PATH = ./data/campaigns.db`; Node.js resolves via `../../` fallback in `db-path.ts`.
 - Mockup-sandbox: PolishComplete.tsx, RefinedDepth.tsx, GroupsV2.tsx, WorkersV3.tsx have corrupted JSX — do not touch.
 
 ## Slide counts (unchanged)

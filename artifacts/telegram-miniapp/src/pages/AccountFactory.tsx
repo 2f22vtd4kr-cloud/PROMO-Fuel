@@ -1349,6 +1349,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
   const [errorMsg,        setErrorMsg]        = useState<string | null>(null);
   const [pollMsg,         setPollMsg]         = useState<string | null>(null);
   const [poolQuality,     setPoolQuality]     = useState<{ bad: number; total: number } | null>(null);
+  const [balanceLow,      setBalanceLow]      = useState<{ balance: number | null; needed: number | null; url: string } | null>(null);
   const [preflightStatus, setPreflightStatus] = useState<"idle"|"running"|"done"|"error">("idle");
   const [preflightMsg,    setPreflightMsg]    = useState<string | null>(null);
   const [exitIp,          setExitIp]          = useState<string | null>(null);
@@ -1942,6 +1943,20 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               accountId: p.account_id as number,
               phone:     p.phone     as string,
             });
+          } else if (event === "balance_low") {
+            receivedTerminal = true;
+            const balElapsed = Date.now() - (sessionStartedAt.current ?? Date.now());
+            setSessionElapsedMs(balElapsed);
+            addToHistory({ status: "error", errorMsg: p.message as string, country: countryId, durationMs: balElapsed, cost: localCostAccumulated });
+            setErrorMsg(p.message as string);
+            setBalanceLow({
+              balance: typeof p.balance === "number" ? p.balance : null,
+              needed:  typeof p.needed  === "number" ? p.needed  : null,
+              url:     (p.top_up_url as string) || "https://smspool.net/pricing",
+            });
+            setRunState("error");
+            setPollMsg(null);
+            setBatchDelayMsg(null);
           } else if (event === "sms_retry_prompt") {
             receivedTerminal = true;
             // SMS timeout, recycled-number failure, or pre-buy low success rate
@@ -2016,6 +2031,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setBatchDelayMsg(null);
     setWarmupPrompt(null);
     setSmsRetryPrompt(null);
+    setBalanceLow(null);
   }
 
   function reset() {
@@ -2032,6 +2048,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
     setPreflightMsg(null);
     setWarmupPrompt(null);
     setSmsRetryPrompt(null);
+    setBalanceLow(null);
     setProxyRewrite(null);
     setDebugLog([]);
     sessionStartedAt.current = null;
@@ -4947,13 +4964,35 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             {/* Error banner */}
             {errorMsg && runState === "error" && (
               <div style={{
-                background: "rgba(255,107,122,0.1)", border: "1px solid rgba(255,107,122,0.3)",
+                background: balanceLow ? "rgba(255,180,50,0.08)" : "rgba(255,107,122,0.1)",
+                border: `1px solid ${balanceLow ? "rgba(255,180,50,0.35)" : "rgba(255,107,122,0.3)"}`,
                 borderRadius: 14, padding: "14px 16px",
               }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: RED, marginBottom: 4 }}>
-                  {L("Registration Failed", "Помилка реєстрації")}
+                <div style={{ fontSize: 12, fontWeight: 700, color: balanceLow ? "rgba(255,190,60,0.95)" : RED, marginBottom: 4 }}>
+                  {balanceLow ? L("💰 Balance Too Low", "💰 Недостатній баланс") : L("Registration Failed", "Помилка реєстрації")}
                 </div>
-                <div style={{ fontSize: 12, color: "rgba(255,180,180,0.85)", lineHeight: 1.5 }}>{errorMsg}</div>
+                <div style={{ fontSize: 12, color: "rgba(255,200,180,0.85)", lineHeight: 1.5 }}>{errorMsg}</div>
+                {balanceLow && (
+                  <a
+                    href={balanceLow.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: "inline-block", marginTop: 10,
+                      background: "rgba(255,180,50,0.18)", border: "1px solid rgba(255,180,50,0.45)",
+                      borderRadius: 10, padding: "7px 18px",
+                      fontSize: 12, fontWeight: 700, color: "rgba(255,200,80,0.95)",
+                      textDecoration: "none", cursor: "pointer",
+                    }}
+                  >
+                    {balanceLow.balance !== null && balanceLow.needed !== null
+                      ? L(
+                          `Top Up (need $${(balanceLow.needed - balanceLow.balance).toFixed(2)} more)`,
+                          `Поповнити (потрібно ще $${(balanceLow.needed - balanceLow.balance).toFixed(2)})`
+                        )
+                      : L("Top Up at smspool.net →", "Поповнити smspool.net →")}
+                  </a>
+                )}
               </div>
             )}
 
