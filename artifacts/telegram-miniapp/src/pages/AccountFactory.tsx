@@ -4035,17 +4035,26 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             </div>
 
             {/* Quantity stepper */}
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.45)",
-                letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>
-                {L("Quantity (Batch Mode)", "Кількість (пакетний режим)")}
+            <div style={{ position: "relative", transition: "opacity 0.3s", opacity: autoLoop ? 0.35 : 1, pointerEvents: autoLoop ? "none" : undefined }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.45)",
+                  letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                  {L("Quantity (Batch Mode)", "Кількість (пакетний режим)")}
+                </div>
+                {autoLoop && (
+                  <div style={{ fontSize: 10, fontWeight: 600, color: "rgba(34,197,94,0.6)",
+                    display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 11 }}>🔒</span>
+                    {L("Auto-Loop", "Авто-Цикл")}
+                  </div>
+                )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <button
                   onClick={() => setQuantity(q => Math.max(1, q - 1))}
                   style={{
                     width: 40, height: 40, borderRadius: 12, background: GLASS2,
-                    border: `1px solid ${BORDER2}`, cursor: "pointer",
+                    border: `1px solid ${BORDER2}`, cursor: autoLoop ? "default" : "pointer",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     color: "rgba(255,255,255,0.7)",
                   }}
@@ -4070,7 +4079,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   onClick={() => setQuantity(q => Math.min(20, q + 1))}
                   style={{
                     width: 40, height: 40, borderRadius: 12, background: GLASS2,
-                    border: `1px solid ${BORDER2}`, cursor: "pointer",
+                    border: `1px solid ${BORDER2}`, cursor: autoLoop ? "default" : "pointer",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     color: "rgba(255,255,255,0.7)",
                   }}
@@ -4189,10 +4198,19 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             </div>
 
             {/* Max number attempts per account */}
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.45)",
-                letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>
-                {L("Max Number Attempts", "Макс. спроб номерів")}
+            <div style={{ position: "relative", transition: "opacity 0.3s", opacity: autoLoop ? 0.35 : 1, pointerEvents: autoLoop ? "none" : undefined }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.45)",
+                  letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                  {L("Max Number Attempts", "Макс. спроб номерів")}
+                </div>
+                {autoLoop && (
+                  <div style={{ fontSize: 10, fontWeight: 600, color: "rgba(34,197,94,0.6)",
+                    display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 11 }}>🔒</span>
+                    {L("Auto-Loop", "Авто-Цикл")}
+                  </div>
+                )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <input
@@ -4200,7 +4218,9 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   min={1}
                   max={999}
                   value={maxAttempts}
+                  readOnly={autoLoop}
                   onChange={e => {
+                    if (autoLoop) return;
                     const v = parseInt(e.target.value);
                     if (!isNaN(v)) setMaxAttempts(Math.min(999, Math.max(1, v)));
                   }}
@@ -4211,6 +4231,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                     color: maxAttempts > 20 ? "rgba(251,146,60,1)" : "rgba(255,255,255,0.85)",
                     fontSize: 18, fontWeight: 800, textAlign: "center",
                     outline: "none", boxShadow: maxAttempts > 20 ? "0 0 16px rgba(251,146,60,0.2)" : "none",
+                    cursor: autoLoop ? "default" : undefined,
                     transition: "all 0.2s",
                   }}
                 />
