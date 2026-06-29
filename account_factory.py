@@ -84,6 +84,25 @@ _SNSS_MIN_COUNT: int = 2
 # 9 chars captures the carrier batch: e.g. "+99870704" for UZ SMSPool batches.
 _SNSS_PREFIX_LEN: int = 9
 
+# Short prefix length for intra-session carrier-batch detection.
+# 7 chars = country code + first 2 network digits (e.g. "+848" for VN
+# Vietnamobile/Gmobile range). When 2+ recycled numbers share this shorter
+# prefix within one factory session, all subsequent numbers from that
+# carrier batch are cancelled at L0.5 without a Telethon handshake.
+_SNSS_SHORT_PREFIX_LEN: int = 7
+
+# ── SNSS: Consecutive-recycled abort threshold ────────────────────────────────
+# After this many consecutive confirmed-recycled numbers (full Telethon path),
+# abort the session immediately with sms_retry_prompt instead of burning the
+# entire MAX_NUM_RETRIES budget. Separate from MAX_NUM_RETRIES — this catches
+# country-wide pool exhaustion early without the user configuring a low budget.
+# After an AI pool-switch, the counter resets to give the new pool a fair trial.
+_CONSECUTIVE_RECYCLED_ABORT: int = 5
+
+# After an AI-triggered pool-switch, if this many consecutive numbers from the
+# NEW pool are also recycled → pool-switch didn't help, abort immediately.
+_POST_SWITCH_ABORT: int = 2
+
 # ── Credential effectiveness stats (in-memory, resets on restart) ─────────────
 # Tracks per api_id: sms_ok (Telegram sent SMS), app (recycled/blocked),
 # timeout (SMS never arrived in Step 4 window).  Used by the UI dashboard.
@@ -1789,6 +1808,18 @@ async def _registration_stream(
         # for Gemini pattern analysis (triggered at ≥2 recycled numbers).
         _recycled_phones_this_session: list[str] = []
 
+        # ── SNSS intra-session tracking ───────────────────────────────────
+        # Short-prefix (7-char) carrier-batch hit map for L0.5.
+        # key = "prefix:country_id", value = count this session only.
+        # Threshold=1 within a session (stricter than the global threshold=2).
+        _session_short_prefixes: dict[str, int] = {}
+        # Consecutive confirmed-recycled via full Telethon path (no L0/L1 skips).
+        # Resets to 0 after a pool-switch so new pool gets a fair trial.
+        _consecutive_confirmed_recycled: int = 0
+        # Consecutive recycled specifically from the pool AFTER a pool-switch.
+        # Resets on each pool-switch.
+        _post_switch_recycled: int = 0
+
         # Shuffle the official registration credential pool so each factory
         # session uses a different rotation order.  Each retry attempt cycles
         # to the next credential, ensuring we never hit the same api_id twice
@@ -1957,6 +1988,46 @@ async def _registration_stream(
                             f"🚫 SMSPool {country_id.upper()} pool fully recycled — "
                             f"prefix '{_pbl_prefix}…' hit {_pbl_count} times. "
                             f"All {_app_stuck_count}/{MAX_NUM_RETRIES} numbers from the same recycled batch. "
+                            + _suggest_alt_countries(country_id)
+                        ),
+                    })
+                    return
+
+            # ── SNSS Layer 0.5: Session short-prefix check ────────────────
+            # Intra-session carrier-batch detection using 7-char prefix.
+            # After seeing one recycled number from a carrier batch (e.g.
+            # "+848" = VN Vietnamobile/Gmobile), all subsequent numbers from
+            # that same batch are cancelled instantly — no Telethon needed.
+            # Threshold=1 within a session (stricter than global threshold=2)
+            # because within a single run a confirmed recycled prefix from the
+            # same session is near-certain evidence the batch is exhausted.
+            _sp_prefix = phone[:_SNSS_SHORT_PREFIX_LEN]
+            _sp_key    = f"{_sp_prefix}:{country_id.lower()}"
+            _sp_count  = _session_short_prefixes.get(_sp_key, 0)
+            if _sp_count >= 1:
+                yield _sse("step", {"step": 1, "status": "error",
+                                    "message": (
+                                        f"🔴 SNSS-L0.5: carrier batch '{_sp_prefix}…' already recycled "
+                                        f"this session ({_sp_count}× seen) — "
+                                        "cancelling before Telethon handshake"
+                                    )})
+                _recycled_phones_this_session.append(phone)
+                await cancel_order()
+                _app_stuck_count += 1
+                if _app_stuck_count < MAX_NUM_RETRIES:
+                    yield _sse("step", {"step": 1, "status": "error",
+                                        "message": (
+                                            f"🚫 SNSS carrier-batch skip #{_app_stuck_count}/{MAX_NUM_RETRIES} — "
+                                            f"buying next number ({_num_attempt + 1}/{MAX_NUM_RETRIES} budget used)"
+                                        )})
+                    yield _sse("pool_quality", {"bad": _app_stuck_count, "total": _num_attempt + 1})
+                    continue
+                else:
+                    yield _sse("sms_retry_prompt", {
+                        "country_id": country_id,
+                        "message": (
+                            f"🚫 SMSPool {country_id.upper()} carrier batch '{_sp_prefix}…' is exhausted — "
+                            f"every number from this batch has an existing Telegram account. "
                             + _suggest_alt_countries(country_id)
                         ),
                     })
@@ -2712,6 +2783,69 @@ async def _registration_stream(
                         _record_recycled_prefix(phone, country_id, _pricing_option)
                         _recycled_phones_this_session.append(phone)
 
+                        # ── L0.5: Update session short-prefix map ────────────────
+                        # Record the 7-char carrier-batch prefix so the NEXT number
+                        # from the same batch is caught before Telethon connects.
+                        _sp_key_confirmed = f"{phone[:_SNSS_SHORT_PREFIX_LEN]}:{country_id.lower()}"
+                        _session_short_prefixes[_sp_key_confirmed] = (
+                            _session_short_prefixes.get(_sp_key_confirmed, 0) + 1
+                        )
+
+                        # ── Consecutive-recycled tracking ────────────────────────
+                        _consecutive_confirmed_recycled += 1
+                        if _pool_rotations > 0:
+                            _post_switch_recycled += 1
+
+                        # ── Early abort: post-pool-switch fast-fail ──────────────
+                        # If we switched pools (AI said 90%+ recycled) but the new
+                        # pool is ALSO recycled after _POST_SWITCH_ABORT numbers,
+                        # the problem is country-wide — stop immediately.
+                        if _pool_rotations > 0 and _post_switch_recycled >= _POST_SWITCH_ABORT:
+                            _RECYCLED_COUNTRY_POOL.add(country_id.lower())
+                            yield _sse("step", {"step": 3, "status": "error",
+                                                "message": (
+                                                    f"🚫 Pool-switch didn't help — "
+                                                    f"{_post_switch_recycled} consecutive recycled from "
+                                                    f"Pool {_pricing_option} too. "
+                                                    f"{country_id.upper()} pool is country-wide exhausted."
+                                                )})
+                            yield _sse("sms_retry_prompt", {
+                                "country_id": country_id,
+                                "message": (
+                                    f"🚫 SMSPool {country_id.upper()} is fully recycled — "
+                                    f"pool-switch to Pool {_pricing_option} also returned {_post_switch_recycled} "
+                                    f"recycled numbers. Every pool from this country has existing accounts. "
+                                    + _suggest_alt_countries(country_id)
+                                ),
+                            })
+                            return
+
+                        # ── Early abort: consecutive-recycled threshold ──────────
+                        # Stop burning budget when the entire pool is clearly dead.
+                        # _CONSECUTIVE_RECYCLED_ABORT (default 5) gives the pool
+                        # enough trials before declaring it exhausted, while saving
+                        # the remaining MAX_NUM_RETRIES budget.
+                        if _consecutive_confirmed_recycled >= _CONSECUTIVE_RECYCLED_ABORT:
+                            _RECYCLED_COUNTRY_POOL.add(country_id.lower())
+                            yield _sse("step", {"step": 3, "status": "error",
+                                                "message": (
+                                                    f"🚫 {_consecutive_confirmed_recycled} consecutive "
+                                                    f"recycled numbers via Telethon — "
+                                                    f"{country_id.upper()} pool is exhausted. "
+                                                    "Stopping early to save SMSPool balance."
+                                                )})
+                            yield _sse("sms_retry_prompt", {
+                                "country_id": country_id,
+                                "message": (
+                                    f"🚫 SMSPool {country_id.upper()} pool exhausted — "
+                                    f"{_consecutive_confirmed_recycled} consecutive numbers all returned "
+                                    f"SentCodeTypeApp (existing accounts). "
+                                    "Switch to a different country to continue. "
+                                    + _suggest_alt_countries(country_id)
+                                ),
+                            })
+                            return
+
                         if len(_recycled_phones_this_session) >= 2:
                             try:
                                 async with aiohttp.ClientSession() as _ai_sess:
@@ -2747,6 +2881,11 @@ async def _registration_stream(
                                         )
                                         _pool_rotations  += 1
                                         _pricing_option   = _next_pool
+                                        # Reset consecutive counters so the new pool
+                                        # gets a fair trial (_POST_SWITCH_ABORT numbers)
+                                        # before the post-switch fast-fail triggers.
+                                        _consecutive_confirmed_recycled = 0
+                                        _post_switch_recycled           = 0
                                         yield _sse("step", {"step": 1, "status": "running",
                                                             "message": (
                                                                 f"🔀 SNSS-AI pool-switch → Pool {_next_pool} "
