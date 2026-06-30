@@ -1956,7 +1956,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
               if (newCompleted >= autoLoopTargetRef.current) {
                 setRunState("done");
               } else {
-                setRunState("idle");
+                // Stay on running screen — do NOT go idle
                 void launch();
               }
             } else {
@@ -1994,7 +1994,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   setPollMsg(null);
                   setBatchDelayMsg(null);
                 } else {
-                  setRunState("idle");
+                  // Stay on running screen — launch() will refresh steps
                   setPollMsg(null);
                   setBatchDelayMsg(null);
                   void launch();
@@ -2029,7 +2029,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             if (autoLoopRef.current && !autoLoopStopRef.current) {
               // Auto-Loop: don't show error — wait 5 min then re-check balance and retry
               setAutoLoopBalanceWait(true);
-              setRunState("idle");
+              // Keep runState = "running" so 8-step screen stays visible during wait
               setPollMsg(null);
               setBatchDelayMsg(null);
               startBalanceWait();
@@ -2062,8 +2062,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                 setBatchDelayMsg(null);
               } else {
                 // Soft failure (SMS timeout, low rate, etc.) — wait 5s then retry
-                setRunState("idle");
-                setPollMsg(null);
+                // Keep runState = "running" so 8-step screen stays visible
+                setPollMsg("🔁 Авто-Цикл: повтор через 5с…");
                 setBatchDelayMsg(null);
                 setTimeout(() => {
                   if (!autoLoopStopRef.current) void launch();
@@ -2111,8 +2111,8 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
             addToHistory({ status: "error", errorMsg: p.message as string, country: countryId, durationMs: errorElapsed, cost: localCostAccumulated });
             if (autoLoopRef.current && !autoLoopStopRef.current) {
               // Auto-Loop: silently retry on generic errors — 5s delay to prevent hot loops
-              setRunState("idle");
-              setPollMsg(null);
+              // Keep runState = "running" so 8-step screen stays visible
+              setPollMsg("🔁 Авто-Цикл: повтор через 5с…");
               setTimeout(() => {
                 if (!autoLoopStopRef.current) void launch();
               }, 5000);
