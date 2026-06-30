@@ -6,54 +6,24 @@ _Rewritten each session. Contains only current state — no history._
 
 ## What was done this session
 
-Three critical bugs fixed in `account_factory.py` — root cause of 247 failed registrations with $0 spent and 0 successful accounts.
+Fresh import from GitHub onto Replit. All services brought up from a clean state.
 
----
-
-### Bug 1 — Layer 2 proxy failure misclassified as "recycled number"
-
-**File:** `account_factory.py` ~line 2793 (MODE B block in `else:` after L2 for-loop)
-
-When all 3 Layer 2 connection retries threw proxy/connection exceptions, `_off_result` stayed `None`. The old `else:` clause treated this identically to confirmed SentCodeTypeApp — incremented `_app_stuck_count`, recorded prefix as blacklisted in `recycled_prefix_cache`, flagged the country as exhausted.
-
-**Fix:** Restructured `else:` into two explicit paths:
-- **MODE B** (`_off_result is None`): cancel order, increment `_l2_proxy_fail_count`, emit "Layer 2 proxy failed — NOT confirmed recycled", continue retry loop WITHOUT touching recycled counters or prefix blacklist.
-- **MODE A** (`_off_result is not None`): confirmed SentCodeTypeApp — existing recycled handling unchanged.
-
-Added `_l2_proxy_fail_count = 0` counter alongside other session counters (~line 1800).
-
----
-
-### Bug 2 — `NameError` crash that silently killed every registration (PRIMARY CAUSE of $0 spent)
-
-**File:** `account_factory.py` ~line 2627 (`_off_result = None` moved before the for-loop)
-
-`_off_result = None` was set **inside** the Layer 2 for-loop body (~line 2700). When `_definitive_recycled = True`, the loop iterated over `[]` (empty list) — the body never ran, so `_off_result` was **never defined as a Python variable**.
-
-The Bug 1 fix then referenced `_off_result` **outside** the loop (`if _off_result is None:`), hitting `NameError: name '_off_result' is not defined`. The `_producer()` wrapper caught this as `Exception`, emitted an "Internal error" SSE, and closed the stream — **without ever calling `cancel_order()`**. SMSPool auto-refunded each timed-out order after 120s → $0 spent despite 247 orders placed.
-
-**Fix:** `_off_result = None` is now initialized **before** the for-loop (line 2627), outside the loop body, so it is always defined when the `else:` clause runs.
-
----
-
-### Bug 3 — "Definitive triple" incorrectly bypassed Layer 2 when primary proxy IP was flagged
-
-**File:** `account_factory.py` ~line 2635 (removed `else []` guard from L2 for-loop)
-
-The "definitive recycled triple" (SentCodeTypeApp + SendCodeUnavailable + `next_type=None` from official `api_id`) was treated as irrefutable proof of a recycled number → Layer 2 skipped entirely via `_off_creds_filtered if not _definitive_recycled else []`.
-
-This assumption breaks when the **primary proxy IP is flagged by Telegram for automation**: Telegram returns the same triple even for perfectly fresh, unregistered numbers — it refuses ALL delivery paths from a flagged IP. By skipping Layer 2, the code never got a second opinion from a different exit node (`_next_session_proxy` rotates Decodo session, giving a fresh residential IP).
-
-**Fix:** Removed the `else []` guard — Layer 2 always runs regardless of `_definitive_recycled`. Added IP-flagging detection: if `_definitive_recycled = True` but Layer 2 gets `SentCodeTypeSms` → emits `🚨 IP FLAGGING DETECTED: primary proxy IP is flagged by Telegram` in the step message. If Layer 2 also gets SentCodeTypeApp → confirmed recycled (MODE A).
+### Setup steps completed
+1. **Python venv** — created `.pythonlibs` virtualenv; installed all deps from `requirements.txt`
+2. **`requirements.txt` cleaned** — removed duplicate entries and the bare `telegram` stub package that shadows python-telegram-bot
+3. **better-sqlite3** — native `.node` binary compiled via `scripts/ensure-sqlite3.sh`
+4. **`.deps-ready` sentinel** — written so cold-start scripts skip reinstall on next boot
+5. **All 8 secrets set** — `TELEGRAM_TOKEN`, `TELETHON_API_ID`, `TELETHON_API_HASH`, `ADMIN_TELEGRAM_ID`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `SMSPOOL_API_KEY`, `API_SECRET`
 
 ---
 
 ## Current app state
 
-- **Telegram Bot** workflow: RUNNING cleanly (all 3 bugs fixed, restarted twice)
-- **Telegram Mini App** workflow: RUNNING (port 5000)
-- No frontend changes this session — all fixes are backend `account_factory.py`
-- `data/campaigns.db`: healthy, VACUUM'd, WAL checkpoint done
+- **Telegram Bot** workflow: RUNNING cleanly — supervisor, worker-1, worker-2, PTB bot, FastAPI (8083), broadcast scheduler all up
+- **Telegram Mini App** workflow: RUNNING (Vite on port 5000)
+- **API Server** workflow: RUNNING (Node.js Express on port 8080)
+- Mini App login screen: accessible at port 5000; enter `API_SECRET` value to log in
+- `data/campaigns.db`: healthy (all 14 migration steps passed)
 
 ---
 
@@ -67,6 +37,16 @@ This assumption breaks when the **primary proxy IP is flagged by Telegram for au
 OR call the API directly: `POST /api/factory/snss/clear`
 
 Without this, the poisoned prefixes will skip numbers at Layer 0 without buying them, masking whether the real fixes work.
+
+---
+
+## Known warnings (non-fatal)
+
+- `MINIAPP_URL is not set` — bot warns on start; means no "Open App" button in Telegram for admin. Set `MINIAPP_URL` secret to the Replit public URL to fix.
+- `VITE_OWNER_IDS / OWNER_IDS not set` — Mini App defaults to owner view for all users. Set `OWNER_IDS` to your Telegram user ID to restrict access.
+- `saved_proxies is empty` — expected on fresh import; add proxies via Accounts → Proxies panel before running factory.
+- `pf_session_files is empty` — expected; populate via account import or factory.
+- Telethon `libssl` warning — falls back to Python AES; slower but fully functional.
 
 ---
 
@@ -88,18 +68,21 @@ After clearing the SNSS cache and running the factory again, three outcomes are 
 
 | File | Notes |
 |------|-------|
-| `account_factory.py` | Python factory backend — all 3 bugs fixed this session |
-| `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx` | Mini App factory UI (5542 lines) — no changes this session |
+| `account_factory.py` | Python factory backend — 3 bugs fixed last session |
+| `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx` | Mini App factory UI (5542 lines) |
 | `artifacts/telegram-miniapp/src/components/SnssPanel.tsx` | SNSS panel — "Clear entire blacklist" button |
 | `data/campaigns.db` | SQLite DB — `recycled_prefix_cache` table needs clearing |
+| `requirements.txt` | Cleaned — no duplicates, no telegram stub |
 | `scripts/ensure-python-deps.sh` | Cold-start bootstrap — `.deps-ready` sentinel |
+| `scripts/ensure-sqlite3.sh` | Compiles better-sqlite3 native binary (version hardcoded — tech debt) |
 
 ---
 
 ## Architecture reminders
 
-- **Workflows:** "Telegram Bot" = Python supervisor → apiserver (FastAPI 8083) + worker-1 + worker-2 + PTB bot. "Telegram Mini App" = Vite on port 5000.
+- **Workflows:** "Telegram Bot" = Python supervisor → apiserver (FastAPI 8083) + worker-1 + worker-2 + PTB bot. "Telegram Mini App" = Vite on port 5000. "API Server" = Node.js Express on port 8080.
 - **Session proxy rotation:** `_next_session_proxy()` increments `_PROXY_SESSION_COUNTER` to get `session-N+1` on Decodo, giving a fresh residential exit node.
 - **Layer 2 creds:** `_OFFICIAL_CLIENT_CREDS` = [api_id=2040 Desktop, api_id=2496 iOS, api_id=6 Android]. `_off_creds_filtered` excludes whichever was used as primary.
 - **SNSS counters:** `_SNSS_MIN_COUNT = 2` (prefix blocked after 2 confirmed recycled hits), `_SNSS_PREFIX_LEN = 9`, `_SNSS_SHORT_PREFIX_LEN = 7`, `_CONSECUTIVE_RECYCLED_ABORT = 5`.
 - **DB path:** `data/campaigns.db` relative to repo root; API server CWD is `artifacts/api-server/` so it uses `../../data/campaigns.db` via the fallback in `db-path.ts`.
+- **Login:** Mini App at port 5000 — enter value of `API_SECRET` secret to authenticate.
