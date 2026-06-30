@@ -296,6 +296,19 @@ _REGISTRATION_CREDS: list[tuple] = [
      "iPhone 14 Pro",      "17.4.1", "10.7.4", "ios"),
     (2496, "8da85b0d5bfe62527e5b244c209159c3",
      "iPhone SE (3rd gen)","17.4.1", "10.7.4", "ios"),
+    # Telegram Android — api_id 6
+    # Added to primary pool: Android is the most common Telegram client globally.
+    # If Telegram changes routing for Desktop/iOS api_ids from residential proxies,
+    # Android (api_id=6) may still get SentCodeTypeSms for fresh numbers.
+    # Previously only appeared in _OFFICIAL_CLIENT_CREDS (Layer 2 only).
+    (6, "eb06d4abfb49dc3eeb1aeb98ae0f581e",
+     "Samsung Galaxy S25 Ultra", "Android 15", "11.6.2", "android"),
+    (6, "eb06d4abfb49dc3eeb1aeb98ae0f581e",
+     "Samsung Galaxy S24 Ultra", "Android 14", "10.14.0", "android"),
+    (6, "eb06d4abfb49dc3eeb1aeb98ae0f581e",
+     "Google Pixel 9 Pro",       "Android 15", "11.4.0", "android"),
+    (6, "eb06d4abfb49dc3eeb1aeb98ae0f581e",
+     "Xiaomi 14 Pro",            "Android 14", "10.9.1", "android"),
 ]
 
 # Keep _OFFICIAL_CLIENT_CREDS as the recycled-number detection fallback
@@ -2616,8 +2629,9 @@ async def _registration_stream(
                     _off_creds_filtered = [
                         c for c in _OFFICIAL_CLIENT_CREDS if c[0] != _actual_api_id
                     ] or _OFFICIAL_CLIENT_CREDS  # fallback: include all if somehow all match
-                    _switched_to_official = False
-                    _l2_same_ip = False   # set True if Layer 2 exit IP = primary exit IP
+                    _switched_to_official   = False
+                    _l2_same_ip             = False   # set True if Layer 2 exit IP = primary exit IP
+                    _l2_confirmed_recycled  = False   # True when ANY L2 cred got a clean SentCodeTypeApp
                     # _off_result MUST be initialised here (outside the for loop) so
                     # that the else: clause after the loop can safely reference it even
                     # when the loop body never executes (e.g. empty _off_creds_filtered).
@@ -2769,13 +2783,17 @@ async def _registration_stream(
                                 _switched_to_official = True
                                 break
                             else:
+                                _l2_confirmed_recycled = True
                                 yield _sse("step", {"step": 3, "status": "running",
-                                                    "message": f"🔴 Official creds (api_id={_off_api_id}) also got {code_type_name} — number is recycled"})
-                                # Break after first clean SentCodeTypeApp verdict — no need
-                                # to try further credentials for a confirmed recycled number.
-                                # Additional credentials (e.g. Android) are only tried when
-                                # this credential failed due to a connection error (_off_result is None).
-                                break
+                                                    "message": f"🔴 Official creds (api_id={_off_api_id}) also got {code_type_name} — trying next credential…"})
+                                # Do NOT break here. Continue the loop and try the next
+                                # official credential (including Android api_id=6).
+                                # Rationale: if Telegram has changed routing for Desktop/iOS
+                                # api_ids from residential proxies, Android may still route
+                                # to SMS for fresh numbers. Breaking after the first
+                                # SentCodeTypeApp means we never discover this.
+                                # The final "recycled" verdict is only declared after ALL
+                                # filtered official credentials return SentCodeTypeApp.
 
                     if _switched_to_official:
                         pass  # fall through to step 4
@@ -2788,22 +2806,25 @@ async def _registration_stream(
                     else:
                         # ── Two distinct failure modes reach this branch ───────────
                         #
-                        # MODE A (_off_result is not None): Layer 2 CONNECTED and
-                        #   got a definitive response — SentCodeTypeApp.  That means
-                        #   the number already has a Telegram account → confirmed recycled.
+                        # MODE A (_l2_confirmed_recycled is True): at least one L2 cred
+                        #   connected and got a definitive SentCodeTypeApp response.
+                        #   That means the number already has a Telegram account →
+                        #   confirmed recycled.  _off_result may be None if the LAST
+                        #   credential in the loop hit a proxy error AFTER an earlier
+                        #   credential already returned SentCodeTypeApp.
                         #
-                        # MODE B (_off_result is None): ALL 3 Layer 2 connection
-                        #   attempts threw an exception (ProxyError, ConnectionError,
-                        #   TimeoutError…).  No response was received from Telegram at
-                        #   all.  This is a PROXY FAILURE, NOT proof of recycling.
-                        #   Recording the prefix as blacklisted and incrementing
-                        #   _app_stuck_count would cause valid fresh numbers to be
-                        #   silently discarded — leading to 100% false-positive recycled
-                        #   detection when the proxy is unstable on Layer 2 reconnects.
+                        # MODE B (_l2_confirmed_recycled is False AND _off_result is None):
+                        #   ALL Layer 2 credentials failed with connection exceptions.
+                        #   No response was received from Telegram at all.  This is a
+                        #   PROXY FAILURE, NOT proof of recycling.  Recording the prefix
+                        #   as blacklisted and incrementing _app_stuck_count would cause
+                        #   valid fresh numbers to be silently discarded — leading to 100%
+                        #   false-positive recycled detection when the proxy is unstable.
                         #
-                        # Fix: branch on _off_result to avoid conflating the two modes.
+                        # Branch on _l2_confirmed_recycled (not _off_result) to avoid
+                        # conflating the two modes when the loop runs multiple credentials.
 
-                        if _off_result is None:
+                        if not _l2_confirmed_recycled and _off_result is None:
                             # ── MODE B: Layer 2 proxy failure ────────────────────
                             # Cannot get an independent verdict on this number.
                             # Cancel (we can't proceed without the code path), but
