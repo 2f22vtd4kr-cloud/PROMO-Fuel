@@ -2321,7 +2321,7 @@ def main():
     _conflict_times: list[float] = []  # timestamps of recent conflicts
 
     async def error_handler(update: object, context) -> None:
-        import asyncio, time
+        import time
         from telegram.error import Conflict, NetworkError, RetryAfter
         err = context.error
         if isinstance(err, Conflict):
@@ -2354,7 +2354,7 @@ def main():
             await asyncio.sleep(15)
         elif isinstance(err, RetryAfter):
             logger.warning(f"⚠️ Flood control: ждём {err.retry_after}с")
-            import asyncio; await asyncio.sleep(err.retry_after)
+            await asyncio.sleep(err.retry_after)
         elif isinstance(err, NetworkError):
             logger.warning(f"⚠️ NetworkError: {err}")
         else:
@@ -2374,12 +2374,8 @@ def main():
             "Workers, schedulers, and API server continue normally."
         )
         # Keep the process alive so post_init hooks (schedulers, workers) run.
-        # We use run_polling with a no-op by just blocking the thread — but
-        # post_init hasn't fired yet.  Use app.run_polling with a very short
-        # timeout trick isn't clean; instead call initialize+start manually
-        # then block on an asyncio Event that never fires.
-        import asyncio
-
+        # initialize+start manually then block on an asyncio Event that never
+        # fires (SIGTERM will interrupt it cleanly).
         async def _idle():
             await app.initialize()
             await app.start()
