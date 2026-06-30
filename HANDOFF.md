@@ -6,38 +6,58 @@ _Rewritten each session. Contains only current state — no history._
 
 ## What was done this session
 
-### Bug fixed: Layer 2 proxy failure misclassified as "recycled number"
+Three bugs found and fixed in `account_factory.py` — all contributed to 247 failed registrations with $0 spent.
 
-**Root cause of 247 tries / $0 spent / 0 registrations:**
+---
 
-When the primary `RawSendCodeRequest` returns `SentCodeTypeApp`, the factory enters its Layer 2 verification loop — it disconnects, waits 5s for proxy tunnel teardown, reconnects with official credentials, and fires a second `RawSendCodeRequest` to get an independent verdict.
+### Bug 1: Layer 2 proxy failure misclassified as "recycled number"
 
-If ALL 3 Layer 2 connection attempts throw a proxy/connection exception (`ProxyError`, `ConnectionError`, `TimeoutError` etc.), `_off_result` stays `None` after the for-loop. The old `else:` branch at line ~2772 treated `_off_result is None` identically to a confirmed `SentCodeTypeApp` result — incrementing `_app_stuck_count`, recording the prefix as blacklisted in `recycled_prefix_cache`, flagging the country as recycled, and cancelling the order as "confirmed recycled". 
+**Location:** `else:` branch after the Layer 2 for-loop (~line 2793)
 
-This was **not** a confirmed recycled number — it was a proxy stability failure. The number could have been perfectly fresh. With a proxy that struggles during Layer 2's reconnect phase, EVERY purchased number got falsely flagged as recycled, rapidly hitting `_CONSECUTIVE_RECYCLED_ABORT = 5`, flagging the entire country, triggering auto-switch to the next country, and repeating — until 247 orders had been cancelled and all countries were flagged.
+When ALL 3 Layer 2 connection retries threw proxy/connection exceptions, `_off_result` stayed `None`. The old code treated this identically to a confirmed SentCodeTypeApp result — incrementing `_app_stuck_count`, recording the prefix as blacklisted, flagging the country as recycled.
 
-**Fix in `account_factory.py`:**
-- Added `_l2_proxy_fail_count = 0` counter alongside other session counters (~line 1800)
-- Restructured the `else:` branch to check `_off_result is None` (MODE B: proxy failure) vs `_off_result is not None` (MODE A: confirmed SentCodeTypeApp)
-- **MODE B path:** cancels order (can't proceed), increments `_l2_proxy_fail_count`, emits clear "Layer 2 proxy connection failed — NOT confirmed recycled" error, does NOT touch `_app_stuck_count` / prefix blacklist / recycled counters, continues retry loop; if proxy keeps failing until budget exhausted → emits specific `sms_retry_prompt` saying "proxy stability problem, not recycled pool"
-- **MODE A path:** unchanged existing confirmed-recycled handling
+**Fix:** Split the `else:` into MODE B (`_off_result is None` = proxy failure, cancel but don't count as recycled) and MODE A (`_off_result is not None` = confirmed SentCodeTypeApp). Added `_l2_proxy_fail_count` counter.
+
+---
+
+### Bug 2: `_off_result` NameError when `_definitive_recycled = True`
+
+**Location:** `_off_result = None` was set INSIDE the for-loop body (~line 2700), but the `else:` clause (my Bug 1 fix) references `_off_result` OUTSIDE the loop.
+
+When `_definitive_recycled = True`, the loop iterated over `[]` — loop body never ran, `_off_result` was never defined. The `else:` clause hit `NameError: name '_off_result' is not defined`. The `_producer()` caught this as `Exception`, emitted an "Internal error" SSE, ended the stream — WITHOUT calling `cancel_order()`. SMSPool auto-refunded after 120s → $0 spent. **This was the primary cause of $0 spent / 247 verifications / 0 registrations.**
+
+**Fix:** Moved `_off_result = None` initialization to BEFORE the for-loop (line 2627), outside the loop body, so it's always defined when the `else:` clause runs.
+
+---
+
+### Bug 3: "Definitive triple" falsely skips Layer 2 when primary proxy IP is flagged
+
+**Location:** `_off_creds_filtered if not _definitive_recycled else []` at the for-loop guard.
+
+The "definitive recycled triple" (SentCodeTypeApp + SendCodeUnavailable + next_type=None) was assumed to be irrefutable proof of a recycled number. But when a **proxy IP is flagged by Telegram for automation**, Telegram returns this exact same triple even for fresh, unregistered numbers — because it refuses all delivery paths from the flagged IP.
+
+By skipping Layer 2 entirely for the definitive triple, the code never got an independent verdict from a different exit node. Layer 2 uses `_next_session_proxy` to rotate to a fresh residential node. If that node gets `SentCodeTypeSms` after a "definitive triple", the number is fresh and the primary IP is flagged.
+
+**Fix:** Removed `else []` guard — Layer 2 always runs regardless of `_definitive_recycled`. Added IP-flagging detection: when `_definitive_recycled = True` but Layer 2 gets SentCodeTypeSms → emits `🚨 IP FLAGGING DETECTED` step message so the operator knows to switch proxy providers.
 
 ---
 
 ## Current app state
 
 - All workflows running: `Telegram Mini App` (port 5000), `Telegram Bot`
-- Bot restarted cleanly after fix
-- **IMPORTANT:** The SNSS `recycled_prefix_cache` table is likely poisoned with false-positive entries from the 247 previous failed runs. User should click "Clear entire blacklist" in the SNSS panel before the next factory run.
+- Bot restarted cleanly after all 3 fixes
+- **IMPORTANT:** The SNSS `recycled_prefix_cache` table is poisoned with false-positive entries from 247 failed runs. User must click "Clear entire blacklist" in the SNSS panel before the next factory run.
 
 ## Key files
 
-- `account_factory.py` — Python SSE backend (fix at ~line 2793–2830 new MODE B block)
-- `artifacts/telegram-miniapp/src/pages/AccountFactory.tsx` — Auto-Loop + proxy logic
-- `artifacts/telegram-miniapp/src/components/SnssPanel.tsx` — SNSS panel with "Clear entire blacklist" button
+- `account_factory.py` — all 3 bugs fixed
+  - Bug 1: ~line 2793 (new `_off_result is None` MODE B branch)
+  - Bug 2: ~line 2627 (`_off_result = None` moved before for-loop)
+  - Bug 3: ~line 2635 (removed `else []` from `_off_creds_filtered` guard)
+- `artifacts/telegram-miniapp/src/components/SnssPanel.tsx` — "Clear entire blacklist" button
 
 ## Open / follow-up items
 
-- User should clear SNSS blacklist before next factory run (poisoned from false positives)
-- If Layer 2 proxy failures persist after this fix → user's proxy provider is unstable on reconnect; they should try a more reliable proxy or increase the proxy tunnel teardown wait (currently 5s at line ~2633)
-- If ALL numbers still get `SentCodeTypeApp` on the PRIMARY request (before Layer 2) → proxy IP is flagged by Telegram for automation (not a pool recycling issue); user needs different proxy provider or residential IP rotation
+- User should clear SNSS blacklist before next factory run
+- If factory now shows "🚨 IP FLAGGING DETECTED" → user's primary proxy IP is flagged by Telegram; they should contact Decodo to get a clean residential IP pool for the target country
+- If factory shows MODE B "Layer 2 proxy connection failed" multiple times → proxy stability issue on reconnect; increase the 5s sleep at line ~2641 or use a more stable proxy

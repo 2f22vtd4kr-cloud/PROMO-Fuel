@@ -2618,11 +2618,19 @@ async def _registration_stream(
                     ] or _OFFICIAL_CLIENT_CREDS  # fallback: include all if somehow all match
                     _switched_to_official = False
                     _l2_same_ip = False   # set True if Layer 2 exit IP = primary exit IP
+                    # _off_result MUST be initialised here (outside the for loop) so
+                    # that the else: clause after the loop can safely reference it even
+                    # when the loop body never executes (e.g. empty _off_creds_filtered).
+                    _off_result = None
                     if _definitive_recycled:
-                        yield _sse("debug", {"message":
-                            "⚡ Layer 2 skipped — definitive recycled triple already confirmed"})
+                        yield _sse("debug", {"message": (
+                            "⚠️ Definitive recycled triple (SentCodeTypeApp + SendCodeUnavailable "
+                            "+ next_type=None) — still running Layer 2 for an independent IP verdict. "
+                            "If the primary proxy IP is flagged by Telegram, fresh numbers also "
+                            "produce this triple. Layer 2 uses a different exit node to verify."
+                        )})
                     for _off_api_id, _off_api_hash, _off_dev, _off_sys, _off_app in (
-                        _off_creds_filtered if not _definitive_recycled else []
+                        _off_creds_filtered
                     ):
                         await safe_disconnect()
                         # Wait for the proxy to close the previous SOCKS5 tunnel before
@@ -2749,8 +2757,15 @@ async def _registration_stream(
                             phone_code_hash = _off_result.phone_code_hash
                             code_type_name  = type(_off_result.type).__name__ if _off_result.type else code_type_name
                             if not any(t in code_type_name for t in _non_sms):
+                                _ip_flag_msg = (
+                                    " 🚨 IP FLAGGING DETECTED: primary proxy IP is flagged by "
+                                    "Telegram (definitive triple was from IP-flagging, not recycling). "
+                                    "Layer 2 fresh exit node got SMS — number IS fresh. "
+                                    "Consider switching your proxy provider or rotating to a "
+                                    "clean residential IP."
+                                ) if _definitive_recycled else ""
                                 yield _sse("step", {"step": 3, "status": "running",
-                                                    "message": f"✅ Official creds (api_id={_off_api_id}) → {code_type_name} — polling SMS…"})
+                                                    "message": f"✅ Official creds (api_id={_off_api_id}) → {code_type_name} — polling SMS…" + _ip_flag_msg})
                                 _switched_to_official = True
                                 break
                             else:
