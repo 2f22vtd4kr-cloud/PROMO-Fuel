@@ -4003,7 +4003,7 @@ export function AccountFactoryPanel({ onDone }: { onDone: () => void }) {
                   lang={lang}
                   L={L}
                   initialValue={proxy}
-                  onApply={url => { setProxy(url); setShowProxyGen(false); }}
+                  onApply={url => { setProxy(url); setShowProxyGen(false); setSelectedProxyStoreId(null); }}
                 />
               )}
             </div>
