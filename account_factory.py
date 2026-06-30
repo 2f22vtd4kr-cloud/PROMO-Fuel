@@ -1834,38 +1834,27 @@ async def _registration_stream(
         # Resets on each pool-switch.
         _post_switch_recycled: int = 0
 
-        # Shuffle the official registration credential pool so each factory
-        # session uses a different rotation order.  Each retry attempt cycles
-        # to the next credential, ensuring we never hit the same api_id twice
-        # in a row when SMS delivery is being shadow-blocked.
-        _reg_pool: list[tuple] = _REGISTRATION_CREDS.copy()
-        random.shuffle(_reg_pool)
-
-        # Append the operator's own developer api_id (TELETHON_API_ID) as the
-        # LAST credential in the rotation when it differs from the official pool.
-        #
-        # Why last, not first:
-        #   A developer api_id is linked to the operator's own Telegram account.
-        #   Telegram routes SendCode requests from it to the operator's installed
-        #   Telegram app → SentCodeTypeApp for EVERY number, fresh or recycled.
-        #   This makes it useless for detecting number freshness (primary or ResendCode)
-        #   and adds ~10s overhead per attempt before L2 can give a real verdict.
-        #
-        #   Official api_ids (2040 Desktop / 2496 iOS / 6 Android) are NOT linked
-        #   to any account — Telegram routes their SendCode to SMS for fresh numbers.
-        #   ResendCode on an official api_id can also escalate App→SMS on certain
-        #   carriers (UZ, KZ, IN).  The dev api_id can never do this.
-        #
-        #   The dev api_id IS still useful as a last resort if all official ids are
-        #   shadow-blocked for this operator (rare), so we keep it in the pool at end.
+        # Build the registration credential pool.
+        # Bug #2 fix: operator's own dev api_id goes FIRST so it is always used
+        # in the rotation.  The official pool (2040/2496/6) has been shadow-blocked
+        # by Telegram for automation and returns SentCodeTypeApp on every attempt —
+        # even for completely fresh numbers.  A fresh my.telegram.org credential
+        # (TELETHON_API_ID) gets a fair routing evaluation.  Official creds are kept
+        # as a fallback tail in case the dev api_id is also flagged.
         _dev_api_id   = api_id    # passed from TELETHON_API_ID env var
         _dev_api_hash = api_hash
         _official_ids = {c[0] for c in _REGISTRATION_CREDS}  # {2040, 2496, 6}
+
+        _official_tail: list[tuple] = _REGISTRATION_CREDS.copy()
+        random.shuffle(_official_tail)
+        _reg_pool: list[tuple] = []
         if _dev_api_id and _dev_api_id not in _official_ids:
+            # Dev cred first — gets slot 0 in every rotation cycle
             _reg_pool.append((
                 _dev_api_id, _dev_api_hash,
                 "PC 64bit", "Windows 11", "5.9.5", "desktop",
             ))
+        _reg_pool.extend(_official_tail)
 
         # Track which api_id / api_hash / device profile were ACTUALLY used for the
         # successful registration.  Updated each time we switch credentials.  Saved
@@ -2085,8 +2074,12 @@ async def _registration_stream(
                 yield _sse("debug", {"message":
                     f"✅ SNSS-L1: {phone} not found in contact import — proceeding"})
             else:
-                yield _sse("debug", {"message":
-                    "ℹ️ SNSS-L1: contact check skipped (no idle sender account)"})
+                # Bug #5: surface a clear warning (was silent debug) so the operator
+                # knows Layer 1 is off and 100% of recycled detection costs money.
+                yield _sse("step", {"step": 0, "status": "running", "message":
+                    "⚠️ SNSS-L1 disabled — no active sender account available. "
+                    "Add a warmed-up sender account to enable free recycled-number pre-screening. "
+                    "Without it every recycled number wastes a full SMSPool order."})
 
             # ─── Step 2 — Init Telethon client ───────────────────────────
             yield _sse("step", {"step": 2, "status": "running",
@@ -2626,9 +2619,22 @@ async def _registration_stream(
                         except Exception:
                             pass  # best-effort; Layer 2 still runs even if cancel fails
 
+                    # Bug #1 fix: build Layer 2 pool with dev api_id FIRST.
+                    # The public official api_ids (2040/2496/6) are shadow-blocked by
+                    # Telegram for automation and return SentCodeTypeApp for fresh numbers
+                    # too.  The operator's own my.telegram.org credential (TELETHON_API_ID)
+                    # is the only one that gives a true independent verdict here.
+                    _l2_base = list(_OFFICIAL_CLIENT_CREDS)
+                    _l2_official_ids = {c[0] for c in _l2_base}
+                    if _dev_api_id and _dev_api_id not in _l2_official_ids:
+                        # Prepend dev creds so they run first in Layer 2
+                        _l2_base = [(
+                            _dev_api_id, _dev_api_hash,
+                            "PC 64bit", "Windows 11", "5.9.5",
+                        )] + _l2_base
                     _off_creds_filtered = [
-                        c for c in _OFFICIAL_CLIENT_CREDS if c[0] != _actual_api_id
-                    ] or _OFFICIAL_CLIENT_CREDS  # fallback: include all if somehow all match
+                        c for c in _l2_base if c[0] != _actual_api_id
+                    ] or _l2_base  # fallback: include all if somehow all match
                     _switched_to_official   = False
                     _l2_same_ip             = False   # set True if Layer 2 exit IP = primary exit IP
                     _l2_confirmed_recycled  = False   # True when ANY L2 cred got a clean SentCodeTypeApp
@@ -3056,7 +3062,10 @@ async def _registration_stream(
             # silently skips /sms/check, so codes are NEVER found.
             code: str | None = None
 
-            _deadline    = time.time() + 120
+            # Bug #3 fix: 600s window (was 120s). SMSPool rentals last 1200s;
+            # CIS/SEA carriers routinely take 2-5 min to deliver.
+            _deadline    = time.time() + 600
+            _order_refunded = False  # Bug #7: track refund vs genuine timeout
 
 
             def _extract_code(raw: str) -> str | None:
@@ -3093,7 +3102,7 @@ async def _registration_stream(
 
                     await asyncio.sleep(4)
 
-                    _elapsed = int(120 - _remaining)
+                    _elapsed = int(600 - _remaining)
                     try:
                         # ── Primary: /request/active ──────────────────────────────
                         # SMSPool docs recommend this as the primary endpoint: it lists
@@ -3123,8 +3132,19 @@ async def _registration_stream(
                             for _o in _orders:
                                 if not isinstance(_o, dict):
                                     continue
+                                # Bug #4 fix: SMSPool /request/active returns
+                                # "phonenumber" as the LOCAL number (no country code),
+                                # while `raw_num` is the full international number.
+                                # e.g. raw_num="77474314832", phonenumber="7474314832"
+                                # → endswith(raw_num) always fails (haystack shorter).
+                                # Fix: check both directions.
+                                _act_ph = str(_o.get("phonenumber", "") or "")
+                                _ph_match = (
+                                    bool(_act_ph and raw_num.endswith(_act_ph))
+                                    or bool(_act_ph and _act_ph.endswith(raw_num))
+                                )
                                 if (str(_o.get("order_code", "")) == order_code
-                                        or str(_o.get("phonenumber", "")).endswith(raw_num)):
+                                        or _ph_match):
                                     _active_code_raw  = str(_o.get("code",      "0") or "0")
                                     _active_full_raw  = str(_o.get("full_code", "")  or "")
                                     code = (_extract_code(_active_code_raw)
@@ -3179,8 +3199,11 @@ async def _registration_stream(
                                     if code:
                                         break
                                 if _sid == 6:
+                                    # Bug #7 fix: track refund separately so it's not
+                                    # counted as an api_id shadow-block timeout below.
+                                    _order_refunded = True
                                     yield _sse("poll", {"remaining": _remaining,
-                                                        "message": "💬 Order refunded — will retry..."})
+                                                        "message": "💬 Order refunded by SMSPool — will retry with a new number..."})
                                     break  # no point waiting; auto-retry outer loop
 
                     except Exception as _exc:
@@ -3192,22 +3215,29 @@ async def _registration_stream(
                 break  # exit the number-retry loop — we have a code!
 
             # No code — cancel order and auto-retry with a new number.
-            # Track consecutive timeouts: N≥2 is the api_id shadow-block signature
-            # (Telegram accepts RawSendCodeRequest and returns SentCodeTypeSms but
-            # never routes the SMS to the carrier).  Emit a diagnostic so the user
-            # knows what is happening and that the next attempt will rotate api_id.
-            _record_cred_stat(_actual_api_id, "timeout")
-            _sms_timeout_count += 1
-            if _sms_timeout_count >= 2:
-                _nums_left_warn = MAX_NUM_RETRIES - _num_attempt - 1
-                yield _sse("poll", {"remaining": 0, "message": (
-                    f"⚠️ {_sms_timeout_count} consecutive SMS timeouts "
-                    f"(api_id={_actual_api_id}). "
-                    "This matches Telegram's api_id shadow-block: SentCodeTypeSms is "
-                    "returned but the carrier SMS is never dispatched. "
-                    f"Next attempt rotates to a different credential set "
-                    f"({_nums_left_warn} attempt(s) left)."
-                )})
+            # Bug #7 fix: refunds are not api_id shadow-block events; don't
+            # inflate the timeout counter or emit the wrong diagnostic.
+            if _order_refunded:
+                _record_cred_stat(_actual_api_id, "refunded")
+                # _sms_timeout_count intentionally NOT incremented for refunds
+            else:
+                # Track consecutive genuine timeouts: N≥2 is the api_id shadow-block
+                # signature (Telegram accepts RawSendCodeRequest and returns
+                # SentCodeTypeSms but never routes the SMS to the carrier).
+                _record_cred_stat(_actual_api_id, "timeout")
+                _sms_timeout_count += 1
+                # Bug #6 fix: warn only on threshold crossing (== 2), not on every
+                # subsequent timeout, to avoid duplicate noise in the UI.
+                if _sms_timeout_count == 2:
+                    _nums_left_warn = MAX_NUM_RETRIES - _num_attempt - 1
+                    yield _sse("poll", {"remaining": 0, "message": (
+                        f"⚠️ {_sms_timeout_count} consecutive SMS timeouts "
+                        f"(api_id={_actual_api_id}). "
+                        "This matches Telegram's api_id shadow-block: SentCodeTypeSms is "
+                        "returned but the carrier SMS is never dispatched. "
+                        f"Next attempt rotates to a different credential set "
+                        f"({_nums_left_warn} attempt(s) left)."
+                    )})
             await cancel_order()
             await safe_disconnect()
             _nums_left = MAX_NUM_RETRIES - _num_attempt - 1
