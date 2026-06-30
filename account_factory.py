@@ -124,14 +124,33 @@ TELEGRAM_SERVICE_ID = "907"
 # DEVICE_PROFILES is available.  The loader function is called at the bottom
 # of the module-init block.
 def _load_operator_creds() -> list[tuple]:
-    """Return all operator Telegram credentials as 6-tuples, deduped by api_id."""
+    """Return all operator Telegram credentials as 6-tuples, deduped by api_id.
+
+    Operator api_ids are registered on my.telegram.org as Android apps, so they
+    MUST be paired with Android device fingerprints.  Using Desktop strings
+    (PC 64bit / Windows) causes Telegram to return SentCodeTypeApp immediately
+    on every number — even fresh, never-used ones.
+    """
+    # Android profiles to cycle through — one per operator credential slot
+    _android_profiles = [
+        ("Samsung Galaxy S24 Ultra",  "Android 14", "10.14.0", "android"),
+        ("Xiaomi Redmi Note 13 Pro",  "Android 13", "9.6.3",   "android"),
+        ("Google Pixel 7a",           "Android 14", "9.7.1",   "android"),
+        ("Samsung Galaxy A54 5G",     "Android 13", "9.6.3",   "android"),
+        ("OnePlus Nord 3",            "Android 13", "9.6.3",   "android"),
+        ("Xiaomi 13 Pro",             "Android 13", "9.7.1",   "android"),
+        ("Samsung Galaxy S23",        "Android 13", "9.6.3",   "android"),
+        ("Google Pixel 8",            "Android 14", "10.9.1",  "android"),
+    ]
+
     results: list[tuple] = []
     seen: set[int] = set()
+    profile_idx = 0
 
     # Numbered variants: TELETHON_API_ID_1 / TELETHON_API_HASH_1, _2, _3 ...
     n = 1
     while True:
-        _id_str  = os.environ.get(f"TELETHON_API_ID_{n}",   "").strip()
+        _id_str   = os.environ.get(f"TELETHON_API_ID_{n}",   "").strip()
         _hash_str = os.environ.get(f"TELETHON_API_HASH_{n}", "").strip()
         if not _id_str or not _hash_str:
             break
@@ -139,8 +158,9 @@ def _load_operator_creds() -> list[tuple]:
             _aid = int(_id_str)
             if _aid > 0 and _aid not in seen:
                 seen.add(_aid)
-                results.append((_aid, _hash_str,
-                                "PC 64bit", "Windows 11", "5.9.5", "desktop"))
+                _dev, _sys, _app, _plat = _android_profiles[profile_idx % len(_android_profiles)]
+                profile_idx += 1
+                results.append((_aid, _hash_str, _dev, _sys, _app, _plat))
         except ValueError:
             pass
         n += 1
@@ -153,14 +173,23 @@ def _load_operator_creds() -> list[tuple]:
             _lid = int(_leg_id)
             if _lid > 0 and _lid not in seen:
                 seen.add(_lid)
-                results.append((_lid, _leg_hash,
-                                "PC 64bit", "Windows 11", "5.9.5", "desktop"))
+                _dev, _sys, _app, _plat = _android_profiles[profile_idx % len(_android_profiles)]
+                profile_idx += 1
+                results.append((_lid, _leg_hash, _dev, _sys, _app, _plat))
         except ValueError:
             pass
 
     return results
 
 _OPERATOR_CREDS: list[tuple] = _load_operator_creds()
+
+# Startup log so a fingerprint mismatch is immediately visible in console
+logger.info("[factory] === Credential pool summary ===")
+for _i, _c in enumerate(_OPERATOR_CREDS):
+    logger.info("[factory]   operator[%d]: api_id=%-12d  device=%-30s  system=%-15s  app=%-10s",
+                _i + 1, _c[0], _c[2], _c[3], _c[4])
+logger.info("[factory]   fallback: official creds (2040 Desktop, 2496 iOS)")
+logger.info("[factory] ===================================")
 
 # ── In-memory country availability cache (key → (timestamp, data)) ──────────
 _country_cache: dict[str, tuple[float, list]] = {}
@@ -347,19 +376,6 @@ _REGISTRATION_CREDS: list[tuple] = [
      "iPhone 14 Pro",      "17.4.1", "10.7.4", "ios"),
     (2496, "8da85b0d5bfe62527e5b244c209159c3",
      "iPhone SE (3rd gen)","17.4.1", "10.7.4", "ios"),
-    # Telegram Android — api_id 6
-    # Added to primary pool: Android is the most common Telegram client globally.
-    # If Telegram changes routing for Desktop/iOS api_ids from residential proxies,
-    # Android (api_id=6) may still get SentCodeTypeSms for fresh numbers.
-    # Previously only appeared in _OFFICIAL_CLIENT_CREDS (Layer 2 only).
-    (6, "eb06d4abfb49dc3eeb1aeb98ae0f581e",
-     "Samsung Galaxy S25 Ultra", "Android 15", "11.6.2", "android"),
-    (6, "eb06d4abfb49dc3eeb1aeb98ae0f581e",
-     "Samsung Galaxy S24 Ultra", "Android 14", "10.14.0", "android"),
-    (6, "eb06d4abfb49dc3eeb1aeb98ae0f581e",
-     "Google Pixel 9 Pro",       "Android 15", "11.4.0", "android"),
-    (6, "eb06d4abfb49dc3eeb1aeb98ae0f581e",
-     "Xiaomi 14 Pro",            "Android 14", "10.9.1", "android"),
 ]
 
 # Keep _OFFICIAL_CLIENT_CREDS as the recycled-number detection fallback
@@ -374,10 +390,8 @@ _OFFICIAL_CLIENT_CREDS = [
         2496, "8da85b0d5bfe62527e5b244c209159c3",
         "iPhone 16 Pro Max", "18.3.2", "11.4.0",   # Telegram iOS
     ),
-    (
-        6, "eb06d4abfb49dc3eeb1aeb98ae0f581e",
-        "Samsung Galaxy S24 Ultra", "Android 14", "10.14.0",  # Telegram Android
-    ),
+    # api_id=6 (Telegram Android public) removed — returns ForbiddenError from
+    # residential proxies; keeping it wastes 6-8s per Layer 2 cycle.
 ]
 
 # ── Layer 2 verdict pool ─────────────────────────────────────────────────────
@@ -1933,13 +1947,16 @@ async def _registration_stream(
         random.shuffle(_op_pool)
 
         # If the primary api_id (passed in request) is not already in _op_pool
-        # (e.g. bare legacy env var path), prepend it so it always participates.
+        # (e.g. bare legacy env var path with no _1/_2 variants), prepend it.
+        # Look up its entry from _OPERATOR_CREDS so we carry the correct Android
+        # device profile rather than hardcoding Desktop strings.
         _op_ids = {c[0] for c in _op_pool}
         if _dev_api_id and _dev_api_id not in _official_ids and _dev_api_id not in _op_ids:
-            _op_pool.insert(0, (
-                _dev_api_id, _dev_api_hash,
-                "PC 64bit", "Windows 11", "5.9.5", "desktop",
-            ))
+            _matched = next((c for c in _OPERATOR_CREDS if c[0] == _dev_api_id), None)
+            if _matched:
+                _op_pool.insert(0, _matched)
+            # If not in _OPERATOR_CREDS at all (truly unknown api_id), skip it —
+            # we have no reliable device profile to pair it with.
 
         _official_tail: list[tuple] = _REGISTRATION_CREDS.copy()
         random.shuffle(_official_tail)

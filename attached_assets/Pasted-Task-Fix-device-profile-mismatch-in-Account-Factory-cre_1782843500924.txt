@@ -1,0 +1,66 @@
+Task: Fix device-profile mismatch in Account Factory credential pool
+
+The bug
+
+The Account Factory is pairing operator-supplied Telegram api_ids (registered on my.telegram.org as Android apps) with Desktop Windows fingerprint strings. Telegram's anti-automation treats this platform mismatch as an instant bot signal and returns SentCodeTypeApp for every number — even fresh, never-used ones.
+
+Evidence from the debug log:
+
+TELETHON_INIT: { "api_id": 37989276, "platform": "desktop", "device_model": "PC 64bit", "system_version": "Windows 11", "app_version": "5.9.5" }
+api_id 37989276 was registered on my.telegram.org as Android. It should be paired with an Android device fingerprint, not Desktop.
+
+File to edit
+
+account_factory.py (repo root)
+
+Background context
+
+Replit previously applied a credential-loader change. The credential loader exists but its Android device profiles are NOT being used — somewhere the code is still hardcoding ("PC 64bit", "Windows 11", "5.9.5", "desktop") for operator credentials. Find that hardcoded fallback and remove it.
+
+Both operator api_ids (TELETHON_API_ID_1=30533575 and TELETHON_API_ID_2=37989276) were registered on my.telegram.org as Android apps. Both must use Android device profiles.
+
+Changes required
+
+Change 1 — Locate and inspect _load_operator_credentials
+
+Find the function _load_operator_credentials (added in a previous task). Verify it returns 6-tuples of the shape:
+
+(api_id: int, api_hash: str, device_model: str, system_version: str, app_version: str, platform: str)
+If it currently returns 5-tuples or uses Desktop strings, fix it to return 6-tuples with Android profiles:
+
+def _load_operator_credentials() -> list[tuple]:    creds: list[tuple] = []    _android_profiles = [        ("Samsung Galaxy S24 Ultra",   "Android 14", "10.14.0", "android"),        ("Xiaomi Redmi Note 13 Pro",   "Android 13", "9.6.3",   "android"),        ("Google Pixel 7a",            "Android 14", "9.7.1",   "android"),        ("Samsung Galaxy A54 5G",      "Android 13", "9.6.3",   "android"),        ("OnePlus Nord 3",             "Android 13", "9.6.3",   "android"),        ("Xiaomi 14 Pro",              "Android 14", "10.9.1",  "android"),    ]    profile_idx = 0    for n in range(1, 10):        _id  = os.environ.get(f"TELETHON_API_ID_{n}",   "").strip()        _hsh = os.environ.get(f"TELETHON_API_HASH_{n}", "").strip()        if not (_id and _hsh):            continue        try:            _id_int = int(_id)            assert _id_int > 0        except Exception:            logger.warning("[factory] TELETHON_API_ID_%d invalid: %r — skipping", n, _id)            continue        _dev, _sys, _app, _plat = _android_profiles[profile_idx % len(_android_profiles)]        profile_idx += 1        creds.append((_id_int, _hsh, _dev, _sys, _app, _plat))        logger.info("[factory] Loaded operator credential #%d: api_id=%d → %s / %s / %s [%s]",                    n, _id_int, _dev, _sys, _app, _plat)    # Legacy fallback    if not creds:        _id  = os.environ.get("TELETHON_API_ID",   "").strip()        _hsh = os.environ.get("TELETHON_API_HASH", "").strip()        if _id and _hsh:            try:                _id_int = int(_id)                _dev, _sys, _app, _plat = _android_profiles[0]                creds.append((_id_int, _hsh, _dev, _sys, _app, _plat))                logger.info("[factory] Loaded legacy credential: api_id=%d → %s / %s", _id_int, _dev, _sys)            except Exception:                pass    return creds
+Change 2 — Find the hardcoded Desktop profile and remove it
+
+Search the file for this exact pattern and DELETE it everywhere it appears in the operator-credential code path (NOT in _OFFICIAL_CLIENT_CREDS — those are correct as Desktop/iOS/Android respectively):
+
+("PC 64bit", "Windows 11", "5.9.5", "desktop")
+There is at least one occurrence in the register_account endpoint or in _registration_stream where the dev api_id is appended with this Desktop profile. Find every instance where an OPERATOR api_id is paired with ("PC 64bit", "Windows 11", "5.9.5", "desktop") and replace it with the corresponding entry from _OPERATOR_CREDS.
+
+Specifically, look for any code like this (it's the bug):
+
+if _dev_api_id and _dev_api_id not in _official_ids:    _reg_pool.append((        _dev_api_id, _dev_api_hash,        "PC 64bit", "Windows 11", "5.9.5", "desktop",   # ← THIS IS THE BUG    ))
+If this block still exists, DELETE IT entirely. The _reg_pool should already be built from _OPERATOR_CREDS (the loaded 6-tuples) per the previous task. If it isn't, rebuild it:
+
+_reg_pool: list[tuple] = []if _OPERATOR_CREDS:    _reg_pool.extend(_OPERATOR_CREDS)    random.shuffle(_reg_pool[:len(_OPERATOR_CREDS)])# Public official credentials as last-resort fallback tail_official_fallback = _REGISTRATION_CREDS.copy()random.shuffle(_official_fallback)_reg_pool.extend(_official_fallback)
+Change 3 — Verify Layer 2 uses the loaded profiles too
+
+Find _LAYER2_CREDS (added in the previous task). It should be built from _OPERATOR_CREDS like this:
+
+_LAYER2_CREDS: list[tuple] = []for _cid, _chsh, _cdev, _csys, _capp, _cplat in _OPERATOR_CREDS:    _LAYER2_CREDS.append((_cid, _chsh, _cdev, _csys, _capp))_LAYER2_CREDS.extend(_OFFICIAL_CLIENT_CREDS)
+If this is missing or wrong, add/fix it.
+
+Change 4 — Remove api_id=6 from _OFFICIAL_CLIENT_CREDS and _REGISTRATION_CREDS
+
+api_id=6 (Telegram Android public credential) now returns ForbiddenError per the debug log — Telegram has fully banned it for residential proxy registration. Keeping it in the fallback pool just wastes 6-8 seconds per Layer 2 cycle.
+
+In _OFFICIAL_CLIENT_CREDS (around line 317), DELETE the api_id=6 entry:
+
+# BEFORE:_OFFICIAL_CLIENT_CREDS = [    (2040, "b18441a1ff607e10a989891a5462e627", "PC 64bit", "Windows 11", "5.9.5"),    (2496, "8da85b0d5bfe62527e5b244c209159c3", "iPhone 16 Pro Max", "18.3.2", "11.4.0"),    (6, "eb06d4abfb49dc3eeb1aeb98ae0f581e", "Samsung Galaxy S24 Ultra", "Android 14", "10.14.0"),]# AFTER:_OFFICIAL_CLIENT_CREDS = [    (2040, "b18441a1ff607e10a989891a5462e627", "PC 64bit", "Windows 11", "5.9.5"),    (2496, "8da85b0d5bfe62527e5b244c209159c3", "iPhone 16 Pro Max", "18.3.2", "11.4.0"),]
+Do the same in _REGISTRATION_CREDS — DELETE every entry with api_id=6 (around lines 304-311).
+
+Change 5 — Add a startup log line showing the full credential pool
+
+Right after _OPERATOR_CREDS is loaded at module level, add:
+
+logger.info("[factory] === Credential pool summary ===")for i, c in enumerate(_OPERATOR_CREDS):    logger.info("[factory]   operator[%d]: api_id=%-12d  device=%-30s  system=%-15s  app=%-10s",                i + 1, c[0], c[2], c[3], c[4])logger.info("[factory]   fallback: %d official creds (2040 Desktop, 2496 iOS)", len(_OFFICIAL_CLIENT_CREDS))logger.info("[factory] ===================================")
+This makes it impossible to ship a fingerprint mismatch without seeing it in the startup log.
