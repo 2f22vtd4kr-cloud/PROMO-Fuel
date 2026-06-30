@@ -1794,6 +1794,7 @@ async def _registration_stream(
         _app_stuck_count      = 0
         _banned_count         = 0   # consecutive pre-banned numbers from this country
         _proxy_fail_count     = 0   # consecutive proxy-unreachable errors
+        _l2_proxy_fail_count  = 0   # Layer 2 attempts where all retries hit proxy/connection errors
         _sms_timeout_count    = 0   # consecutive SMS timeouts — flag for api_id shadow-block
         _tunnel_drop_count    = 0   # SOCKS5 tunnel drops detected mid-attempt
         _tunnel_recover_count = 0   # drops that recovered via reconnect (number NOT cancelled)
@@ -2770,9 +2771,65 @@ async def _registration_stream(
                         await safe_disconnect()
                         continue
                     else:
-                        # All credential strategies exhausted — number is confirmed recycled.
-                        # Official Telegram Desktop also returning SentCodeTypeApp is definitive
-                        # proof the number has an existing account.
+                        # ── Two distinct failure modes reach this branch ───────────
+                        #
+                        # MODE A (_off_result is not None): Layer 2 CONNECTED and
+                        #   got a definitive response — SentCodeTypeApp.  That means
+                        #   the number already has a Telegram account → confirmed recycled.
+                        #
+                        # MODE B (_off_result is None): ALL 3 Layer 2 connection
+                        #   attempts threw an exception (ProxyError, ConnectionError,
+                        #   TimeoutError…).  No response was received from Telegram at
+                        #   all.  This is a PROXY FAILURE, NOT proof of recycling.
+                        #   Recording the prefix as blacklisted and incrementing
+                        #   _app_stuck_count would cause valid fresh numbers to be
+                        #   silently discarded — leading to 100% false-positive recycled
+                        #   detection when the proxy is unstable on Layer 2 reconnects.
+                        #
+                        # Fix: branch on _off_result to avoid conflating the two modes.
+
+                        if _off_result is None:
+                            # ── MODE B: Layer 2 proxy failure ────────────────────
+                            # Cannot get an independent verdict on this number.
+                            # Cancel (we can't proceed without the code path), but
+                            # do NOT count it as recycled, do NOT record its prefix,
+                            # and do NOT burn the recycled-abort budget.
+                            await cancel_order()
+                            await safe_disconnect()
+                            _l2_proxy_fail_count += 1
+                            _proxy_fail_warn = (
+                                " ⚠️ This has happened multiple times — check your proxy stability. "
+                                "If Layer 2 always fails, every number will be cancelled without SMS."
+                            ) if _l2_proxy_fail_count >= 2 else ""
+                            yield _sse("step", {"step": 3, "status": "error",
+                                                "message": (
+                                                    "⛔ Layer 2 proxy connection failed on all retries — "
+                                                    "could not get an independent code-type verdict. "
+                                                    "This number is NOT confirmed recycled (proxy error, not Telegram response). "
+                                                    f"Cancelling order and retrying with a new number."
+                                                    + _proxy_fail_warn
+                                                )})
+                            # Budget is spent (we bought a number) but do NOT
+                            # increment _app_stuck_count — the number wasn't recycled.
+                            # Use a separate counter so repeated L2 failures eventually
+                            # tell the user their proxy is the problem.
+                            if _num_attempt + 1 < MAX_NUM_RETRIES:
+                                yield _sse("pool_quality", {"bad": _app_stuck_count, "total": _num_attempt + 1})
+                                continue
+                            else:
+                                yield _sse("sms_retry_prompt", {
+                                    "country_id": country_id,
+                                    "message": (
+                                        f"⛔ Layer 2 proxy kept failing ({_l2_proxy_fail_count} times) — "
+                                        "could not complete registration because Layer 2 connection errors "
+                                        "prevented verifying numbers. "
+                                        "This is a PROXY STABILITY problem, not a recycled pool. "
+                                        "Try a more reliable proxy before switching country."
+                                    ),
+                                })
+                                return
+
+                        # ── MODE A: confirmed recycled (off_result is not None, SentCodeTypeApp)
                         _record_cred_stat(_actual_api_id, "app")
                         _app_stuck_count += 1
                         await cancel_order()
