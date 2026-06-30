@@ -1,0 +1,115 @@
+[17:12:42.730] debug: {"message":"🔄 Proxy session → session-1 (global slot #1)"}
+[17:12:42.730] preflight: {"status":"running","message":"🔍 Testing proxy connection to Telegram DC1…"}
+[17:12:43.691] preflight: {"status":"running","message":"🌍 Verifying exit IP through proxy…"}
+[17:12:45.619] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:10000 · 🌍 Exit IP: 14.191.35.39","exit_ip":"14.191.35.39","is_datacenter":false}
+[17:12:45.624] preflight: {"status":"running","message":"🔗 Verifying Telethon asyncio proxy path…"}
+[17:12:46.816] preflight: {"status":"done","message":"✅ SOCKS5 tunnel OK via gate.decodo.com:10000 · 🌍 Exit IP: 14.191.35.39 · 🔗 Telethon-path IP: 14.191.35.39","exit_ip":"14.191.35.39","is_datacenter":false,"async_exit_ip":"14.191.35.39"}
+[17:12:46.816] geo_check: {"status":"running","target_cc":"VN","exit_ip":"14.191.35.39"}
+[17:12:46.816] geo_check: {"status":"ok","exit_ip":"14.191.35.39","target_cc":"VN","detected_cc":"VN","detected_country":"Vietnam","org":"Vietnam Posts and Telecommunications Group","match":true,"latency_ms":28,"message":"✅ Exit IP in Vietnam — matches target"}
+[17:12:46.856] preflight: {"status":"running","message":"📊 Checking 11 SMS success rate on SMSPool…"}
+[17:12:46.956] preflight: {"status":"done","message":"📊 11 success rate: N/A — proceeding"}
+[17:12:46.956] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool..."}
+[17:12:48.018] step: {"step":1,"status":"done","message":"📱 Number Acquired: +84819409770","cost":0.38}
+[17:12:48.038] debug: {"message":"ℹ️ SNSS-L1: contact check skipped (no idle sender account)"}
+[17:12:48.038] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[17:12:53.736] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2496,\n    \"platform\": \"ios\",\n    \"device_model\": \"iPhone 15 Pro Max\",\n    \"system_version\": \"17.6.1\",\n    \"app_version\": \"10.9.1\",\n    \"lang_code\": \"vi\",\n    \"system_lang_code\": \"vi-VN\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-1-country-vn:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[17:12:53.738] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:10000"}
+[17:12:53.747] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[17:13:06.091] debug: {"message":"{\n  \"📨 SEND_CODE_RESPONSE\": {\n    \"type\": \"SentCodeTypeApp\",\n    \"phone_code_hash\": \"47b099d2…\",\n    \"timeout\": null,\n    \"next_type\": null,\n    \"via\": \"RawSendCodeRequest\"\n  }\n}"}
+[17:13:06.093] step: {"step":3,"status":"running","message":"📲 SentCodeTypeApp (next_type=None) — requesting SMS resend (ResendCode)…"}
+[17:13:06.634] step: {"step":3,"status":"running","message":"🔴 SentCodeTypeApp + SendCodeUnavailable + next_type=None — definitive recycled, skipping Layer 2…"}
+[17:13:07.085] debug: {"message":"⚠️ Definitive recycled triple (SentCodeTypeApp + SendCodeUnavailable + next_type=None) — still running Layer 2 for an independent IP verdict. If the primary proxy IP is flagged by Telegram, fresh numbers also produce this triple. Layer 2 uses a different exit node to verify."}
+[17:13:12.087] debug: {"message":"🔄 Layer 2 proxy → session-2 (fresh exit node for official creds check)"}
+[17:13:13.046] debug: {"message":"✅ Layer 2 exit IP: 14.191.170.52 (different from primary 14.191.35.39) — independent verdict"}
+[17:13:13.055] debug: {"message":"{\n  \"🔍 LAYER2_INIT\": {\n    \"api_id\": 2040,\n    \"device_model\": \"PC 64bit\",\n    \"system_version\": \"Windows 11\",\n    \"app_version\": \"5.9.5\",\n    \"lang_code\": \"vi\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-2-country-vn:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[17:13:25.769] step: {"step":3,"status":"running","message":"🔴 Official creds (api_id=2040) also got SentCodeTypeApp — number is recycled"}
+[17:13:26.320] step: {"step":3,"status":"error","message":"🚫 Recycled number (#1/20) — ResendCode + all official credentials returned SentCodeTypeApp. Retrying with new number (1/20 budget used)…"}
+[17:13:27.283] pool_quality: {"bad":1,"total":1}
+[17:13:27.283] debug: {"message":"🔄 Proxy session → session-3 (retry #1)"}
+[17:13:27.283] debug: {"message":"✅ Retry exit IP: 42.115.103.57 (fresh node, different from 14.191.35.39)"}
+[17:13:27.283] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool (attempt 2/20)..."}
+[17:13:28.260] step: {"step":1,"status":"done","message":"📱 Number Acquired: +84817268496","cost":0.38}
+[17:13:28.261] debug: {"message":"ℹ️ SNSS-L1: contact check skipped (no idle sender account)"}
+[17:13:28.261] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[17:13:28.261] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2496,\n    \"platform\": \"ios\",\n    \"device_model\": \"iPhone 14 Pro Max\",\n    \"system_version\": \"17.5.1\",\n    \"app_version\": \"10.8.0\",\n    \"lang_code\": \"vi\",\n    \"system_lang_code\": \"vi-VN\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-3-country-vn:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[17:13:31.371] step: {"step":2,"status":"running","message":"⚠️ Connect attempt 1/3 failed (dead peer) — rotating proxy → session-4…"}
+[17:13:38.576] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:10000"}
+[17:13:38.577] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[17:13:45.454] debug: {"message":"{\n  \"📨 SEND_CODE_RESPONSE\": {\n    \"type\": \"SentCodeTypeApp\",\n    \"phone_code_hash\": \"65bd4c2b…\",\n    \"timeout\": null,\n    \"next_type\": null,\n    \"via\": \"RawSendCodeRequest\"\n  }\n}"}
+[17:13:45.456] step: {"step":3,"status":"running","message":"📲 SentCodeTypeApp (next_type=None) — requesting SMS resend (ResendCode)…"}
+[17:13:45.759] step: {"step":3,"status":"running","message":"🔴 SentCodeTypeApp + SendCodeUnavailable + next_type=None — definitive recycled, skipping Layer 2…"}
+[17:13:46.124] debug: {"message":"⚠️ Definitive recycled triple (SentCodeTypeApp + SendCodeUnavailable + next_type=None) — still running Layer 2 for an independent IP verdict. If the primary proxy IP is flagged by Telegram, fresh numbers also produce this triple. Layer 2 uses a different exit node to verify."}
+[17:13:51.141] debug: {"message":"🔄 Layer 2 proxy → session-5 (fresh exit node for official creds check)"}
+[17:13:51.990] debug: {"message":"✅ Layer 2 exit IP: 14.185.37.95 (different from primary 14.191.35.39) — independent verdict"}
+[17:13:51.992] debug: {"message":"{\n  \"🔍 LAYER2_INIT\": {\n    \"api_id\": 2040,\n    \"device_model\": \"PC 64bit\",\n    \"system_version\": \"Windows 11\",\n    \"app_version\": \"5.9.5\",\n    \"lang_code\": \"vi\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-5-country-vn:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[17:14:04.950] step: {"step":3,"status":"running","message":"🔴 Official creds (api_id=2040) also got SentCodeTypeApp — number is recycled"}
+[17:14:05.127] step: {"step":3,"status":"error","message":"🚫 Recycled number (#2/20) — ResendCode + all official credentials returned SentCodeTypeApp. Retrying with new number (2/20 budget used)…"}
+[17:14:05.127] pool_quality: {"bad":2,"total":2}
+[17:14:05.127] debug: {"message":"🔄 Proxy session → session-6 (retry #2)"}
+[17:14:05.127] debug: {"message":"✅ Retry exit IP: 42.115.91.169 (fresh node, different from 42.115.103.57)"}
+[17:14:05.127] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool (attempt 3/20)..."}
+[17:14:06.453] step: {"step":1,"status":"done","message":"📱 Number Acquired: +84819504860","cost":0.38}
+[17:14:06.454] debug: {"message":"ℹ️ SNSS-L1: contact check skipped (no idle sender account)"}
+[17:14:06.454] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[17:14:06.454] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2496,\n    \"platform\": \"ios\",\n    \"device_model\": \"iPhone 16\",\n    \"system_version\": \"18.2.1\",\n    \"app_version\": \"11.3.0\",\n    \"lang_code\": \"vi\",\n    \"system_lang_code\": \"vi-VN\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-6-country-vn:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[17:14:10.852] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:10000"}
+[17:14:10.853] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[17:14:12.701] step: {"step":3,"status":"running","message":"🚫 Number pre-banned — cancelling and trying new number… (17 attempt(s) left)"}
+[17:14:12.702] pool_quality: {"bad":3,"total":3}
+[17:14:12.850] debug: {"message":"🔄 Proxy session → session-7 (retry #3)"}
+[17:14:13.810] debug: {"message":"✅ Retry exit IP: 42.116.144.194 (fresh node, different from 42.115.91.169)"}
+[17:14:13.811] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool (attempt 4/20)..."}
+[17:14:14.536] step: {"step":1,"status":"done","message":"📱 Number Acquired: +84815033037","cost":0.38}
+[17:14:14.548] debug: {"message":"ℹ️ SNSS-L1: contact check skipped (no idle sender account)"}
+[17:14:14.548] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[17:14:14.548] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2496,\n    \"platform\": \"ios\",\n    \"device_model\": \"iPhone 17 Pro\",\n    \"system_version\": \"18.5\",\n    \"app_version\": \"11.6.2\",\n    \"lang_code\": \"vi\",\n    \"system_lang_code\": \"vi-VN\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-7-country-vn:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[17:14:18.897] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:10000"}
+[17:14:18.912] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[17:14:26.971] debug: {"message":"{\n  \"📨 SEND_CODE_RESPONSE\": {\n    \"type\": \"SentCodeTypeApp\",\n    \"phone_code_hash\": \"bf235470…\",\n    \"timeout\": null,\n    \"next_type\": null,\n    \"via\": \"RawSendCodeRequest\"\n  }\n}"}
+[17:14:26.971] step: {"step":3,"status":"running","message":"📲 SentCodeTypeApp (next_type=None) — requesting SMS resend (ResendCode)…"}
+[17:14:27.203] step: {"step":3,"status":"running","message":"🔴 SentCodeTypeApp + SendCodeUnavailable + next_type=None — definitive recycled, skipping Layer 2…"}
+[17:14:27.545] debug: {"message":"⚠️ Definitive recycled triple (SentCodeTypeApp + SendCodeUnavailable + next_type=None) — still running Layer 2 for an independent IP verdict. If the primary proxy IP is flagged by Telegram, fresh numbers also produce this triple. Layer 2 uses a different exit node to verify."}
+[17:14:32.545] debug: {"message":"🔄 Layer 2 proxy → session-8 (fresh exit node for official creds check)"}
+[17:14:33.464] debug: {"message":"✅ Layer 2 exit IP: 171.252.152.211 (different from primary 14.191.35.39) — independent verdict"}
+[17:14:33.466] debug: {"message":"{\n  \"🔍 LAYER2_INIT\": {\n    \"api_id\": 2040,\n    \"device_model\": \"PC 64bit\",\n    \"system_version\": \"Windows 11\",\n    \"app_version\": \"5.9.5\",\n    \"lang_code\": \"vi\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-8-country-vn:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[17:14:44.447] step: {"step":3,"status":"running","message":"🔴 Official creds (api_id=2040) also got SentCodeTypeApp — number is recycled"}
+[17:14:44.995] step: {"step":3,"status":"error","message":"🚫 Recycled number (#4/20) — ResendCode + all official credentials returned SentCodeTypeApp. Retrying with new number (4/20 budget used)…"}
+[17:14:45.009] pool_quality: {"bad":4,"total":4}
+[17:14:45.009] debug: {"message":"🔄 Proxy session → session-9 (retry #4)"}
+[17:14:46.176] debug: {"message":"✅ Retry exit IP: 14.191.162.98 (fresh node, different from 42.116.144.194)"}
+[17:14:46.176] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool (attempt 5/20)..."}
+[17:14:47.331] step: {"step":1,"status":"done","message":"📱 Number Acquired: +84825751026","cost":0.38}
+[17:14:47.340] debug: {"message":"ℹ️ SNSS-L1: contact check skipped (no idle sender account)"}
+[17:14:47.340] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[17:14:52.174] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2496,\n    \"platform\": \"ios\",\n    \"device_model\": \"iPhone 15\",\n    \"system_version\": \"17.5.1\",\n    \"app_version\": \"10.8.0\",\n    \"lang_code\": \"vi\",\n    \"system_lang_code\": \"vi-VN\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-9-country-vn:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[17:14:52.178] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:10000"}
+[17:14:52.178] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[17:15:00.991] debug: {"message":"{\n  \"📨 SEND_CODE_RESPONSE\": {\n    \"type\": \"SentCodeTypeApp\",\n    \"phone_code_hash\": \"0d87f71f…\",\n    \"timeout\": null,\n    \"next_type\": null,\n    \"via\": \"RawSendCodeRequest\"\n  }\n}"}
+[17:15:00.992] step: {"step":3,"status":"running","message":"📲 SentCodeTypeApp (next_type=None) — requesting SMS resend (ResendCode)…"}
+[17:15:01.269] step: {"step":3,"status":"running","message":"🔴 SentCodeTypeApp + SendCodeUnavailable + next_type=None — definitive recycled, skipping Layer 2…"}
+[17:15:01.646] debug: {"message":"⚠️ Definitive recycled triple (SentCodeTypeApp + SendCodeUnavailable + next_type=None) — still running Layer 2 for an independent IP verdict. If the primary proxy IP is flagged by Telegram, fresh numbers also produce this triple. Layer 2 uses a different exit node to verify."}
+[17:15:06.669] debug: {"message":"🔄 Layer 2 proxy → session-10 (fresh exit node for official creds check)"}
+[17:15:07.609] debug: {"message":"✅ Layer 2 exit IP: 42.113.140.175 (different from primary 14.191.35.39) — independent verdict"}
+[17:15:07.610] debug: {"message":"{\n  \"🔍 LAYER2_INIT\": {\n    \"api_id\": 2040,\n    \"device_model\": \"PC 64bit\",\n    \"system_version\": \"Windows 11\",\n    \"app_version\": \"5.9.5\",\n    \"lang_code\": \"vi\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-10-country-vn:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[17:15:19.021] step: {"step":3,"status":"running","message":"🔴 Official creds (api_id=2040) also got SentCodeTypeApp — number is recycled"}
+[17:15:19.613] step: {"step":3,"status":"error","message":"🚫 Recycled number (#5/20) — ResendCode + all official credentials returned SentCodeTypeApp. Retrying with new number (5/20 budget used)…"}
+[17:15:19.625] pool_quality: {"bad":5,"total":5}
+[17:15:19.625] debug: {"message":"🔄 Proxy session → session-11 (retry #5)"}
+[17:15:20.575] debug: {"message":"✅ Retry exit IP: 14.190.24.121 (fresh node, different from 14.191.162.98)"}
+[17:15:20.575] step: {"step":1,"status":"running","message":"⏳ Buying number from SMSPool (attempt 6/20)..."}
+[17:15:21.614] step: {"step":1,"status":"done","message":"📱 Number Acquired: +84816354817","cost":0.38}
+[17:15:21.630] debug: {"message":"ℹ️ SNSS-L1: contact check skipped (no idle sender account)"}
+[17:15:21.631] step: {"step":2,"status":"running","message":"📡 Routing Telethon connection via Residential Proxy..."}
+[17:15:21.636] debug: {"message":"{\n  \"🔧 TELETHON_INIT\": {\n    \"api_id\": 2496,\n    \"platform\": \"ios\",\n    \"device_model\": \"iPhone 15 Pro\",\n    \"system_version\": \"17.6.1\",\n    \"app_version\": \"10.9.1\",\n    \"lang_code\": \"vi\",\n    \"system_lang_code\": \"vi-VN\",\n    \"session_path\": \"/home/runner/workspace/sessions/session-1\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-11-country-vn:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[17:15:26.731] step: {"step":2,"status":"done","message":"📡 Proxy tunnel established — Telethon connected via gate.decodo.com:10000"}
+[17:15:26.732] step: {"step":3,"status":"running","message":"💬 Requesting Telegram SMS verification code..."}
+[17:15:34.375] debug: {"message":"{\n  \"📨 SEND_CODE_RESPONSE\": {\n    \"type\": \"SentCodeTypeApp\",\n    \"phone_code_hash\": \"7356e23f…\",\n    \"timeout\": null,\n    \"next_type\": null,\n    \"via\": \"RawSendCodeRequest\"\n  }\n}"}
+[17:15:34.376] step: {"step":3,"status":"running","message":"📲 SentCodeTypeApp (next_type=None) — requesting SMS resend (ResendCode)…"}
+[17:15:34.747] step: {"step":3,"status":"running","message":"🔴 SentCodeTypeApp + SendCodeUnavailable + next_type=None — definitive recycled, skipping Layer 2…"}
+[17:15:35.094] debug: {"message":"⚠️ Definitive recycled triple (SentCodeTypeApp + SendCodeUnavailable + next_type=None) — still running Layer 2 for an independent IP verdict. If the primary proxy IP is flagged by Telegram, fresh numbers also produce this triple. Layer 2 uses a different exit node to verify."}
+[17:15:40.085] debug: {"message":"🔄 Layer 2 proxy → session-12 (fresh exit node for official creds check)"}
+[17:15:41.081] debug: {"message":"✅ Layer 2 exit IP: 116.99.251.53 (different from primary 14.191.35.39) — independent verdict"}
+[17:15:41.082] debug: {"message":"{\n  \"🔍 LAYER2_INIT\": {\n    \"api_id\": 2040,\n    \"device_model\": \"PC 64bit\",\n    \"system_version\": \"Windows 11\",\n    \"app_version\": \"5.9.5\",\n    \"lang_code\": \"vi\",\n    \"proxy\": \"socks5://user-sp8eeeap0s-session-12-country-vn:ra+H1whT5aLqxkH0q2@gate.decodo.com:10000\"\n  }\n}"}
+[17:15:53.642] step: {"step":3,"status":"running","message":"🔴 Official creds (api_id=2040) also got SentCodeTypeApp — number is recycled"}
+[17:15:54.165] step: {"step":3,"status":"error","message":"🚫 5 consecutive recycled numbers via Telethon — 11 pool is exhausted. Stopping early to save SMSPool balance."}
+[17:15:54.176] sms_retry_prompt: {"country_id":"11","message":"🚫 SMSPool 11 pool exhausted — 5 consecutive numbers all returned SentCodeTypeApp (existing accounts). Switch to a different country to continue. Switch to: Ukraine (UA), Philippines (PH), Georgia (GE), Bangladesh (BD), Kazakhstan (KZ), India (IN). Or switch provider: 5sim.net → Telegram service (often 60-80% success rate for UZ/KZ/UA). SMSBower is another option."}
