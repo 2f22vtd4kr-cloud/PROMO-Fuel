@@ -1,0 +1,49 @@
+Task: Harden proxy reconnect logic in Account Factory Step 3
+
+The bug
+
+The factory is wasting fresh SMSPool numbers because Decodo residential proxies drop the SOCKS5 tunnel between Step 2 (connect) and Step 3 (SendCode RPC). When the tunnel drops, Telethon throws "Cannot send requests while disconnected". The current code attempts ONE reconnect on the SAME session-N (same exit node) — if that node is dead, the reconnect also fails, and the factory cancels the number.
+
+We confirmed this is happening on genuinely fresh numbers (contact-check in personal Telegram showed "Not yet on Telegram" for a number the factory cancelled with a ProxyError). The factory never got a SEND_CODE_RESPONSE from Telegram for these numbers — the proxy died first.
+
+File to edit
+
+account_factory.py (repo root)
+
+Background context
+
+The current Step 3 reconnect logic lives around line 2393-2465 in _registration_stream. The flow is:
+
+RawSendCodeRequest fails with "Cannot send requests while disconnected"
+Error is classified as transient (_is_transient = True because "disconnected" matches)
+ONE reconnect attempt on the SAME proxy_string (same session-N, same exit node)
+If reconnect fails → cancel order, buy fresh number
+The problem: Decodo session-N is sticky — if the residential peer for session-N is dead, retrying the same session-N will always fail. We need to rotate to a NEW session-N on each reconnect attempt.
+
+Changes required
+
+Change 1 — Add proxy rotation to the Step 3 reconnect loop
+
+Find the Step 3 reconnect block (around line 2393-2465). The current code does ONE reconnect attempt. Replace it with a 3-attempt loop that rotates to a fresh session-N on each attempt.
+
+Locate this block (search for "🔄 Connection dropped — reconnecting on same number"):
+
+if _is_transient and _num_attempt < MAX_NUM_RETRIES - 1:    _tunnel_drop_count += 1    yield _sse("step", {"step": 3, "status": "running",                        "message": (                            f"🔄 Connection dropped — reconnecting on same number… "                            f"(drop #{_tunnel_drop_count} this session)"                        )})    _reconnect_ok = False    try:        await asyncio.wait_for(client.connect(), timeout=8.0)        _rc = await asyncio.wait_for(            client(RawSendCodeRequest(                phone_number=phone,                api_id=_actual_api_id,                api_hash=_actual_api_hash,                settings=tl_types.CodeSettings(                    allow_flashcall=False,                    allow_missed_call=False,                    allow_firebase=False,                    allow_app_hash=False,                    current_number=False,                    unknown_number=True,                ),            )),            timeout=14.0,        )        phone_code_hash = _rc.phone_code_hash        code_type_name  = type(_rc.type).__name__ if _rc.type else "SentCodeTypeSms"        _raw_next_type  = getattr(_rc, "next_type", None)        _reconnect_ok   = True        _tunnel_recover_count += 1        yield _sse("step", {"step": 3, "status": "running",                            "message": (                                f"✅ Reconnect succeeded — code sent ({code_type_name}) "                                f"[{_tunnel_recover_count}/{_tunnel_drop_count} drops recovered]"                            )})    except Exception as _reconnect_exc:        yield _sse("step", {"step": 3, "status": "running",                            "message": (                                f"🔄 Reconnect also failed ({type(_reconnect_exc).__name__}) "                                "— cancelling number, buying fresh…"                            )})    if not _reconnect_ok:        # ... cancel and continue
+Replace with a 3-attempt loop that rotates proxy session on each attempt:
+
+if _is_transient and _num_attempt < MAX_NUM_RETRIES - 1:    _tunnel_drop_count += 1    _reconnect_ok = False    for _reconnect_try in range(3):        # Rotate to a fresh session-N on each attempt — Decodo session-N        # is sticky, so if the previous exit node is dead, retrying the        # same session-N will always fail. A new session-N gets a new        # residential peer.        if proxy_string and _reconnect_try > 0:            proxy_string, _rc_sn = _next_session_proxy(proxy_string)            proxy_tuple = _parse_proxy(proxy_string)            if _rc_sn:                yield _sse("debug", {"message":                    f"🔄 Reconnect attempt {_reconnect_try+1}/3 → session-{_rc_sn} (fresh exit node)"})            # Recreate the client with the new proxy            for _ext in (".session", ".session-journal", ".session-wal", ".session-shm"):                try:                    os.remove(session_path + _ext)                except FileNotFoundError:                    pass            client = TelegramClient(                session_path, _reg_api_id, _reg_api_hash,                proxy=proxy_tuple,                device_model=device_model,                system_version=system_version,                app_version=app_version,                lang_code=_reg_lang,                system_lang_code=_reg_sys_lang,                connection_retries=1,                retry_delay=1,            )        if _reconnect_try == 0:            yield _sse("step", {"step": 3, "status": "running",                                "message": (                                    f"🔄 Connection dropped — reconnecting (attempt {_reconnect_try+1}/3, "                                    f"drop #{_tunnel_drop_count} this session)"                                )})        try:            await asyncio.wait_for(client.connect(), timeout=10.0)            await asyncio.sleep(random.uniform(1.0, 2.5))  # human-like pause            _rc = await asyncio.wait_for(                client(RawSendCodeRequest(                    phone_number=phone,                    api_id=_actual_api_id,                    api_hash=_actual_api_hash,                    settings=tl_types.CodeSettings(                        allow_flashcall=False,                        allow_missed_call=False,                        allow_firebase=False,                        allow_app_hash=False,                        current_number=False,                        unknown_number=True,                    ),                )),                timeout=14.0,            )            phone_code_hash = _rc.phone_code_hash            code_type_name  = type(_rc.type).__name__ if _rc.type else "SentCodeTypeSms"            _raw_next_type  = getattr(_rc, "next_type", None)            _reconnect_ok   = True            _tunnel_recover_count += 1            yield _sse("step", {"step": 3, "status": "running",                                "message": (                                    f"✅ Reconnect succeeded on attempt {_reconnect_try+1}/3 — "                                    f"code sent ({code_type_name}) "                                    f"[{_tunnel_recover_count}/{_tunnel_drop_count} drops recovered]"                                )})            break        except Exception as _reconnect_exc:            _en = type(_reconnect_exc).__name__            if _reconnect_try < 2:                yield _sse("step", {"step": 3, "status": "running",                                    "message": (                                        f"🔄 Reconnect attempt {_reconnect_try+1}/3 failed ({_en}) — "                                        f"rotating to fresh exit node…"                                    )})                try:                    await client.disconnect()                except Exception:                    pass                await asyncio.sleep(2)            else:                yield _sse("step", {"step": 3, "status": "running",                                    "message": (                                        f"🔄 Reconnect attempt {_reconnect_try+1}/3 failed ({_en}) — "                                        f"all 3 attempts exhausted, cancelling number"                                    )})    if not _reconnect_ok:        yield _sse("proxy_health", {            "drops":     _tunnel_drop_count,            "recovered": _tunnel_recover_count,            "fatal":     _tunnel_drop_count - _tunnel_recover_count,            "message": (                f"🔌 Proxy: {_tunnel_drop_count} drop(s) — "                f"{_tunnel_recover_count} recovered, "                f"{_tunnel_drop_count - _tunnel_recover_count} fatal (number wasted)"            ),        })        await cancel_order()        await safe_disconnect()        await asyncio.sleep(3)        continue   # buy fresh number    # Reconnect succeeded — fall through to normal post-send_code logic
+Change 2 — Add a longer initial connect delay for proxy warmup
+
+Decodo residential peers sometimes need a moment to stabilize after the SOCKS5 handshake before they can carry MTProto traffic. Find the Step 2 connect block (around line 2178-2228, the _conn_try loop).
+
+After await client.connect() succeeds, add a 1-second stabilization sleep before Step 3 fires:
+
+# After _connect_ok = Trueif _connect_ok:    await asyncio.sleep(1.0)  # let SOCKS5 tunnel stabilize before MTProto RPC
+Place this right before the yield _sse("step", {"step": 2, "status": "done", ...}) line.
+
+Change 3 — Increase Step 3 pre-flight MTProto liveness check timeout
+
+Around line 2284, the pre-flight reconnect has timeout=8.0. Bump to 12.0:
+
+await asyncio.wait_for(client.connect(), timeout=12.0)
+Decodo peers in distant regions (KZ, KH, BD) sometimes take 8-10s to fully establish the MTProto session.
