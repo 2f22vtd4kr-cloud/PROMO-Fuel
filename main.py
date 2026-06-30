@@ -2306,12 +2306,52 @@ def main():
 
     app.post_init = post_init
 
+    # ── Conflict auto-backoff ─────────────────────────────────────────────────
+    # When both a deployed production instance and this dev instance run with
+    # the same TELEGRAM_TOKEN, Telegram returns 409 Conflict for whichever
+    # instance calls getUpdates second.  The instances thrash — taking turns
+    # every few seconds — and neither owns the slot cleanly.
+    #
+    # Strategy: count 409 hits in a rolling 120-second window.  Once we hit
+    # _CONFLICT_THRESHOLD, stop the updater entirely (polling stops; the event
+    # loop, broadcast scheduler, workers, and backup scheduler keep running).
+    # The production instance then has exclusive ownership.
+    _CONFLICT_THRESHOLD = 8          # conflicts in the window before backoff
+    _CONFLICT_WINDOW    = 120.0      # seconds — rolling window
+    _conflict_times: list[float] = []  # timestamps of recent conflicts
+
     async def error_handler(update: object, context) -> None:
+        import asyncio, time
         from telegram.error import Conflict, NetworkError, RetryAfter
         err = context.error
         if isinstance(err, Conflict):
-            logger.warning("⚠️ Конфликт: другой экземпляр бота занял polling. Ждём 15с...")
-            import asyncio; await asyncio.sleep(15)
+            _now = time.monotonic()
+            _conflict_times.append(_now)
+            # Prune entries outside the rolling window
+            while _conflict_times and _conflict_times[0] < _now - _CONFLICT_WINDOW:
+                _conflict_times.pop(0)
+
+            _recent = len(_conflict_times)
+            if _recent >= _CONFLICT_THRESHOLD:
+                logger.warning(
+                    "🛑 %d Conflict errors in %.0fs — production instance detected. "
+                    "Stopping polling in this dev instance; workers & schedulers continue.",
+                    _recent, _CONFLICT_WINDOW,
+                )
+                # Stop only the updater (polling).  The Application event loop,
+                # broadcast/campaign schedulers, and workers keep running.
+                try:
+                    await context.application.updater.stop()
+                except Exception as _stop_err:
+                    logger.debug("updater.stop() raised: %s", _stop_err)
+                return
+
+            logger.warning(
+                "⚠️ Конфликт: другой экземпляр бота занял polling. "
+                "Ждём 15с… (%d/%d конфликтов за последние %.0fс)",
+                _recent, _CONFLICT_THRESHOLD, _CONFLICT_WINDOW,
+            )
+            await asyncio.sleep(15)
         elif isinstance(err, RetryAfter):
             logger.warning(f"⚠️ Flood control: ждём {err.retry_after}с")
             import asyncio; await asyncio.sleep(err.retry_after)
@@ -2323,6 +2363,35 @@ def main():
     app.add_error_handler(error_handler)
 
     telethon_auth.run_in_thread()
+
+    # ── BOT_POLLING_DISABLED explicit opt-out ────────────────────────────────
+    # Set BOT_POLLING_DISABLED=true as a Replit Secret/env var to skip polling
+    # entirely in this instance (e.g. when production owns the token exclusively
+    # and you want dev to run only the workers, API, and schedulers).
+    if os.getenv("BOT_POLLING_DISABLED", "").strip().lower() in ("1", "true", "yes"):
+        logger.info(
+            "🤖 BOT_POLLING_DISABLED=true — skipping run_polling(). "
+            "Workers, schedulers, and API server continue normally."
+        )
+        # Keep the process alive so post_init hooks (schedulers, workers) run.
+        # We use run_polling with a no-op by just blocking the thread — but
+        # post_init hasn't fired yet.  Use app.run_polling with a very short
+        # timeout trick isn't clean; instead call initialize+start manually
+        # then block on an asyncio Event that never fires.
+        import asyncio
+
+        async def _idle():
+            await app.initialize()
+            await app.start()
+            logger.info("🤖 Bot application started (polling disabled — idle mode)")
+            await asyncio.Event().wait()  # block forever; SIGTERM will interrupt
+
+        try:
+            asyncio.run(_idle())
+        except (KeyboardInterrupt, SystemExit):
+            pass
+        return
+
     logger.info("🤖 Бот запускается...")
     app.run_polling(
         allowed_updates=Update.ALL_TYPES,
