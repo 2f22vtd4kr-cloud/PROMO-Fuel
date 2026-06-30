@@ -1,0 +1,88 @@
+Task: Wire up a second Telethon api_id/api_hash pair into account_factory.py
+
+Context
+
+I have two my.telegram.org credentials. Currently only one is wired in via TELETHON_API_ID / TELETHON_API_HASH env vars. I want both available to the Account Factory so it can rotate between them and use either as a Layer 2 "independent verdict" credential when checking if a number is recycled.
+
+Replit Secrets — I have already added these
+
+TELETHON_API_ID_1     = 30533575TELETHON_API_HASH_1   = a25ad7f059de9c1aea98b81bbe1229cbTELETHON_API_ID_2     = 37989276TELETHON_API_HASH_2   = daa17e17455621dcadb01bf49bfb85fb
+The legacy TELETHON_API_ID / TELETHON_API_HASH secrets are still present too — keep them as a fallback for any code path that hasn't been migrated yet.
+
+File to edit
+
+account_factory.py (repo root)
+
+Changes required
+
+Change 1 — Add a credential loader near the top of the file
+
+Find the section where TELEGRAM_SERVICE_ID and other module-level constants are defined (around line 110-115, right after the SMSPool endpoint constants). Add this new constant and loader function right after TELEGRAM_SERVICE_ID:
+
+# ── Multi-credential pool ────────────────────────────────────────────────────# Loads ALL Telegram credentials from Replit Secrets. Each pair is# TELETHON_API_ID_N + TELETHON_API_HASH_N for N = 1, 2, 3, ...# Falls back to the legacy single TELETHON_API_ID / TELETHON_API_HASH if no# numbered variants are present.## Each entry is a full registration-grade tuple matching the shape of# _REGISTRATION_CREDS below:#   (api_id, api_hash, device_model, system_version, app_version, platform)def _load_operator_credentials() -> list[tuple]:    creds: list[tuple] = []    # Android device profiles to pair with operator creds (one per credential    # so Telegram can't correlate them by identical fingerprints).    _android_profiles = [        ("Samsung Galaxy S24 Ultra",   "Android 14", "10.14.0", "android"),        ("Xiaomi Redmi Note 13 Pro",   "Android 13", "9.6.3",   "android"),        ("Google Pixel 7a",            "Android 14", "9.7.1",   "android"),        ("Samsung Galaxy A54 5G",      "Android 13", "9.6.3",   "android"),        ("OnePlus Nord 3",             "Android 13", "9.6.3",   "android"),        ("Xiaomi 14 Pro",              "Android 14", "10.9.1",  "android"),    ]    profile_idx = 0    # Numbered credentials first (TELETHON_API_ID_1, _2, _3, ...)    for n in range(1, 10):        _id  = os.environ.get(f"TELETHON_API_ID_{n}",   "").strip()        _hsh = os.environ.get(f"TELETHON_API_HASH_{n}", "").strip()        if not (_id and _hsh):            continue        try:            _id_int = int(_id)            assert _id_int > 0        except Exception:            logger.warning("[factory] TELETHON_API_ID_%d is not a valid int: %r — skipping", n, _id)            continue        _dev, _sys, _app, _plat = _android_profiles[profile_idx % len(_android_profiles)]        profile_idx += 1        creds.append((_id_int, _hsh, _dev, _sys, _app, _plat))        logger.info("[factory] Loaded operator credential #%d: api_id=%d → %s / %s",                    n, _id_int, _dev, _sys)    # Fallback: legacy single-pair env vars (only if no numbered ones loaded)    if not creds:        _id  = os.environ.get("TELETHON_API_ID",   "").strip()        _hsh = os.environ.get("TELETHON_API_HASH", "").strip()        if _id and _hsh:            try:                _id_int = int(_id)                assert _id_int > 0                _dev, _sys, _app, _plat = _android_profiles[0]                creds.append((_id_int, _hsh, _dev, _sys, _app, _plat))                logger.info("[factory] Loaded legacy credential: api_id=%d → %s / %s",                            _id_int, _dev, _sys)            except Exception:                logger.warning("[factory] Legacy TELETHON_API_ID is invalid: %r", _id)    if not creds:        logger.error("[factory] No operator Telegram credentials loaded — factory will fail at /api/factory/register")    return creds_OPERATOR_CREDS: list[tuple] = _load_operator_credentials()
+Change 2 — Use operator creds as the primary rotation pool
+
+Find the section around line 1837-1868 (just inside _registration_stream, where _reg_pool is built). It currently looks like this:
+
+# Shuffle the official registration credential pool so each factory# session uses a different rotation order.  Each retry attempt cycles# to the next credential, ensuring we never hit the same api_id twice# in a row when SMS delivery is being shadow-blocked._reg_pool: list[tuple] = _REGISTRATION_CREDS.copy()random.shuffle(_reg_pool)# Append the operator's own developer api_id (TELETHON_API_ID) as the# LAST credential in the rotation when it differs from the official pool.## Why last, not first:#   A developer api_id is linked to the operator's own Telegram account.#   ...#   The dev api_id IS still useful as a last resort if all official ids are#   shadow-blocked for this operator (rare), so we keep it in the pool at end._dev_api_id   = api_id    # passed from TELETHON_API_ID env var_dev_api_hash = api_hash_official_ids = {c[0] for c in _REGISTRATION_CREDS}  # {2040, 2496, 6}if _dev_api_id and _dev_api_id not in _official_ids:    _reg_pool.append((        _dev_api_id, _dev_api_hash,        "PC 64bit", "Windows 11", "5.9.5", "desktop",    ))
+Replace that whole block with:
+
+# ── Build registration credential pool ────────────────────────────────────────# Operator's own my.telegram.org credentials are FIRST (they are the only# ones that give a true "fresh vs recycled" verdict — public official api_ids# 2040/2496/6 are shadow-blocked globally for automation).## Public official credentials are kept as a LAST-RESORT fallback tail in case# the operator hasn't configured any of their own yet._reg_pool: list[tuple] = []# 1. All operator-supplied credentials (TELETHON_API_ID_1, _2, ...) go firstif _OPERATOR_CREDS:    _reg_pool.extend(_OPERATOR_CREDS)    random.shuffle(_reg_pool[:len(_OPERATOR_CREDS)])  # shuffle only the operator block# 2. Public official credentials as fallback tail (only used if all operator#    creds are exhausted within MAX_NUM_RETRIES — i.e. rare)._official_fallback = _REGISTRATION_CREDS.copy()random.shuffle(_official_fallback)_reg_pool.extend(_official_fallback)# Track which credential was actually used for DB persistence_dev_api_id   = _OPERATOR_CREDS[0][0] if _OPERATOR_CREDS else api_id_dev_api_hash = _OPERATOR_CREDS[0][1] if _OPERATOR_CREDS else api_hash
+Change 3 — Use operator creds as Layer 2 verdict pool too
+
+Find the Layer 2 credential pool definition around line 317-330:
+
+_OFFICIAL_CLIENT_CREDS = [    (2040, "b18441a1ff607e10a989891a5462e627",     "PC 64bit", "Windows 11", "5.9.5"),    (2496, "8da85b0d5bfe62527e5b244c209159c3",     "iPhone 16 Pro Max", "18.3.2", "11.4.0"),    (6, "eb06d4abfb49dc3eeb1aeb98ae0f581e",     "Samsung Galaxy S24 Ultra", "Android 14", "10.14.0"),]
+Add a new module-level constant right after it that combines operator creds with the legacy fallbacks:
+
+# ── Layer 2 verdict pool ─────────────────────────────────────────────────────# Used when the primary credential returns SentCodeTypeApp. We re-test the# number with a DIFFERENT api_id to get an independent "recycled vs fresh"# verdict. The official api_ids (2040/2496/6) are shadow-blocked globally# for automation, so they CANNOT give a reliable verdict — but they're kept# as a last resort if no operator credentials are configured.## Built at module-load time from _OPERATOR_CREDS (already loaded above)._LAYER2_CREDS: list[tuple] = []# 1. All operator credentials (each WITHOUT the trailing platform field,#    since _OFFICIAL_CLIENT_CREDS uses 5-tuples not 6-tuples)for _cid, _chsh, _cdev, _csys, _capp, _cplat in _OPERATOR_CREDS:    _LAYER2_CREDS.append((_cid, _chsh, _cdev, _csys, _capp))# 2. Public official credentials as fallback_LAYER2_CREDS.extend(_OFFICIAL_CLIENT_CREDS)
+Change 4 — Replace _OFFICIAL_CLIENT_CREDS references in the Layer 2 loop
+
+Around line 2533 there's:
+
+_official_api_ids_set = {c[0] for c in _OFFICIAL_CLIENT_CREDS}_is_official_primary = _actual_api_id in _official_api_ids_set
+Replace with:
+
+# An api_id is "official" only if it's one of the public Telegram app ids# (2040/2496/6). Operator-supplied dev api_ids are NOT in this set._official_api_ids_set = {c[0] for c in _OFFICIAL_CLIENT_CREDS}_is_official_primary = _actual_api_id in _official_api_ids_set
+(This is unchanged — just keep it. The flag is used to decide whether to attempt ResendCode before Layer 2. Operator dev api_ids should still attempt ResendCode, which they will because they're not in _official_api_ids_set... wait, that's wrong. Let me re-check.)
+
+Actually the current logic at line 2537 is:
+
+if _is_official_primary:    # attempt ResendCodeRequestelse:    # skip ResendCode, go straight to Layer 2
+For operator dev api_ids, we DO want to attempt ResendCode (they're not shadow-blocked, so ResendCode can actually escalate App→SMS). So the flag should be inverted:
+
+Replace line 2533-2534 with:
+
+# ResendCode is worth trying for ANY credential (operator dev OR official).# Skip only when we know it would be pointless — but for now, always try._is_official_primary = True_official_api_ids_set = {c[0] for c in _OFFICIAL_CLIENT_CREDS}
+Around line 2572 there's:
+
+_official_api_ids = {c[0] for c in _OFFICIAL_CLIENT_CREDS}if _actual_api_id in _official_api_ids:    _definitive_recycled = True
+This logic declares a "definitive recycled triple" only when an OFFICIAL api_id produced it. Operator dev api_ids should ALSO trigger this — if a fresh dev api_id gets SentCodeTypeApp + SendCodeUnavailable + next_type=None, the number really is recycled. So replace with:
+
+_official_api_ids = {c[0] for c in _OFFICIAL_CLIENT_CREDS} | {c[0] for c in _OPERATOR_CREDS}if _actual_api_id in _official_api_ids:    _definitive_recycled = True
+Change 5 — Update the Layer 2 loop to use _LAYER2_CREDS instead of _OFFICIAL_CLIENT_CREDS
+
+Around line 2629:
+
+_off_creds_filtered = [    c for c in _OFFICIAL_CLIENT_CREDS if c[0] != _actual_api_id] or _OFFICIAL_CLIENT_CREDS
+Replace with:
+
+_off_creds_filtered = [    c for c in _LAYER2_CREDS if c[0] != _actual_api_id] or _LAYER2_CREDS
+This makes Layer 2 try operator creds first (they're at the head of _LAYER2_CREDS), then fall back to the public official ones if those fail.
+
+Change 6 — Fix the device profile mismatch in Change 5's loop
+
+The Layer 2 loop at line 2695 builds the TelegramClient with:
+
+_off_client = TelegramClient(    session_path, _off_api_id, _off_api_hash,    proxy=_off_proxy_tuple,    device_model=_off_dev,    system_version=_off_sys,    app_version=_off_app,    lang_code=_reg_lang,    system_lang_code=_reg_sys_lang,)
+This is correct for both _OFFICIAL_CLIENT_CREDS (5-tuples) and _OPERATOR_CREDS (we extract only the first 5 fields when building _LAYER2_CREDS, so they're also 5-tuples). No change needed — just verify it still works.
+
+Change 7 — Update the /api/factory/register endpoint validation
+
+Around line 3677:
+
+api_id_raw  = os.environ.get("TELETHON_API_ID") or str(body.get("api_id", ""))api_hash    = str(os.environ.get("TELETHON_API_HASH") or body.get("api_hash", "")).strip()
+Add a check that at least one operator credential is loaded, and remove the hard failure if the legacy env vars aren't set (since numbered variants are now the primary source):
+
+api_id_raw  = os.environ.get("TELETHON_API_ID") or os.environ.get("TELETHON_API_ID_1") or str(body.get("api_id", ""))api_hash    = str(    os.environ.get("TELETHON_API_HASH") or os.environ.get("TELETHON_API_HASH_1") or body.get("api_hash", "")).strip()if not _OPERATOR_CREDS:    return JSONResponse(        {"error": "No Telegram credentials configured. Set TELETHON_API_ID_1 + TELETHON_API_HASH_1 (and optionally _2, _3, ...) as Replit Secrets."},        status_code=500,    )
+The downstream try: api_id = int(api_id_raw) block can stay as a backup validation — it's harmless if _OPERATOR_CREDS is already populated.

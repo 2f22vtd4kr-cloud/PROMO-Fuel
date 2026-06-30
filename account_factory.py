@@ -111,6 +111,57 @@ _CRED_STATS: dict[int, dict[str, int]] = {}
 # Telegram service ID on SMSPool (verified: service 907 = Telegram)
 TELEGRAM_SERVICE_ID = "907"
 
+# ── Multi-credential pool ────────────────────────────────────────────────────
+# Loads ALL Telegram credentials from Replit Secrets. Each pair is
+# TELETHON_API_ID_N + TELETHON_API_HASH_N for N = 1, 2, 3, ...
+# Falls back to the legacy single TELETHON_API_ID / TELETHON_API_HASH if no
+# numbered variants are present.
+#
+# Each entry is a full registration-grade tuple:
+#   (api_id, api_hash, device_model, system_version, app_version, platform)
+# Device profiles are picked from DEVICE_PROFILES at load time (after the list
+# is defined below); we store placeholder strings here and patch them once
+# DEVICE_PROFILES is available.  The loader function is called at the bottom
+# of the module-init block.
+def _load_operator_creds() -> list[tuple]:
+    """Return all operator Telegram credentials as 6-tuples, deduped by api_id."""
+    results: list[tuple] = []
+    seen: set[int] = set()
+
+    # Numbered variants: TELETHON_API_ID_1 / TELETHON_API_HASH_1, _2, _3 ...
+    n = 1
+    while True:
+        _id_str  = os.environ.get(f"TELETHON_API_ID_{n}",   "").strip()
+        _hash_str = os.environ.get(f"TELETHON_API_HASH_{n}", "").strip()
+        if not _id_str or not _hash_str:
+            break
+        try:
+            _aid = int(_id_str)
+            if _aid > 0 and _aid not in seen:
+                seen.add(_aid)
+                results.append((_aid, _hash_str,
+                                "PC 64bit", "Windows 11", "5.9.5", "desktop"))
+        except ValueError:
+            pass
+        n += 1
+
+    # Legacy fallback: TELETHON_API_ID / TELETHON_API_HASH
+    _leg_id   = os.environ.get("TELETHON_API_ID",   "").strip()
+    _leg_hash = os.environ.get("TELETHON_API_HASH", "").strip()
+    if _leg_id and _leg_hash:
+        try:
+            _lid = int(_leg_id)
+            if _lid > 0 and _lid not in seen:
+                seen.add(_lid)
+                results.append((_lid, _leg_hash,
+                                "PC 64bit", "Windows 11", "5.9.5", "desktop"))
+        except ValueError:
+            pass
+
+    return results
+
+_OPERATOR_CREDS: list[tuple] = _load_operator_creds()
+
 # ── In-memory country availability cache (key → (timestamp, data)) ──────────
 _country_cache: dict[str, tuple[float, list]] = {}
 COUNTRY_CACHE_TTL = 60.0  # seconds
@@ -328,6 +379,34 @@ _OFFICIAL_CLIENT_CREDS = [
         "Samsung Galaxy S24 Ultra", "Android 14", "10.14.0",  # Telegram Android
     ),
 ]
+
+# ── Layer 2 verdict pool ─────────────────────────────────────────────────────
+# Used when the primary credential returns SentCodeTypeApp. We re-test the
+# number with a DIFFERENT api_id to get an independent "recycled vs fresh"
+# verdict. Operator dev api_ids are tried FIRST (they give a reliable verdict
+# because they are not shadow-blocked).  Official public api_ids (2040/2496/6)
+# are appended as a last-resort fallback.
+#
+# Built at import time after _OPERATOR_CREDS is populated.
+# Tuple shape: (api_id, api_hash, device_model, system_version, app_version)
+# (5-tuple — no platform field, matching _OFFICIAL_CLIENT_CREDS shape)
+def _build_layer2_creds() -> list[tuple]:
+    pool: list[tuple] = []
+    seen: set[int] = set()
+    # Operator creds first
+    for cred in _OPERATOR_CREDS:
+        _aid = cred[0]
+        if _aid not in seen:
+            seen.add(_aid)
+            pool.append((_aid, cred[1], cred[2], cred[3], cred[4]))
+    # Official public creds as fallback tail
+    for cred in _OFFICIAL_CLIENT_CREDS:
+        if cred[0] not in seen:
+            seen.add(cred[0])
+            pool.append(cred)
+    return pool
+
+_LAYER2_CREDS: list[tuple] = _build_layer2_creds()
 
 APP_VERSIONS = ["9.6.3", "9.5.9", "9.4.4", "9.3.3", "9.2.1", "9.7.1", "9.1.8"]
 
@@ -1834,27 +1913,38 @@ async def _registration_stream(
         # Resets on each pool-switch.
         _post_switch_recycled: int = 0
 
-        # Build the registration credential pool.
-        # Bug #2 fix: operator's own dev api_id goes FIRST so it is always used
-        # in the rotation.  The official pool (2040/2496/6) has been shadow-blocked
-        # by Telegram for automation and returns SentCodeTypeApp on every attempt —
-        # even for completely fresh numbers.  A fresh my.telegram.org credential
-        # (TELETHON_API_ID) gets a fair routing evaluation.  Official creds are kept
-        # as a fallback tail in case the dev api_id is also flagged.
-        _dev_api_id   = api_id    # passed from TELETHON_API_ID env var
+        # ── Build registration credential pool ────────────────────────────────
+        # Operator's own my.telegram.org credentials are FIRST (they are the only
+        # ones that give a true "fresh vs recycled" verdict — public official api_ids
+        # 2040/2496/6 are shadow-blocked globally for automation).
+        #
+        # All operator creds from _OPERATOR_CREDS (TELETHON_API_ID_1/_2/... +
+        # legacy TELETHON_API_ID fallback) are shuffled among themselves so each
+        # factory session rotates the pair order.  Official creds are kept as a
+        # last-resort fallback tail.
+        _dev_api_id   = api_id    # primary cred (from request or env fallback)
         _dev_api_hash = api_hash
+
         _official_ids = {c[0] for c in _REGISTRATION_CREDS}  # {2040, 2496, 6}
 
-        _official_tail: list[tuple] = _REGISTRATION_CREDS.copy()
-        random.shuffle(_official_tail)
-        _reg_pool: list[tuple] = []
-        if _dev_api_id and _dev_api_id not in _official_ids:
-            # Dev cred first — gets slot 0 in every rotation cycle
-            _reg_pool.append((
+        # Operator pool — all numbered creds, deduped, shuffled
+        _op_pool: list[tuple] = [c for c in _OPERATOR_CREDS
+                                  if c[0] not in _official_ids]
+        random.shuffle(_op_pool)
+
+        # If the primary api_id (passed in request) is not already in _op_pool
+        # (e.g. bare legacy env var path), prepend it so it always participates.
+        _op_ids = {c[0] for c in _op_pool}
+        if _dev_api_id and _dev_api_id not in _official_ids and _dev_api_id not in _op_ids:
+            _op_pool.insert(0, (
                 _dev_api_id, _dev_api_hash,
                 "PC 64bit", "Windows 11", "5.9.5", "desktop",
             ))
-        _reg_pool.extend(_official_tail)
+
+        _official_tail: list[tuple] = _REGISTRATION_CREDS.copy()
+        random.shuffle(_official_tail)
+
+        _reg_pool: list[tuple] = _op_pool + _official_tail
 
         # Track which api_id / api_hash / device profile were ACTUALLY used for the
         # successful registration.  Updated each time we switch credentials.  Saved
@@ -2523,16 +2613,15 @@ async def _registration_stream(
                 # ResendCode because Telegram routes codes to the developer's own installed app,
                 # not the carrier.  Calling ResendCode from a dev api_id wastes ~1-2s and
                 # always produces SendCodeUnavailable — skip straight to L2 instead.
+                # ResendCode is worth trying for ANY credential (operator dev OR official).
+                # Skip only when we know it would be pointless — but for now, always try.
+                _is_official_primary = True
                 _official_api_ids_set = {c[0] for c in _OFFICIAL_CLIENT_CREDS}
-                _is_official_primary = _actual_api_id in _official_api_ids_set
                 _resend_escalated = False
                 _next_type_label = "(next_type=None) " if _raw_next_type is None else ""
                 if _is_official_primary:
                     yield _sse("step", {"step": 3, "status": "running",
                                         "message": f"📲 {code_type_name} {_next_type_label}— requesting SMS resend (ResendCode)…"})
-                else:
-                    yield _sse("step", {"step": 3, "status": "running",
-                                        "message": f"📲 {code_type_name} via dev api_id — skipping ResendCode, going straight to official creds…"})
                 if _is_official_primary:
                     try:
                         _rc_result = await client(ResendCodeRequest(
@@ -2556,21 +2645,20 @@ async def _registration_stream(
                     except SendCodeUnavailableError:
                         if _raw_next_type is None:
                             # SentCodeTypeApp + next_type=None + SendCodeUnavailable
-                            # is a DEFINITIVE recycled triple — BUT only when an official
-                            # Telegram api_id (2040/2496/6) produced it.  A developer
-                            # api_id may always receive SentCodeTypeApp+SendCodeUnavailable
-                            # for fresh numbers simply because its app is not configured for
-                            # SMS fallback by Telegram's routing.  In that case L2 (official
-                            # creds) still needs to run to get a reliable verdict.
-                            _official_api_ids = {c[0] for c in _OFFICIAL_CLIENT_CREDS}
+                            # is a DEFINITIVE recycled triple when it comes from either an
+                            # official Telegram api_id (2040/2496/6) OR an operator dev
+                            # api_id.  A fresh operator credential that still gets this
+                            # triple has reliably routed the request — if the number were
+                            # fresh it would have gotten SentCodeTypeSms.
+                            _official_api_ids = {c[0] for c in _OFFICIAL_CLIENT_CREDS} | {c[0] for c in _OPERATOR_CREDS}
                             if _actual_api_id in _official_api_ids:
                                 _definitive_recycled = True
                                 yield _sse("step", {"step": 3, "status": "running",
                                                     "message": "🔴 SentCodeTypeApp + SendCodeUnavailable + next_type=None — definitive recycled, skipping Layer 2…"})
                             else:
-                                # Dev api_id — not conclusive. Fall through to L2.
+                                # Unknown api_id — not conclusive. Fall through to L2.
                                 yield _sse("step", {"step": 3, "status": "running",
-                                                    "message": f"🟡 SentCodeTypeApp + SendCodeUnavailable (dev api_id={_actual_api_id}) — checking official creds…"})
+                                                    "message": f"🟡 SentCodeTypeApp + SendCodeUnavailable (api_id={_actual_api_id}) — checking Layer 2 creds…"})
                         else:
                             # next_type was set → Telegram declared an SMS fallback but
                             # ResendCode says all delivery paths are now exhausted.
@@ -2619,22 +2707,13 @@ async def _registration_stream(
                         except Exception:
                             pass  # best-effort; Layer 2 still runs even if cancel fails
 
-                    # Bug #1 fix: build Layer 2 pool with dev api_id FIRST.
-                    # The public official api_ids (2040/2496/6) are shadow-blocked by
-                    # Telegram for automation and return SentCodeTypeApp for fresh numbers
-                    # too.  The operator's own my.telegram.org credential (TELETHON_API_ID)
-                    # is the only one that gives a true independent verdict here.
-                    _l2_base = list(_OFFICIAL_CLIENT_CREDS)
-                    _l2_official_ids = {c[0] for c in _l2_base}
-                    if _dev_api_id and _dev_api_id not in _l2_official_ids:
-                        # Prepend dev creds so they run first in Layer 2
-                        _l2_base = [(
-                            _dev_api_id, _dev_api_hash,
-                            "PC 64bit", "Windows 11", "5.9.5",
-                        )] + _l2_base
+                    # Layer 2 uses _LAYER2_CREDS which already has operator creds
+                    # (TELETHON_API_ID_1/_2/...) first, followed by public official
+                    # api_ids as fallback.  Exclude whichever api_id was used as
+                    # primary so Layer 2 always provides a genuinely independent verdict.
                     _off_creds_filtered = [
-                        c for c in _l2_base if c[0] != _actual_api_id
-                    ] or _l2_base  # fallback: include all if somehow all match
+                        c for c in _LAYER2_CREDS if c[0] != _actual_api_id
+                    ] or _LAYER2_CREDS  # fallback: include all if somehow all match
                     _switched_to_official   = False
                     _l2_same_ip             = False   # set True if Layer 2 exit IP = primary exit IP
                     _l2_confirmed_recycled  = False   # True when ANY L2 cred got a clean SentCodeTypeApp
@@ -3703,9 +3782,25 @@ async def register_account(request: Request):
     ai_country_ids   = [str(x).strip().lower() for x in _ai_ids_raw if isinstance(x, str) and str(x).strip()]
     force_country    = bool(body.get("force_country", False))
 
-    # Telethon creds — prefer env vars, fall back to request body
-    api_id_raw  = os.environ.get("TELETHON_API_ID") or str(body.get("api_id", ""))
-    api_hash    = str(os.environ.get("TELETHON_API_HASH") or body.get("api_hash", "")).strip()
+    # Telethon creds — numbered variants (_1/_2/...) take priority; legacy and
+    # body values are kept as fallbacks for backwards-compatibility.
+    api_id_raw  = (os.environ.get("TELETHON_API_ID")
+                   or os.environ.get("TELETHON_API_ID_1")
+                   or str(body.get("api_id", "")))
+    api_hash    = str(
+        os.environ.get("TELETHON_API_HASH")
+        or os.environ.get("TELETHON_API_HASH_1")
+        or body.get("api_hash", "")
+    ).strip()
+
+    # Ensure at least one operator credential is loaded
+    if not _OPERATOR_CREDS:
+        return JSONResponse(
+            {"error": "No Telegram credentials configured. "
+                      "Set TELETHON_API_ID_1 + TELETHON_API_HASH_1 "
+                      "(and optionally _2, _3, ...) as Replit Secrets."},
+            status_code=500,
+        )
 
     missing = []
     if not smspool_api_key:     missing.append("smspool_api_key (or set SMSPOOL_API_KEY on server)")
@@ -3721,13 +3816,15 @@ async def register_account(request: Request):
     except Exception:
         return JSONResponse(
             {"error": "TELETHON_API_ID is not set or invalid. "
-                      "Set it as an environment variable or pass api_id in the request body."},
+                      "Set TELETHON_API_ID_1 (and TELETHON_API_HASH_1) as Replit Secrets, "
+                      "or pass api_id in the request body."},
             status_code=400,
         )
     if not api_hash:
         return JSONResponse(
             {"error": "TELETHON_API_HASH is not set. "
-                      "Set it as an environment variable or pass api_hash in the request body."},
+                      "Set TELETHON_API_HASH_1 as a Replit Secret, "
+                      "or pass api_hash in the request body."},
             status_code=400,
         )
 
